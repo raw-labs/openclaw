@@ -1359,6 +1359,12 @@ importers:
       '@openclaw/normalization-core':
         specifier: workspace:*
         version: link:../../packages/normalization-core
+      '@solidjs/web':
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16(solid-js@2.0.0-rc.16)
+      solid-js:
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16
       yaml:
         specifier: 2.9.1
         version: 2.9.1
@@ -1366,6 +1372,12 @@ importers:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+      '@solidjs/compiler':
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
 
   extensions/gmi:
     devDependencies:

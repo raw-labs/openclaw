@@ -4,7 +4,7 @@ import {
   isSettingsNavigationRouteVisible,
   type SettingsSearchBlock,
 } from "../../app-navigation.ts";
-import { pathForMemoryTab } from "../../app-route-paths.ts";
+import { pathForMemoryTab, pathForAgentPanel } from "../../app-route-paths.ts";
 import type {
   NativeDeviceSettingsCapability,
   NativeDeviceSettingsSnapshot,
@@ -20,6 +20,7 @@ import { t } from "../../i18n/index.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { schemaType, type JsonSchema } from "../../lib/config-form-utils.ts";
 import { settingsSearchTextMatches } from "../../lib/settings-navigation.ts";
+import type { ControlUiSettingsContribution } from "../../plugins/control-ui-metadata.ts";
 import { PLUGIN_SETTINGS_VISIBLE_KEYS } from "../plugins/settings-model.ts";
 import { configPageForSection } from "./config-sections.ts";
 import { MEMORY_SETTINGS_KEYS } from "./memory-schema.ts";
@@ -34,12 +35,43 @@ type StaticSettingsBlock = SettingsSearchBlock & {
 
 const STATIC_SETTINGS_BLOCKS: readonly SettingsSearchTarget[] =
   Object.values(SETTINGS_SEARCH_TARGETS);
+function contributedSettingsBlocks(params: {
+  settingsContributions?: readonly ControlUiSettingsContribution[];
+  settingsAgentId?: string | null;
+  basePath?: string;
+}): SettingsSearchTarget[] {
+  return (params.settingsContributions ?? []).flatMap(({ placement: view }) => {
+    if (
+      !view.search ||
+      (view.section !== "profile" && view.section !== "agents") ||
+      (view.section === "agents" && !params.settingsAgentId)
+    ) {
+      return [];
+    }
+    return [
+      {
+        routeId: view.section === "profile" ? ("profile" as const) : ("agents" as const),
+        labelKey: "",
+        label: view.search.label,
+        ...(view.section === "agents" && params.settingsAgentId
+          ? {
+              pathname: pathForAgentPanel(params.settingsAgentId, "tools", params.basePath ?? ""),
+            }
+          : {}),
+        hash: view.search.hash,
+        aliases: view.search.aliases,
+        searchKeys: [],
+        requiresMethods: view.requiredMethods,
+      },
+    ];
+  });
+}
 
 function resolveStaticSettingsBlock(
   block: SettingsSearchTarget,
   snapshot: NativeDeviceSettingsSnapshot | null,
 ): StaticSettingsBlock {
-  const label = t(block.labelKey);
+  const label = block.label ?? t(block.labelKey);
   const nativeKeys = snapshot
     ? Object.entries(block.nativeSearchKeys ?? {})
         .filter(([, available]) => available(snapshot))
@@ -47,6 +79,7 @@ function resolveStaticSettingsBlock(
     : [];
   return {
     routeId: block.routeId,
+    ...(block.pathname ? { pathname: block.pathname } : {}),
     ...(block.search === undefined ? {} : { search: block.search }),
     hash: block.hash,
     label,
@@ -103,11 +136,14 @@ export function findSettingsSearchBlocks(params: {
   schema: unknown;
   value: Record<string, unknown> | null;
   uiHints: ConfigUiHints;
+  advertisedMethods?: readonly string[];
   identityAvailable?: boolean;
   multipleProfiles?: boolean;
   basePath?: string;
   canAdmin?: boolean;
   nativeDeviceSettings?: NativeDeviceSettingsCapability | null;
+  settingsContributions?: readonly ControlUiSettingsContribution[];
+  settingsAgentId?: string | null;
 }): SettingsSearchBlock[] {
   if (!params.query.trim()) {
     return [];
@@ -115,17 +151,22 @@ export function findSettingsSearchBlocks(params: {
   const criteria = parseConfigSearchQuery(params.query);
   const matches: SettingsSearchBlock[] =
     criteria.tags.length === 0 && criteria.text
-      ? STATIC_SETTINGS_BLOCKS.filter(
-          (block) =>
-            (params.identityAvailable || !block.requiresIdentity) &&
-            (params.multipleProfiles || !block.requiresMultipleProfiles) &&
-            (params.nativeDeviceSettings || !block.requiresNativeDeviceSettings) &&
-            isSettingsNavigationRouteVisible(
-              block.routeId,
-              params.canAdmin !== false,
-              params.nativeDeviceSettings,
-            ),
-        )
+      ? [...STATIC_SETTINGS_BLOCKS, ...contributedSettingsBlocks(params)]
+          .filter(
+            (block) =>
+              (!block.requiresMethods ||
+                block.requiresMethods.every((method) =>
+                  params.advertisedMethods?.includes(method),
+                )) &&
+              (params.identityAvailable || !block.requiresIdentity) &&
+              (params.multipleProfiles || !block.requiresMultipleProfiles) &&
+              (params.nativeDeviceSettings || !block.requiresNativeDeviceSettings) &&
+              isSettingsNavigationRouteVisible(
+                block.routeId,
+                params.canAdmin !== false,
+                params.nativeDeviceSettings,
+              ),
+          )
           .map((block) =>
             resolveStaticSettingsBlock(block, params.nativeDeviceSettings?.snapshot ?? null),
           )

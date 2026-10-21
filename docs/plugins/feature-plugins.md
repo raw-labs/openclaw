@@ -394,6 +394,25 @@ and `dispose()`. Memory views support the overview and Memories panel. A channel
 `ControlUiChannelSettingsView`. The channel must appear in the declaring manifest's `channels`.
 These placements do not register arbitrary Settings routes.
 
+Admitted plugins can also contribute `{ "id": "connections", "section": "profile",
+"panel": "connections" }` or `{ "id": "identity", "section": "agents", "panel": "tools" }`.
+Export `ControlUiContributedSettingsView` for these placements. A plugin may declare
+several unique IDs per slot. Optional `requiredMethods` controls availability;
+`search: { label, hash, aliases }` supplies Settings search while preserving deep links.
+Unlike packaged Memory/channel setup, these contributions require the active Gateway
+catalog and retire when their plugin revision leaves it.
+
+General contributions receive `ControlUiSettingsContextV2` and a
+`ControlUiContributionSettingsSnapshot`, without a fabricated Memory engine. The
+snapshot carries profile, permission, agent and current-config availability facts.
+`readConfig(path)` and `readAgentConfig(agentId)` read the existing config owner;
+`ensureConfig()` requests that owner's load. The host's `runConfigMutation` serializes
+external mutations with pending drafts, refreshes authoritative configuration and
+allows already-admitted work to settle after its view closes. Its scoped client
+cannot dispatch after the operation returns. Shared host components include secret
+inputs, segmented choices and icons; translation, confirmation, clipboard and
+navigation services remain bound to the Settings view.
+
 The host supplies the selected Settings agent, engine availability, connection
 state, advertised Gateway methods, locale, shared Settings components, and bounded navigation. Authenticated
 operator RPC remains trusted native UI authority, bound to the mounted view's

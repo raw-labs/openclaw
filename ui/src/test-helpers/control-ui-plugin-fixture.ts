@@ -38,6 +38,7 @@ export async function prepareNativeControlUiPluginFixtures(
       name: fixture.pluginId,
       revision,
       entryUrl: `${prefix}${path.basename(declaration.entry)}`,
+      ...(declaration.settingsViews ? { settingsViews: declaration.settingsViews } : {}),
       styles: (declaration.styles ?? []).map((file) => `${prefix}${path.basename(file)}`),
     });
   }

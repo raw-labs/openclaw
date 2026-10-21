@@ -1,13 +1,11 @@
-import type { TranslationMap } from "../lib/types.ts";
-import { en } from "./en.ts";
-
-const enGitHubConnections = {
+import { metadataEnglish } from "./metadata-english.ts";
+export const english = {
   githubConnections: {
-    title: en.githubConnections.title,
+    ...metadataEnglish.githubConnections,
     description:
       "Check the accounts used for agent commands, dashboard data, and publishing. These connections are separate from your GitHub sign-in and co-author credit.",
-    mine: en.githubConnections.mine,
-    system: en.githubConnections.system,
+    mine: "My GitHub",
+    system: "System GitHub",
     personalDescription: "Your account for explicitly selected Publish PR actions.",
     systemDescription:
       "Default account for agent commands, authenticated dashboards, and publishing.",
@@ -29,8 +27,8 @@ const enGitHubConnections = {
       "Stops unfinished personal publication. Published work stays intact; revoke the app grant separately in GitHub settings.",
     adminManaged: "Admin managed",
     purpose: "Connect GitHub",
-    forMe: en.githubConnections.forMe,
-    forSystem: en.githubConnections.forSystem,
+    forMe: "For me",
+    forSystem: "For the system",
     purposeHint: "Only the selected connection changes.",
     continue: "Continue with GitHub",
     usage: "Where these accounts are used",
@@ -124,12 +122,4 @@ const enGitHubConnections = {
     githubAgentMutationHint: "Authorization and removal below apply to This Agent for new runs.",
     githubSystemMutationHint: "Authorization and removal below apply to System for new runs.",
   },
-} satisfies TranslationMap;
-
-export const registerGitHubConnectionsEnglish = Object.assign(
-  () => {
-    Object.assign(en.githubConnections, enGitHubConnections.githubConnections);
-    Object.assign(en.agentTools, enGitHubConnections.agentTools);
-  },
-  { catalog: enGitHubConnections },
-);
+};

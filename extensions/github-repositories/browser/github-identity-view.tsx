@@ -1,21 +1,21 @@
+/** @jsxImportSource @solidjs/web */
+
 import type { JSX } from "@solidjs/web";
+import type { GitHubIdentityFacts } from "openclaw/plugin-sdk/control-ui";
 import { Match, Show, Switch } from "solid-js";
-import type { GitHubIdentityFacts } from "../../../../packages/gateway-protocol/src/schema/agents-models-skills.js";
-import { handleCopyButton } from "../../components/copy-button-state.ts";
-import { Icon } from "../../components/solid/icon.tsx";
+import type { GitHubIdentity as GitHubIdentityModel } from "./github-identity.ts";
+import { translator, useSettings } from "./i18n.ts";
 import {
+  Icon,
   SettingsRow,
   SettingsSecretInput,
   SettingsSection,
   SettingsStatus,
   SettingsValue,
-} from "../../components/solid/settings-ui.tsx";
-import { registerGitHubConnectionsEnglish } from "../../i18n/locales/en-github-connections.ts";
-import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "../../lib/external-link.ts";
-import { formatUiExternalText } from "../../lib/format-error.ts";
-import { formatDateTimeMs } from "../../lib/format.ts";
-import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
-import type { GitHubIdentity as GitHubIdentityModel } from "./github-identity.ts";
+} from "./settings-components.tsx";
+
+const EXTERNAL_LINK_TARGET = "_blank";
+const buildExternalLinkRel = () => "noreferrer noopener";
 
 const GITHUB_CREDENTIAL_STATUS = {
   available: { kind: "ok", label: "agentTools.githubStateVerified" },
@@ -51,6 +51,9 @@ type RequestStatus = Pick<ReturnType<GitHubIdentityModel["read"]>, "loading" | "
 type IdentityProps = { identity: GitHubIdentityModel };
 
 export function GitHubUnloadedStatus(props: { request: RequestStatus }) {
+  const context = useSettings();
+  const t = translator(context);
+
   return (
     <SettingsStatus
       kind={props.request.error ? "warn" : "muted"}
@@ -69,6 +72,9 @@ export function GitHubHealth(props: {
   identity: GitHubIdentityFacts | null;
   request: RequestStatus;
 }) {
+  const context = useSettings();
+  const t = translator(context);
+
   return (
     <Show when={props.identity} fallback={<GitHubUnloadedStatus request={props.request} />}>
       {(identity) => (
@@ -82,6 +88,10 @@ export function GitHubHealth(props: {
 }
 
 export function GitHubDetails(props: { identity: GitHubIdentityFacts | null }) {
+  const context = useSettings();
+  const t = translator(context);
+  const formatDateTimeMs = context.formatDateTime!;
+
   return (
     <Show when={props.identity}>
       {(identity) => (
@@ -138,6 +148,10 @@ export function GitHubDetails(props: { identity: GitHubIdentityFacts | null }) {
 }
 
 function GitHubAuthorization(props: IdentityProps) {
+  const context = useSettings();
+  const t = translator(context);
+  const formatUiExternalText = context.formatExternalText!;
+
   const view = () => props.identity.read();
   const authorization = () => view().authorization;
   const code = () => {
@@ -256,6 +270,11 @@ function GitHubAuthorizationCode(
     >;
   },
 ) {
+  const context = useSettings();
+  const handleCopyButton = context.copyButton!;
+  const t = translator(context);
+  const formatDateTimeMs = context.formatDateTime!;
+
   return (
     <>
       <SettingsRow
@@ -359,6 +378,10 @@ function GitHubAuthorizationCode(
 }
 
 export function GitHubConnectionError(props: { error: string | null; control?: JSX.Element }) {
+  const context = useSettings();
+  const t = translator(context);
+  const formatUiExternalText = context.formatExternalText!;
+
   return (
     <Show when={props.error}>
       <SettingsRow
@@ -371,6 +394,9 @@ export function GitHubConnectionError(props: { error: string | null; control?: J
 }
 
 export function GitHubConnectionSetup(props: IdentityProps) {
+  const context = useSettings();
+  const t = translator(context);
+
   const view = () => props.identity.read();
   const disabled = () =>
     !view().connectionReady || view().busy || !view().configurable || view().authorizationActive;
@@ -438,6 +464,9 @@ export function GitHubConnectionSetup(props: IdentityProps) {
 }
 
 export function GitHubIdentity(props: IdentityProps & { onOpenConnections: () => void }) {
+  const context = useSettings();
+  const t = translator(context);
+
   const view = () => props.identity.read();
   const identity = () => view().status?.effective ?? null;
   return (
@@ -512,5 +541,3 @@ export function GitHubIdentity(props: IdentityProps & { onOpenConnections: () =>
     </openclaw-github-identity>
   );
 }
-
-registerEnglishCatalog(registerGitHubConnectionsEnglish);

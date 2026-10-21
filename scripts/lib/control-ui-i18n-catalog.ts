@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { settingsEnglish } from "../../extensions/github-repositories/english-api.ts";
 import { buildBaseHints } from "../../src/config/schema.hints.js";
 import { PUBLIC_SESSION_COPY } from "../../src/shared/public-session-copy.ts";
 import { configHintTranslationKey } from "../../ui/src/i18n/lib/config-hint-translation.ts";
@@ -29,7 +30,6 @@ import { registerDesktopEnglish } from "../../ui/src/i18n/locales/en-desktop.ts"
 import { registerDevicesEnglish } from "../../ui/src/i18n/locales/en-devices.ts";
 import { registerDreamingEnglish } from "../../ui/src/i18n/locales/en-dreaming.ts";
 import { registerFilePreviewEnglish } from "../../ui/src/i18n/locales/en-file-preview.ts";
-import { registerGitHubConnectionsEnglish } from "../../ui/src/i18n/locales/en-github-connections.ts";
 import { registerGitHubEnglish } from "../../ui/src/i18n/locales/en-github.ts";
 import { registerLabsEnglish } from "../../ui/src/i18n/locales/en-labs.ts";
 import { registerLinkReaderEnglish } from "../../ui/src/i18n/locales/en-link-reader.ts";
@@ -114,7 +114,6 @@ const sourceFiles = [
   "en-login.ts",
   "en-link-reader.ts",
   "en-github.ts",
-  "en-github-connections.ts",
   "en-mcp.ts",
   "en-mcp-app.ts",
   "en-meetings.ts",
@@ -216,9 +215,9 @@ export function loadControlUiSourceCatalog(): TranslationMap {
       },
       sessionHovercard: registerGitHubEnglish.catalog.sessionHovercard,
       githubPublication: registerGitHubEnglish.catalog.githubPublication,
-      githubConnections: registerGitHubConnectionsEnglish.catalog.githubConnections,
+      githubConnections: settingsEnglish.githubConnections,
       agentTools: {
-        ...registerGitHubConnectionsEnglish.catalog.agentTools,
+        ...settingsEnglish.agentTools,
         ...en.agentTools,
         ...registerToolDiagnosticsEnglish.catalog.agentTools,
       },
@@ -293,6 +292,9 @@ export async function readControlUiSourceCatalog(): Promise<string> {
   const sources = await Promise.all(
     [
       ...sourceFiles.map((fileName) => path.join(localesDir, fileName)),
+      ...["english-api.ts", "browser/settings-english.ts", "browser/metadata-english.ts"].map(
+        (file) => path.resolve(localesDir, "../../../../extensions/github-repositories", file),
+      ),
       path.resolve(localesDir, "../../../../src/shared/public-session-copy.ts"),
       path.resolve(localesDir, "../../../../extensions/active-memory/control-ui.presentation.json"),
       path.resolve(localesDir, "../../../../extensions/memory-wiki/control-ui.presentation.json"),

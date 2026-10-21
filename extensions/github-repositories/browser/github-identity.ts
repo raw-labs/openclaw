@@ -1,19 +1,13 @@
-import { createSignal, onCleanup } from "solid-js";
-import type { GitHubIdentityFacts } from "../../../../packages/gateway-protocol/src/schema/agents-models-skills.ts";
 import type {
+  GitHubIdentityFacts,
   PersonalGitHubStatus,
   UsersGitHubStatusResult,
-} from "../../../../packages/gateway-protocol/src/schema/users.ts";
-import type { GatewayBrowserClient } from "../../api/gateway.ts";
-import type { ToolsGitHubStatusResult } from "../../api/types.ts";
-import { showConfirmDialog } from "../../components/confirm-dialog.ts";
-import { t } from "../../i18n/index.ts";
-import { registerGitHubConnectionsEnglish } from "../../i18n/locales/en-github-connections.ts";
-import { resolveAgentConfig } from "../../lib/agents/display.ts";
-import type { RuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
-import { formatUiError } from "../../lib/format-error.ts";
-import { projectMutableSource } from "../../lib/reactive/projection.ts";
-import { generateUUID } from "../../lib/uuid.ts";
+  ToolsGitHubStatusResult,
+  ControlUiSettingsClient as GatewayBrowserClient,
+  ControlUiSettingsConfigMutation,
+} from "openclaw/plugin-sdk/control-ui";
+import { generateUUID } from "openclaw/plugin-sdk/control-ui";
+import { createSignal, onCleanup } from "solid-js";
 import { createGitHubDeviceAuthorization } from "./github-device-authorization.ts";
 import {
   githubConnectionOwnerKey,
@@ -28,7 +22,10 @@ import {
 
 export type GitHubIdentity = ReturnType<typeof createGitHubIdentity>;
 
-export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
+export function createGitHubIdentity(deps: GitHubIdentityDependencies) {
+  const t = deps.translate;
+  const showConfirmDialog = deps.confirm;
+  const formatUiError = deps.formatError;
   let status: ToolsGitHubStatusResult | null = null;
   let personal: PersonalGitHubStatus | null = null;
   let system: GitHubIdentityFacts | null = null;
@@ -162,11 +159,7 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
         ? { ...params.target, config: target.config }
         : params.target;
     target = nextTarget ? { ...nextTarget } : null;
-    const resolved =
-      nextTarget?.kind === "shared"
-        ? resolveAgentConfig(nextTarget.config, nextTarget.agentId)
-        : null;
-    const values = { system: resolved?.globalTools?.github, agent: resolved?.entry?.tools?.github };
+    const values = nextTarget?.kind === "shared" ? (nextTarget.config ?? {}) : {};
     const fingerprint = JSON.stringify(
       nextScope === "personal"
         ? null
@@ -254,6 +247,8 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
     client = null;
     target = null;
     connected = false;
+    loading = false;
+    busy = false;
     mutationOwner = null;
     selectedDraft = readGitHubIdentityDraft(undefined);
   }
@@ -460,46 +455,58 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
     const name = draft.name.trim();
     const email = draft.email.trim();
     await runMutation(owner, async () => {
-      const secretName = `github-setup-${generateUUID().replaceAll("-", "").toLowerCase()}`;
-      let stored = false;
-      try {
-        await owner.client.request("secrets.store.set", {
-          name: secretName,
-          value: draft.token,
-          kind: "secret",
-          allowedHosts: [],
-        });
-        stored = true;
-        if (!isCurrent(owner)) {
-          return false;
-        }
-        const result = await runConfigureMutation(owner, runExternalMutation, {
-          scope: owner.target.scope,
-          agentId: owner.target.agentId,
-          mode: "managed",
-          secretName,
-          ...(name || email
-            ? { gitAuthor: { ...(name ? { name } : {}), ...(email ? { email } : {}) } }
-            : {}),
-        });
-        if (!result.ok) {
-          throw new Error(result.error);
-        }
-        stored = false;
-        applyMutationStatus(
-          owner,
-          result.value,
-          { ...draft, token: "" },
-          result.refresh.ok ? null : result.refresh.error,
-        );
-        return true;
-      } finally {
-        if (stored) {
-          await owner.client
-            .request("secrets.store.delete", { name: secretName })
-            .catch(() => undefined);
-        }
+      const result = await runExternalMutation(
+        async (mutationClient) => {
+          const secretName = `github-setup-${generateUUID().replaceAll("-", "").toLowerCase()}`;
+          let stored = false;
+          try {
+            await mutationClient.request("secrets.store.set", {
+              name: secretName,
+              value: draft.token,
+              kind: "secret",
+              allowedHosts: [],
+            });
+            stored = true;
+            if (!isCurrent(owner) || !configurable) {
+              throw new Error("Access changed before the GitHub identity update started.");
+            }
+            const configuredStatus = await mutationClient.request<ToolsGitHubStatusResult>(
+              "tools.github.configure",
+              {
+                scope: owner.target.scope,
+                agentId: owner.target.agentId,
+                mode: "managed",
+                secretName,
+                ...(name || email
+                  ? { gitAuthor: { ...(name ? { name } : {}), ...(email ? { email } : {}) } }
+                  : {}),
+              },
+            );
+            stored = false;
+            return configuredStatus;
+          } finally {
+            if (stored) {
+              await mutationClient
+                .request("secrets.store.delete", { name: secretName })
+                .catch(() => undefined);
+            }
+          }
+        },
+        {
+          canDispatch: () => isCurrent(owner) && configurable,
+          dispatchError: "Access changed before the GitHub identity update started.",
+        },
+      );
+      if (!result.ok) {
+        throw new Error(result.error);
       }
+      applyMutationStatus(
+        owner,
+        result.value,
+        { ...draft, token: "" },
+        result.refresh.ok ? null : result.refresh.error,
+      );
+      return true;
     });
   }
 
@@ -568,14 +575,11 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
   }
   function runConfigureMutation(
     owner: SharedRequestOwner,
-    runExternalMutation: RuntimeConfigCapability["runExternalMutation"],
+    runExternalMutation: ControlUiSettingsConfigMutation,
     params: Record<string, unknown>,
   ) {
     return runExternalMutation(
       (current) => {
-        if (current !== owner.client) {
-          throw new Error("Connection changed before the GitHub identity update started.");
-        }
         return current.request<ToolsGitHubStatusResult>("tools.github.configure", params);
       },
       {
@@ -590,27 +594,31 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
     }
   }
   // Admission and drafts are synchronous; this projection only publishes their outcomes.
-  const projection = projectMutableSource(deps, () => ({
-    status,
-    personal,
-    system,
-    loading,
-    busy,
-    error,
-    statusReadable,
-    configurable,
-    authorizable,
-    scope: readScope(),
-    connectionReady: connectionReady(),
-    draft: readDraft(),
-    authorization: deviceAuthorization.state(),
-    authorizationActive: deviceAuthorization.active(),
-  }));
-  publish = projection.publish;
+  const [revision, setRevision] = createSignal(0, { ownedWrite: true });
+  const readProjection = () => {
+    revision();
+    return {
+      status,
+      personal,
+      system,
+      loading,
+      busy,
+      error,
+      statusReadable,
+      configurable,
+      authorizable,
+      scope: readScope(),
+      connectionReady: connectionReady(),
+      draft: readDraft(),
+      authorization: deviceAuthorization.state(),
+      authorizationActive: deviceAuthorization.active(),
+    };
+  };
+  publish = () => setRevision((value) => value + 1);
   onCleanup(release);
   return {
     read: () => ({
-      ...projection.read(),
+      ...readProjection(),
       tokenRevealed: tokenRevealed(),
       patVisible: patVisible(),
     }),
@@ -628,5 +636,3 @@ export function createGitHubIdentity(deps: GitHubIdentityDependencies = {}) {
     disconnect,
   };
 }
-
-registerGitHubConnectionsEnglish();

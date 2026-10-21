@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import { Show, Switch, Match, createMemo } from "solid-js";
 import { subtitleForRoute, titleForRoute } from "../../app-navigation.ts";
 import { ShellLayoutBoundary } from "../../app/shell-layout-traits-solid.tsx";
@@ -35,6 +36,7 @@ export type AgentsProps = Omit<
   AgentsPageView,
   "config" | "overview" | "onOpenMemoryImport" | "onOpenMemorySettings"
 > & {
+  renderToolsSettings?: () => JSX.Element;
   config: Pick<
     AgentsPageView["config"],
     | "configForm"
@@ -256,6 +258,7 @@ export function Agents(props: AgentsProps) {
                   </Match>
                   <Match when={props.readData().agentsPanel === "tools"}>
                     <AgentTools
+                      renderSettings={props.renderToolsSettings}
                       {...props.tools}
                       {...configActions()}
                       readData={props.readData}

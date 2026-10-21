@@ -184,6 +184,7 @@ async function snapshotBrowserBuild(
       entryUrl: assetUrl(entryName),
       imports,
       styles: styles.map(assetUrl),
+      ...(declaration.settingsViews ? { settingsViews: declaration.settingsViews } : {}),
       ...(uiCapabilities !== undefined ? { uiCapabilities } : {}),
       ...(hasCanonicalPluginDistribution(record) && record.packageName && record.packageVersion
         ? {

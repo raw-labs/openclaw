@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import { For, Show, createMemo, onSettled } from "solid-js";
 import {
   createRuntimeToolMatcher,
@@ -16,7 +17,6 @@ import {
   SettingsEmpty,
   SettingsLoadingSkeleton,
 } from "../../components/solid/settings-ui.tsx";
-import { GitHubIdentity } from "../../features/github-connections/github-identity-view.tsx";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { resolveAgentConfig } from "../../lib/agents/display.ts";
 import {
@@ -119,6 +119,7 @@ export function AgentTools(
     Pick<AgentsPageView, "readData"> & {
       agentId: string;
       configForm: Record<string, unknown> | null;
+      renderSettings?: () => JSX.Element;
     },
 ) {
   const toolTargets = new Map<
@@ -444,10 +445,7 @@ export function AgentTools(
         </Show>
         {runtimeAvailability()}
       </SettingsSection>
-      <GitHubIdentity
-        identity={params.githubIdentity}
-        onOpenConnections={params.onOpenGitHubConnections}
-      />
+      {params.renderSettings?.()}
       <SettingsSection title={t("agentTools.catalogTitle")}>
         {catalogLoading() ? (
           <SettingsLoadingSkeleton label={t("agentTools.loadingCatalog")} />

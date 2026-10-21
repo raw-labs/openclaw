@@ -17,11 +17,13 @@ import {
   takeControlUiScreenshotFrame,
   takeControlUiViewportScreenshot,
 } from "../test-helpers/control-ui-e2e-screenshot.ts";
-import {
-  installMockGateway,
-  type ControlUiMockGatewayScenario,
-} from "../test-helpers/control-ui-e2e.ts";
+import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+import {
+  testProfile,
+  linkedGitHubProfile,
+  testPresenceUsers,
+} from "./profile-page.e2e.test-support.ts";
 
 const suite = createControlUiE2eSuite({
   name: "Control UI profile page mocked Gateway E2E",
@@ -37,6 +39,13 @@ beforeEach(() => {
     proofDir = createControlUiE2eArtifactDir("profile-identity");
   }
 });
+const nativePlugins = [
+  {
+    pluginId: "github-repositories",
+    rootDir: path.resolve(import.meta.dirname, "../../../extensions/github-repositories"),
+    source: "./browser/index.tsx",
+  },
+];
 const basePath = "/wilfred";
 const profilePath = `${basePath}/settings/profile`;
 
@@ -58,36 +67,6 @@ async function screenshot(page: Page, name: string) {
   await writeFile(path.join(proofDir, name), frame.elements[0]!.png);
 }
 
-const testProfile = {
-  id: "11111111-1111-4111-8111-111111111111",
-  displayName: "Test Person",
-  avatarMime: null,
-  mergedInto: null,
-  createdAt: 1,
-  updatedAt: 2,
-  emails: ["test@example.com"],
-  githubIdentity: null,
-  hasAvatar: false,
-};
-const githubAvatarUrl = "https://avatars.githubusercontent.com/u/583231?v=4";
-const linkedGitHubProfile = {
-  ...testProfile,
-  githubIdentity: {
-    login: "octocat",
-    profileUrl: "https://github.com/octocat",
-    avatarUrl: githubAvatarUrl,
-  },
-};
-const testPresenceUsers: NonNullable<ControlUiMockGatewayScenario["presenceUsers"]> = [
-  {
-    self: true,
-    id: testProfile.id,
-    name: testProfile.displayName,
-    email: testProfile.emails[0],
-    avatarUrl: `/api/users/${testProfile.id}/avatar?v=${testProfile.updatedAt}`,
-  },
-];
-
 suite.define(() => {
   async function openProfilePage(
     page: Page,
@@ -95,6 +74,7 @@ suite.define(() => {
     presenceUsers = testPresenceUsers,
   ) {
     const gateway = await installMockGateway(page, {
+      nativePlugins,
       basePath,
       presenceUsers,
       methodResponses: {
@@ -437,6 +417,7 @@ suite.define(() => {
           });
         });
         const gateway = await installMockGateway(page, {
+          nativePlugins,
           basePath,
           presenceUsers: testPresenceUsers,
           methodResponses: {
@@ -880,6 +861,7 @@ suite.define(() => {
       },
       async ({ page }) => {
         const gateway = await installMockGateway(page, {
+          nativePlugins,
           basePath,
           deferredMethods: ["users.self"],
           presenceUsers: testPresenceUsers,
@@ -951,6 +933,7 @@ suite.define(() => {
         });
       });
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         basePath,
         deferredMethods: ["users.setAvatar"],
         presenceUsers: testPresenceUsers,

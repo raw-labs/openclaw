@@ -1,15 +1,15 @@
 import { createSignal } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GitHubAuthorizationState } from "../../../../extensions/github-repositories/browser/index.tsx";
 import { createDeferred } from "../../../../test/helpers/promise.ts";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { flush } from "../../test-helpers/solid-settle.ts";
-import type { GitHubAuthorizationState } from "./github-identity-shared.ts";
-import { GitHubConnectionSetup, GitHubIdentity } from "./github-identity-view.tsx";
 import {
   createGitHubIdentityForTest,
   githubIdentityViewFixture,
 } from "./github-identity.test-support.ts";
+import { GitHubConnectionSetup, GitHubIdentity } from "./github-settings.test-support.tsx";
 
 const writeText = vi.fn<(text: string) => Promise<void>>();
 const fallback = vi.fn(() => true);

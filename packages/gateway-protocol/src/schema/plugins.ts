@@ -1,5 +1,6 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { ControlUiSettingsPlacementSchema } from "../plugin-control-ui-settings.js";
 import { PLUGIN_UI_CAPABILITIES } from "../plugin-ui-capabilities.js";
 import {
   ClawHubDownloadabilitySchema,
@@ -143,6 +144,7 @@ export const PluginControlUiModuleSchema = closedObject({
     closedObject({ packageName: NonEmptyString, packageVersion: NonEmptyString }),
   ),
   styles: Type.Array(NonEmptyString, { maxItems: 16 }),
+  settingsViews: Type.Optional(Type.Array(ControlUiSettingsPlacementSchema, { maxItems: 32 })),
 });
 
 export const PluginControlUiDiagnosticSchema = closedObject({

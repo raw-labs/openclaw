@@ -254,3 +254,41 @@ it("only offers personal instructions search on a multi-user Gateway", () => {
     personal(true).some((block) => block.hash === "#settings-profile-personal-instructions"),
   ).toBe(true);
 });
+
+it("finds admitted plugin Settings by their declared hash only while required methods are available", () => {
+  const settingsContributions = [
+    {
+      pluginId: "github-repositories",
+      revision: "current",
+      placement: {
+        id: "connections",
+        section: "profile",
+        panel: "connections",
+        requiredMethods: ["tools.github.status"],
+        search: {
+          label: "GitHub connections",
+          hash: "#settings-profile-github-connections",
+          aliases: "oauth authentication",
+        },
+      },
+    },
+  ] satisfies NonNullable<SearchOptions["settingsContributions"]>;
+  const options = { settingsContributions };
+  expect(search("oauth", options)).toEqual([]);
+  expect(search("oauth", { ...options, advertisedMethods: ["tools.github.status"] })).toMatchObject(
+    [
+      {
+        routeId: "profile",
+        hash: "#settings-profile-github-connections",
+        label: "GitHub connections",
+      },
+    ],
+  );
+  expect(
+    search("oauth", {
+      ...options,
+      advertisedMethods: ["tools.github.status"],
+      settingsContributions: [],
+    }),
+  ).toEqual([]);
+});

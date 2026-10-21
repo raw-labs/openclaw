@@ -1,0 +1,37 @@
+{
+  "id": "github-repositories",
+  "name": "GitHub",
+  "description": "GitHub profile connections and agent identity Settings.",
+  "enabledByDefault": true,
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "controlUi": {
+    "entry": "dist/control-ui/index.js",
+    "settingsViews": [
+      {
+        "id": "connections",
+        "section": "profile",
+        "panel": "connections",
+        "requiredMethods": [
+          "tools.github.status"
+        ],
+        "search": {
+          "label": "GitHub connections",
+          "hash": "#settings-profile-github-connections",
+          "aliases": "github oauth account connection publication authentication auth status dashboard actions"
+        }
+      },
+      {
+        "id": "agent-tools",
+        "section": "agents",
+        "panel": "tools",
+        "requiredMethods": [
+          "tools.github.status"
+        ]
+      }
+    ]
+  }
+}

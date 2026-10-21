@@ -29,12 +29,13 @@ export const COMMUNICATION_SETTINGS_TARGET_IDS = {
 export const PROFILE_SETTINGS_TARGET_IDS = {
   identity: "settings-profile-identity",
   personalInstructions: "settings-profile-personal-instructions",
-  githubConnections: "settings-profile-github-connections",
 } as const;
 
 export type SettingsSearchTarget = {
   readonly routeId: RouteId;
   readonly labelKey: string;
+  readonly label?: string;
+  readonly pathname?: string;
   readonly hash: string;
   readonly searchKeys: readonly string[];
   readonly nativeSearchKeys?: Readonly<
@@ -42,6 +43,7 @@ export type SettingsSearchTarget = {
   >;
   readonly search?: string;
   readonly aliases?: string;
+  readonly requiresMethods?: readonly string[];
   readonly requiresIdentity?: true;
   readonly requiresMultipleProfiles?: true;
   readonly requiresNativeDeviceSettings?: true;
@@ -249,19 +251,6 @@ export const SETTINGS_SEARCH_TARGETS = {
     aliases: "USER.md personal instructions preferences",
     requiresIdentity: true,
     requiresMultipleProfiles: true,
-  },
-  githubConnections: {
-    routeId: "profile",
-    labelKey: "githubConnections.title",
-    hash: `#${PROFILE_SETTINGS_TARGET_IDS.githubConnections}`,
-    searchKeys: [
-      "githubConnections.mine",
-      "githubConnections.system",
-      "githubConnections.forMe",
-      "githubConnections.forSystem",
-    ],
-    aliases:
-      "github oauth account connection publication authentication auth status dashboard actions",
   },
   modelBehavior: {
     ...SETTINGS_ROUTE_TARGETS.modelBehavior,

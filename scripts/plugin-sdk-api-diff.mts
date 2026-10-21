@@ -310,7 +310,16 @@ export async function renderPluginSdkApiRevisions(
         const worktree = path.join(temporaryRoot, commit);
         git(repoRoot, ["worktree", "add", "--detach", "--no-checkout", worktree, commit]);
         addedWorktrees.push(worktree);
-        git(worktree, ["sparse-checkout", "set", "src", "packages", "patches", "scripts"]);
+        // SDK declaration closures can reference bundled plugins' public artifacts.
+        git(worktree, [
+          "sparse-checkout",
+          "set",
+          "src",
+          "packages",
+          "patches",
+          "scripts",
+          "extensions",
+        ]);
         git(worktree, ["checkout", "--detach", commit]);
         const installStartedAt = performance.now();
         console.error(`[plugin-sdk-api-diff] ${commit} install started`);
