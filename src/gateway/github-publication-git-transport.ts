@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { githubRepositoryUrl } from "../agents/github-host.js";
+import { githubRepositoryUrl } from "../../extensions/github-repositories/host-api.js";
 import type { WorktreeGitPolicy } from "../agents/worktrees/checkout-git-config.js";
 import { splitNullBuffer } from "../agents/worktrees/git-path-inventory.js";
 import { hasErrnoCode } from "../infra/errno.js";

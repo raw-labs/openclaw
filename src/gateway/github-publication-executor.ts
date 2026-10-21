@@ -1,7 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
+import { githubRepositoryUrl } from "../../extensions/github-repositories/host-api.js";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { githubRepositoryUrl } from "../agents/github-host.js";
 import { isAbortError } from "../infra/abort-signal.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
 import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";

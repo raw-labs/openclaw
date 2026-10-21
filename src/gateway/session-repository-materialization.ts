@@ -1,5 +1,5 @@
 import os from "node:os";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { captureSessionEntrySourceAssertion } from "../config/sessions/session-entry-source-authority.js";
 import {

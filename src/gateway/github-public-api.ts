@@ -1,7 +1,7 @@
 import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
-} from "../agents/github-host.js";
+} from "../../extensions/github-repositories/host-api.js";
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {

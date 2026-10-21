@@ -3,8 +3,8 @@ import path from "node:path";
 import { inspectPathPermissions } from "@openclaw/fs-safe/permissions";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { parseDocument } from "yaml";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { readSecureFile } from "../infra/fs-safe.js";
-import { resolveConfiguredGitHubHost } from "./github-host.js";
 
 export const GITHUB_EXEC_CREDENTIAL_UNAVAILABLE =
   "GitHub Identity credential is unavailable or insecure. Reconnect or change GitHub Identity, then retry.";

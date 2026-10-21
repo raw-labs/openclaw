@@ -1,8 +1,11 @@
 import { fileURLToPath } from "node:url";
+import {
+  GITHUB_PUBLIC_HOST,
+  resolveConfiguredGitHubHost,
+} from "../../extensions/github-repositories/host-api.js";
 import { quoteCliArg, quotePowerShellArg } from "../cli/quote-cli-arg.js";
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
 import { resolveRuntimeWorkerArgv } from "../infra/runtime-worker-url.js";
-import { GITHUB_PUBLIC_HOST, resolveConfiguredGitHubHost } from "./github-host.js";
 
 /** Carry only a selected profile path through supervision; resolve its token in the child. */
 export function buildGitHubExecLaunchArgv(

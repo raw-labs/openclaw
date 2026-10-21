@@ -5,7 +5,7 @@ import {
   normalizeLowercaseStringOrEmpty,
   readNonBlankString,
 } from "@openclaw/normalization-core/string-coerce";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import type { GatewayAuthConfig, GatewayTrustedProxyConfig } from "../config/types.gateway.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";

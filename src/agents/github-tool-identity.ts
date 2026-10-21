@@ -6,6 +6,11 @@ import { root as fsRoot } from "@openclaw/fs-safe/root";
 import { readSecretFile } from "@openclaw/fs-safe/secret";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { parseDocument, stringify as stringifyYaml } from "yaml";
+import { resolveConfiguredGitHubApiBaseUrl } from "../../extensions/github-repositories/host-api.js";
+import {
+  managedGitHubHosts,
+  type GitHubToolAccount,
+} from "../../extensions/github-repositories/tool-account-api.js";
 import type {
   GitHubIdentityFacts,
   ToolsGitHubStatusResult,
@@ -29,7 +34,6 @@ import {
   resolveGitHubHost,
   withGitHubToken,
 } from "./github-host-runtime.js";
-import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
 import { verifyGitHubCredential } from "./github-oauth-client.js";
 import { inspectGitHubOAuthRecord } from "./github-oauth-records.js";
 import {
@@ -48,9 +52,9 @@ import {
   type PreparedGitHubReadIdentity,
   type PreparedGitHubSourceReadIdentity,
 } from "./github-read-identity.js";
-import { managedGitHubHosts, type GitHubToolAccount } from "./github-tool-account.js";
 import {
   AGENT_GIT_CONFIG_PARAMETERS,
+  applyManagedGitHubIdentityEnvironment,
   githubCredentialEnvironmentExclusions,
   managedGitHubIdentityEnvironment,
 } from "./github-tool-identity-env.js";
@@ -175,11 +179,7 @@ function githubIdentityProbeEnvironment(
   identity: ResolvedGitHubToolIdentity,
 ): NodeJS.ProcessEnv {
   const overlay = prepareGitHubToolEnvironmentForIdentity(params, identity);
-  return {
-    ...(params.env ?? process.env),
-    ...Object.fromEntries(Object.keys(overlay.credentialScrubEnv).map((name) => [name, undefined])),
-    ...overlay.localIdentityEnv,
-  };
+  return applyManagedGitHubIdentityEnvironment(params.env, overlay);
 }
 
 async function readManagedGitHubToken(profileDir: string): Promise<string | undefined> {

@@ -1,3 +1,4 @@
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import {
   MAX_SESSION_PARTICIPANTS,
   isMainGitContributorScope,
@@ -11,7 +12,6 @@ import {
   prepareUserProfileGitHubAttribution,
   resolveUserProfileGitHubAttribution,
 } from "../state/user-profile-github-identity.js";
-import { resolveConfiguredGitHubHost } from "./github-host.js";
 import { resolveConfiguredGitHubToolIdentity } from "./github-tool-identity.js";
 
 type GitCoauthorAttribution = {

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import type {
   ToolsGitHubAuthorizePollResult,
   ToolsGitHubAuthorizeStartResult,
@@ -33,7 +34,6 @@ import {
   readGitHubDeviceAuthorizationRecordNative,
 } from "../agents/github-oauth-records.native.js";
 import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
-import type { GitHubToolAccount } from "../agents/github-tool-account.js";
 import {
   createManagedGitHubProfileId,
   GitHubAccountMismatchError,

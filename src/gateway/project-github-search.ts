@@ -3,14 +3,14 @@ import {
   normalizeOptionalString,
   readNonBlankString,
 } from "@openclaw/normalization-core/string-coerce";
+import {
+  resolveConfiguredGitHubApiBaseUrl,
+  resolveConfiguredGitHubHost,
+} from "../../extensions/github-repositories/host-api.js";
 import type {
   RemoteProject,
   ProjectsSearchRemoteResult,
 } from "../../packages/gateway-protocol/src/index.js";
-import {
-  resolveConfiguredGitHubApiBaseUrl,
-  resolveConfiguredGitHubHost,
-} from "../agents/github-host.js";
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";

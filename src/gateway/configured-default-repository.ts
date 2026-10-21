@@ -1,4 +1,4 @@
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { normalizeCloudRepo } from "../config/cloud-worker-project-profiles.js";
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";

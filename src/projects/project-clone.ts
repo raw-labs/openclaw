@@ -4,7 +4,7 @@ import {
   collectNestedErrorCandidates,
   extractErrorCode,
 } from "@openclaw/normalization-core/error-coercion";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { slugifyWorktreeTitle } from "../agents/worktrees/name.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveStateDir } from "../config/paths.js";

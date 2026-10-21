@@ -1,5 +1,9 @@
 import path from "node:path";
 import {
+  resolveConfiguredGitHubApiBaseUrl,
+  resolveConfiguredGitHubHost,
+} from "../../../extensions/github-repositories/host-api.js";
+import {
   ErrorCodes,
   GatewayErrorDetailCodes,
   errorShape,
@@ -10,10 +14,6 @@ import {
   validateProjectsRemoveParams,
   validateProjectsSearchRemoteParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import {
-  resolveConfiguredGitHubApiBaseUrl,
-  resolveConfiguredGitHubHost,
-} from "../../agents/github-host.js";
 import { readCachedNativeGitHubToken } from "../../agents/github-read-identity.js";
 import { readRegistryWorktrees } from "../../agents/worktrees/registry-read.js";
 import {
