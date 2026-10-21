@@ -8,6 +8,8 @@ import type {
 } from "./doctor-health-contribution-types.js";
 import "./doctor-health-contributions.js";
 import type { runDoctorLintChecks } from "./doctor-lint-flow.js";
+import { clearHealthChecksForTest, registerHealthCheck } from "./health-check-registry.js";
+import type { HealthCheck } from "./health-checks.js";
 
 type RunContributions = (ctx: Context, list: readonly DoctorHealthContribution[]) => Promise<void>;
 type TestApi = {
@@ -95,4 +97,13 @@ export function createGatewayWriterFixture(token: string) {
   const repair: typeof maybeRepairGatewayServiceConfig = async (...args) =>
     args[4].writeConfig(config);
   return { config, repair };
+}
+
+export function setRegisteredHealthChecks(
+  checks: ReadonlyArray<Pick<HealthCheck, "id" | "kind"> & { defaultEnabled?: boolean }>,
+) {
+  clearHealthChecksForTest();
+  for (const check of checks) {
+    registerHealthCheck({ ...check, description: check.id, detect: async () => [] });
+  }
 }
