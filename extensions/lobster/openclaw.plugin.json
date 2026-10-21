@@ -18,6 +18,22 @@
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "properties": {}
+    "properties": {
+      "directory": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Lobster runtime state directory. Omit to use LOBSTER_STATE_DIR or the engine default. Workflow definitions stay in ordinary files."
+      },
+      "backend": {
+        "type": "string",
+        "enum": ["files", "sqlite"],
+        "description": "Storage backend. Omit to honor the selected store or LOBSTER_BACKEND, otherwise files. Changing an existing store requires explicit offline migration."
+      },
+      "history": {
+        "type": "boolean",
+        "default": false,
+        "description": "Record detailed execution history in addition to durable run status and saved review context."
+      }
+    }
   }
 }

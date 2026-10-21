@@ -313,8 +313,8 @@ Run a workflow file with args:
 | ---------------- | ----------- | ------------------------------------------------------------------------------------------------------------ |
 | `pipeline`       | required    | Inline pipeline string, or a path ending in `.lobster`/`.yaml`/`.yml`/`.json` for a workflow file.           |
 | `cwd`            | gateway cwd | Relative working directory; must resolve inside the gateway working directory (absolute paths are rejected). |
-| `timeoutMs`      | `20000`     | Aborts the run if exceeded.                                                                                  |
-| `maxStdoutBytes` | `512000`    | Aborts if captured stdout, stderr, or the embedded JSON result exceeds this size.                            |
+| `timeoutMs`      | `20000`     | Requests cancellation if exceeded; waits for accepted engine work to settle.                                 |
+| `maxStdoutBytes` | `512000`    | Caps each captured stream and JSON result (maximum 2000000 bytes); oversized saved reviews remain pending.   |
 | `argsJson`       | -           | JSON string of args for a workflow file (ignored for inline pipelines).                                      |
 
 ### `resume`
@@ -365,10 +365,128 @@ object. Lobster validates the answer before continuing. Invalid JSON or an
 answer that does not match the schema leaves the checkpoint available for
 correction. A resume can return another question or approval request.
 
-This is a chat/tool interaction, not an Inbox card or form. The plugin does not
-list pending checkpoints; retain the returned token to resume later. As with
-approval tokens, possession of an input token permits resume by a caller allowed
-to use the tool; tokens are not bound to an OpenClaw user or session.
+This is a chat/tool interaction, not an Inbox card or form. New runs also save
+pending questions for [discovery after a restart](#durable-runs-and-pending-reviews).
+Existing approval and input tokens retain their bearer semantics: possession
+permits resume by a caller allowed to use the tool. Tokens are not bound to an
+OpenClaw user or session.
+
+## Durable runs and pending reviews
+
+New runs retain their status and pending review context independently of detailed
+history. Detailed step/event history is available through the engine CLI; the
+plugin's `status` action returns a run summary and pending waits. The plugin
+associates runs with the trusted host agent and logical
+session key. This association survives Gateway restarts and `/new` or `/reset`
+in that conversation; the model cannot supply or override it. It is a conversation
+filter, not an independent user authentication system.
+
+On the next authorized turn, the plugin appends at most five waiting run IDs to
+the current request when `lobster` is available and the context is unsandboxed.
+It does not change the system prompt or past messages. Nothing runs or sends
+channel messages automatically at startup.
+
+Use the existing tool for discovery and review:
+
+```json
+{ "action": "list", "status": "waiting", "limit": 20 }
+```
+
+`list` accepts `status` (`running`, `waiting`, `completed`, `failed`, or
+`cancelled`), `limit` (1–100), and `after` (the previous `nextCursor`). To inspect
+one run and its pending wait IDs:
+
+```json
+{ "action": "status", "runId": "<runId>" }
+```
+
+Read the saved question before presenting it to the user:
+
+```json
+{ "action": "review", "waitId": "<pendingWaitId>" }
+```
+
+`review` returns the original prompt, schema, defaults, and review subject,
+without rebuilding them from chat or a changed workflow file. After the user's
+decision, resume with the wait's returned revision:
+
+```json
+{
+  "action": "resume",
+  "waitId": "<pendingWaitId>",
+  "expectedRevision": 1,
+  "approve": true
+}
+```
+
+Use `responseJson` for structured input or `cancel: true` for cancellation.
+`expectedRevision` belongs to the wait, not the run; a changed, consumed, or
+foreign wait returns `wait_conflict`. Review output uses `maxStdoutBytes`, with a
+2,000,000-byte ceiling. An oversized question remains saved even when the bounded
+response cannot render; inspect larger questions privately with the matching
+engine CLI rather than repeating their workflows.
+
+### Store configuration
+
+The file backend remains the default. Configure the state directory, backend,
+and optional detailed history through the plugin:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "lobster": {
+        "config": {
+          "directory": "/path/to/lobster-state",
+          "backend": "files",
+          "history": false
+        }
+      }
+    }
+  }
+}
+```
+
+Omit `directory` to keep `LOBSTER_STATE_DIR` or the engine's default location.
+Omit `backend` to honor the selected store or `LOBSTER_BACKEND`, otherwise files.
+SQLite is opt-in and uses an engine-owned worker. The engine checks that worker's
+actual SQLite version and rejects versions affected by the WAL-reset bug. Upgrade
+the runtime or use a patched SQLite library if rejected; the file backend is
+unaffected. SQLite holds mutable runtime state, checkpoints, and run records;
+workflow definitions remain ordinary files.
+Each operation opens a store session and closes it after accepted engine work
+settles. The plugin does not leave a process waiting for a user decision.
+
+Changing an existing backend requires explicit offline migration with the matching
+Lobster CLI, after all writers have stopped:
+
+```bash
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage migrate sqlite --offline
+```
+
+The plugin does not migrate or prune stores automatically. A backend mismatch
+returns an error and preserves the existing store. Migration preserves existing
+checkpoints and records; it cannot recreate missing history. Existing untracked
+checkpoints remain resumable by token. First association on token resume may
+create an unowned partial run, which stays outside conversation-scoped discovery.
+Operators can explicitly inventory and adopt saved checkpoints with the matching
+engine CLI:
+
+```bash
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy list
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy adopt <checkpointId> --caller <trustedCallerId>
+```
+
+The trusted caller ID must match the plugin's SHA-256 hash of the JSON array
+`[agentId, sessionKey]`. Adoption preserves tokens, does not execute steps, and
+cannot recreate missing questions or history or reassign an existing owner.
+The plugin never guesses ownership or accepts an adoption owner from model
+arguments.
+
+Calls lacking a trusted agent and logical session key retain legacy run/token
+behavior, but cannot use scoped discovery or wait-ID resume. A saved `running`
+status records the last observed execution state, not proof of a live worker.
+The plugin never automatically replays an operation interrupted by a crash.
 
 ## Output envelope
 
@@ -382,7 +500,12 @@ Lobster returns a JSON envelope with one of four statuses:
 - `cancelled` - explicitly denied or cancelled
 
 The tool surfaces the envelope in both `content` (pretty JSON) and `details`
-(raw object).
+(raw object). Tracked results also preserve `runId`. Runtime failures remain
+structured error envelopes, including `error.type`, `error.runId`, and
+`error.operationId` when supplied by the engine. In particular,
+`persistence_outcome_unknown` means a write may have committed; reconcile through
+the engine before deciding what to do next. Retrying an external side effect is
+not a safe substitute for reconciliation.
 
 ## Approvals
 
@@ -392,10 +515,10 @@ If `requiresApproval` is present, inspect the prompt and decide:
 - `approve: false` - cancel and finalize the workflow
 
 Use `approve --preview-from-stdin --limit N` to attach a JSON preview to
-approval requests without custom jq/heredoc glue. Resume state is stored as
-small JSON files under the Lobster state directory (`~/.lobster/state` by
-default, override with `LOBSTER_STATE_DIR`); the token itself only encodes a
-pointer to that state, not the full pipeline state.
+approval requests without custom jq/heredoc glue. Resume state is stored under
+the Lobster state directory (`~/.lobster/state` by default, override with
+`LOBSTER_STATE_DIR` or plugin configuration), using the selected file or SQLite
+backend. The token encodes a pointer to that state, not the full pipeline state.
 
 ## Safety
 
@@ -412,7 +535,7 @@ pointer to that state, not the full pipeline state.
 | ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `lobster runtime timed out`                                   | Pipeline exceeded `timeoutMs`. Increase it or split the pipeline.                |
 | `lobster stdout exceeded maxStdoutBytes` (or `stderr`)        | Captured output exceeded the cap. Raise `maxStdoutBytes` or reduce output.       |
-| `lobster runtime result exceeded maxStdoutBytes`              | The JSON result exceeded the cap. Raise `maxStdoutBytes` or reduce output.       |
+| `result_too_large`                                            | The JSON result exceeded the cap. Raise `maxStdoutBytes` or reduce output.       |
 | `run --args-json must be valid JSON`                          | `argsJson` (workflow-file runs) failed to parse. Fix the JSON string.            |
 | `lobster runtime failed` (or another `runtime_error` message) | The embedded runtime returned an error envelope. Check gateway logs for details. |
 

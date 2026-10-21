@@ -6,18 +6,9 @@ import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-env";
 import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../index.js";
-import { createEmbeddedLobsterRunner } from "./lobster-runner.js";
 import { createLobsterTool } from "./lobster-tool.js";
 
-vi.mock("./lobster-runner.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./lobster-runner.js")>();
-  return { ...actual, createEmbeddedLobsterRunner: vi.fn(actual.createEmbeddedLobsterRunner) };
-});
-
-afterEach(() => {
-  vi.mocked(createEmbeddedLobsterRunner).mockReset();
-  vi.unstubAllEnvs();
-});
+afterEach(() => vi.unstubAllEnvs());
 
 const requireRecord = createRequireRecord("record", "expected-label-record");
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -56,9 +47,10 @@ describe("lobster plugin tool", () => {
       requiresInput: { type: "input_request", prompt: "Review draft?" },
     });
     const token = resumeToken(first);
-    await expect(resume(token, { responseJson: '{"decision":123}' })).rejects.toThrow(
-      /schema validation/,
-    );
+    expect(await resume(token, { responseJson: '{"decision":123}' })).toMatchObject({
+      ok: false,
+      error: { message: expect.stringMatching(/schema validation/) },
+    });
     const second = await resume(token, {
       responseJson: '{"decision":"approve","feedback":"Looks good"}',
     });
@@ -68,9 +60,10 @@ describe("lobster plugin tool", () => {
       status: "ok",
       output: [{ decision: "approve", feedback: "Looks good" }],
     });
-    await expect(resume(token, { responseJson: '{"decision":"reject"}' })).rejects.toThrow(
-      /not found/i,
-    );
+    expect(await resume(token, { responseJson: '{"decision":"reject"}' })).toMatchObject({
+      ok: false,
+      error: { message: expect.stringMatching(/not found/i) },
+    });
   });
 
   it("resumes real workflow files through successive questions without repeating preparation", async () => {
@@ -133,28 +126,29 @@ describe("lobster plugin tool", () => {
     await expect(fs.stat(path.join(dir, "should-not-exist.json"))).rejects.toMatchObject({
       code: "ENOENT",
     });
-    await expect(resume(token, { responseJson: '{"decision":"approve"}' })).rejects.toThrow(
-      /not found/i,
-    );
+    expect(await resume(token, { responseJson: '{"decision":"approve"}' })).toMatchObject({
+      ok: false,
+      error: { message: expect.stringMatching(/not found/i) },
+    });
   });
 
   it("registers ordinary execution without a task runtime and keeps sandbox gating", () => {
     const registerTool = vi.fn<OpenClawPluginApi["registerTool"]>();
     plugin.register(createTestPluginApi({ registerTool }));
     const factory = registerTool.mock.calls[0]?.[0];
-    if (typeof factory !== "function") {
+    if (!factory || typeof factory !== "object" || !("create" in factory)) {
       throw new Error("expected a registered Lobster tool factory");
     }
-    expect(factory({ sandboxed: false })).toMatchObject({ name: "lobster" });
-    expect(factory({ sandboxed: true })).toBeNull();
+    const ctx = { assertInvocationCurrent() {} };
+    expect(factory.create({ ...ctx, sandboxed: false })).toMatchObject({ name: "lobster" });
+    expect(factory.create({ ...ctx, sandboxed: true })).toBeNull();
   });
 
   it("normalizes numeric string run limits before invoking the runner", async () => {
     const result = { ok: true, status: "ok", output: [], requiresApproval: null };
     const runner = { run: vi.fn().mockResolvedValue(result) };
 
-    vi.mocked(createEmbeddedLobsterRunner).mockReturnValueOnce(runner);
-    tool = createLobsterTool();
+    tool = createLobsterTool({ runner });
     await tool.execute("call-string-limits", {
       action: "run",
       pipeline: "noop",
@@ -163,14 +157,41 @@ describe("lobster plugin tool", () => {
       maxStdoutBytes: "4096",
     });
 
-    expect(runner.run).toHaveBeenCalledWith({
-      action: "run",
-      pipeline: "noop",
-      argsJson: '{"since_hours":1}',
-      cwd: process.cwd(),
-      timeoutMs: 1500,
-      maxStdoutBytes: 4096,
-    });
+    expect(runner.run).toHaveBeenCalledWith(
+      {
+        action: "run",
+        pipeline: "noop",
+        argsJson: '{"since_hours":1}',
+        cwd: process.cwd(),
+        timeoutMs: 1500,
+        maxStdoutBytes: 4096,
+      },
+      undefined,
+    );
+  });
+
+  it("keeps unknown-commit metadata in the tool error result", async () => {
+    const envelope = {
+      ok: false,
+      runId: "run-123",
+      error: {
+        type: "persistence_outcome_unknown",
+        message: "Inspect before retrying",
+        runId: "run-123",
+        operationId: "operation-456",
+      },
+    };
+    const result = await createLobsterTool({ runner: { run: async () => envelope } }).execute(
+      "call",
+      { action: "run", pipeline: "state.get draft" },
+    );
+    expect(result).toMatchObject({ isError: true, details: envelope });
+  });
+
+  it("refuses discovery without a trusted caller instead of listing the whole store", async () => {
+    await expect(
+      createLobsterTool().execute("call", { action: "list", callerId: "model-provided" }),
+    ).rejects.toThrow(/trusted agent and session key/);
   });
 
   it.each<[string, Record<string, unknown>, RegExp]>([

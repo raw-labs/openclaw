@@ -8,7 +8,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@clawdbot/lobster": "2026.9.16",
+    "@clawdbot/lobster": "git+https://github.com/raw-labs/lobster.git#53b270b15cb525cca1458fb387d63621c1e2c7a9",
     "typebox": "1.3.37"
   },
   "devDependencies": {
