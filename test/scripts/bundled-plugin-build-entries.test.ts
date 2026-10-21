@@ -190,6 +190,7 @@ describe("bundled plugin build entries", () => {
   it.each([
     ["image-generation-core", "runtime-api"],
     ["github-repositories", "host-api"],
+    ["github-repositories", "oauth-api"],
   ])("builds and packs the manifest-less %s public artifact", (id, artifact) => {
     expect(collectBuildSources()).toContain(`extensions/${id}/${artifact}.ts`);
     const artifacts = listBundledPluginPackArtifacts();

@@ -7,12 +7,15 @@ const network = vi.hoisted(() => ({
   start: vi.fn(),
   poll: vi.fn(),
   refresh: vi.fn(),
-  verify: vi.fn<typeof import("../../agents/github-oauth-client.js").verifyGitHubCredential>(),
+  verify:
+    vi.fn<
+      typeof import("../../../extensions/github-repositories/oauth-api.js").verifyGitHubCredential
+    >(),
   command: vi.fn(),
 }));
 export { network };
 // mock-isolation: Keep OAuth HTTP requests synthetic while exercising the real RPC and storage owners.
-vi.mock("../../agents/github-oauth-client.js", () => ({
+vi.mock("../../../extensions/github-repositories/oauth-api.js", () => ({
   clearGitHubCredentialVerificationCache: vi.fn(),
   requestGitHubOAuthDeviceCode: network.start,
   pollGitHubOAuthDeviceToken: network.poll,

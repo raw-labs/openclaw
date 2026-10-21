@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import {
+  clearGitHubCredentialVerificationCache,
+  refreshGitHubOAuthToken,
+  type GitHubOAuthTokenPair,
+} from "../../extensions/github-repositories/oauth-api.js";
 import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import type {
   ToolsGitHubAuthorizePollResult,
@@ -10,11 +15,6 @@ import {
   matchesAgentLifecycleBindingAsync,
 } from "../agents/agent-lifecycle-registry.js";
 import { resolveAgentConfig } from "../agents/agent-scope.js";
-import {
-  clearGitHubCredentialVerificationCache,
-  refreshGitHubOAuthToken,
-  type GitHubOAuthTokenPair,
-} from "../agents/github-oauth-client.js";
 import {
   createGitHubOAuthRecord,
   deleteGitHubDeviceAuthorizationRecord,
@@ -701,6 +701,7 @@ export function createGitHubOAuthLifecycle(params: {
       });
     },
     stop: async () => {
+      clearNativeGitHubTokenCache();
       clearGitHubCredentialVerificationCache();
       stopping = true;
       oauthInventory.close();

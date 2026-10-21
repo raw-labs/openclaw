@@ -1,11 +1,12 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
 import {
   clearGitHubCredentialVerificationCache,
   verifyGitHubCredential,
-} from "../../agents/github-oauth-client.js";
+} from "../../../extensions/github-repositories/oauth-api.js";
+import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
+import { clearNativeGitHubTokenCache } from "../../agents/github-read-identity.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
@@ -43,6 +44,7 @@ vi.mock("../github-oauth-lifecycle.js", () => ({
 }));
 
 beforeEach(() => {
+  clearNativeGitHubTokenCache();
   clearGitHubCredentialVerificationCache();
   mockPublicationIdentity();
 });
@@ -210,6 +212,7 @@ it("reuses native authentication for consecutive options requests and refreshes 
       expect.any(Object),
     );
     expect(fetch).toHaveBeenCalledOnce();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     await fixture.options();
     expect(mocks.runCommandBuffered).toHaveBeenCalledTimes(2);

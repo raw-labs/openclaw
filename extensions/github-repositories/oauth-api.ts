@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { resolveConfiguredGitHubApiBaseUrl } from "../../extensions/github-repositories/host-api.js";
-import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
-import { readResponseWithLimit } from "../infra/http-body.js";
-import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
-import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
-import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
+import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
+import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
+import { resolveConfiguredGitHubApiBaseUrl } from "./host-api.js";
+import type { GitHubToolAccount } from "./tool-account-api.js";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";
@@ -38,7 +37,6 @@ const verifiedCredentials = createStaleWhileRevalidateCache<GitHubCredentialVeri
 });
 
 export function clearGitHubCredentialVerificationCache(): void {
-  clearNativeGitHubTokenCache();
   verifiedCredentials.clear();
 }
 

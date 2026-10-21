@@ -53,8 +53,8 @@ const mocks = vi.hoisted(() => ({
   resolveStatus: vi.fn(),
   updateConfig: vi.fn(),
 }));
-
-vi.mock("../agents/github-oauth-client.js", () => ({
+// mock-isolation: Keep OAuth HTTP synthetic while exercising real record persistence and lifecycle scheduling.
+vi.mock("../../extensions/github-repositories/oauth-api.js", () => ({
   clearGitHubCredentialVerificationCache: mocks.clearVerificationCache,
   verifyGitHubCredential: mocks.verifyCredential,
   requestGitHubOAuthDeviceCode: mocks.requestDeviceCode,

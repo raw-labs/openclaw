@@ -1,9 +1,9 @@
-import type { ToolsGitHubAuthorizePollResult } from "../../packages/gateway-protocol/src/index.js";
 import {
   pollGitHubOAuthDeviceToken,
   requestGitHubOAuthDeviceCode,
   type GitHubOAuthTokenPair,
-} from "../agents/github-oauth-client.js";
+} from "../../extensions/github-repositories/oauth-api.js";
+import type { ToolsGitHubAuthorizePollResult } from "../../packages/gateway-protocol/src/index.js";
 
 export type GitHubDeviceFlow = {
   deviceCode: string;

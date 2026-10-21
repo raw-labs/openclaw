@@ -1,15 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { withinTest } from "../../test/helpers/promise.js";
-import { clearRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
-import { redactRegisteredSecretValues } from "../logging/secret-redaction-registry.js";
-import { createDeferredCore } from "../shared/deferred.js";
 import {
   clearGitHubCredentialVerificationCache,
   pollGitHubOAuthDeviceToken,
   refreshGitHubOAuthToken,
   requestGitHubOAuthDeviceCode,
   verifyGitHubCredential,
-} from "./github-oauth-client.js";
+} from "../../extensions/github-repositories/oauth-api.js";
+import { withinTest } from "../../test/helpers/promise.js";
+import { clearRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { redactRegisteredSecretValues } from "../logging/secret-redaction-registry.js";
+import { createDeferredCore } from "../shared/deferred.js";
+import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 
 const GITHUB_CREDENTIAL_VERIFICATION_TTL_MS = 60_000;
 
@@ -153,6 +154,7 @@ describe("GitHub OAuth client", () => {
       .mockReturnValueOnce(upstream.promise)
       .mockImplementation(async () => jsonResponse({ id: 202, login: "after-clear" }));
     const first = verifyGitHubCredential("synthetic-inflight-clear");
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     const second = await verifyGitHubCredential("synthetic-inflight-clear");
     upstream.resolve(jsonResponse({ id: 202, login: "before-clear" }));
