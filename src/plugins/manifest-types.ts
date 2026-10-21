@@ -354,6 +354,8 @@ export type PluginManifestSecretInputPath = {
   expected?: "string";
   /** Runtime owner kind used to isolate this surface when resolution fails. */
   ownerKind?: "capability" | "route";
+  /** Withhold this ref’s env/store name from child execution, even while inactive. */
+  executionEnvironment?: "exclude";
 };
 
 export type PluginManifestSecretInputContracts = {

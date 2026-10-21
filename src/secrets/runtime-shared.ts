@@ -4,6 +4,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   coerceSecretRef,
   isLegacySecretRefWithoutProvider,
+  isValidEnvSecretRefId,
   type SecretRef,
 } from "../config/types.secrets.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
@@ -80,6 +81,11 @@ export type SecretAssignmentOwner = Pick<
   contract?: unknown;
 };
 
+export type SecretExecutionEnvironmentExclusions = {
+  readonly credentialScrubEnv: Readonly<Record<string, string>>;
+  readonly excludedStoreNames: readonly string[];
+};
+
 export type ResolverContext = {
   sourceConfig: OpenClawConfig;
   env: NodeJS.ProcessEnv;
@@ -89,6 +95,7 @@ export type ResolverContext = {
   warnings: SecretResolverWarning[];
   warningKeys: Set<string>;
   assignments: SecretAssignment[];
+  executionEnvironmentExclusions?: SecretExecutionEnvironmentExclusions;
 };
 
 export type SecretDefaults = NonNullable<OpenClawConfig["secrets"]>["defaults"];
@@ -110,6 +117,36 @@ export function createResolverContext(params: {
     warningKeys: new Set(),
     assignments: [],
   };
+}
+
+/** Record declared child-execution exclusions without reading or materializing the credential. */
+export function collectSecretExecutionEnvironmentExclusion(params: {
+  value: unknown;
+  path: string;
+  defaults: SecretDefaults | undefined;
+  context: ResolverContext;
+}): void {
+  const ref = resolveConfigSecretRef({
+    config: params.context.sourceConfig,
+    value: params.value,
+    path: params.path,
+    defaults: params.defaults,
+    includeResolved: true,
+  });
+  if (
+    !ref ||
+    (ref.source !== "store" && !(ref.source === "env" && isValidEnvSecretRefId(ref.id)))
+  ) {
+    return;
+  }
+  const current = params.context.executionEnvironmentExclusions;
+  params.context.executionEnvironmentExclusions = Object.freeze({
+    credentialScrubEnv: Object.freeze({ ...current?.credentialScrubEnv, [ref.id]: "" }),
+    excludedStoreNames:
+      ref.source === "store" && !current?.excludedStoreNames.includes(ref.id)
+        ? Object.freeze([...(current?.excludedStoreNames ?? []), ref.id])
+        : (current?.excludedStoreNames ?? Object.freeze([])),
+  });
 }
 
 /**

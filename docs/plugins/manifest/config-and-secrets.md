@@ -115,3 +115,14 @@ At startup/reload, OpenClaw resolves that provider by loading current plugin man
 `source` accepts a single value, `"exec"`. `command` must be `${node}`, and `args[0]` must be a `./` plugin-root-relative resolver script. OpenClaw materializes it at startup/reload to the current Node executable and the absolute in-plugin script path. Node options such as `--require`, `--import`, `--loader`, `--env-file`, `--eval`, and `--print` are not part of the manifest preset contract. Operators who need non-Node commands can configure standalone manual exec providers directly.
 
 OpenClaw derives `trustedDirs` for manifest presets from the plugin root and, for `${node}` presets, the current Node executable directory. Manifest-authored `trustedDirs` are ignored. Other exec provider options such as `timeoutMs`, `noOutputTimeoutMs`, `maxOutputBytes`, `jsonOnly`, `env`, and `passEnv` pass through to the normal SecretRef exec provider config.
+
+### Child-execution exclusions
+
+A `configContracts.secretInputs.paths` entry can set `executionEnvironment: "exclude"`
+to declare that its environment or store name must not reach agent execution.
+Secret preparation records these names without resolving dormant credentials,
+including when the declaring plugin is disabled. File and exec references do not
+name inherited environment/store entries. Ordinary SecretRef resolution and owner
+admission remain unchanged. Prepared snapshots expose the exclusions for execution
+adapters; this metadata does not itself authorize a child process, filter its
+environment, or inject credentials.
