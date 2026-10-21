@@ -1,4 +1,4 @@
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
 import { encodeGitHubPublicationRequester } from "../state/github-publication-requester.js";

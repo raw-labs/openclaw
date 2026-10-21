@@ -10,8 +10,8 @@ import { handleGatewayRequest } from "./server-methods.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 
 const io = vi.hoisted(() => ({ command: vi.fn(), identity: vi.fn(), currentIdentity: vi.fn() }));
-vi.mock("../agents/github-tool-identity.js", async (original) => ({
-  ...(await original<typeof import("../agents/github-tool-identity.js")>()),
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (original) => ({
+  ...(await original<typeof import("../../extensions/github-repositories/tool-identity-api.js")>()),
   prepareGitHubPublicationIdentity: io.identity,
   matchesPreparedGitHubPublicationIdentity: io.currentIdentity,
 }));

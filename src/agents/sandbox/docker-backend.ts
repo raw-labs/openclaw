@@ -1,8 +1,8 @@
 import { CLEARED_GITHUB_CREDENTIALS } from "../../../extensions/github-repositories/host-api.js";
+import type { PreparedGitHubToolEnvironment } from "../../../extensions/github-repositories/tool-identity.types-api.js";
 import { createContainerEnvFile } from "../../infra/container-env-file.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
 import { buildGitHubExecLaunchArgv } from "../github-exec-launch.js";
-import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
 import type { SandboxBackendCommandParams } from "./backend-handle.types.js";
 import type {
   CreateSandboxBackendParams,

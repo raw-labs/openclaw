@@ -1,12 +1,12 @@
 import { createPrivateKey, createSign } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
+import { normalizeResolvedSecretInputString } from "openclaw/plugin-sdk/secret-input";
 import { z } from "zod";
-import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
-import { normalizeResolvedSecretInputString } from "../config/types.secrets.js";
-import { readResponseWithLimit } from "../infra/http-response-body.js";
-import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
-import type { GitHubAppSelection } from "./github-credential-reader.js";
-import { GitHubIdentityError } from "./github-read-identity.js";
+import type { GitHubAppSelection } from "./credential-reader-api.js";
+import { GitHubIdentityError } from "./read-identity-api.js";
+import type { GitHubToolAccount } from "./tool-account-api.js";
 
 const id = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const permissions = z.record(z.string(), z.enum(["read", "write", "admin"]));

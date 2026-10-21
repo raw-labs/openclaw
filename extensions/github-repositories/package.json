@@ -5,10 +5,13 @@
   "description": "OpenClaw GitHub Settings and repository integration artifacts",
   "type": "module",
   "dependencies": {
+    "@openclaw/fs-safe": "0.26.8",
+    "@openclaw/gateway-protocol": "workspace:*",
     "@openclaw/normalization-core": "workspace:*",
     "@solidjs/web": "2.0.0-rc.16",
     "solid-js": "2.0.0-rc.16",
-    "yaml": "2.9.1"
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@openclaw/plugin-sdk": "workspace:*",

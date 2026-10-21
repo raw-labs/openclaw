@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { githubIdentityChanges } from "../agents/github-read-identity.js";
-import { onManagedGitHubProfileChanged } from "../agents/github-tool-identity.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.types.js";
+import { githubIdentityChanges } from "../../extensions/github-repositories/read-identity-api.js";
+import { onManagedGitHubProfileChanged } from "../../extensions/github-repositories/tool-identity-api.js";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity.types-api.js";
 import {
   captureSessionActorStorageOwner,
   runWithSessionActorStorage,

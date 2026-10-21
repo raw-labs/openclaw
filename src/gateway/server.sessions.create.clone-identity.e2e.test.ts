@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { requireGit } from "../agents/worktrees/git.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { getRuntimeConfig } from "../config/io.js";

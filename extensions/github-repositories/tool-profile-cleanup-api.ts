@@ -2,15 +2,15 @@ import path from "node:path";
 import { assertDirectoryIdentitySync, readDirectoryIdentity } from "@openclaw/fs-safe/advanced";
 import { FsSafeError } from "@openclaw/fs-safe/errors";
 import { root as fsRoot, type Root } from "@openclaw/fs-safe/root";
-import { isManagedGitHubProfileId } from "../config/github-identity-profile-id.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { hasErrnoCode } from "../infra/errno.js";
-import { listAgentIds, resolveAgentConfig } from "./agent-scope.js";
-import { listGitHubOAuthRecords } from "./github-oauth-records.js";
+import { listAgentIds, resolveAgentConfig } from "openclaw/plugin-sdk/agent-scope-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
+import { listGitHubOAuthRecords } from "openclaw/plugin-sdk/repository-identity-host";
+import { isManagedGitHubProfileId } from "./profile-id-api.js";
 import {
   resolveManagedGitHubAgentKey,
   resolveManagedGitHubProfileRoot,
-} from "./github-tool-identity.js";
+} from "./tool-identity-api.js";
 
 const MAX_CLEANUP_WARNINGS = 20;
 const STAGING_PROFILE_PREFIX = ".github-profile.staging-";

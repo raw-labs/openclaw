@@ -25,8 +25,10 @@ import {
 } from "./repository-git-pack.test-support.js";
 import { createWorkerEnvironmentService } from "./service.js";
 
-vi.mock("../../agents/github-tool-identity.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/github-tool-identity.js")>()),
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
   prepareGitHubReadIdentity: async ({ assertActive }: { assertActive: () => void }) => {
     assertActive();
     return {

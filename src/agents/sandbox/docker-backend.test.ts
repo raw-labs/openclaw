@@ -2,9 +2,9 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { managedGitHubIdentityEnvironment } from "../../../extensions/github-repositories/tool-identity-env-api.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import { managedGitHubIdentityEnvironment } from "../github-tool-identity-env.js";
 import type { CreateSandboxBackendParams, SandboxBackendHandle } from "./backend.types.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 

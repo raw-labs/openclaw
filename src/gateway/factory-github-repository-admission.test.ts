@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import type { GitHubAppSelection } from "../agents/github-credential-reader.js";
+import type { GitHubAppSelection } from "../../extensions/github-repositories/credential-reader-api.js";
 import { readFactoryRepositoryAdmission } from "./factory-github-repository-admission.js";
 
 const selection: GitHubAppSelection = {

@@ -5,15 +5,15 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
 import * as githubOAuth from "../../extensions/github-repositories/oauth-api.js";
+import { createGitHubReadIdentity } from "../../extensions/github-repositories/read-identity-api.js";
+import {
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   isSessionEntryDataSql,
   observeHostDataSql,
 } from "../../test/helpers/sqlite-statement-execution-counter.js";
-import { createGitHubReadIdentity } from "../agents/github-read-identity.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
 import { findLiveRegistryWorktreeByOwner } from "../agents/worktrees/registry.test-support.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";

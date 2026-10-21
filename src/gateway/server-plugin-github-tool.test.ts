@@ -1,12 +1,12 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
-import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
-import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
 import { createAdmittedHostCapabilityTestFixture } from "../agents/harness/host-capability.test-support.js";
 import { resolveSandboxToolPolicyForAgent } from "../agents/sandbox/tool-policy.js";
 import {

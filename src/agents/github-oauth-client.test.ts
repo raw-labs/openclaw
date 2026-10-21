@@ -6,11 +6,11 @@ import {
   requestGitHubOAuthDeviceCode,
   verifyGitHubCredential,
 } from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import { withinTest } from "../../test/helpers/promise.js";
 import { clearRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { redactRegisteredSecretValues } from "../logging/secret-redaction-registry.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 
 const GITHUB_CREDENTIAL_VERIFICATION_TTL_MS = 60_000;
 

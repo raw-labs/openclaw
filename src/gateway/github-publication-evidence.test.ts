@@ -96,9 +96,9 @@ async function evidenceFixture(imported = false) {
   });
   const config = { ...f.config, tools: { github: { profileId } } };
   setRuntimeConfigSnapshot(config);
-  const actualIdentity = await vi.importActual<typeof import("../agents/github-tool-identity.js")>(
-    "../agents/github-tool-identity.js",
-  );
+  const actualIdentity = await vi.importActual<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >("../../extensions/github-repositories/tool-identity-api.js");
   mocks.matchesIdentity.mockImplementation(actualIdentity.matchesPreparedGitHubPublicationIdentity);
   const previous = mocks.runCommand.getMockImplementation()!;
   mocks.runCommand.mockImplementation(async (argv, options) =>

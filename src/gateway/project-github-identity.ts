@@ -1,7 +1,7 @@
 import {
   prepareGitHubReadIdentity,
   resolveConfiguredGitHubToolIdentity,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { factoryGitHubClientProof, type FactoryGitHubProofClaim } from "./factory-github-proof.js";
@@ -37,7 +37,7 @@ export async function prepareGatewayProjectGitHubIdentity(params: {
   }
   const prepare = (
     env = process.env,
-    readNativeCredential?: import("../agents/github-credential-reader.js").GitHubCredentialReader,
+    readNativeCredential?: import("../../extensions/github-repositories/credential-reader-api.js").GitHubCredentialReader,
     assertActive = params.assertActive,
   ) =>
     prepareGitHubReadIdentity({

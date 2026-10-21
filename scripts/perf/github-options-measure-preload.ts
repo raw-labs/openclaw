@@ -92,7 +92,10 @@ if (isMainThread) {
         prepareGitHubPublicationSession: "publication-session",
       },
     ],
-    [sourceUrl("agents/github-read-identity.ts"), { readNativeGitHubToken: "native-token" }],
+    [
+      new URL("../../extensions/github-repositories/read-identity-api.ts", import.meta.url).href,
+      { readNativeGitHubToken: "native-token" },
+    ],
     [
       new URL("../../extensions/github-repositories/oauth-api.ts", import.meta.url).href,
       { verifyGitHubCredential: "credential-verification" },

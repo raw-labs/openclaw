@@ -1,6 +1,6 @@
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PreparedGitHubSourceReadIdentity } from "../../../extensions/github-repositories/read-identity-api.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import type { PreparedGitHubSourceReadIdentity } from "../../agents/github-read-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -19,8 +19,10 @@ vi.mock("../../agents/agent-lifecycle-registry.js", () => ({
   matchesAgentLifecycleBinding: mocks.matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync: mocks.matchesAgentLifecycleBindingAsync,
 }));
-vi.mock("../../agents/github-tool-identity.js", async () => ({
-  GitHubIdentityError: (await import("../../agents/github-read-identity.js")).GitHubIdentityError,
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
   prepareGitHubReadIdentity: mocks.prepareGitHubReadIdentity,
 }));
 vi.mock("../../secrets/runtime-state.js", () => ({

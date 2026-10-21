@@ -140,7 +140,7 @@ vi.mock("../agents/worktrees/service.js", () => ({
   },
 }));
 // mock-isolation: Control identity preparation without credential discovery.
-vi.mock("../agents/github-tool-identity.js", () => ({
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", () => ({
   prepareGitHubPublicationIdentity: mocks.identity,
   prepareGitHubPublicationOptionsIdentity: mocks.identity,
   matchesPreparedGitHubPublicationIdentity: () => true,

@@ -4,13 +4,13 @@ import {
   clearGitHubCredentialVerificationCache,
   verifyGitHubCredential,
 } from "../../../extensions/github-repositories/oauth-api.js";
-import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
-import { clearNativeGitHubTokenCache } from "../../agents/github-read-identity.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import * as stateWriter from "../../state/openclaw-state-worker-owner.js";

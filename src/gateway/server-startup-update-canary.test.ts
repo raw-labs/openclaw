@@ -54,7 +54,7 @@ beforeAll(async () => {
   const [cli, gh, plugins, workers, rows, sidecars, discovery, skills, subagents] =
     await Promise.all([
       import("../infra/openclaw-cli-shim.js"),
-      import("../agents/github-tool-profile-cleanup.js"),
+      import("../../extensions/github-repositories/tool-profile-cleanup-api.js"),
       import("./server-startup-plugins.js"),
       import("./server-worker-environment-startup.js"),
       import("./session-row-projection.js"),

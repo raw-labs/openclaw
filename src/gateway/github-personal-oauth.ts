@@ -4,11 +4,7 @@ import {
   refreshGitHubOAuthToken,
   type GitHubOAuthTokenPair,
 } from "../../extensions/github-repositories/oauth-api.js";
-import type {
-  UsersGitHubAuthorizePollResult,
-  UsersGitHubAuthorizeStartResult,
-} from "../../packages/gateway-protocol/src/schema/users.js";
-import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import {
   createManagedGitHubProfileId,
   installManagedGitHubProfile,
@@ -16,7 +12,11 @@ import {
   removeManagedGitHubProfile,
   resolveManagedGitHubProfileDir,
   resolveManagedGitHubProfileRoot,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import type {
+  UsersGitHubAuthorizePollResult,
+  UsersGitHubAuthorizeStartResult,
+} from "../../packages/gateway-protocol/src/schema/users.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { getOrCreatePromise } from "../shared/lazy-promise.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";

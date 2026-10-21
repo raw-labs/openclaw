@@ -1,9 +1,9 @@
-import { WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import {
   onManagedGitHubProfileChanged,
   resolveConfiguredGitHubToolIdentity,
-} from "../../agents/github-tool-identity.js";
-import type { PreparedGitHubPublicationIdentity } from "../../agents/github-tool-identity.types.js";
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import type { PreparedGitHubPublicationIdentity } from "../../../extensions/github-repositories/tool-identity.types-api.js";
+import { WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import type { AgentRunSessionTarget } from "../../agents/run-session-target.types.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
 import { registerConfigWriteListener } from "../../config/config.js";

@@ -1,9 +1,9 @@
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   SessionGitHubPublicationFailedSchema,
   type SessionGitHubPublicationResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type {
   GitHubPublicationExecutionRow,
   GitHubPublicationRow,

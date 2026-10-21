@@ -303,7 +303,7 @@ async function prepareGatewayServerBootstrapSelected(input: {
     try {
       const cleanup = await startupTrace.measure("agents.github-profile-cleanup", async () => {
         const { cleanupRetiredManagedGitHubProfiles } =
-          await import("../agents/github-tool-profile-cleanup.js");
+          await import("../../extensions/github-repositories/tool-profile-cleanup-api.js");
         return await cleanupRetiredManagedGitHubProfiles({
           config: cfgAtStart,
           env: process.env,

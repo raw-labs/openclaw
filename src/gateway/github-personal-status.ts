@@ -1,8 +1,8 @@
+import { preparePersonalGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   PersonalGitHubStatus,
   UsersGitHubAuthorizeStartResult,
 } from "../../packages/gateway-protocol/src/schema/users.js";
-import { preparePersonalGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import {
   prepareUserGitHubConnection,
   type UserGitHubConnection,

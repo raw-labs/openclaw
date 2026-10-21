@@ -3,12 +3,12 @@ import path from "node:path";
 import { detectMime } from "@openclaw/media-core/mime";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   GITHUB_PUBLICATION_EVIDENCE_MAX_BYTES,
   type GitHubPublicationEvidence,
   type SessionGitHubActionResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { resolveSandboxedBridgeMediaPath } from "../agents/sandbox-media-paths.js";
 import { canUploadGitHubPublicationEvidence } from "../agents/sandbox/github-publication.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";

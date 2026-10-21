@@ -1,6 +1,7 @@
 import os from "node:os";
 import path from "node:path";
 import { getSupportedThinkingLevels } from "@openclaw/ai/internal/runtime";
+import type { PreparedGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity.types-api.js";
 import { projectSessionEntryMessage } from "../../packages/agent-core/src/harness/session/session.js";
 import type { WorkerToolSurface } from "../../packages/gateway-protocol/src/schema/worker-gateway-tool.js";
 import { toToolDefinitions } from "../agents/agent-tool-definition-adapter.js";
@@ -17,7 +18,6 @@ import { buildRuntimeContextCustomMessage } from "../agents/embedded-agent-runne
 import { readSubscriptionCompletionEvidence } from "../agents/embedded-agent-runner/run/subscription-completion-evidence.js";
 import { subscribeEmbeddedAgentSession } from "../agents/embedded-agent-subscribe.js";
 import { recordModelFallbackStop } from "../agents/failover-error.js";
-import type { PreparedGitHubToolEnvironment } from "../agents/github-tool-identity.types.js";
 import { assertSettledTurnFinalizationResult } from "../agents/harness/settled-turn-finalization-result.js";
 import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
 import { projectRuntimeContextFragments } from "../agents/internal-runtime-context.js";

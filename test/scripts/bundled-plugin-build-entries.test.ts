@@ -188,16 +188,21 @@ describe("bundled plugin build entries", () => {
   };
 
   it.each([
-    ["image-generation-core", "runtime-api"],
-    ["github-repositories", "host-api"],
-    ["github-repositories", "oauth-api"],
-  ])("builds and packs the manifest-less %s public artifact", (id, artifact) => {
-    expect(collectBuildSources()).toContain(`extensions/${id}/${artifact}.ts`);
-    const artifacts = listBundledPluginPackArtifacts();
-    expect(artifacts).toContain(`dist/extensions/${id}/package.json`);
-    expect(artifacts).toContain(`dist/extensions/${id}/${artifact}.js`);
-    expect(artifacts).not.toContain(`dist/extensions/${id}/openclaw.plugin.json`);
-  });
+    ["image-generation-core", "runtime-api", false],
+    ["github-repositories", "host-api", true],
+    ["github-repositories", "oauth-api", true],
+    ["github-repositories", "tool-identity-api", true],
+    ["github-repositories", "profile-id-api", true],
+  ])(
+    "builds and packs the %s public artifact with its declared manifest ownership",
+    (id, artifact, hasManifest) => {
+      expect(collectBuildSources()).toContain(`extensions/${id}/${artifact}.ts`);
+      const artifacts = listBundledPluginPackArtifacts();
+      expect(artifacts).toContain(`dist/extensions/${id}/package.json`);
+      expect(artifacts).toContain(`dist/extensions/${id}/${artifact}.js`);
+      expect(artifacts.includes(`dist/extensions/${id}/openclaw.plugin.json`)).toBe(hasManifest);
+    },
+  );
 
   it.each([["discord", "src/voice/audio-worker.runtime", true]] as const)(
     "emits %s/%s through its owning build",

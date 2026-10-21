@@ -335,7 +335,9 @@ async function resolveSandboxContextWithAuthority(
             throw new Error(message);
           }
           const githubIdentity = allowGitHub
-            ? (await import("../github-tool-identity.js")).prepareGitHubToolEnvironment({
+            ? (
+                await import("../../../extensions/github-repositories/tool-identity-api.js")
+              ).prepareGitHubToolEnvironment({
                 config,
                 agentId: runtime.agentId,
               })

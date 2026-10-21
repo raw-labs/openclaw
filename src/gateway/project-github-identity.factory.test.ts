@@ -1,6 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveGitHubToolIdentityStatus } from "../agents/github-tool-identity.js";
+import { resolveGitHubToolIdentityStatus } from "../../extensions/github-repositories/tool-identity-api.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { prepareGatewayProjectGitHubIdentity } from "./project-github-identity.js";

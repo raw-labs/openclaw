@@ -3,7 +3,7 @@ import { afterEach, expect, onTestFinished, vi } from "vitest";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";

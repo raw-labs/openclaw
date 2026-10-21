@@ -1,4 +1,4 @@
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   matchesCurrentGitHubPublicationIdentity,
   prepareCurrentGitHubPublicationIdentity,

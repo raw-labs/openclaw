@@ -1,11 +1,11 @@
 import fsp from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { resolveConfiguredGitHubToolIdentity } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
 } from "../../agents/agent-lifecycle-registry.js";
-import { resolveConfiguredGitHubToolIdentity } from "../../agents/github-tool-identity.js";
 import { resolveGitRepositoryPaths } from "../../agents/worktrees/git.js";
 import { normalizeCapabilityProviderId } from "../../plugins/provider-registry-shared.js";
 import type { WorkerExecutionMode, WorkerProfile, WorkerProvider } from "../../plugins/types.js";

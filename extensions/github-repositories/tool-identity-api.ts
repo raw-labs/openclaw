@@ -3,43 +3,28 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { root as fsRoot } from "@openclaw/fs-safe/root";
-import { readSecretFile } from "@openclaw/fs-safe/secret";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { parseDocument, stringify as stringifyYaml } from "yaml";
-import { resolveConfiguredGitHubApiBaseUrl } from "../../extensions/github-repositories/host-api.js";
-import { verifyGitHubCredential } from "../../extensions/github-repositories/oauth-api.js";
+import type { GitHubIdentityFacts, ToolsGitHubStatusResult } from "@openclaw/gateway-protocol";
 import {
-  managedGitHubHosts,
-  type GitHubToolAccount,
-} from "../../extensions/github-repositories/tool-account-api.js";
-import type {
-  GitHubIdentityFacts,
-  ToolsGitHubStatusResult,
-} from "../../packages/gateway-protocol/src/index.js";
-import { resolveStateDir } from "../config/paths.js";
-import {
-  captureExternalSessionCommitGuard,
-  composeSessionSourceAssertion,
-} from "../config/sessions/session-source-authority.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
-import { hasErrnoCode } from "../infra/errno.js";
-import { resolveAgentConfig, resolveAgentWorkspaceDir } from "./agent-scope.js";
+  resolveAgentConfig,
+  resolveAgentWorkspaceDir,
+} from "openclaw/plugin-sdk/agent-scope-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/repository-identity-host";
+import { composeSessionEntryCommitGuards } from "openclaw/plugin-sdk/session-binding-runtime";
+import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
+import { stringify as stringifyYaml } from "yaml";
 import {
   prepareAppGitHubIdentity,
   configuredAppGitHubIdentityFacts,
   configuredAppGitHubOptionsIdentity,
-} from "./github-app-identity.js";
-import {
-  resolveGitHubApiBaseUrl,
-  resolveGitHubHost,
-  withGitHubToken,
-} from "./github-host-runtime.js";
-import { inspectGitHubOAuthRecord } from "./github-oauth-records.js";
+} from "./app-identity-api.js";
+import { resolveConfiguredGitHubApiBaseUrl } from "./host-api.js";
+import { resolveGitHubApiBaseUrl, resolveGitHubHost, withGitHubToken } from "./host-runtime-api.js";
+import { readManagedGitHubToken, isPrivateManagedGitHubProfile } from "./managed-profile-read.js";
+import { verifyGitHubCredential } from "./oauth-api.js";
 import {
   clearNativeGitHubTokenCache,
   createGitHubReadIdentity,
-  GITHUB_IDENTITY_OUTPUT_LIMIT_BYTES as PROFILE_OUTPUT_LIMIT_BYTES,
   GitHubIdentityError,
   normalizeGitHubToken as normalizeManagedGitHubToken,
   readCachedNativeGitHubToken,
@@ -51,31 +36,33 @@ import {
   type GitHubReadIdentityStarter,
   type PreparedGitHubReadIdentity,
   type PreparedGitHubSourceReadIdentity,
-} from "./github-read-identity.js";
+} from "./read-identity-api.js";
+import { managedGitHubHosts, type GitHubToolAccount } from "./tool-account-api.js";
 import {
   AGENT_GIT_CONFIG_PARAMETERS,
   applyManagedGitHubIdentityEnvironment,
   githubCredentialEnvironmentExclusions,
   managedGitHubIdentityEnvironment,
-} from "./github-tool-identity-env.js";
+} from "./tool-identity-env-api.js";
 import {
   notifyManagedGitHubProfileChanged,
   resolveGitHubPublicationAccessExpiry,
-} from "./github-tool-identity-lifecycle.js";
+} from "./tool-identity-lifecycle-api.js";
 import type {
+  GitHubToolIdentityConfig,
   PreparedGitHubPublicationIdentity,
   PreparedGitHubToolEnvironment,
-} from "./github-tool-identity.types.js";
-import { resolveManagedGitHubProfileDir } from "./github-tool-profile-path.js";
+} from "./tool-identity.types-api.js";
+import { resolveManagedGitHubProfileDir } from "./tool-profile-path-api.js";
 
 export {
   resolveManagedGitHubAgentKey,
   resolveManagedGitHubProfileDir,
   resolveManagedGitHubProfileRoot,
-} from "./github-tool-profile-path.js";
-export { onManagedGitHubProfileChanged } from "./github-tool-identity-lifecycle.js";
-export { GitHubIdentityError } from "./github-read-identity.js";
-export type { PreparedGitHubPublicationIdentity } from "./github-tool-identity.types.js";
+} from "./tool-profile-path-api.js";
+export { onManagedGitHubProfileChanged } from "./tool-identity-lifecycle-api.js";
+export { GitHubIdentityError } from "./read-identity-api.js";
+export type { PreparedGitHubPublicationIdentity } from "./tool-identity.types-api.js";
 
 const GITHUB_HOST = "github.com";
 
@@ -180,77 +167,6 @@ function githubIdentityProbeEnvironment(
 ): NodeJS.ProcessEnv {
   const overlay = prepareGitHubToolEnvironmentForIdentity(params, identity);
   return applyManagedGitHubIdentityEnvironment(params.env, overlay);
-}
-
-async function readManagedGitHubToken(profileDir: string): Promise<string | undefined> {
-  if (!(await isPrivateManagedGitHubProfile(profileDir))) {
-    return undefined;
-  }
-  try {
-    let hosts: Record<string, unknown> | undefined;
-    for (const name of ["hosts.yml", "config.yml"]) {
-      const filePath = path.join(profileDir, name);
-      const stat = await fs.lstat(filePath).catch((error: unknown) => {
-        if (name === "config.yml" && hasErrnoCode(error, "ENOENT")) {
-          return undefined;
-        }
-        throw error;
-      });
-      if (!stat) {
-        continue;
-      }
-      if (process.platform !== "win32" && (stat.mode & 0o077) !== 0) {
-        return undefined;
-      }
-      const raw = await readSecretFile(filePath, "Managed GitHub profile", {
-        maxBytes: PROFILE_OUTPUT_LIMIT_BYTES,
-        rejectSymlink: true,
-      });
-      // parse() logs YAML warnings containing file contents. Inspect the document
-      // instead so corrupt credentials never escape into parser diagnostics.
-      const document = parseDocument(raw, { prettyErrors: false });
-      if (document.errors.length || document.warnings.length) {
-        return undefined;
-      }
-      const value: unknown = document.toJS({ maxAliasCount: 0 });
-      if (!isRecord(value)) {
-        return undefined;
-      }
-      if (name === "hosts.yml") {
-        hosts = value;
-      }
-    }
-    const host = hosts?.[GITHUB_HOST];
-    // gh reads the active host token before considering the global keyring.
-    // User-keyed entries alone cannot prove isolation from native auth.
-    return isRecord(host) && typeof host.oauth_token === "string"
-      ? normalizeManagedGitHubToken(host.oauth_token)
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function isPrivateManagedGitHubProfile(profileDir: string): Promise<boolean> {
-  try {
-    const [profile, hosts] = await Promise.all([
-      fs.lstat(profileDir),
-      fs.lstat(path.join(profileDir, "hosts.yml")),
-    ]);
-    if (
-      !profile.isDirectory() ||
-      profile.isSymbolicLink() ||
-      !hosts.isFile() ||
-      hosts.isSymbolicLink()
-    ) {
-      return false;
-    }
-    return (
-      process.platform === "win32" || ((profile.mode & 0o077) === 0 && (hosts.mode & 0o077) === 0)
-    );
-  } catch {
-    return false;
-  }
 }
 
 export async function resolveGitHubToolIdentityStatus(
@@ -577,23 +493,21 @@ export async function prepareGitHubReadIdentity(
 ): Promise<PreparedGitHubSourceReadIdentity> {
   const selected = resolveGitHubToolIdentity(params);
   const { profileId, kind } = selected.source === "system-detected" ? {} : selected.config;
-  const assertSelected = composeSessionSourceAssertion([
-    captureExternalSessionCommitGuard(params.assertActive),
-    () => {
-      const current = resolveGitHubToolIdentity({ ...params, config: params.getCurrentConfig() });
-      if (
-        current.source !== selected.source ||
-        (current.source !== "system-detected" &&
-          (current.config.profileId !== profileId ||
-            current.config.kind !== kind ||
-            (kind === "app-installation" &&
-              selected.source !== "system-detected" &&
-              !isDeepStrictEqual(current.config, selected.config))))
-      ) {
-        throw new GitHubIdentityError("changed");
-      }
-    },
-  ]);
+  const assertSelected = composeSessionEntryCommitGuards([params.assertActive], (assertSources) => {
+    assertSources();
+    const current = resolveGitHubToolIdentity({ ...params, config: params.getCurrentConfig() });
+    if (
+      current.source !== selected.source ||
+      (current.source !== "system-detected" &&
+        (current.config.profileId !== profileId ||
+          current.config.kind !== kind ||
+          (kind === "app-installation" &&
+            selected.source !== "system-detected" &&
+            !isDeepStrictEqual(current.config, selected.config))))
+    ) {
+      throw new GitHubIdentityError("changed");
+    }
+  });
   const caller = { assertCurrent: assertSelected, startCurrent: params.startActive };
   await startGitHubIdentityOperation(params.refresh, caller);
   assertSelected();

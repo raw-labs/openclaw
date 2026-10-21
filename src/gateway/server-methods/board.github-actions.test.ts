@@ -12,10 +12,10 @@ import {
   vi,
 } from "vitest";
 import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
+import { resolveManagedGitHubProfileDir } from "../../../extensions/github-repositories/tool-identity-api.js";
 import type { BoardSnapshot } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
-import { clearNativeGitHubTokenCache } from "../../agents/github-read-identity.js";
-import { resolveManagedGitHubProfileDir } from "../../agents/github-tool-identity.js";
 import { createTestBoardStore } from "../../boards/board-store.test-support.js";
 import {
   clearRuntimeConfigSnapshot,

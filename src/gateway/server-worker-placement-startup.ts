@@ -1,4 +1,4 @@
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
+import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type { SessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { installSessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { getRuntimeConfig } from "../config/config.js";

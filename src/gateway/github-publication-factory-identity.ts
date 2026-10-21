@@ -1,4 +1,4 @@
-import type { GitHubCredentialReader } from "../agents/github-credential-reader.js";
+import type { GitHubCredentialReader } from "../../extensions/github-repositories/credential-reader-api.js";
 import { withFactoryGitHubProof, FACTORY_GITHUB_PROOF_ENV } from "./factory-github-proof.js";
 import type { FactoryGitHubProofClaim } from "./factory-github-proof.js";
 import { readFactoryRepositoryAdmission } from "./factory-github-repository-admission.js";

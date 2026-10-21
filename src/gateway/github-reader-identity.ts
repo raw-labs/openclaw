@@ -3,7 +3,7 @@ import {
   GitHubIdentityError,
   prepareGitHubReadIdentity,
   resolveConfiguredGitHubToolIdentity,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";

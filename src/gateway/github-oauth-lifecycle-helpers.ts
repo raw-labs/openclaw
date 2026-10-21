@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
@@ -13,7 +14,6 @@ import {
   type GitHubIdentityScope,
   type GitHubOAuthRecord,
 } from "../agents/github-oauth-records.js";
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { subscribeSecretStoreChanges } from "../secrets/store/secret-store-changes.js";
