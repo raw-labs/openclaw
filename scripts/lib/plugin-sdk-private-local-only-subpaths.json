@@ -228,5 +228,7 @@
   "web-content-extractor",
   "webhook-targets",
   "windows-spawn",
-  "worker-task-server"
+  "worker-task-server",
+  "repository-oauth-host",
+  "repository-session-host"
 ]

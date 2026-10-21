@@ -552,17 +552,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["sessions.assignOwner", "sessions-mutations", "operator.write", "2026.8"],
   ["progressCard.get", "progress-card", "operator.read", "2026.8"],
   ["progressCard.put", "progress-card", "operator.write", "2026.8"],
-  ["tools.github.status", "tools-github", "operator.read", "2026.8"],
-  ["tools.github.configure", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  ["tools.github.authorize.start", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  ["tools.github.authorize.poll", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  [
-    "tools.github.authorize.cancel",
-    "tools-github",
-    "operator.admin",
-    "2026.8",
-    CONTROL_PLANE_WRITE,
-  ],
   [
     "sessions.github.publish",
     "sessions-github",
@@ -582,17 +571,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   // its required `addedBy` response contract remain unchanged.
   ["session.members.listEvidence", "sessions-sharing", "operator.read", "2026.8"],
   ["plugins.inspect", "plugins", "operator.read", "2026.8"],
-  ["users.github.status", "users", "operator.read", "2026.8", { startup: true }],
-  ["users.github.authorize.start", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
-  ["users.github.authorize.poll", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
-  [
-    "users.github.authorize.cancel",
-    "users",
-    "operator.read",
-    "2026.8",
-    SIDECAR_CONTROL_PLANE_WRITE,
-  ],
-  ["users.github.disconnect", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
   ["sessions.github.options", "sessions-github", "operator.read", "2026.8", { startup: true }],
   ["sessions.github.status", "sessions-github", "operator.read", "2026.8", { startup: true }],
   [

@@ -1,9 +1,11 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { requestCurrentGitHubOAuthRefresh } from "../../../extensions/github-repositories/account-runtime-api.js";
 import {
   clearGitHubCredentialVerificationCache,
   verifyGitHubCredential,
 } from "../../../extensions/github-repositories/oauth-api.js";
+import { personalGitHubStatusAsync as personalGitHubStatus } from "../../../extensions/github-repositories/personal-status-api.js";
 import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
@@ -18,8 +20,6 @@ import type { UserGitHubConnection } from "../../state/user-github-connections.j
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import * as prRead from "../control-ui-session-pr-read.js";
-import { requestCurrentGitHubOAuthRefresh } from "../github-oauth-lifecycle.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
 import * as publicationAvailability from "../github-publication-availability.js";
 import * as relevance from "../github-publication-relevance.js";
 import {
@@ -34,14 +34,23 @@ import {
 } from "./sessions-github-read.test-support.js";
 
 const mocks = vi.hoisted(() => ({ runCommandBuffered: vi.fn() }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.runCommandBuffered }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../process/exec.js")>()),
+  runCommandBuffered: mocks.runCommandBuffered,
+}));
 vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../agents/tools/gateway-caller-context.js")>()),
   getGatewayToolCallerIdentity: () => undefined,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
-}));
+vi.mock(
+  "../../../extensions/github-repositories/account-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../extensions/github-repositories/account-runtime-api.js")
+    >()),
+    requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
+  }),
+);
 
 beforeEach(() => {
   clearNativeGitHubTokenCache();

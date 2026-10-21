@@ -81,7 +81,10 @@ vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (impo
   };
 });
 
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("../../extensions/github-repositories/account-runtime-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/account-runtime-api.js")
+  >()),
   requestCurrentGitHubOAuthRefresh: mocks.refreshIdentity,
   requestCurrentPersonalGitHubRefresh: mocks.refreshIdentity,
 }));

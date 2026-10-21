@@ -1,15 +1,16 @@
 import { isDeepStrictEqual } from "node:util";
+import { resolveMutableAgentEntry, applyAgentConfig } from "openclaw/plugin-sdk/agent-runtime";
+import {
+  unsetConfigValueAtPath,
+  mutateConfigFileWithRetry,
+} from "openclaw/plugin-sdk/config-mutation";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import {
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
   type AgentLifecycleBinding,
-} from "../agents/agent-lifecycle-registry.js";
-import { resolveMutableAgentEntry } from "../agents/agent-scope.js";
-import { applyAgentConfig } from "../commands/agents.config.js";
-import { unsetConfigValueAtPath } from "../config/config-paths.js";
-import { mutateConfigFileWithRetry } from "../config/config.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
+} from "openclaw/plugin-sdk/repository-identity-host";
+import type { GitHubToolIdentityConfig } from "./config-api.js";
 
 export async function updateGitHubToolIdentityConfig(params: {
   scope: "system" | "agent";

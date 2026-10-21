@@ -1,4 +1,3 @@
-import { createConfigIO } from "../config/io.factory.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import {
   getSecretStoreExpiryDeadline,
@@ -6,10 +5,6 @@ import {
   subscribeSecretStoreChanges,
 } from "../secrets/store/secret-store.js";
 import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
-import {
-  createGitHubOAuthLifecycle,
-  installActiveGitHubOAuthLifecycle,
-} from "./github-oauth-lifecycle.js";
 import { startGitHubPublicationDiscovery } from "./github-publication-discovery.js";
 import { createModelAccountConnectService } from "./model-account-connect.js";
 import {
@@ -69,14 +64,6 @@ export async function attachInitialGatewayLifetimeSidecars(params: {
       }
     },
   });
-  const githubOAuth = createGitHubOAuthLifecycle({
-    scheduler: params.scheduler,
-    getConfig: params.gatewayRequestContext.getRuntimeConfig,
-    getPersistedConfig: () => createConfigIO().loadConfigAsync(),
-    warn: params.logWarning,
-  });
-  params.gatewayRequestContext.githubOAuthService = githubOAuth;
-  const uninstallGitHubOAuth = installActiveGitHubOAuthLifecycle(githubOAuth);
   if (!params.minimalTestGateway) {
     params.publishSidecars(
       startGitHubPublicationDiscovery({
@@ -84,17 +71,7 @@ export async function attachInitialGatewayLifetimeSidecars(params: {
         projection: getSessionRowProjection(params.gatewayRequestContext),
       }),
     );
-    githubOAuth.start();
   }
-  params.publishSidecars({
-    stop: async () => {
-      uninstallGitHubOAuth();
-      await githubOAuth.stop();
-      if (params.gatewayRequestContext.githubOAuthService === githubOAuth) {
-        delete params.gatewayRequestContext.githubOAuthService;
-      }
-    },
-  });
   if (!params.minimalTestGateway) {
     const expiryScheduler = params.scheduler.scope();
     let warned = false;

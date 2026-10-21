@@ -273,6 +273,9 @@ export type OpenClawPluginApi = {
     handler: GatewayRequestHandler,
     opts?: {
       scope?: OperatorScope;
+      startup?: "available" | "unavailable-until-sidecars";
+      controlPlaneWrite?: boolean;
+      since?: string;
       profileAccess?: "independent" | "required";
       /** Require a top-level sessionKey (and optional agentId) naming an existing session. */
       sessionAccess?: import("../gateway/methods/descriptor.js").GatewayMethodSessionAccess;

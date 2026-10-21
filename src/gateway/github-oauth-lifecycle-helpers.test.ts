@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { createGitHubOAuthLifecycleHost } from "../../extensions/github-repositories/oauth-lifecycle-host-api.js";
+import { createGitHubOAuthLifecyclePolicy } from "../../extensions/github-repositories/oauth-lifecycle-policy-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
-import {
-  configuredOAuthIdentities,
-  captureGitHubOAuthAuthorizationIdentity,
-} from "./github-oauth-lifecycle-helpers.js";
+const { configuredOAuthIdentities, captureGitHubOAuthAuthorizationIdentity } =
+  createGitHubOAuthLifecyclePolicy(createGitHubOAuthLifecycleHost(new AbortController().signal));
 import {
   identity,
   NEW_PROFILE,

@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { assertGitHubCliAvailable } from "../../extensions/github-repositories/cli-preflight-api.js";
 import { clearExecutablePathCache } from "../infra/executable-path.js";
 import { withTestDir } from "../test-helpers/temp-dir.js";
-import { assertGitHubCliAvailable } from "./github-cli-preflight.js";
 
 afterEach(() => {
   clearExecutablePathCache();

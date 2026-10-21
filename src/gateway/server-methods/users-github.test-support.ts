@@ -23,9 +23,15 @@ vi.mock("../../../extensions/github-repositories/oauth-api.js", () => ({
   verifyGitHubCredential: network.verify,
 }));
 // mock-isolation: Personal GitHub RPC tests must not spawn the host GitHub CLI.
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: network.command }));
-vi.mock("../github-cli-preflight.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../github-cli-preflight.js")>();
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../process/exec.js")>()),
+  runCommandBuffered: network.command,
+}));
+vi.mock("../../../extensions/github-repositories/cli-preflight-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../extensions/github-repositories/cli-preflight-api.js")
+    >();
   return { ...actual, assertGitHubCliAvailable: network.assertCli };
 });
 

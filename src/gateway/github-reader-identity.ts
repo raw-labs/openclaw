@@ -1,3 +1,4 @@
+import { requestCurrentGitHubOAuthRefresh } from "../../extensions/github-repositories/account-runtime-api.js";
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import {
   GitHubIdentityError,
@@ -5,7 +6,6 @@ import {
   resolveConfiguredGitHubToolIdentity,
 } from "../../extensions/github-repositories/tool-identity-api.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
-import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 
 /** UI and agent readers share selection; each caller supplies its own live authority. */

@@ -5,11 +5,12 @@ const mocks = vi.hoisted(() => ({
   mutateConfigFileWithRetry: vi.fn(),
 }));
 
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/config.js")>()),
   mutateConfigFileWithRetry: mocks.mutateConfigFileWithRetry,
 }));
 
-import { updateGitHubToolIdentityConfig } from "./github-tool-identity-config.js";
+import { updateGitHubToolIdentityConfig } from "../../extensions/github-repositories/tool-identity-config-api.js";
 
 describe("GitHub identity config mutation", () => {
   it.each([undefined, false, true])(

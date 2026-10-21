@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
+import { requestCurrentGitHubOAuthRefresh } from "../../../extensions/github-repositories/account-runtime-api.js";
 import {
   GitHubIdentityError,
   prepareGitHubReadIdentity,
@@ -14,7 +15,6 @@ import {
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseConfiguredProjectGitUrl } from "../../projects/project-git-url.runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
-import { requestCurrentGitHubOAuthRefresh } from "../github-oauth-lifecycle.js";
 import { gitHubPublicApi } from "../github-public-api.js";
 import {
   resolveEnvironmentRecipe,

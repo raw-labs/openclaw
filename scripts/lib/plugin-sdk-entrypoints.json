@@ -381,5 +381,7 @@
   "web-media",
   "agent-core",
   "agent-sessions",
-  "llm"
+  "llm",
+  "repository-oauth-host",
+  "repository-session-host"
 ]

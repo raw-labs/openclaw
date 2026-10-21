@@ -1,4 +1,9 @@
 import { expect, vi } from "vitest";
+import {
+  createPersonalGitHubOAuthLifecycle,
+  type PersonalGitHubAction,
+} from "../../../extensions/github-repositories/personal-oauth-api.js";
+import { personalGitHubStatusAsync as personalGitHubStatus } from "../../../extensions/github-repositories/personal-status-api.js";
 import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
@@ -8,11 +13,7 @@ import { prepareUserGitHubConnection } from "../../state/user-github-connections
 import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import {
-  createPersonalGitHubOAuthLifecycle,
-  type PersonalGitHubAction,
-} from "../github-personal-oauth.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
+import { installGitHubAccountFixture } from "../github-account-service.test-support.js";
 import * as publicationAvailability from "../github-publication-availability.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
@@ -183,13 +184,10 @@ function createFixture(
     getClientConnIds: (filter?: (candidate: GatewayClient) => boolean) =>
       new Set(connected && (!filter || filter(client)) ? [client.connId] : []),
     githubPublicationService: publication,
-    githubOAuthService: {
-      personal: {
-        ...personalLifecycle,
-        status: personalConnectionStatus,
-      },
-    },
   } as unknown as GatewayRequestContext;
+  installGitHubAccountFixture(context, {
+    personal: { ...personalLifecycle, status: personalConnectionStatus },
+  } as never);
   const invoke = async (
     method: "sessions.github.options" | "sessions.github.status",
     params: Record<string, unknown>,

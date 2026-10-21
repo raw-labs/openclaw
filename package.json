@@ -487,7 +487,9 @@
     "!dist/plugin-sdk/path-existence-runtime.d.ts",
     "!dist/plugin-sdk/provider-auth-markers.d.ts",
     "!dist/plugin-sdk/terminal-safe-text.d.ts",
-    "!dist/plugin-sdk/repository-identity-host.d.ts"
+    "!dist/plugin-sdk/repository-identity-host.d.ts",
+    "!dist/plugin-sdk/repository-oauth-host.d.ts",
+    "!dist/plugin-sdk/repository-session-host.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -1729,6 +1731,12 @@
     },
     "./plugin-sdk/llm": {
       "default": "./dist/plugin-sdk/llm.js"
+    },
+    "./plugin-sdk/repository-oauth-host": {
+      "default": "./dist/plugin-sdk/repository-oauth-host.js"
+    },
+    "./plugin-sdk/repository-session-host": {
+      "default": "./dist/plugin-sdk/repository-session-host.js"
     },
     "./cli-entry": "./openclaw.mjs"
   },

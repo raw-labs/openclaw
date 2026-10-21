@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, onTestFinished, vi } from "vitest";
+import { createPersonalGitHubOAuthLifecycle } from "../../extensions/github-repositories/personal-oauth-api.js";
+import { personalGitHubStatusAsync as personalGitHubStatus } from "../../extensions/github-repositories/personal-status-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
@@ -12,9 +14,8 @@ import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { updateUserGitHubConnection } from "../state/user-github-connections.test-support.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
+import { installGitHubAccountFixture } from "./github-account-service.test-support.js";
 import type { PersonalGitHubSessionActionV2 } from "./github-personal-publication.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "./github-personal-status.js";
 import {
   SESSION_ID,
   SESSION_KEY,
@@ -232,22 +233,21 @@ export async function callPersonalPublicationRpc(
 ) {
   const respond = vi.fn();
   const personal = createPersonalGitHubOAuthLifecycle();
+  const rpcContext = { ...context, githubPublicationService: coordinator };
+  const uninstall = installGitHubAccountFixture(rpcContext, {
+    personal: { ...personal, status: personalGitHubStatus },
+  } as never);
   try {
     await handleGatewayRequest({
       req: { type: "req", id: randomUUID(), method, params },
       client,
-      context: {
-        ...context,
-        githubPublicationService: coordinator,
-        githubOAuthService: {
-          personal: { ...personal, status: personalGitHubStatus },
-        } as GatewayRequestContext["githubOAuthService"],
-      },
+      context: rpcContext,
       respond,
       isWebchatConnect: () => false,
     });
     return respond.mock.calls[0]!;
   } finally {
+    uninstall();
     await personal.stop();
   }
 }

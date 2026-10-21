@@ -1,3 +1,7 @@
+import type {
+  PersonalGitHubAction,
+  PersonalGitHubActionV2,
+} from "../../../extensions/github-repositories/personal-oauth-api.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
@@ -8,7 +12,6 @@ import {
 } from "../../shared/operator-scope-compat.js";
 import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-identity-operations.js";
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
-import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
 import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
 import {
   currentGitHubPublicationConfig,

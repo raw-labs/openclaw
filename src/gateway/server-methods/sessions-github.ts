@@ -1,3 +1,4 @@
+import { readRepositoryServices } from "../../../extensions/github-repositories/account-runtime-api.js";
 import { GitHubIdentityError } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
@@ -352,7 +353,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
             options.respond(false, undefined, publicationStateUnavailableError());
             return;
           }
-          const service = options.context.githubOAuthService?.personal;
+          const service = readRepositoryServices(options.context)?.oauth?.personal;
           if (read.personal.kind === "eligible" && !service) {
             throw new Error("GitHub connections are unavailable; retry after Gateway startup.");
           }
