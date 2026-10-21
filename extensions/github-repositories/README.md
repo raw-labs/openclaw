@@ -1,9 +1,7 @@
 # GitHub Settings and repository artifacts
 
 This plugin owns Profile → GitHub connections and the GitHub identity view in
-Agent → Tools. The Settings views use the existing native `users.github.*` and
-`tools.github.*` Gateway methods; OAuth scheduling, record persistence, execution, and publication retain their
-native owners; identity/profile selection is implemented by the package artifacts.
+Agent → Tools. The plugin owns the existing `users.github.*` connection and `tools.github.*` account Gateway methods, device authorization, and OAuth refresh scheduling. Its managed service starts once per Gateway and drains accepted token rotations when stopped. Record persistence, execution, repository sources, and publication retain their native owners; identity/profile selection is implemented by the package artifacts.
 
 The package also owns the shallow host, managed-account, and OAuth protocol artifacts used by
 native core callers. Those artifacts do not load the plugin runtime.
@@ -36,3 +34,5 @@ record validation. The native host-snapshot adapter remains for the frozen PR
 wrapper; the plugin adapter reads the same canonical in-memory snapshot. Neither
 adapter owns a second configuration or a legacy fallback. Agent selections remain
 at `agents.entries[agentId].tools.github`.
+
+The account service follows normal plugin admission. Disabling or excluding this plugin removes account RPCs and stops new refresh work; it does not erase saved credentials. Gateway storage owners retain record admission and exact refresh settlement.

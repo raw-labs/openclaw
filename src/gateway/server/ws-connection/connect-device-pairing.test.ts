@@ -2,6 +2,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, test, vi } from "vitest";
+import { readRepositoryServices } from "../../../../extensions/github-repositories/account-runtime-api.js";
 import {
   GATEWAY_CLIENT_MODES,
   GATEWAY_CLIENT_NAMES,
@@ -360,7 +361,8 @@ describe("gateway connect pairing exemptions", () => {
         error: { code: "FORBIDDEN", message: "users.self requires an authenticated user" },
       });
       expect(selfHandler.mock.lastCall?.[0].client).not.toHaveProperty("authenticatedUserProfile");
-      const personal = selfHandler.mock.lastCall?.[0].context.githubOAuthService?.personal;
+      const requestContext = selfHandler.mock.lastCall?.[0].context;
+      const personal = requestContext && readRepositoryServices(requestContext)?.oauth.personal;
       if (!personal) {
         throw new Error("expected the Gateway's personal GitHub service");
       }

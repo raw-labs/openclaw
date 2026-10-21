@@ -148,7 +148,7 @@ vi.mock("../../extensions/github-repositories/tool-identity-api.js", () => ({
   onManagedGitHubProfileChanged: () => () => {},
 }));
 // mock-isolation: Exclude OAuth credentials and network activity from this reader fixture.
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("../../extensions/github-repositories/oauth-lifecycle-runtime-api.js", () => ({
   requestCurrentGitHubOAuthRefresh: async () => {},
 }));
 // mock-isolation: Use synthetic configuration without loading operator configuration.

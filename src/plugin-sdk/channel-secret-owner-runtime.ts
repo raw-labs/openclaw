@@ -3,3 +3,5 @@ export {
   assertSecretOwnerAvailable,
   isSecretOwnerAvailable,
 } from "../secrets/runtime-degraded-state.js";
+
+export { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";

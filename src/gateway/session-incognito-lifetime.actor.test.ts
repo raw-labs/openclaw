@@ -28,9 +28,8 @@ vi.mock("node:worker_threads", async (importOriginal) => ({
 }));
 
 // mock-isolation: Keep unrelated OAuth state outside the memory lifetime startup fixture.
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("../../extensions/github-repositories/oauth-lifecycle-runtime-api.js", () => ({
   createGitHubOAuthLifecycle: () => ({ start() {}, async stop() {} }),
-  installActiveGitHubOAuthLifecycle: () => () => {},
 }));
 
 const env = { OPENCLAW_STATE_DIR: "/synthetic/incognito-lifetime" };

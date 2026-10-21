@@ -1,8 +1,11 @@
+import {
+  personalGitHubStatusAsync,
+  type PersonalGitHubAction,
+} from "../../extensions/github-repositories/personal-status-api.js";
 import type { SessionGitHubStatusResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { GitHubPublicationSessionLifecycle } from "../state/github-publication-read.types.js";
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.js";
-import { personalGitHubStatusAsync, type PersonalGitHubAction } from "./github-personal-status.js";
 import type { PublicationSessionIdentity as SessionIdentity } from "./github-publication-availability.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
 import { readRepositoryGitHubPublicationAsync } from "./github-publication-store-async.js";

@@ -1,7 +1,7 @@
 {
   "id": "github-repositories",
   "name": "GitHub",
-  "description": "GitHub profile connections and agent identity Settings.",
+  "description": "GitHub account connections, authorization, and Settings.",
   "enabledByDefault": true,
   "configSchema": {
     "type": "object",
@@ -33,5 +33,8 @@
         ]
       }
     ]
+  },
+  "activation": {
+    "onStartup": true
   }
 }

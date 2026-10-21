@@ -45,9 +45,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../extensions/github-repositories/oauth-api.js", () => ({
   verifyGitHubCredential: mocks.verify,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: mocks.refresh,
-}));
+vi.mock(
+  "../../../extensions/github-repositories/account-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../extensions/github-repositories/account-runtime-api.js")
+    >()),
+    requestCurrentGitHubOAuthRefresh: mocks.refresh,
+  }),
+);
 vi.mock("../../secrets/runtime-state.js", () => ({
   getActiveSecretsRuntimeConfigSnapshot: mocks.snapshot,
 }));

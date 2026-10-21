@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { requestCurrentPersonalGitHubRefresh } from "../../extensions/github-repositories/account-runtime-api.js";
+import type { PersonalGitHubAction } from "../../extensions/github-repositories/personal-oauth-api.js";
 import { preparePersonalGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   SessionGitHubConfirmParams,
@@ -15,8 +17,6 @@ import {
   prepareUserGitHubConnection,
   UserGitHubConnectionAuthorityChangedError,
 } from "../state/user-github-connections.js";
-import { requestCurrentPersonalGitHubRefresh } from "./github-oauth-lifecycle.js";
-import type { PersonalGitHubAction } from "./github-personal-oauth.js";
 import { presentPersonalGitHubPublicationStatusAsync } from "./github-personal-publication-status.js";
 import { personalGitHubRequestDigest } from "./github-personal-publication-store.js";
 import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.worker.js";

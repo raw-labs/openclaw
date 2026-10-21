@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { PersonalGitHubAction } from "../../extensions/github-repositories/personal-oauth-api.js";
 import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   SessionGitHubConfirmParams,
@@ -12,7 +13,6 @@ import {
   matchesGitHubPublicationRequester,
 } from "../state/github-publication-requester.js";
 import type { SessionRepositoryWorkspaceRecord } from "../state/session-repository-workspaces.types.js";
-import type { PersonalGitHubAction } from "./github-personal-oauth.js";
 import { createRepositoryPersonalPublicationStatus } from "./github-personal-publication-status.js";
 import {
   assertPersonalGitHubPublicationReplay,

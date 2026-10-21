@@ -1,16 +1,17 @@
-import { preparePersonalGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   PersonalGitHubStatus,
   UsersGitHubAuthorizeStartResult,
-} from "../../packages/gateway-protocol/src/schema/users.js";
+} from "@openclaw/gateway-protocol";
 import {
   prepareUserGitHubConnection,
   type UserGitHubConnection,
   type UserGitHubDevice,
-} from "../state/user-github-connections.js";
-
-export type PersonalGitHubAction = { owner: string; assertCurrent: () => void };
-
+} from "openclaw/plugin-sdk/repository-oauth-host";
+import { preparePersonalGitHubPublicationIdentity } from "./tool-identity-api.js";
+export type PersonalGitHubAction = {
+  owner: string;
+  assertCurrent: () => void;
+};
 export function projectPending(pending: UserGitHubDevice): UsersGitHubAuthorizeStartResult {
   return {
     requestId: pending.requestId,
@@ -20,9 +21,7 @@ export function projectPending(pending: UserGitHubDevice): UsersGitHubAuthorizeS
     pollAfterMs: Math.max(1, Math.min(60000, pending.nextPollAtMs - Date.now())),
   };
 }
-
 const statusAuthorities = new WeakMap<PersonalGitHubStatus, () => void>();
-
 function unavailablePersonalGitHubStatus(): PersonalGitHubStatus {
   return {
     state: "unavailable",
@@ -33,7 +32,6 @@ function unavailablePersonalGitHubStatus(): PersonalGitHubStatus {
     pending: null,
   };
 }
-
 export async function personalGitHubStatusAsync(
   action: PersonalGitHubAction,
 ): Promise<PersonalGitHubStatus> {
@@ -49,7 +47,6 @@ export async function personalGitHubStatusAsync(
     return unavailablePersonalGitHubStatus();
   }
 }
-
 function projectPersonalGitHubStatus(
   record: UserGitHubConnection | undefined,
 ): PersonalGitHubStatus {
@@ -58,7 +55,12 @@ function projectPersonalGitHubStatus(
   return {
     state: connected ? "connected" : "disconnected",
     generation: record?.generation ?? null,
-    account: connected ? { accountId: connected.accountId, login: connected.login } : null,
+    account: connected
+      ? {
+          accountId: connected.accountId,
+          login: connected.login,
+        }
+      : null,
     accessExpiresAtMs: connected?.accessExpiresAtMs ?? null,
     refreshState: !connected
       ? "not_applicable"
@@ -72,7 +74,6 @@ function projectPersonalGitHubStatus(
         : null,
   };
 }
-
 export function revalidatePersonalGitHubStatus(
   action: PersonalGitHubAction,
   prepared: PersonalGitHubStatus,
@@ -81,7 +82,6 @@ export function revalidatePersonalGitHubStatus(
   statusAuthorities.get(prepared)?.();
   return prepared;
 }
-
 export async function resolvePersonalGitHubStatus(
   action: PersonalGitHubAction,
 ): Promise<PersonalGitHubStatus> {
@@ -114,7 +114,11 @@ export async function resolvePersonalGitHubStatus(
     });
     const result = {
       ...revalidatePersonalGitHubStatus(action, status),
-      ...(identity.stale ? { stale: true } : {}),
+      ...(identity.stale
+        ? {
+            stale: true,
+          }
+        : {}),
     };
     statusAuthorities.set(result, prepared.read);
     return result;

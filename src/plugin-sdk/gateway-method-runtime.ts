@@ -49,3 +49,9 @@ export async function dispatchGatewayMethod(
     ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   });
 }
+
+export { resolveAgentIdOrRespondError } from "../gateway/server-methods/agent-id-shared.js";
+export {
+  defineValidatedGatewayHandler,
+  defineValidatedGatewayMethod,
+} from "../gateway/server-methods/validation.js";

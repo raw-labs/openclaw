@@ -36,8 +36,6 @@ const TRAIN_2026_8_METHODS = `
   sessions.groups.update sessions.groups.defaults sessions.recover
   update.hold sessions.catalog.startTerminal
   sessions.github.publish sessions.github.options sessions.github.status sessions.github.confirm
-  users.github.status users.github.authorize.start users.github.authorize.poll
-  users.github.authorize.cancel users.github.disconnect
   worker.desktop.observe worker.desktop.launch
   projects.list projects.register projects.remove projects.add projects.searchRemote
   secrets.store.list secrets.store.set secrets.store.delete
@@ -49,9 +47,7 @@ const TRAIN_2026_8_METHODS = `
   desktop.observe desktop.launch device.scopes.requestUpgrade device.scopes.waitUpgrade
   node.runnerInventory.update portal.list portal.open portal.close
   sessions.move sessions.assignOwner controlUi.sessionPreview
-  progressCard.get progressCard.put tools.github.status tools.github.configure
-  tools.github.authorize.start tools.github.authorize.poll tools.github.authorize.cancel
-  session.members.listEvidence
+  progressCard.get progressCard.put session.members.listEvidence
   skills.library.list skills.library.read skills.library.save skills.library.mutate
   skills.library.activate skills.library.import skills.library.upload
   sessions.title.prepare transcripts.list transcripts.get

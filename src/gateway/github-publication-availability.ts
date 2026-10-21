@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { requestCurrentGitHubOAuthRefresh } from "../../extensions/github-repositories/account-runtime-api.js";
 import {
   matchesPreparedGitHubPublicationIdentity,
   prepareGitHubPublicationIdentity,
@@ -32,7 +33,6 @@ import {
   getSessionRepositoryWorkspaceStore,
   type PreparedRepositoryWorkspace,
 } from "../state/session-repository-workspaces.js";
-import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
 import {
   GitHubPublicationWorkspaceChangedError,
   GitHubPublicationSessionChangedError,

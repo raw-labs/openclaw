@@ -412,5 +412,10 @@ Bundled repository credential adapters use the private-local
 `openclaw/plugin-sdk/repository-identity-host` entrypoint to inspect an exact
 native OAuth profile or enumerate records for retired-profile cleanup. The host
 retains native record validation and persistence; this surface exposes no raw
-secret store, database connection, mutation, or Gateway registry. Consumers retain
+secret store, database connection, or Gateway registry. Managed account mutations
+use the admitted operations described below. Consumers retain
 their existing current-selection and caller authority checks.
+
+### Managed repository accounts
+
+The private bundled seams `repository-session-host`, `repository-identity-host`, and `repository-oauth-host` bind account maintenance to the current Gateway lifetime. They expose current configuration, authenticated personal-caller preparation, existing OAuth-record operations, and personal-account lease/commit operations. Database admission, invalidation, and exact refresh settlement remain host-owned; plugins receive no database paths or raw Gateway context.

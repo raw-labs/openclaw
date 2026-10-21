@@ -1,30 +1,26 @@
-import { resolveSystemGitHubIdentityStatus } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
-  ErrorCodes,
-  errorShape,
   validateUsersGitHubStatusParams,
   validateUsersGitHubAuthorizeStartParams,
   validateUsersGitHubAuthorizePollParams,
   validateUsersGitHubAuthorizeCancelParams,
   validateUsersGitHubDisconnectParams,
-} from "../../../packages/gateway-protocol/src/index.js";
-import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
-import type { PersonalGitHubAction } from "../github-personal-oauth.js";
-import { preparePersonalGitHubActionV2 } from "./github-personal-authorization.js";
-import type {
-  GatewayRequestHandlers,
-  GatewayRequestHandlerOptions,
-  GatewayRequestContext,
-} from "./types.js";
-import { defineValidatedGatewayMethod } from "./validation.js";
-
+} from "@openclaw/gateway-protocol";
+import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
+import { defineValidatedGatewayMethod } from "openclaw/plugin-sdk/gateway-method-runtime";
+import {
+  ErrorCodes,
+  errorShape,
+  type GatewayRequestHandlers,
+  type GatewayRequestHandlerOptions,
+} from "openclaw/plugin-sdk/gateway-runtime";
+import { prepareGatewayPersonalCallerV2 } from "openclaw/plugin-sdk/repository-session-host";
+import { readRepositoryServices, type RepositoryServices } from "../account-runtime-api.js";
+import type { PersonalGitHubAction } from "../personal-oauth-api.js";
+import { resolveSystemGitHubIdentityStatus } from "../tool-identity-api.js";
 async function runPersonalGitHub(
   options: Pick<GatewayRequestHandlerOptions, "client" | "context" | "signal" | "respond">,
   fallbackError: string,
-  run: (
-    action: PersonalGitHubAction,
-    service: NonNullable<GatewayRequestContext["githubOAuthService"]>["personal"],
-  ) => unknown,
+  run: (action: PersonalGitHubAction, service: RepositoryServices["oauth"]["personal"]) => unknown,
 ): Promise<void> {
   const fail = (error: unknown) =>
     options.respond(
@@ -33,8 +29,8 @@ async function runPersonalGitHub(
       errorShape(ErrorCodes.FORBIDDEN, error instanceof Error ? error.message : fallbackError),
     );
   try {
-    const action = await preparePersonalGitHubActionV2(options);
-    const service = options.context.githubOAuthService?.personal;
+    const action = await prepareGatewayPersonalCallerV2(options, "operator.read", undefined);
+    const service = readRepositoryServices(options.context)?.oauth?.personal;
     if (!service) {
       throw new Error("GitHub connections are unavailable; retry after Gateway startup.");
     }
@@ -45,7 +41,6 @@ async function runPersonalGitHub(
     fail(error);
   }
 }
-
 export const usersGitHubHandlers: GatewayRequestHandlers = {
   "users.github.status": defineValidatedGatewayMethod(
     "users.github.status",
@@ -58,7 +53,10 @@ export const usersGitHubHandlers: GatewayRequestHandlers = {
           sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig ?? config,
         });
         const personal = await service.status(action);
-        return { personal, system };
+        return {
+          personal,
+          system,
+        };
       }),
   ),
   "users.github.authorize.start": defineValidatedGatewayMethod(
@@ -91,7 +89,9 @@ export const usersGitHubHandlers: GatewayRequestHandlers = {
     (options) =>
       runPersonalGitHub(options, "My GitHub disconnect failed.", async (action, service) => {
         await service.disconnectAsync(action);
-        return { disconnected: true };
+        return {
+          disconnected: true,
+        };
       }),
   ),
 };

@@ -992,6 +992,12 @@
       ],
       "openclaw/plugin-sdk/repository-identity-host": [
         "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-identity-host.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-oauth-host": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-oauth-host.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-session-host": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-session-host.d.ts"
       ]
     }
   }

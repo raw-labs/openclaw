@@ -28,7 +28,7 @@ vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (i
 vi.mock("../../secrets/runtime-state.js", () => ({
   getActiveSecretsRuntimeConfigSnapshot: () => undefined,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
+vi.mock("../../../extensions/github-repositories/oauth-lifecycle-runtime-api.js", () => ({
   requestCurrentGitHubOAuthRefresh: async () => {},
 }));
 vi.mock("./repository-git-pack.js", () => ({

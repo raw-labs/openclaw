@@ -1,10 +1,9 @@
+import type { ToolsGitHubAuthorizePollResult } from "@openclaw/gateway-protocol";
 import {
   pollGitHubOAuthDeviceToken,
   requestGitHubOAuthDeviceCode,
   type GitHubOAuthTokenPair,
-} from "../../extensions/github-repositories/oauth-api.js";
-import type { ToolsGitHubAuthorizePollResult } from "../../packages/gateway-protocol/src/index.js";
-
+} from "./credential-verification-api.js";
 export type GitHubDeviceFlow = {
   deviceCode: string;
   userCode: string;
@@ -14,12 +13,19 @@ export type GitHubDeviceFlow = {
   pollIntervalMs: number;
   nextPollAtMs: number;
 };
-type PollResult = Exclude<ToolsGitHubAuthorizePollResult, { status: "success" }>;
+type PollResult = Exclude<
+  ToolsGitHubAuthorizePollResult,
+  {
+    status: "success";
+  }
+>;
 
 /** Transport and scheduling are shared; the caller owns identity, TTL/CAS, and installation. */
 export async function startGitHubDeviceFlow(signal: AbortSignal): Promise<GitHubDeviceFlow> {
   const startedAt = Date.now();
-  const authorization = await requestGitHubOAuthDeviceCode({ signal });
+  const authorization = await requestGitHubOAuthDeviceCode({
+    signal,
+  });
   if (authorization.expiresInSeconds > 900 || authorization.intervalSeconds > 60) {
     throw new Error("GitHub device authorization timing is outside the supported bounds.");
   }
@@ -34,41 +40,68 @@ export async function startGitHubDeviceFlow(signal: AbortSignal): Promise<GitHub
     nextPollAtMs: startedAt + pollIntervalMs,
   };
 }
-
 export async function pollGitHubDeviceFlow(
   record: GitHubDeviceFlow,
   signal: AbortSignal,
 ): Promise<
-  | { kind: "authorized"; tokens: GitHubOAuthTokenPair }
-  | { kind: "waiting"; result: PollResult; pollIntervalMs: number; nextPollAtMs: number }
-  | { kind: "terminal"; result: PollResult }
+  | {
+      kind: "authorized";
+      tokens: GitHubOAuthTokenPair;
+    }
+  | {
+      kind: "waiting";
+      result: PollResult;
+      pollIntervalMs: number;
+      nextPollAtMs: number;
+    }
+  | {
+      kind: "terminal";
+      result: PollResult;
+    }
 > {
   const now = Date.now();
   if (record.expiresAtMs <= now) {
-    return { kind: "terminal", result: { status: "expired" } };
+    return {
+      kind: "terminal",
+      result: {
+        status: "expired",
+      },
+    };
   }
   if (now < record.nextPollAtMs) {
     return {
       kind: "waiting",
-      result: { status: "pending", retryAfterMs: record.nextPollAtMs - now },
+      result: {
+        status: "pending",
+        retryAfterMs: record.nextPollAtMs - now,
+      },
       pollIntervalMs: record.pollIntervalMs,
       nextPollAtMs: record.nextPollAtMs,
     };
   }
   let result;
   try {
-    result = await pollGitHubOAuthDeviceToken({ deviceCode: record.deviceCode, signal });
+    result = await pollGitHubOAuthDeviceToken({
+      deviceCode: record.deviceCode,
+      signal,
+    });
   } catch {
     const nextPollAtMs = Math.min(record.expiresAtMs, Date.now() + record.pollIntervalMs);
     return {
       kind: "waiting",
-      result: { status: "network_error", retryAfterMs: Math.max(1, nextPollAtMs - Date.now()) },
+      result: {
+        status: "network_error",
+        retryAfterMs: Math.max(1, nextPollAtMs - Date.now()),
+      },
       pollIntervalMs: record.pollIntervalMs,
       nextPollAtMs,
     };
   }
   if (result.status === "authorized") {
-    return { kind: "authorized", tokens: result.tokens };
+    return {
+      kind: "authorized",
+      tokens: result.tokens,
+    };
   }
   if (result.status === "authorization_pending" || result.status === "slow_down") {
     const pollIntervalMs =
@@ -90,16 +123,31 @@ export async function pollGitHubDeviceFlow(
     };
   }
   if (result.status === "access_denied") {
-    return { kind: "terminal", result: { status: "access_denied" } };
+    return {
+      kind: "terminal",
+      result: {
+        status: "access_denied",
+      },
+    };
   }
   if (result.status === "expired_token") {
-    return { kind: "terminal", result: { status: "expired" } };
+    return {
+      kind: "terminal",
+      result: {
+        status: "expired",
+      },
+    };
   }
   return {
     kind: "terminal",
     result:
       result.code === "incorrect_device_code" || result.code === "bad_verification_code"
-        ? { status: "incorrect_device_code" }
-        : { status: "failed", reason: "setup_failed" },
+        ? {
+            status: "incorrect_device_code",
+          }
+        : {
+            status: "failed",
+            reason: "setup_failed",
+          },
   };
 }

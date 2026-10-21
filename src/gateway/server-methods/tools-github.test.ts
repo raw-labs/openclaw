@@ -1,7 +1,8 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GitHubCliUnavailableError } from "../github-cli-preflight.js";
-import { toolsGitHubHandlers } from "./tools-github.js";
+import { GitHubCliUnavailableError } from "../../../extensions/github-repositories/cli-preflight-api.js";
+import { repositoryHandlers as toolsGitHubHandlers } from "../../../extensions/github-repositories/runtime-api.js";
+import { installGitHubAccountFixture } from "../github-account-service.test-support.js";
 
 const github = vi.hoisted(() => ({
   createProfileId: vi.fn(() => "ghp_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
@@ -27,10 +28,11 @@ vi.mock("../../../extensions/github-repositories/tool-identity-api.js", () => ({
   resolveManagedGitHubProfileDir: github.profileDir,
   resolveGitHubToolIdentityStatus: github.status,
 }));
-vi.mock("../github-tool-identity-config.js", () => ({
+vi.mock("../../../extensions/github-repositories/tool-identity-config-api.js", () => ({
   updateGitHubToolIdentityConfig: github.updateConfig,
 }));
-vi.mock("../../secrets/store/secret-store.js", () => ({
+vi.mock("../../secrets/store/secret-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../secrets/store/secret-store.js")>()),
   consumeGitHubSetupHandoff: secrets.consumeHandoff,
 }));
 vi.mock("../../agents/agent-scope.js", async (importOriginal) => ({
@@ -82,17 +84,20 @@ async function invoke(
   params: Record<string, unknown>,
 ) {
   const respond = vi.fn();
+  const context = { getRuntimeConfig: () => ({}) };
+  const uninstall = installGitHubAccountFixture(context as never, oauth as never);
   await expectDefined(
     toolsGitHubHandlers[method],
     `${method} handler`,
   )({
     params,
     respond: respond as never,
-    context: { getRuntimeConfig: () => ({}), githubOAuthService: oauth } as never,
+    context: context as never,
     client: null,
     req: { type: "req", id: "req-github", method },
     isWebchatConnect: () => false,
   });
+  uninstall();
   return respond;
 }
 
