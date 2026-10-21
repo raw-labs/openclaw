@@ -65,6 +65,33 @@ Present the prompt to the user. If they approve:
 }
 ```
 
+### Rediscover a saved review
+
+Use `list` with `status: "waiting"` to find pending runs in this conversation,
+then `status` with `runId` to get pending wait IDs. Call `review` with `waitId`
+to read the saved prompt, schema, defaults, and material the user must review.
+Show that question to the user before requesting a decision. Do not infer approval
+from discovery or a stored run status.
+
+Resume with the reviewed `waitId` and its `expectedRevision`:
+
+```json
+{
+  "action": "resume",
+  "waitId": "<waitId>",
+  "expectedRevision": 1,
+  "approve": true
+}
+```
+
+For input, send the user's answer as `responseJson` instead of `approve`. Use
+`cancel: true` to cancel. A stale wait requires a fresh review. Existing `token`
+and `approvalId` calls remain supported; older untracked tokens may not appear
+in discovery. Caller association comes only from host context.
+
+Do not automatically retry a run left `running` by a crash or a result with
+`persistence_outcome_unknown`. Earlier external actions may already have happened.
+
 ## Example workflows
 
 ### Email triage
@@ -87,7 +114,8 @@ Same as above, but halts for approval before returning.
 
 - **Deterministic**: Same input → same output (no LLM variance in pipeline execution)
 - **Approval gates**: `approve` command halts execution, returns token
-- **Resumable**: Use `resume` action with token to continue
+- **Resumable**: Use `resume` with a reviewed wait ID and revision, or an existing token, to continue
+- **Discoverable**: Use `list`, `status`, and `review` after a restart; pending review context is saved independently of detailed history
 - **Structured output**: Always returns JSON envelope with `protocolVersion`
 
 ## Don't use Lobster for

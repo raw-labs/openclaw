@@ -6,16 +6,25 @@ import {
   createEmbeddedLobsterRunner,
   resolveLobsterCwd,
   type LobsterRunnerParams,
+  type LobsterRunner,
 } from "./lobster-runner.js";
-export function createLobsterTool() {
-  const runner = createEmbeddedLobsterRunner();
+export function createLobsterTool(options?: { runner?: LobsterRunner }) {
+  const runner = options?.runner ?? createEmbeddedLobsterRunner();
   return {
     name: "lobster",
     label: "Lobster Workflow",
     description:
-      "Run Lobster workflows with resumable approvals and structured input. For needs_input, ask the user the returned prompt, then resume with their answer as responseJson matching responseSchema. For approvals, resume with approve. Use cancel: true to cancel a checkpoint.",
+      "Run Lobster workflows and rediscover saved runs in this conversation. Use list (optionally status: waiting), status with runId for pending wait IDs, and review with waitId for the saved question and revision. Present the saved review to the user before resuming with waitId and expectedRevision. For needs_input use their answer as responseJson matching responseSchema; for approvals use approve. Existing token/approvalId resume remains supported. Use cancel: true to cancel. A running record after a crash does not authorize replay; never automatically retry uncertain side effects.",
     parameters: Type.Object({
-      action: Type.Enum(["run", "resume"], { type: "string" }),
+      action: Type.Enum(["run", "resume", "list", "status", "review"], { type: "string" }),
+      runId: Type.Optional(Type.String()),
+      waitId: Type.Optional(Type.String()),
+      expectedRevision: Type.Optional(Type.Integer({ minimum: 0 })),
+      status: Type.Optional(
+        Type.Enum(["running", "waiting", "completed", "failed", "cancelled"], { type: "string" }),
+      ),
+      after: Type.Optional(Type.String()),
+      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
       pipeline: Type.Optional(Type.String()),
       argsJson: Type.Optional(Type.String()),
       token: Type.Optional(Type.String()),
@@ -34,14 +43,20 @@ export function createLobsterTool() {
         }),
       ),
       timeoutMs: optionalPositiveIntegerSchema(),
-      maxStdoutBytes: optionalPositiveIntegerSchema(),
+      maxStdoutBytes: optionalPositiveIntegerSchema({ maximum: 2_000_000 }),
     }),
-    async execute(_id: string, params: Record<string, unknown>) {
+    async execute(_id: string, params: Record<string, unknown>, signal?: AbortSignal) {
       const action = typeof params.action === "string" ? params.action.trim() : "";
       if (!action) {
         throw new Error("action required");
       }
-      if (action !== "run" && action !== "resume") {
+      if (
+        action !== "run" &&
+        action !== "resume" &&
+        action !== "list" &&
+        action !== "status" &&
+        action !== "review"
+      ) {
         throw new Error(`Unknown action: ${action}`);
       }
 
@@ -51,6 +66,14 @@ export function createLobsterTool() {
 
       const runnerParams: LobsterRunnerParams = {
         action,
+        ...(typeof params.runId === "string" ? { runId: params.runId } : {}),
+        ...(typeof params.waitId === "string" ? { waitId: params.waitId } : {}),
+        ...(typeof params.expectedRevision === "number"
+          ? { expectedRevision: params.expectedRevision }
+          : {}),
+        ...(typeof params.status === "string" ? { status: readRunStatus(params.status) } : {}),
+        ...(typeof params.after === "string" ? { after: params.after } : {}),
+        ...(params.limit !== undefined ? { limit: readPositiveIntegerParam(params, "limit") } : {}),
         ...(typeof params.pipeline === "string" ? { pipeline: params.pipeline } : {}),
         ...(typeof params.argsJson === "string" ? { argsJson: params.argsJson } : {}),
         ...(typeof params.token === "string" ? { token: params.token } : {}),
@@ -63,8 +86,21 @@ export function createLobsterTool() {
         maxStdoutBytes,
       };
 
-      const envelope = await runner.run(runnerParams);
-      return jsonResult(envelope);
+      const envelope = await runner.run(runnerParams, signal);
+      return { ...jsonResult(envelope), ...(!envelope.ok ? { isError: true } : {}) };
     },
   };
+}
+
+function readRunStatus(status: string): NonNullable<LobsterRunnerParams["status"]> {
+  switch (status) {
+    case "running":
+    case "waiting":
+    case "completed":
+    case "failed":
+    case "cancelled":
+      return status;
+    default:
+      throw new Error("Invalid run status");
+  }
 }

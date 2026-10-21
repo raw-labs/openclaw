@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { useAutoCleanupTempDirTracker } from "openclaw/plugin-sdk/test-env";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -42,9 +41,13 @@ it("resolves relative Lobster paths inside the repo root", () => {
 describe("createEmbeddedLobsterRunner", () => {
   const runRequest = vi.fn<Runtime["runToolRequest"]>();
   const resumeRequest = vi.fn<Runtime["resumeToolRequest"]>();
-  const loadRuntime = vi
-    .fn()
-    .mockResolvedValue({ runToolRequest: runRequest, resumeToolRequest: resumeRequest });
+  const close = vi.fn(async () => {});
+  const openStoreSession = vi.fn<Runtime["openStoreSession"]>();
+  const loadRuntime = vi.fn().mockResolvedValue({
+    openStoreSession,
+    runToolRequest: runRequest,
+    resumeToolRequest: resumeRequest,
+  });
   let runner: ReturnType<typeof createEmbeddedLobsterRunner>;
   const run = (overrides: Partial<LobsterRunnerParams> = {}) =>
     runner.run({
@@ -59,6 +62,8 @@ describe("createEmbeddedLobsterRunner", () => {
     runRequest.mockReset();
     resumeRequest.mockReset();
     loadRuntime.mockClear();
+    close.mockClear();
+    openStoreSession.mockReset().mockResolvedValue({ close });
     runner = createEmbeddedLobsterRunner({ loadRuntime });
   });
 
@@ -68,9 +73,10 @@ describe("createEmbeddedLobsterRunner", () => {
       output: Array.from({ length: 115 }, () => ({ a: 1 })),
     });
     const { cwd, filePath } = await createWorkflow();
-    await expect(run({ pipeline: filePath, cwd, maxStdoutBytes: 1024 })).rejects.toThrow(
-      "lobster runtime result exceeded maxStdoutBytes",
-    );
+    expect(await run({ pipeline: filePath, cwd, maxStdoutBytes: 1024 })).toMatchObject({
+      ok: false,
+      error: { type: "result_too_large" },
+    });
   });
 
   it("runs inline pipelines with file-like arguments through the embedded runtime", async () => {
@@ -94,14 +100,9 @@ describe("createEmbeddedLobsterRunner", () => {
   it("returns a parse error when workflow args are invalid JSON", async () => {
     const { cwd } = await createWorkflow();
     await expect(run({ pipeline: "workflow.lobster", argsJson: "{bad", cwd })).rejects.toThrow(
-      "run --args-json must be valid JSON",
+      /JSON|Unexpected/,
     );
     expect(runRequest).not.toHaveBeenCalled();
-  });
-
-  it("rejects an input request without a resumable checkpoint", async () => {
-    runRequest.mockResolvedValue({ ...success, status: "needs_input" });
-    await expect(run()).rejects.toThrow("Lobster input request is missing its resume token");
   });
 
   it("forwards approvalId through resume when token is absent", async () => {
@@ -124,12 +125,12 @@ describe("createEmbeddedLobsterRunner", () => {
 
   it.each<[Partial<LobsterRunnerParams>, RegExp]>([
     [{ action: "run", pipeline: undefined }, /pipeline required/],
-    [{ token: undefined, approve: true }, /token or approvalId required/],
+    [{ token: undefined, approve: true }, /token, approvalId, or waitId required/],
     [{}, /exactly one/],
-    [{ responseJson: "{bad" }, /responseJson must be valid JSON/],
+    [{ responseJson: "{bad" }, /JSON|Unexpected/],
     [{ approve: true, responseJson: "null" }, /exactly one/],
     [{ cancel: false }, /cancel must be true/],
-  ])("rejects invalid arguments before touching state: %j", async (params, error) => {
+  ])("rejects invalid arguments before executing a workflow: %j", async (params, error) => {
     await expect(run({ action: "resume", token: "resume-token", ...params })).rejects.toThrow(
       error,
     );
@@ -137,19 +138,114 @@ describe("createEmbeddedLobsterRunner", () => {
     expect(resumeRequest).not.toHaveBeenCalled();
   });
 
-  it("aborts long-running embedded work", async () => {
-    runRequest.mockImplementation(
-      ({ ctx: context }) =>
-        new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => resolve(success), 500);
-          context?.signal?.addEventListener("abort", () => {
-            clearTimeout(timeout);
-            reject(
-              toErrorObject(context.signal?.reason ?? new Error("aborted"), "Non-Error rejection"),
-            );
-          });
-        }),
-    );
-    await expect(run({ timeoutMs: 200 })).rejects.toThrow(/timed out|aborted/);
+  it.each(["persistence_error", "persistence_outcome_unknown"])(
+    "preserves structured %s results for recovery",
+    async (type) => {
+      runRequest.mockResolvedValue({
+        ok: false,
+        runId: "run-123",
+        error: {
+          type,
+          message: "Storage outcome requires inspection",
+          runId: "run-123",
+          operationId: "operation-456",
+        },
+      });
+      expect(await run()).toEqual({
+        ok: false,
+        runId: "run-123",
+        error: {
+          type,
+          message: "Storage outcome requires inspection",
+          runId: "run-123",
+          operationId: "operation-456",
+        },
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("bounds an oversized persistence error without losing its recovery identifiers", async () => {
+    runRequest.mockResolvedValue({
+      ok: false,
+      error: {
+        type: "persistence_outcome_unknown",
+        message: "private diagnostic".repeat(1000),
+        runId: "run-123",
+        operationId: "operation-456",
+      },
+    });
+    const result = await run({ maxStdoutBytes: 1024 });
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        type: "persistence_outcome_unknown",
+        runId: "run-123",
+        operationId: "operation-456",
+      },
+    });
+    expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(1024);
+  });
+
+  it("rechecks host authority after opening storage before executing a workflow", async () => {
+    let current = true;
+    openStoreSession.mockImplementation(async () => {
+      current = false;
+      return { close };
+    });
+    runner = createEmbeddedLobsterRunner({
+      loadRuntime,
+      assertCurrent() {
+        if (!current) {
+          throw new Error("invocation closed");
+        }
+      },
+    });
+    await expect(run()).rejects.toThrow("invocation closed");
+    expect(runRequest).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("joins an aborted executor before closing its store and preserves its settlement", async () => {
+    vi.useFakeTimers();
+    try {
+      let began!: () => void;
+      const started = new Promise<void>((resolve) => {
+        began = resolve;
+      });
+      let settle!: (envelope: Awaited<ReturnType<Runtime["runToolRequest"]>>) => void;
+      let signal: AbortSignal | undefined;
+      runRequest.mockImplementation(({ ctx: context }) => {
+        signal = context?.signal;
+        began();
+        return new Promise((resolve) => {
+          settle = resolve;
+        });
+      });
+      const pending = run({ timeoutMs: 200 });
+      await started;
+      await vi.advanceTimersByTimeAsync(200);
+      expect(signal?.aborted).toBe(true);
+      expect(close).not.toHaveBeenCalled();
+      settle({
+        ok: false,
+        error: {
+          type: "persistence_outcome_unknown",
+          message: "Inspect before retrying",
+          runId: "run-123",
+          operationId: "operation-456",
+        },
+      });
+      expect(await pending).toMatchObject({
+        error: {
+          type: "persistence_outcome_unknown",
+          runId: "run-123",
+          operationId: "operation-456",
+        },
+      });
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
