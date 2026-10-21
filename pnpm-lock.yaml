@@ -1567,8 +1567,8 @@ importers:
   extensions/lobster:
     dependencies:
       '@clawdbot/lobster':
-        specifier: 2026.9.16
-        version: 2026.9.16
+        specifier: git+https://github.com/raw-labs/lobster.git#dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589
+        version: https://codeload.github.com/raw-labs/lobster/tar.gz/dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589
       typebox:
         specifier: 1.3.37
         version: 1.3.37
@@ -3775,8 +3775,9 @@ packages:
     resolution: {integrity: sha512-dlT1m5e/0yUL0kRNcQn7yGLVThkgbB0Ga/1AmfDDC/8ik6AIiSf2QLQO2zPYvefsHP0aFgxO93cVLCCfDp7kzQ==}
     engines: {node: '>= 20.12.0'}
 
-  '@clawdbot/lobster@2026.9.16':
-    resolution: {integrity: sha512-F7Izhqs6tdaSOp5l2vocqa+HXvqiPw3ny8o81kIguqUPL/jJ+72tpib2A5twxTPM2ruK23cdG1B8kO6joHUlVw==}
+  '@clawdbot/lobster@https://codeload.github.com/raw-labs/lobster/tar.gz/dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589':
+    resolution: {gitHosted: true, integrity: sha512-BjeKox/kgbJonylQTObttA7TD1kIlN+kkei6iEDBlnsCuWR5IFUKkr2EZ6jpnMPSACVZbAIdL+Ug05i4yit9FQ==, tarball: https://codeload.github.com/raw-labs/lobster/tar.gz/dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589}
+    version: 2026.9.16
     engines: {node: '>=22'}
     hasBin: true
 
@@ -12077,7 +12078,7 @@ snapshots:
       fast-wrap-ansi: 0.2.2
       sisteransi: 1.0.5
 
-  '@clawdbot/lobster@2026.9.16':
+  '@clawdbot/lobster@https://codeload.github.com/raw-labs/lobster/tar.gz/dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589':
     dependencies:
       ajv: 8.20.0
       yaml: 2.9.1

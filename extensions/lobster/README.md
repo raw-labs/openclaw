@@ -10,6 +10,17 @@ openclaw plugins install @openclaw/lobster
 
 Restart the Gateway after installing or updating the plugin.
 
+### RAW Labs source checkout
+
+This branch pins the engine to RAW Labs commit
+`dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589`, rather than the registry release.
+Run `pnpm install --frozen-lockfile` at the workspace root. The lockfile records
+that exact source and integrity; preparation is allowed only for that source and
+runs the engine's build before use. No sibling checkout or unpublished local
+artifact is required. This source integration has not been published to npm.
+The dependency pin, lock entry, and preparation allowlist are separate from the
+reusable plugin integration commit.
+
 ## What this is
 
 - Lobster is a standalone workflow shell (typed JSON-first pipelines + approval/input checkpoints).
