@@ -11,7 +11,10 @@ import { clearHealthChecksForTest } from "./health-check-registry.js";
 const { registerBundledHealthChecks } = vi.hoisted(() => ({
   registerBundledHealthChecks: vi.fn(),
 }));
-vi.mock("./bundled-health-checks.js", () => ({ registerBundledHealthChecks }));
+vi.mock("./bundled-health-checks.js", () => ({
+  registerBundledHealthChecks,
+  collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),
+}));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 beforeEach(clearHealthChecksForTest);

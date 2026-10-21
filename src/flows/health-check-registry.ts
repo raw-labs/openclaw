@@ -27,13 +27,16 @@ export function listHealthChecks(): readonly HealthCheck[] {
 export function listExtensionHealthChecksForDoctor(
   coreChecks: readonly Pick<HealthCheck, "id">[],
   unavailablePlugins: readonly HealthFinding[] = [],
+  preparedChecks: readonly HealthCheck[] = [],
 ): readonly HealthCheck[] {
   const coreIds = new Set(coreChecks.map((check) => check.id));
-  const registeredChecks = listHealthChecks();
+  const registeredChecks = [...listHealthChecks(), ...preparedChecks];
+  const seenIds = new Set<string>();
   for (const check of registeredChecks) {
-    if (check.id.startsWith("core/doctor/") || coreIds.has(check.id)) {
+    if (seenIds.has(check.id) || check.id.startsWith("core/doctor/") || coreIds.has(check.id)) {
       throw new HealthCheckRegistrationError(check.id);
     }
+    seenIds.add(check.id);
   }
   const checks: HealthCheck[] = [];
   for (const check of registeredChecks) {

@@ -20,13 +20,10 @@ import {
   createGatewayWriterFixture,
   resolveDoctorHealthContributions,
   runDoctorHealthContributionList,
+  setRegisteredHealthChecks,
 } from "./doctor-health-contributions.test-support.js";
 import { runDoctorLintChecks } from "./doctor-lint-flow.js";
-import {
-  clearHealthChecksForTest,
-  getHealthCheck,
-  registerHealthCheck,
-} from "./health-check-registry.js";
+import { clearHealthChecksForTest, getHealthCheck } from "./health-check-registry.js";
 import type { HealthCheck, HealthFinding } from "./health-checks.js";
 
 const mocks = vi.hoisted(() => {
@@ -230,6 +227,7 @@ vi.mock("../commands/doctor/shared/plugin-runtime-symlinks.js", () => ({
 
 vi.mock("./bundled-health-checks.js", () => ({
   registerBundledHealthChecks: mocks.registerBundledHealthChecks,
+  collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),
 }));
 
 vi.mock("./doctor-repair-flow.js", () => ({
@@ -754,15 +752,6 @@ function lintContext(
     runtime: { log: vi.fn(), error: vi.fn(), exit: vi.fn() },
     ...overrides,
   });
-}
-
-function setRegisteredHealthChecks(
-  checks: ReadonlyArray<Pick<HealthCheck, "id" | "kind"> & { defaultEnabled?: boolean }>,
-) {
-  clearHealthChecksForTest();
-  for (const check of checks) {
-    registerHealthCheck({ ...check, description: check.id, detect: async () => [] });
-  }
 }
 
 describe("doctor health contributions", () => {

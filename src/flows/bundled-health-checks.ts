@@ -6,7 +6,10 @@ import type {
   PluginStateEntry,
 } from "../plugin-state/plugin-state-store.js";
 import { normalizePluginId, normalizePluginsConfig } from "../plugins/config-state.js";
-import { passesManifestOwnerBasePolicy } from "../plugins/manifest-owner-policy.js";
+import {
+  isActivatedManifestOwner,
+  passesManifestOwnerBasePolicy,
+} from "../plugins/manifest-owner-policy.js";
 import { loadBundledPluginManifestRegistry } from "../plugins/manifest-registry-build.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.types.js";
 import { loadPluginManifestRegistryForPluginRegistry } from "../plugins/plugin-registry.js";
@@ -22,7 +25,11 @@ import { collectConfiguredWorkerProviderIds } from "../plugins/worker-provider-c
 import { listBundledWorkerProviderOwners } from "../plugins/worker-provider-manifest.js";
 import type { SetupSecretMigrationInspection } from "../secrets/setup-secret-migration.js";
 import { getHealthCheck, registerHealthCheck } from "./health-check-registry.js";
-import type { HealthFinding } from "./health-checks.js";
+import type {
+  HealthCheck,
+  HealthFinding,
+  PluginDoctorHealthRegistrationHost,
+} from "./health-checks.js";
 
 type EmbeddingProviderSetupInspectionResult =
   | Awaited<ReturnType<InspectEmbeddingProviderSetup>>
@@ -30,6 +37,7 @@ type EmbeddingProviderSetupInspectionResult =
 
 // Bridges bundled plugin doctor checks into the core health registry.
 type BundledHealthApi = {
+  registerDoctorHealthChecks?: (host: PluginDoctorHealthRegistrationHost) => void;
   probeCodexWorkspaceWriteSandbox?: (params: {
     cfg: OpenClawConfig;
     env?: NodeJS.ProcessEnv;
@@ -109,7 +117,6 @@ function defineHealthCheckRegistration(
 
 const HEALTH_CHECK_REGISTRATIONS = [
   defineHealthCheckRegistration(registerMemoryCoreHealthChecks, "post-plugin"),
-  defineHealthCheckRegistration(registerCodexHealthChecks),
   defineHealthCheckRegistration(registerPolicyHealthChecks),
   defineHealthCheckRegistration(registerCuaHealthChecks),
   defineHealthCheckRegistration(registerBundledWorkerProviderHealthChecks),
@@ -207,7 +214,9 @@ type CodexHealthApiSelection =
       status: "available";
       api: Pick<
         BundledHealthApi,
-        "registerCodexManagedAppServerDoctorChecks" | "probeCodexWorkspaceWriteSandbox"
+        | "registerDoctorHealthChecks"
+        | "registerCodexManagedAppServerDoctorChecks"
+        | "probeCodexWorkspaceWriteSandbox"
       >;
     };
 
@@ -270,33 +279,104 @@ export function resolveCodexHealthApi(
   }
 }
 
-function registerCodexHealthChecks(
-  params: BundledHealthCheckParams,
-  registerCheck: typeof registerHealthCheck,
-): HealthFinding[] {
-  const unavailable = (detail: string): HealthFinding[] => [
-    {
-      checkId: "core/doctor/codex-session-routes",
-      ...describePluginAvailabilityFailure("codex", detail),
+/** Declared light artifacts are selected once and retained only by this Doctor invocation. */
+export function collectDeclaredPluginDoctorHealthChecks(params: BundledHealthCheckParams): {
+  checks: readonly HealthCheck[];
+  findings: readonly HealthFinding[];
+} {
+  const checks = new Map<string, HealthCheck>();
+  const findings: HealthFinding[] = [];
+  const normalizedConfig = normalizePluginsConfig(params.cfg.plugins);
+  if (!normalizedConfig.enabled) {
+    return { checks: [], findings };
+  }
+  const discardOwnerChecks = (pluginId: string) => {
+    for (const [id, check] of checks) {
+      if (check.source === pluginId) {
+        checks.delete(id);
+      }
+    }
+  };
+  const hostFor = (pluginId: string): PluginDoctorHealthRegistrationHost => ({
+    getHealthCheck: (id) => checks.get(id),
+    registerHealthCheck(check) {
+      if (check.kind !== "plugin" || !check.id.startsWith(`${pluginId}/`) || checks.has(check.id)) {
+        throw new Error(
+          `Plugin ${pluginId} registered an invalid or duplicate Doctor check: ${check.id}`,
+        );
+      }
+      checks.set(check.id, { ...check, source: pluginId });
     },
-  ];
-  const selected = resolveCodexHealthApi(params);
-  if (selected.status === "not-configured") {
-    return [];
-  }
-  if (selected.status === "unavailable") {
-    return selected.reportAvailability ? unavailable(selected.reason) : [];
-  }
-  if (typeof selected.api.registerCodexManagedAppServerDoctorChecks !== "function") {
-    return unavailable(
-      "The selected Codex plugin's Doctor health checks are incomplete. Run openclaw plugins inspect codex --runtime --json for details, or openclaw triage for repair help.",
-    );
-  }
-  selected.api.registerCodexManagedAppServerDoctorChecks({
-    getHealthCheck,
-    registerHealthCheck: registerCheck,
   });
-  return [];
+  const unavailable = (pluginId: string, detail: string) => {
+    findings.push({
+      checkId:
+        pluginId === "codex"
+          ? "core/doctor/codex-session-routes"
+          : `plugins/${pluginId}/doctor-health`,
+      ...describePluginAvailabilityFailure(pluginId, detail),
+    });
+  };
+  // Published Codex packages already use api.js and the old named registration export.
+  // Its existing selector also owns implicit-runtime and trusted-install semantics.
+  const codex = resolveCodexHealthApi(params);
+  if (codex.status === "unavailable") {
+    if (codex.reportAvailability) {
+      unavailable("codex", codex.reason);
+    }
+  } else if (codex.status === "available") {
+    const register =
+      codex.api.registerDoctorHealthChecks ?? codex.api.registerCodexManagedAppServerDoctorChecks;
+    if (typeof register !== "function") {
+      unavailable(
+        "codex",
+        "The selected Codex plugin's Doctor health checks are incomplete. Run openclaw plugins inspect codex --runtime --json for details, or openclaw triage for repair help.",
+      );
+    } else {
+      try {
+        register(hostFor("codex"));
+      } catch (error) {
+        discardOwnerChecks("codex");
+        unavailable("codex", String(error));
+      }
+    }
+  }
+  const registry = loadPluginManifestRegistryForPluginRegistry({
+    config: params.cfg,
+    workspaceDir: params.cwd,
+    env: params.env ?? process.env,
+  });
+  for (const owner of registry.plugins) {
+    if (
+      owner.id === "codex" ||
+      owner.doctorHealthChecks !== true ||
+      !isActivatedManifestOwner({ plugin: owner, normalizedConfig, rootConfig: params.cfg })
+    ) {
+      continue;
+    }
+    try {
+      if (owner.origin !== "bundled" && owner.trustedOfficialInstall !== true) {
+        throw new Error("Doctor health checks require a bundled or verified official plugin");
+      }
+      const api = loadPluginPublicArtifactModuleSync<
+        Pick<BundledHealthApi, "registerDoctorHealthChecks">
+      >({
+        pluginRoot: owner.rootDir,
+        pluginId: owner.id,
+        artifactBasename: "api.js",
+        origin: owner.origin === "bundled" ? "bundled" : "global",
+      });
+      if (typeof api.registerDoctorHealthChecks !== "function") {
+        throw new Error("declared api.js is missing registerDoctorHealthChecks");
+      }
+      api.registerDoctorHealthChecks(hostFor(owner.id));
+    } catch (error) {
+      // A partial registration cannot leave executable checks from an unavailable owner.
+      discardOwnerChecks(owner.id);
+      unavailable(owner.id, String(error));
+    }
+  }
+  return { checks: [...checks.values()], findings };
 }
 
 function registerPolicyHealthChecks(
