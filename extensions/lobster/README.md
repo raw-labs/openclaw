@@ -13,7 +13,7 @@ Restart the Gateway after installing or updating the plugin.
 ### RAW Labs source checkout
 
 This branch pins the engine to RAW Labs commit
-`dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589`, rather than the registry release.
+`53b270b15cb525cca1458fb387d63621c1e2c7a9`, rather than the registry release.
 Run `pnpm install --frozen-lockfile` at the workspace root. The lockfile records
 that exact source and integrity; preparation is allowed only for that source and
 runs the engine's build before use. No sibling checkout or unpublished local
@@ -55,7 +55,9 @@ Enable it in an agent allowlist:
 
 The default file backend keeps existing checkpoints usable. Run tracking is enabled
 for calls with a trusted host agent and logical session key; detailed history is
-off by default. The plugin derives the caller association from that host context,
+off by default. Detailed step/event history is inspected with the engine CLI;
+the plugin's `status` action returns a run summary and pending waits. The plugin
+derives the caller association from that host context,
 never from tool arguments. It follows the logical conversation across Gateway
 restarts and `/new` or `/reset`; it is conversation scoped, not a separate user
 authentication system.
@@ -80,8 +82,11 @@ Optional plugin configuration:
 
 Omit `directory` to preserve `LOBSTER_STATE_DIR` and the engine's default state
 location. Omit `backend` to honor the store's selection or `LOBSTER_BACKEND`,
-otherwise files. SQLite is opt-in and runs in the engine's worker. It stores
-runtime state, checkpoints, and run records; workflow definitions remain files.
+otherwise files. SQLite is opt-in and runs in the engine's worker. The engine
+checks that worker's actual SQLite version and rejects versions affected by the
+WAL-reset bug. Upgrade the runtime or use a patched SQLite library if rejected;
+the file backend is unaffected. SQLite stores runtime state, checkpoints, and run
+records; workflow definitions remain files.
 An existing file store requires explicit offline migration with the matching
 Lobster CLI after all writers have stopped:
 
@@ -122,10 +127,21 @@ tool response. The plugin does not send unsolicited channel messages at startup.
 Calls without a stable host identity can still run and use legacy bearer tokens,
 but cannot list, inspect, or resume by wait ID.
 
-Existing tokens and approval IDs retain their bearer semantics. Legacy checkpoint
-adoption may create a partial run without a caller association; such a run does
-not appear in conversation-scoped discovery. Keep its token or use the local
-engine CLI under operator control. The plugin does not infer or reassign an owner.
+Existing tokens and approval IDs retain their bearer semantics. A legacy checkpoint
+first associated during token resume may have partial history and no caller; it
+stays outside conversation-scoped discovery. An operator can explicitly inventory
+and adopt a saved checkpoint with the matching engine CLI:
+
+```bash
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy list
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy adopt <checkpointId> --caller <trustedCallerId>
+```
+
+The caller ID must match the plugin's SHA-256 hash of the JSON array
+`[agentId, sessionKey]`, derived from trusted host context. Adoption preserves old
+tokens and does not execute steps, fabricate missing history, or reassign an
+existing owner. The plugin does not infer ownership or expose adoption to model
+arguments.
 
 A stored pause can be resumed after restart. A run interrupted during a side effect
 is not automatically replayed. `running` is the last stored status, not proof of a

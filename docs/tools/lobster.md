@@ -374,7 +374,9 @@ OpenClaw user or session.
 ## Durable runs and pending reviews
 
 New runs retain their status and pending review context independently of detailed
-history. The plugin associates runs with the trusted host agent and logical
+history. Detailed step/event history is available through the engine CLI; the
+plugin's `status` action returns a run summary and pending waits. The plugin
+associates runs with the trusted host agent and logical
 session key. This association survives Gateway restarts and `/new` or `/reset`
 in that conversation; the model cannot supply or override it. It is a conversation
 filter, not an independent user authentication system.
@@ -447,8 +449,11 @@ and optional detailed history through the plugin:
 
 Omit `directory` to keep `LOBSTER_STATE_DIR` or the engine's default location.
 Omit `backend` to honor the selected store or `LOBSTER_BACKEND`, otherwise files.
-SQLite is opt-in and uses an engine-owned worker. It holds mutable runtime
-state, checkpoints, and run records; workflow definitions remain ordinary files.
+SQLite is opt-in and uses an engine-owned worker. The engine checks that worker's
+actual SQLite version and rejects versions affected by the WAL-reset bug. Upgrade
+the runtime or use a patched SQLite library if rejected; the file backend is
+unaffected. SQLite holds mutable runtime state, checkpoints, and run records;
+workflow definitions remain ordinary files.
 Each operation opens a store session and closes it after accepted engine work
 settles. The plugin does not leave a process waiting for a user decision.
 
@@ -462,10 +467,21 @@ LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage migrate sqlite --offlin
 The plugin does not migrate or prune stores automatically. A backend mismatch
 returns an error and preserves the existing store. Migration preserves existing
 checkpoints and records; it cannot recreate missing history. Existing untracked
-checkpoints remain resumable by token. Their later adoption may create a partial
-run without a caller association, which stays outside conversation-scoped
-discovery. The plugin never guesses or reassigns that ownership; retain the token
-or inspect the store through the local operator-controlled CLI.
+checkpoints remain resumable by token. First association on token resume may
+create an unowned partial run, which stays outside conversation-scoped discovery.
+Operators can explicitly inventory and adopt saved checkpoints with the matching
+engine CLI:
+
+```bash
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy list
+LOBSTER_STATE_DIR=/path/to/lobster-state lobster storage legacy adopt <checkpointId> --caller <trustedCallerId>
+```
+
+The trusted caller ID must match the plugin's SHA-256 hash of the JSON array
+`[agentId, sessionKey]`. Adoption preserves tokens, does not execute steps, and
+cannot recreate missing questions or history or reassign an existing owner.
+The plugin never guesses ownership or accepts an adoption owner from model
+arguments.
 
 Calls lacking a trusted agent and logical session key retain legacy run/token
 behavior, but cannot use scoped discovery or wait-ID resume. A saved `running`

@@ -69,6 +69,7 @@ type EmbeddedToolContext = {
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
   signal?: AbortSignal;
+  assertInvocationCurrent?: () => void;
 };
 
 // @clawdbot/lobster/core loads dynamically so its SQLite worker stays in the plugin dependency.
@@ -254,6 +255,7 @@ export function createEmbeddedLobsterRunner(options?: {
           stdout: createLimitedSink(maxBytes, "stdout"),
           stderr: createLimitedSink(maxBytes, "stderr"),
           signal: requestSignal,
+          assertInvocationCurrent: options?.assertCurrent,
         };
         const assertCurrent = () => {
           requestSignal.throwIfAborted();

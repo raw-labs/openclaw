@@ -109,7 +109,7 @@ overrides:
 
 allowBuilds:
   # RAW Labs Lobster persistence fork: prepare only this reviewed commit.
-  "@clawdbot/lobster@https://codeload.github.com/raw-labs/lobster/tar.gz/dbf99e2f3dca54c8ff0fbae7c00b3cf87497f589": true
+  "@clawdbot/lobster@https://codeload.github.com/raw-labs/lobster/tar.gz/53b270b15cb525cca1458fb387d63621c1e2c7a9": true
   onnxruntime-node: false
   "@google/genai": true
   "@lydell/node-pty": true

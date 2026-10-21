@@ -187,6 +187,30 @@ describe("createEmbeddedLobsterRunner", () => {
     expect(Buffer.byteLength(JSON.stringify(result), "utf8")).toBeLessThanOrEqual(1024);
   });
 
+  it("stops an engine effect when host authority closes during execution preparation", async () => {
+    let current = true;
+    const effect = vi.fn();
+    runRequest.mockImplementation(async ({ ctx: context }) => {
+      await Promise.resolve();
+      current = false;
+      context?.assertInvocationCurrent?.();
+      effect();
+      return success;
+    });
+    runner = createEmbeddedLobsterRunner({
+      loadRuntime,
+      assertCurrent() {
+        if (!current) {
+          throw new Error("invocation closed");
+        }
+      },
+    });
+
+    await expect(run()).rejects.toThrow("invocation closed");
+    expect(effect).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
   it("rechecks host authority after opening storage before executing a workflow", async () => {
     let current = true;
     openStoreSession.mockImplementation(async () => {
