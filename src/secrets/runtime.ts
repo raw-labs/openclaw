@@ -41,7 +41,10 @@ import {
   mergeSecretsRuntimeEnv,
   resolveRefreshAgentDirs,
 } from "./runtime-fast-path.js";
-import type { SecretResolverWarning } from "./runtime-shared.js";
+import type {
+  SecretResolverWarning,
+  SecretExecutionEnvironmentExclusions,
+} from "./runtime-shared.js";
 import {
   activateProviderAuthRuntimeSnapshot,
   activateSecretsRuntimeSnapshotState,
@@ -119,7 +122,7 @@ export async function prepareSecretsRuntimeSnapshot(params: {
   agentDirs?: string[];
   /** Caller-owned dirs retained across refreshes, distinct from the current config roster. */
   explicitAgentDirs?: readonly string[] | null;
-  /** Skip config and web-tool refs when only auth-profile stores need materialization. */
+  /** Skip config/web materialization; still prepare declared child-execution exclusions. */
   includeConfigRefs?: boolean;
   includeAuthStoreRefs?: boolean;
   loadAuthStore?: (agentDir?: string) => AuthProfileStore | Promise<AuthProfileStore>;
@@ -187,6 +190,33 @@ export async function prepareSecretsRuntimeSnapshot(params: {
     authStores = loaded.authStores;
     migrationDegradedOwners = loaded.degradedOwners;
   }
+  let executionEnvironmentExclusions: SecretExecutionEnvironmentExclusions | undefined;
+  if (
+    !includeConfigRefs &&
+    isRecord(sourceConfig.plugins?.entries) &&
+    Object.keys(sourceConfig.plugins.entries).length > 0
+  ) {
+    // CLI config resolution owns materialization. This same metadata pass records only names.
+    const [{ collectPluginConfigAssignments }, { createResolverContext }] = await Promise.all([
+      import("./runtime-config-collectors-plugins.js"),
+      import("./runtime-shared.js"),
+    ]);
+    const exclusionManifestRegistry =
+      params.manifestRegistry ?? params.pluginMetadataSnapshot?.manifestRegistry;
+    const exclusionContext = createResolverContext({
+      sourceConfig,
+      env: runtimeEnv,
+      ...(exclusionManifestRegistry ? { manifestRegistry: exclusionManifestRegistry } : {}),
+    });
+    collectPluginConfigAssignments({
+      config: sourceConfig,
+      defaults: sourceConfig.secrets?.defaults,
+      context: exclusionContext,
+      loadablePluginOrigins: params.loadablePluginOrigins,
+      mode: "execution-exclusions",
+    });
+    executionEnvironmentExclusions = exclusionContext.executionEnvironmentExclusions;
+  }
   if (
     canUseSecretsRuntimeFastPath({
       sourceConfig: includeConfigRefs ? assignmentSourceConfig : {},
@@ -205,6 +235,7 @@ export async function prepareSecretsRuntimeSnapshot(params: {
       degradedOwners: migrationDegradedOwners,
       secretOwners: [],
       webTools: createEmptyRuntimeWebToolsMetadata(),
+      ...(executionEnvironmentExclusions ? { executionEnvironmentExclusions } : {}),
     };
     setPreparedSecretsRuntimeSnapshotRefreshContext(snapshot, {
       env: runtimeEnv,
@@ -245,6 +276,9 @@ export async function prepareSecretsRuntimeSnapshot(params: {
     ...(manifestRegistry ? { manifestRegistry } : {}),
   });
 
+  if (executionEnvironmentExclusions) {
+    context.executionEnvironmentExclusions = executionEnvironmentExclusions;
+  }
   if (includeConfigRefs) {
     await collectConfigAssignments({
       config: resolvedConfig,
@@ -328,6 +362,9 @@ export async function prepareSecretsRuntimeSnapshot(params: {
     ],
     secretOwners: [...assignmentSecretOwners, ...webTools.secretOwners],
     webTools: webTools.metadata,
+    ...(context.executionEnvironmentExclusions
+      ? { executionEnvironmentExclusions: context.executionEnvironmentExclusions }
+      : {}),
   };
   setPreparedSecretsRuntimeSnapshotRefreshContext(snapshot, {
     env: runtimeEnv,

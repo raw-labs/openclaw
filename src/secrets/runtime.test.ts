@@ -3,7 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.ts";
-import { setConfigResolutionFacts } from "../config/resolution-facts.js";
+import {
+  setConfigResolutionFacts,
+  restoreConfigResolutionFacts,
+} from "../config/resolution-facts.js";
 import { getRuntimeConfigSnapshotRefreshHandler } from "../config/runtime-snapshot.js";
 import { redactSensitiveText } from "../logging/redact.js";
 import { resetSecretRedactionRegistryForTest } from "../logging/secret-redaction-registry.test-support.js";
@@ -11,6 +14,8 @@ import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.
 import { assertSecretOwnerAvailable } from "./runtime-degraded-state.js";
 import {
   activateSecretsRuntimeSnapshotState,
+  getActiveSecretsRuntimeConfigSnapshot,
+  getActiveSecretsRuntimeSnapshotState,
   clearSecretsRuntimeSnapshotState,
 } from "./runtime-state.js";
 import { activateSecretsRuntimeSnapshot } from "./runtime.js";
@@ -512,5 +517,135 @@ describe("secrets runtime snapshot", () => {
         loadablePluginOrigins: EMPTY_LOADABLE_PLUGIN_ORIGINS,
       }),
     ).rejects.toThrow(/must not include "\." or "\.\." path segments/i);
+  });
+});
+
+function executionSecretMetadata() {
+  return createPluginMetadataSnapshotFixture({
+    plugins: [
+      {
+        id: "execution-fixture",
+        origin: "bundled",
+        configContracts: {
+          secretInputs: {
+            bundledDefaultEnabled: true,
+            paths: ["service.token", "system.app.privateKey", "agents.*.app.privateKey"].map(
+              (configPath) => ({
+                path: configPath,
+                ownerKind: "capability" as const,
+                executionEnvironment: "exclude" as const,
+              }),
+            ),
+          },
+        },
+      },
+      {
+        id: "ordinary-fixture",
+        origin: "config",
+        configContracts: { secretInputs: { paths: [{ path: "token" }] } },
+      },
+    ],
+  });
+}
+
+it.each([true, false])(
+  "withholds dormant declared refs without resolving them (config refs prepared=%s)",
+  async (includeConfigRefs) => {
+    const app = (privateKey: unknown) => ({ app: { privateKey } });
+    const config = asConfig({
+      ...explicitMainRoster(),
+      plugins: {
+        entries: {
+          "execution-fixture": {
+            enabled: false,
+            config: {
+              service: { token: "${NATIVE_SERVICE_TOKEN}" },
+              system: app(envRef("NATIVE_APP_KEY")),
+              agents: {
+                "release.ops": app({
+                  source: "store",
+                  provider: "default",
+                  id: "NATIVE_STORED_KEY",
+                }),
+                file: app({ source: "file", provider: "unavailable", id: "/value" }),
+                exec: app({ source: "exec", provider: "unavailable", id: "value" }),
+              },
+            },
+          },
+          "ordinary-fixture": { enabled: true, config: { token: envRef("ORDINARY_TOKEN") } },
+        },
+      },
+    });
+    const assignmentConfig = structuredClone(config);
+    if (!includeConfigRefs) {
+      assignmentConfig.plugins!.entries!["ordinary-fixture"]!.config!.token =
+        "synthetic-cli-resolved-value";
+    }
+    const snapshot = await prepareSecretsRuntimeSnapshot({
+      config,
+      assignmentConfig,
+      includeConfigRefs,
+      env: includeConfigRefs ? { ORDINARY_TOKEN: "synthetic-ordinary-value" } : {},
+      loadablePluginOrigins: new Map([
+        ["execution-fixture", "bundled"],
+        ["ordinary-fixture", "config"],
+      ]),
+      pluginMetadataSnapshot: executionSecretMetadata(),
+    });
+    const expected = {
+      credentialScrubEnv: { NATIVE_SERVICE_TOKEN: "", NATIVE_APP_KEY: "", NATIVE_STORED_KEY: "" },
+      excludedStoreNames: ["NATIVE_STORED_KEY"],
+    };
+    expect(snapshot.executionEnvironmentExclusions).toEqual(expected);
+    expect(snapshot.config.plugins?.entries?.["execution-fixture"]?.config).toEqual(
+      config.plugins?.entries?.["execution-fixture"]?.config,
+    );
+    expect(snapshot.config.plugins?.entries?.["ordinary-fixture"]?.config?.token).toBe(
+      includeConfigRefs ? "synthetic-ordinary-value" : "synthetic-cli-resolved-value",
+    );
+    expect(snapshot.degradedOwners).toEqual([]);
+    activateSecretsRuntimeSnapshot(snapshot);
+    expect(getActiveSecretsRuntimeConfigSnapshot()?.executionEnvironmentExclusions).toEqual(
+      expected,
+    );
+    expect(getActiveSecretsRuntimeSnapshotState()?.executionEnvironmentExclusions).toEqual(
+      expected,
+    );
+  },
+);
+
+it("keeps already substituted authored env references on ordinary secret preparation", async () => {
+  const config = asConfig({
+    ...explicitMainRoster(),
+    plugins: {
+      entries: {
+        "execution-fixture": {
+          enabled: false,
+          config: { service: { token: "synthetic-already-substituted-value" } },
+        },
+      },
+    },
+  });
+  restoreConfigResolutionFacts(config, {
+    unresolvedPaths: [],
+    envSecretRefs: [
+      [
+        "plugins.entries.execution-fixture.config.service.token",
+        { state: "resolved", ref: envRef("ALREADY_SUBSTITUTED_TOKEN") },
+      ],
+    ],
+  });
+  const snapshot = await prepareSecretsRuntimeSnapshot({
+    config,
+    env: {},
+    loadablePluginOrigins: new Map([["execution-fixture", "bundled"]]),
+    pluginMetadataSnapshot: executionSecretMetadata(),
+  });
+  expect(snapshot.executionEnvironmentExclusions).toEqual({
+    credentialScrubEnv: { ALREADY_SUBSTITUTED_TOKEN: "" },
+    excludedStoreNames: [],
+  });
+  expect(snapshot.config.plugins?.entries?.["execution-fixture"]?.config?.service).toEqual({
+    token: "synthetic-already-substituted-value",
   });
 });

@@ -472,6 +472,9 @@ function normalizeManifestSecretInputPaths(
       path: pathLocal,
       ...(expected ? { expected } : {}),
       ...(ownerKind ? { ownerKind } : {}),
+      ...(entry.executionEnvironment === "exclude"
+        ? { executionEnvironment: "exclude" as const }
+        : {}),
     };
   });
 }
