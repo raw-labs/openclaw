@@ -1356,6 +1356,12 @@ importers:
 
   extensions/github-repositories:
     dependencies:
+      '@openclaw/fs-safe':
+        specifier: 0.26.8
+        version: 0.26.8
+      '@openclaw/gateway-protocol':
+        specifier: workspace:*
+        version: link:../../packages/gateway-protocol
       '@openclaw/normalization-core':
         specifier: workspace:*
         version: link:../../packages/normalization-core
@@ -1368,6 +1374,9 @@ importers:
       yaml:
         specifier: 2.9.1
         version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*

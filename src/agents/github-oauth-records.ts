@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { GitHubOAuthTokenPair } from "../../extensions/github-repositories/oauth-api.js";
+import { isManagedGitHubProfileId } from "../../extensions/github-repositories/profile-id-api.js";
 import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
-import { isManagedGitHubProfileId } from "../config/github-identity-profile-id.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import {
   deleteHiddenGitHubSecretRecord,

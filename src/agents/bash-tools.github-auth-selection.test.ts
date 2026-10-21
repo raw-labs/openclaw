@@ -2,9 +2,9 @@ import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { resolveManagedGitHubProfileDir } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createExecTool } from "./bash-tools.exec-run.js";
-import { resolveManagedGitHubProfileDir } from "./github-tool-identity.js";
 
 const relayCapture = vi.hoisted(() => ({
   sends: undefined as MockInstance<ChildProcess["send"]>[] | undefined,

@@ -1,5 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  GitHubAccountMismatchError,
+  resolveConfiguredGitHubToolIdentity,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
@@ -12,10 +16,6 @@ import {
   type GitHubOAuthRecord,
   type GitHubIdentityScope,
 } from "../agents/github-oauth-records.js";
-import {
-  GitHubAccountMismatchError,
-  resolveConfiguredGitHubToolIdentity,
-} from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { writeHiddenGitHubSecretRecord } from "../secrets/store/secret-store.js";
@@ -72,8 +72,11 @@ vi.mock("../agents/github-oauth-records.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/github-tool-identity.js")>();
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-api.js")
+    >();
   return {
     ...actual,
     createManagedGitHubProfileId: mocks.createProfileId,

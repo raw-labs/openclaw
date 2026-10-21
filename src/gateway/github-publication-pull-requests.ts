@@ -1,7 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import { resolveGitHubHost } from "../agents/github-host-runtime.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import { GitHubPublicationKnownFailure } from "./github-publication-failure.js";
 import {

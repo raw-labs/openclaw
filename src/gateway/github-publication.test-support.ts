@@ -68,8 +68,11 @@ const mocks = vi.hoisted(() => ({
 
 export const githubPublicationTestMocks = () => mocks;
 
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/github-tool-identity.js")>();
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-api.js")
+    >();
   return {
     ...actual,
     matchesPreparedGitHubPublicationIdentity: mocks.matchesIdentity,

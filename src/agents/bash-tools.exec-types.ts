@@ -1,3 +1,4 @@
+import type { PreparedGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity.types-api.js";
 import type { NodePermissionRequest } from "../../packages/gateway-protocol/src/node-permissions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { EventSessionRoutingPolicy } from "../infra/event-session-routing.js";
@@ -19,7 +20,6 @@ import type { ExecToolRoutingDefaults } from "./bash-tools.exec-routing.types.js
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import type { EmbeddedFullAccessBlockedReason } from "./embedded-agent-runner/types.js";
 import type { ExecReviewerConfig } from "./exec-auto-reviewer.js";
-import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
 
 type ExecProcessFailureKind =
   | "shell-command-not-found"

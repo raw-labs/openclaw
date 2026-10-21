@@ -1,4 +1,5 @@
-import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { GitHubToolAccount } from "./tool-account-api.js";
 
 export type PreparedGitHubToolEnvironment = Readonly<{
   credentialScrubEnv: Readonly<Record<string, string>>;
@@ -21,3 +22,5 @@ export type PreparedGitHubPublicationIdentity = Readonly<{
   stale?: true;
   accessExpiresAtMs?: number;
 }>;
+
+export type GitHubToolIdentityConfig = NonNullable<NonNullable<OpenClawConfig["tools"]>["github"]>;

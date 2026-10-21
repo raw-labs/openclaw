@@ -3,7 +3,7 @@ import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
 } from "../../extensions/github-repositories/host-api.js";
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
+import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import { runGitReadOperation } from "../infra/git-read-cache.js";
 import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";

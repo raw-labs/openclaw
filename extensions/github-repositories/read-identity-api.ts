@@ -3,16 +3,19 @@ import path from "node:path";
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { hasErrnoCode } from "../infra/errno.js";
-import { resolveExecutablePath } from "../infra/executable-path.js";
-import { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.js";
-import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
-import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
-import { runCommandBuffered } from "../process/exec.js";
-import { withGitProcessOperation } from "../process/spawn-diagnostics.js";
-import type { GitHubCredentialReader } from "./github-credential-reader.js";
-import { resolveGitHubHost } from "./github-host-runtime.js";
+import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import {
+  hasErrnoCode,
+  resolveExecutablePath,
+  mergeProcessEnv,
+  resolveEnvironmentValue,
+  runCommandBuffered,
+  withGitProcessOperation,
+} from "openclaw/plugin-sdk/process-runtime";
+import type { GitHubCredentialReader } from "./credential-reader-api.js";
+import { resolveGitHubHost } from "./host-runtime-api.js";
 
 const GITHUB_IDENTITY_COMMAND_TIMEOUT_MS = 15_000;
 export const GITHUB_IDENTITY_OUTPUT_LIMIT_BYTES = 32 * 1024;

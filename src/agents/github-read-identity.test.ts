@@ -3,6 +3,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import {
+  assertPreparedSessionSourceCurrent,
+  prepareSessionSourceAuthority,
+} from "../config/sessions/session-source-authority.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -15,20 +19,20 @@ const { run } = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../process/exec.js", () => ({ runCommandBuffered: run }));
 
 import {
-  clearRuntimeConfigSnapshot,
-  setRuntimeConfigSnapshot,
-} from "../config/runtime-snapshot.js";
-import {
   clearNativeGitHubTokenCache,
   createGitHubReadIdentity,
   readCachedNativeGitHubToken,
   readNativeGitHubToken,
-} from "./github-read-identity.js";
+} from "../../extensions/github-repositories/read-identity-api.js";
 import {
   prepareGitHubPublicationIdentity,
   prepareGitHubReadIdentity as prepareRead,
   resolveManagedGitHubProfileDir,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const native = (env: NodeJS.ProcessEnv) => readNativeGitHubToken(env, true);
@@ -565,8 +569,11 @@ describe("prepared GitHub read authority", () => {
     const rotated = await prepare();
     expect(rotated.selection).toEqual(identity.selection);
     expect(rotated.cacheScope).not.toBe(identity.cacheScope);
+    const prepared = await prepareSessionSourceAuthority(rotated.assertSelected);
     config = configured(replacementProfileId);
     expect(() => rotated.assertSelected()).toThrow("identity changed");
+    // Writer preparation must retain the selection check, not classify it as an external callback.
+    expect(() => assertPreparedSessionSourceCurrent(prepared)).toThrow("identity changed");
     expect(run).not.toHaveBeenCalled();
   });
 

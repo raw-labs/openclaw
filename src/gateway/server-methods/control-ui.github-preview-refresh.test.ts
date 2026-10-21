@@ -1,9 +1,9 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
 import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
+import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
-import { clearNativeGitHubTokenCache } from "../../agents/github-read-identity.js";
-import * as githubIdentity from "../../agents/github-tool-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,

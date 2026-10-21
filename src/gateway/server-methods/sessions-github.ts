@@ -1,3 +1,4 @@
+import { GitHubIdentityError } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
   type GatewayCoreRequestParams,
@@ -10,7 +11,6 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { SessionGitHubOptionsResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { raceWithTimeout } from "../../../packages/retry/src/index.js";
-import { GitHubIdentityError } from "../../agents/github-read-identity.js";
 import { canRefreshGitHubPublicationBase } from "../../agents/sandbox/github-publication.js";
 import { getGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { normalizeAgentId } from "../../routing/session-key.js";

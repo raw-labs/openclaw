@@ -1,17 +1,17 @@
 import os from "node:os";
 import path from "node:path";
 import { inspectPathPermissions } from "@openclaw/fs-safe/permissions";
-import type { WorkerHeartbeatResult } from "../../packages/gateway-protocol/src/schema/worker-admission.js";
-import { CLEARED_GITHUB_CREDENTIALS } from "../agents/github-host-runtime.js";
-import {
-  AGENT_GIT_CONFIG_PARAMETERS,
-  managedGitHubIdentityEnvironment,
-} from "../agents/github-tool-identity-env.js";
 import {
   removeManagedGitHubProfile,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
-import type { PreparedGitHubToolEnvironment } from "../agents/github-tool-identity.types.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import {
+  AGENT_GIT_CONFIG_PARAMETERS,
+  managedGitHubIdentityEnvironment,
+} from "../../extensions/github-repositories/tool-identity-env-api.js";
+import type { PreparedGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity.types-api.js";
+import type { WorkerHeartbeatResult } from "../../packages/gateway-protocol/src/schema/worker-admission.js";
+import { CLEARED_GITHUB_CREDENTIALS } from "../agents/github-host-runtime.js";
 import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
 import { executeGitCommand } from "../infra/git-exec.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";

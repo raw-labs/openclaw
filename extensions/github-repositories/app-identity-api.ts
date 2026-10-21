@@ -1,12 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
-import type { GitHubIdentityFacts } from "../../packages/gateway-protocol/src/index.js";
+import type { GitHubIdentityFacts } from "@openclaw/gateway-protocol";
 import {
   prepareGitHubAppInstallation,
   readGitHubAppInstallationMetadata,
-} from "./github-app-installation.js";
-import type { GitHubAppSelection, GitHubCredentialReader } from "./github-credential-reader.js";
-import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "./github-host-runtime.js";
-import { GitHubIdentityError, type GitHubIdentityPreparation } from "./github-read-identity.js";
+} from "./app-installation-api.js";
+import type { GitHubAppSelection, GitHubCredentialReader } from "./credential-reader-api.js";
+import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "./host-runtime-api.js";
+import { GitHubIdentityError, type GitHubIdentityPreparation } from "./read-identity-api.js";
 
 export async function prepareAppGitHubIdentity(
   params: GitHubIdentityPreparation & {

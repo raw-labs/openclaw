@@ -3,6 +3,7 @@ import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
 } from "../../../extensions/github-repositories/host-api.js";
+import { readCachedNativeGitHubToken } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
   GatewayErrorDetailCodes,
@@ -14,7 +15,6 @@ import {
   validateProjectsRemoveParams,
   validateProjectsSearchRemoteParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import { readCachedNativeGitHubToken } from "../../agents/github-read-identity.js";
 import { readRegistryWorktrees } from "../../agents/worktrees/registry-read.js";
 import {
   captureWorktreeRegistryAuthority,

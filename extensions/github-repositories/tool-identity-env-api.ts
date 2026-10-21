@@ -1,9 +1,11 @@
-import { GITHUB_PUBLIC_HOST } from "../../extensions/github-repositories/host-api.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { isSecretRef, isValidEnvSecretRefId } from "../config/types.secrets.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
-import { CLEARED_GITHUB_CREDENTIALS } from "./github-host-runtime.js";
-import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { isSecretRef, isValidEnvSecretRefId } from "openclaw/plugin-sdk/secret-input";
+import { GITHUB_PUBLIC_HOST } from "./host-api.js";
+import { CLEARED_GITHUB_CREDENTIALS } from "./host-runtime-api.js";
+import type {
+  GitHubToolIdentityConfig,
+  PreparedGitHubToolEnvironment,
+} from "./tool-identity.types-api.js";
 
 export const AGENT_GIT_CONFIG_PARAMETERS = "'maintenance.auto=false' 'gc.auto=0'";
 

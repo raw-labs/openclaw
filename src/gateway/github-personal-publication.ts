@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { preparePersonalGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   SessionGitHubConfirmParams,
   SessionGitHubPublicationResult,
   SessionGitHubPublishParams,
   SessionGitHubStatusResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { preparePersonalGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { acquireWorktreeRunLease } from "../agents/worktrees/run-lease.js";
 import { resolveSessionWorkStartError } from "../config/sessions/lifecycle.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";

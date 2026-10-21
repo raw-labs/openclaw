@@ -486,7 +486,8 @@
     "!dist/plugin-sdk/node-crypto-runtime.d.ts",
     "!dist/plugin-sdk/path-existence-runtime.d.ts",
     "!dist/plugin-sdk/provider-auth-markers.d.ts",
-    "!dist/plugin-sdk/terminal-safe-text.d.ts"
+    "!dist/plugin-sdk/terminal-safe-text.d.ts",
+    "!dist/plugin-sdk/repository-identity-host.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -769,6 +770,9 @@
     },
     "./plugin-sdk/exec-approvals-runtime": {
       "default": "./dist/plugin-sdk/exec-approvals-runtime.js"
+    },
+    "./plugin-sdk/repository-identity-host": {
+      "default": "./dist/plugin-sdk/repository-identity-host.js"
     },
     "./plugin-sdk/runtime-config-snapshot": {
       "types": "./dist/plugin-sdk/runtime-config-snapshot.d.ts",

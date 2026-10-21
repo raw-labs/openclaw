@@ -171,6 +171,7 @@
   "realtime-voice-provider",
   "reply-payload-testing",
   "reply-reference",
+  "repository-identity-host",
   "request-url",
   "response-limit-runtime",
   "retry-runtime",

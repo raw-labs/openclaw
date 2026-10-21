@@ -31,8 +31,8 @@ vi.mock("@openclaw/fs-safe/advanced", async (importOriginal) => {
 import {
   resolveManagedGitHubAgentKey,
   resolveManagedGitHubProfileRoot,
-} from "./github-tool-identity.js";
-import { cleanupRetiredManagedGitHubProfiles } from "./github-tool-profile-cleanup.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { cleanupRetiredManagedGitHubProfiles } from "../../extensions/github-repositories/tool-profile-cleanup-api.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const makeProfileId = (digit: string) => `ghp_${digit.repeat(32)}`;

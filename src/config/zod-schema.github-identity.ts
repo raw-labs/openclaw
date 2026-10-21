@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "./github-identity-profile-id.js";
+import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "../../extensions/github-repositories/profile-id-api.js";
 import { SecretInputSchema } from "./zod-schema.secret-input.js";
 import { sensitive } from "./zod-schema.sensitive.js";
 

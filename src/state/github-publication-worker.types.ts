@@ -1,5 +1,5 @@
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity.types-api.js";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.types.js";
 import type { GitHubPublicationChange } from "../gateway/github-publication-events.js";
 import type { GitHubPublicationEffectTransition } from "../gateway/github-publication-execution-effects.js";
 import type { WorkerSessionTurnClaim } from "../gateway/worker-environments/placement-record.js";

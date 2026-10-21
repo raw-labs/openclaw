@@ -405,3 +405,12 @@ The lightweight `decisions` subpath exports
 `ModelInferenceCapabilitiesSchema` for provider-owned catalog augmentation using
 the canonical capability schema rather than a competing normalizer. Static
 capability declarations do not confer account entitlement.
+
+## Native repository identity records
+
+Bundled repository credential adapters use the private-local
+`openclaw/plugin-sdk/repository-identity-host` entrypoint to inspect an exact
+native OAuth profile or enumerate records for retired-profile cleanup. The host
+retains native record validation and persistence; this surface exposes no raw
+secret store, database connection, mutation, or Gateway registry. Consumers retain
+their existing current-selection and caller authority checks.

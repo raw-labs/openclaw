@@ -52,3 +52,8 @@ export {
   readDarwinProcessCommandLine,
   type DarwinProcess,
 } from "../process/darwin-process-inspection.js";
+
+export { hasErrnoCode } from "../infra/errno.js";
+export { resolveExecutablePath } from "../infra/executable-path.js";
+export { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.js";
+export { withGitProcessOperation } from "../process/spawn-diagnostics.js";

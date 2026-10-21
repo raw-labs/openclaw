@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
+import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type { SessionGitHubActionParams } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { canPrepareGitHubPullRequest } from "../agents/sandbox/github-publication.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";
 import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";

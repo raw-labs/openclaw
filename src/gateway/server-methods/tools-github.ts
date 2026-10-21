@@ -1,4 +1,12 @@
 import {
+  GitHubIdentityError,
+  createManagedGitHubProfileId,
+  installManagedGitHubProfile,
+  resolveConfiguredGitHubToolIdentity,
+  resolveGitHubToolIdentityStatus,
+  resolveManagedGitHubProfileDir,
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import {
   ErrorCodes,
   errorShape,
   validateToolsGitHubAuthorizeCancelParams,
@@ -7,14 +15,6 @@ import {
   validateToolsGitHubConfigureParams,
   validateToolsGitHubStatusParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import {
-  GitHubIdentityError,
-  createManagedGitHubProfileId,
-  installManagedGitHubProfile,
-  resolveConfiguredGitHubToolIdentity,
-  resolveGitHubToolIdentityStatus,
-  resolveManagedGitHubProfileDir,
-} from "../../agents/github-tool-identity.js";
 import {
   captureGatewayToolCallerAssertion,
   getGatewayToolCallerIdentity,

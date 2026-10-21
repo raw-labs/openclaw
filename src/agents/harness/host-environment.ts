@@ -1,5 +1,6 @@
 import path from "node:path";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
+import { prepareGitHubToolEnvironment } from "../../../extensions/github-repositories/tool-identity-api.js";
 import type { OpenClawConfig } from "../../config/types.js";
 import {
   installationTargetEnv,
@@ -8,7 +9,6 @@ import {
 import { applyPathPrepend, findPathKey, normalizePathPrepend } from "../../infra/path-prepend.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { resolveSessionAgentIdStrict } from "../agent-scope.js";
-import { prepareGitHubToolEnvironment } from "../github-tool-identity.js";
 import { resolveExecToolConfig } from "../lazy-exec-tool.js";
 
 const MAX_NATIVE_OPERATION_CWD_BYTES = 4096;

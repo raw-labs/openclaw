@@ -8,6 +8,7 @@ import {
   pollGitHubOAuthDeviceToken,
   refreshGitHubOAuthToken,
 } from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   clearRuntimeConfigSnapshot,
@@ -17,7 +18,6 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveCommandEnv } from "../process/exec-spawn.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { commandResult as result } from "./github-identity.test-support.js";
-import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 
 const commands = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../process/exec.js", () => ({ runCommandBuffered: commands.run }));
@@ -33,7 +33,7 @@ import {
   refreshManagedGitHubProfile,
   resolveGitHubToolIdentityStatus,
   resolveManagedGitHubProfileDir,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 
 const dirs = useAutoCleanupTempDirTracker(afterEach);
 const account = { id: 202, login: "managed-user", avatar_url: null };

@@ -6,6 +6,12 @@ import path from "node:path";
 import { StatementSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
+import {
+  prepareGitHubToolEnvironment,
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import { cleanupRetiredManagedGitHubProfiles } from "../../../extensions/github-repositories/tool-profile-cleanup-api.js";
 import type { UsersGitHubAuthorizeStartResult } from "../../../packages/gateway-protocol/src/schema/users.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import {
@@ -14,12 +20,6 @@ import {
   readGitHubDeviceAuthorizationRecord,
   writeGitHubDeviceAuthorizationRecord,
 } from "../../agents/github-oauth-records.js";
-import {
-  prepareGitHubToolEnvironment,
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
-import { cleanupRetiredManagedGitHubProfiles } from "../../agents/github-tool-profile-cleanup.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,

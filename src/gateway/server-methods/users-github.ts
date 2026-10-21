@@ -1,3 +1,4 @@
+import { resolveSystemGitHubIdentityStatus } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
   ErrorCodes,
   errorShape,
@@ -7,7 +8,6 @@ import {
   validateUsersGitHubAuthorizeCancelParams,
   validateUsersGitHubDisconnectParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import { resolveSystemGitHubIdentityStatus } from "../../agents/github-tool-identity.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import type { PersonalGitHubAction } from "../github-personal-oauth.js";
 import { preparePersonalGitHubActionV2 } from "./github-personal-authorization.js";

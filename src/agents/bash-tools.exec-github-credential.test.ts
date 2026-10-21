@@ -4,13 +4,13 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { prepareGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createProcessSupervisor } from "../process/supervisor/supervisor.js";
 import type { SpawnInput } from "../process/supervisor/types.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
 import { resolvePreparedExecEnvironment } from "./bash-tools.exec-request-preparation.js";
 import { runExecProcess } from "./bash-tools.exec-runtime.js";
-import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 
 const boundary = vi.hoisted(() => ({ spawn: vi.fn(), prepare: vi.fn() }));
 vi.mock("../process/supervisor/index.js", () => ({

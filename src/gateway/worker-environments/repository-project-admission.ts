@@ -3,14 +3,14 @@ import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
 import {
+  GitHubIdentityError,
+  prepareGitHubReadIdentity,
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import {
   captureAgentLifecycleBinding,
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
 } from "../../agents/agent-lifecycle-registry.js";
-import {
-  GitHubIdentityError,
-  prepareGitHubReadIdentity,
-} from "../../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseConfiguredProjectGitUrl } from "../../projects/project-git-url.runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";

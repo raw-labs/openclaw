@@ -5,7 +5,18 @@ import {
   refreshGitHubOAuthToken,
   type GitHubOAuthTokenPair,
 } from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
+import {
+  createManagedGitHubProfileId,
+  GitHubAccountMismatchError,
+  installManagedGitHubProfile,
+  refreshManagedGitHubProfile,
+  removeManagedGitHubProfile,
+  resolveConfiguredGitHubToolIdentity,
+  resolveGitHubToolIdentityStatus,
+  resolveManagedGitHubProfileDir,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import type {
   ToolsGitHubAuthorizePollResult,
   ToolsGitHubAuthorizeStartResult,
@@ -33,17 +44,6 @@ import {
   deleteGitHubOAuthRecordNative,
   readGitHubDeviceAuthorizationRecordNative,
 } from "../agents/github-oauth-records.native.js";
-import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
-import {
-  createManagedGitHubProfileId,
-  GitHubAccountMismatchError,
-  installManagedGitHubProfile,
-  refreshManagedGitHubProfile,
-  removeManagedGitHubProfile,
-  resolveConfiguredGitHubToolIdentity,
-  resolveGitHubToolIdentityStatus,
-  resolveManagedGitHubProfileDir,
-} from "../agents/github-tool-identity.js";
 import { registerRuntimeConfigWriteListener } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";

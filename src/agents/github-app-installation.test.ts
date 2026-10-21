@@ -1,15 +1,15 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { prepareGitHubAppInstallation } from "./github-app-installation.js";
-import type { GitHubAppSelection } from "./github-credential-reader.js";
+import { prepareGitHubAppInstallation } from "../../extensions/github-repositories/app-installation-api.js";
+import type { GitHubAppSelection } from "../../extensions/github-repositories/credential-reader-api.js";
 import {
   resolveGitHubToolIdentityStatus,
   prepareGitHubPublicationIdentity,
   prepareGitHubReadIdentity,
   prepareGitHubToolEnvironment,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const key = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
   type: "pkcs8",

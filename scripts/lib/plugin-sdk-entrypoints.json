@@ -79,6 +79,7 @@
   "system-event-runtime",
   "transport-ready-runtime",
   "exec-approvals-runtime",
+  "repository-identity-host",
   "runtime-config-snapshot",
   "runtime-group-policy",
   "model-session-runtime",

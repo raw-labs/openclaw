@@ -4,6 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { prepareGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
@@ -12,7 +13,6 @@ import { captureEnv, deleteTestEnvValue, setTestEnvValue } from "../test-utils/e
 import { createOpenClawCodingTools } from "./agent-tools.js";
 import { resolvePreparedExecEnvironment } from "./bash-tools.exec-request-preparation.js";
 import { createExecTool } from "./bash-tools.exec-run.js";
-import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 
 const storeMocks = vi.hoisted(() => ({ readSecretStoreExecEnvironment: vi.fn() }));
 vi.mock("../secrets/store/secret-store.js", async (importOriginal) => ({

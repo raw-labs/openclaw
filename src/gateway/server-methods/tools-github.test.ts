@@ -19,8 +19,8 @@ const oauth = {
   refreshEffectiveIdentity: vi.fn(),
   retireProfileAsync: vi.fn(),
 };
-
-vi.mock("../../agents/github-tool-identity.js", () => ({
+// mock-isolation: Keep credential/profile I/O synthetic while testing account RPC authorization and dispatch.
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", () => ({
   createManagedGitHubProfileId: github.createProfileId,
   installManagedGitHubProfile: github.install,
   resolveConfiguredGitHubToolIdentity: github.configured,

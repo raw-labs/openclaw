@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, it, type Mock } from "vitest";
+import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import { listGitHubDeviceAuthorizationRecords } from "../agents/github-oauth-records.js";
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   beginAgentDeletionJournal,

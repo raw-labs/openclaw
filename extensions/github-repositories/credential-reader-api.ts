@@ -1,4 +1,4 @@
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
+import type { GitHubToolIdentityConfig } from "./tool-identity.types-api.js";
 
 export type GitHubAppSelection = Extract<GitHubToolIdentityConfig, { kind: "app-installation" }>;
 

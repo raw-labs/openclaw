@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { GitHubIdentityError, prepareGitHubReadIdentity } from "../agents/github-tool-identity.js";
+import {
+  GitHubIdentityError,
+  prepareGitHubReadIdentity,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { BoardValidationError } from "../boards/board-layout.js";
 import { resolveGitHubActionsRequest } from "../boards/github-actions-capability.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
