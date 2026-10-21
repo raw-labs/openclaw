@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
@@ -8,7 +9,6 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { getOrCreatePromise } from "../shared/lazy-promise.js";
 import { withMockedPlatform } from "../test-utils/vitest-spies.js";
 import { commandResult } from "./github-identity.test-support.js";
-import { clearGitHubCredentialVerificationCache } from "./github-oauth-client.js";
 
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
 // mock-isolation: Capture credential subprocess requests without executing host Git or gh.
@@ -19,6 +19,7 @@ import {
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import {
+  clearNativeGitHubTokenCache,
   createGitHubReadIdentity,
   readCachedNativeGitHubToken,
   readNativeGitHubToken,
@@ -285,6 +286,7 @@ describe("native GitHub identity absence", () => {
 
 describe("prepared GitHub read authority", () => {
   beforeEach(() => {
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const isNative = new Headers(init?.headers).get("Authorization")?.includes("native");
@@ -364,6 +366,7 @@ describe("prepared GitHub read authority", () => {
     // Let all admitted callers reach the shared pending native read.
     await Promise.resolve();
     expect(run).toHaveBeenCalledOnce();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     expect((await prepareRead(options)).token).toBe("native-new-generation");
     pending.resolve(commandResult("native-old-generation"));
@@ -444,6 +447,7 @@ describe("prepared GitHub read authority", () => {
           return await start();
         },
       });
+      clearNativeGitHubTokenCache();
       clearGitHubCredentialVerificationCache();
       run.mockClear();
       phase = "before";

@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import {
+  refreshGitHubOAuthToken,
+  type GitHubOAuthTokenPair,
+} from "../../extensions/github-repositories/oauth-api.js";
 import type {
   UsersGitHubAuthorizePollResult,
   UsersGitHubAuthorizeStartResult,
 } from "../../packages/gateway-protocol/src/schema/users.js";
-import {
-  refreshGitHubOAuthToken,
-  type GitHubOAuthTokenPair,
-} from "../agents/github-oauth-client.js";
 import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
 import {
   createManagedGitHubProfileId,

@@ -5,6 +5,7 @@
   "description": "OpenClaw GitHub repository integration artifacts",
   "type": "module",
   "dependencies": {
+    "@openclaw/normalization-core": "workspace:*",
     "yaml": "2.9.1"
   },
   "devDependencies": {

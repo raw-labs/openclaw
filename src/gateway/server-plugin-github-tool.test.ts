@@ -1,7 +1,8 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
-import { clearGitHubCredentialVerificationCache } from "../agents/github-oauth-client.js";
+import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
@@ -62,6 +63,7 @@ beforeEach(async () => {
     scenario: "minimal",
     env: { GH_TOKEN: undefined, GITHUB_TOKEN: undefined },
   });
+  clearNativeGitHubTokenCache();
   clearGitHubCredentialVerificationCache();
 });
 afterEach(async () => {

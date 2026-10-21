@@ -11,9 +11,10 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
 import type { BoardSnapshot } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
-import { clearGitHubCredentialVerificationCache } from "../../agents/github-oauth-client.js";
+import { clearNativeGitHubTokenCache } from "../../agents/github-read-identity.js";
 import { resolveManagedGitHubProfileDir } from "../../agents/github-tool-identity.js";
 import { createTestBoardStore } from "../../boards/board-store.test-support.js";
 import {
@@ -152,6 +153,7 @@ describe("board authenticated GitHub Actions", () => {
   beforeEach(async () => {
     caseNumber += 1;
     resetPluginRuntimeStateForTest();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     state.envVars.GH_TOKEN = undefined;
     state.envVars.GITHUB_TOKEN = undefined;
@@ -233,6 +235,7 @@ describe("board authenticated GitHub Actions", () => {
     native.mockImplementation(async () => commandResult(token));
   }
   function holdNativeCredentials() {
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     const held = hold(() => commandResult(token));
     native.mockImplementationOnce(held.execute);
@@ -348,6 +351,7 @@ describe("board authenticated GitHub Actions", () => {
     const before = await store.getSnapshot(target);
     expect(before.widgets[0]?.declared?.tools).toEqual(["github.actions.runs:owner/repo"]);
     broadcast.mockClear();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     account.mockImplementationOnce(async () => new Response(token, { status: 401 }));
     await expectDenied(invoke("board.widget.put", input), /reconnect|retry/);
@@ -630,6 +634,7 @@ describe("board authenticated GitHub Actions", () => {
     expect(actionCalls()).toHaveLength(1);
     await expectResult(follower.read());
     expect(actionCalls()).toHaveLength(1);
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     account.mockImplementationOnce(async () => {
       await removeWidget(follower, "follower");

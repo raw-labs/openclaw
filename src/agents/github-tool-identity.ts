@@ -7,6 +7,7 @@ import { readSecretFile } from "@openclaw/fs-safe/secret";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { parseDocument, stringify as stringifyYaml } from "yaml";
 import { resolveConfiguredGitHubApiBaseUrl } from "../../extensions/github-repositories/host-api.js";
+import { verifyGitHubCredential } from "../../extensions/github-repositories/oauth-api.js";
 import {
   managedGitHubHosts,
   type GitHubToolAccount,
@@ -34,7 +35,6 @@ import {
   resolveGitHubHost,
   withGitHubToken,
 } from "./github-host-runtime.js";
-import { verifyGitHubCredential } from "./github-oauth-client.js";
 import { inspectGitHubOAuthRecord } from "./github-oauth-records.js";
 import {
   clearNativeGitHubTokenCache,

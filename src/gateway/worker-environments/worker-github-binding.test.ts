@@ -41,8 +41,10 @@ const mocks = vi.hoisted(() => ({
   nativeToken: vi.fn(),
   oauth: vi.fn(),
 }));
-
-vi.mock("../../agents/github-oauth-client.js", () => ({ verifyGitHubCredential: mocks.verify }));
+// mock-isolation: Supply remote account facts while exercising real worker credential binding and retirement.
+vi.mock("../../../extensions/github-repositories/oauth-api.js", () => ({
+  verifyGitHubCredential: mocks.verify,
+}));
 vi.mock("../github-oauth-lifecycle.js", () => ({
   requestCurrentGitHubOAuthRefresh: mocks.refresh,
 }));

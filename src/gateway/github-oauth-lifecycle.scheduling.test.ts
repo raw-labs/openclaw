@@ -23,8 +23,8 @@ import {
 import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
 
 const refreshToken = vi.hoisted(() => vi.fn());
-vi.mock("../agents/github-oauth-client.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../agents/github-oauth-client.js")>()),
+vi.mock("../../extensions/github-repositories/oauth-api.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../extensions/github-repositories/oauth-api.js")>()),
   refreshGitHubOAuthToken: refreshToken,
 }));
 

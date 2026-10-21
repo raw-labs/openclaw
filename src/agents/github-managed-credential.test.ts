@@ -3,6 +3,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
+import {
+  clearGitHubCredentialVerificationCache,
+  pollGitHubOAuthDeviceToken,
+  refreshGitHubOAuthToken,
+} from "../../extensions/github-repositories/oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   clearRuntimeConfigSnapshot,
@@ -12,11 +17,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveCommandEnv } from "../process/exec-spawn.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { commandResult as result } from "./github-identity.test-support.js";
-import {
-  clearGitHubCredentialVerificationCache,
-  pollGitHubOAuthDeviceToken,
-  refreshGitHubOAuthToken,
-} from "./github-oauth-client.js";
+import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 
 const commands = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../process/exec.js", () => ({ runCommandBuffered: commands.run }));
@@ -62,6 +63,7 @@ describe("managed credential isolation", () => {
     resolveGitHubToolIdentityStatus({ config, agentId: "main", selectedScope, env });
   beforeEach(() => {
     // Cases reuse token literals with different verification responses.
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     root = dirs.make("github-managed-");
     env = { OPENCLAW_STATE_DIR: root };
@@ -113,6 +115,7 @@ describe("managed credential isolation", () => {
     });
     assert(refreshed.status === "refreshed");
     await rotate(profileDir, refreshed.tokens.accessToken);
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     const identity = await personal();
     expect(requests).toEqual([
@@ -139,6 +142,7 @@ describe("managed credential isolation", () => {
       const config = enterprise("a.ghe.example.test");
       setRuntimeConfigSnapshot(config);
       await install(profile("personal", ""), "synthetic-personal-host-token");
+      clearNativeGitHubTokenCache();
       clearGitHubCredentialVerificationCache();
       const started = createDeferredCore();
       const release = createDeferredCore<Response>();

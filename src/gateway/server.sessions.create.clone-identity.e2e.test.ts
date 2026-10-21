@@ -26,8 +26,8 @@ import {
   URL as REPOSITORY_URL,
   fixture,
 } from "./worker-environments/repository-git-pack.test-support.js";
-
-vi.mock("../agents/github-oauth-client.js", () => ({
+// mock-isolation: Supply verified account facts while exercising real authenticated Git clone and refresh admission.
+vi.mock("../../extensions/github-repositories/oauth-api.js", () => ({
   verifyGitHubCredential: async () => ({
     status: "available",
     account: { accountId: 123, login: "fixture" },

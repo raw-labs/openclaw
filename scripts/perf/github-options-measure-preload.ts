@@ -94,7 +94,7 @@ if (isMainThread) {
     ],
     [sourceUrl("agents/github-read-identity.ts"), { readNativeGitHubToken: "native-token" }],
     [
-      sourceUrl("agents/github-oauth-client.ts"),
+      new URL("../../extensions/github-repositories/oauth-api.ts", import.meta.url).href,
       { verifyGitHubCredential: "credential-verification" },
     ],
     [selectedOwnerUrl, { readSharedGitHubPublication: "receipt" }],

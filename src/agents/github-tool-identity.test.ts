@@ -2,13 +2,14 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SecretInput } from "../config/types.secrets.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { resolveCommandEnv } from "../process/exec-spawn.js";
 import { commandResult } from "./github-identity.test-support.js";
-import { clearGitHubCredentialVerificationCache } from "./github-oauth-client.js";
+import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
 const oauthMocks = vi.hoisted(() => ({ inspect: vi.fn() }));
@@ -58,6 +59,7 @@ describe("GitHub tool identity", () => {
   beforeEach(() => {
     root = tempDirs.make("openclaw-github-identity-");
     env = { OPENCLAW_STATE_DIR: root };
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     vi.stubEnv("GH_TOKEN", undefined);
     vi.stubEnv("GITHUB_TOKEN", undefined);
