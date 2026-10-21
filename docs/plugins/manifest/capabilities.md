@@ -209,6 +209,7 @@ model descriptor.
 
 `toolMetadata` entries also accept:
 
+- `policyGroups`: existing tool policy groups that include this tool for both allow and deny rules, such as `group:sessions` or `group:openclaw`. Unknown group names are ignored. Group membership never overrides an explicit tool denial.
 - `profiles`: built-in tool profiles that expose the plugin tool by default. Valid values are `minimal`, `coding`, `messaging`, and `full`. These contributions merge into the corresponding profile allowlist; explicit operator allowlists and deny rules remain authoritative.
 - `optional`: marks the tool as non-required for plugin activation.
 - `replaySafe`: marks tool execution as safe to repeat after an incomplete model turn.

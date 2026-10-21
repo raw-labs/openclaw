@@ -4,6 +4,7 @@ import {
   normalizeOptionalTrimmedStringList,
   normalizeTrimmedStringList,
 } from "../../packages/normalization-core/src/string-normalization.js";
+import { TOOL_POLICY_GROUP_IDS } from "../agents/tool-catalog.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 import {
   PLUGIN_MANIFEST_CONTRACT_KEYS,
@@ -395,8 +396,13 @@ export function normalizePluginToolMetadata(
   return normalizeNamedMetadataRecord(value, (rawMetadata) => {
     const providerMetadata = normalizeCapabilityProviderMetadataEntry(rawMetadata);
     const profiles = normalizeTrimmedStringList(rawMetadata.profiles).filter(isPluginToolProfile);
+    const declaredPolicyGroups = normalizeTrimmedStringList(rawMetadata.policyGroups);
+    const policyGroups = TOOL_POLICY_GROUP_IDS.filter((group) =>
+      declaredPolicyGroups.includes(group),
+    );
     const metadata = {
       ...providerMetadata,
+      ...(policyGroups.length > 0 ? { policyGroups } : {}),
       ...(rawMetadata.optional === true ? { optional: true } : {}),
       ...(profiles.length > 0 ? { profiles } : {}),
       ...(rawMetadata.replaySafe === true ? { replaySafe: true } : {}),

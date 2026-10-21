@@ -65,7 +65,7 @@ type CoreToolDefinition = CoreToolFacts & {
   includeInOpenClawGroup?: boolean;
 };
 
-const CORE_TOOL_SECTION_ORDER: Array<{ id: string; label: string }> = [
+const CORE_TOOL_SECTION_ORDER = [
   { id: "fs", label: "Files" },
   { id: "runtime", label: "Runtime" },
   { id: "web", label: "Web" },
@@ -77,7 +77,12 @@ const CORE_TOOL_SECTION_ORDER: Array<{ id: string; label: string }> = [
   { id: "nodes", label: "Nodes" },
   { id: "agents", label: "Agents" },
   { id: "media", label: "Media" },
-];
+] as const;
+
+export const TOOL_POLICY_GROUP_IDS = [
+  ...CORE_TOOL_SECTION_ORDER.map(({ id }) => `group:${id}` as const),
+  "group:openclaw",
+] as const;
 
 type CoreToolOptions = Omit<CoreToolDefinition, "id" | "description" | "sectionId">;
 
