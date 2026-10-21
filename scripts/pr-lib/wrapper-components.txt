@@ -3,6 +3,7 @@ cli-invocation.mjs
 cli-parent-lifetime.mjs
 cli-root-options.mjs
 config/ci-test-timings.json
+extensions/github-repositories/host-api.ts
 node-compile-cache.mjs
 gateway-prewarm.mjs
 gateway-shutdown-budget.mjs
@@ -273,7 +274,6 @@ src/agents/configured-provider-model.ts
 src/agents/defaults.ts
 src/agents/glob-pattern.ts
 src/agents/github-host-runtime.ts
-src/agents/github-host.ts
 src/agents/internal-runtime-context.ts
 src/agents/mcp-oauth-store-error.ts
 src/agents/model-auth-policy.ts

@@ -1,14 +1,14 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
 import {
+  resolveConfiguredGitHubHost,
+  resolveConfiguredGitHubApiBaseUrl,
+} from "../../extensions/github-repositories/host-api.js";
+import {
   GITHUB_PULL_REQUEST_LOGIN_PATTERN,
   type SessionGitHubActionParams,
   type SessionGitHubPullRequestInspectResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import {
-  resolveConfiguredGitHubHost,
-  resolveConfiguredGitHubApiBaseUrl,
-} from "../agents/github-host.js";
 import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import {

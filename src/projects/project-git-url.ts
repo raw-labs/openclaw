@@ -1,4 +1,4 @@
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 
 const GITHUB_PATH_SEGMENT = /^[A-Za-z0-9_.-]+$/u;
 

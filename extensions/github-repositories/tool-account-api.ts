@@ -1,5 +1,5 @@
 import { stringify as stringifyYaml } from "yaml";
-import { resolveConfiguredGitHubHost } from "./github-host.js";
+import { resolveConfiguredGitHubHost } from "./host-api.js";
 
 export type GitHubToolAccount = {
   accountId: number;

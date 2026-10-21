@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { resolveConfiguredGitHubApiBaseUrl } from "../../extensions/github-repositories/host-api.js";
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import { readResponseWithLimit } from "../infra/http-body.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
-import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
-import type { GitHubToolAccount } from "./github-tool-account.js";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";

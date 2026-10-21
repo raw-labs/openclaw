@@ -1,4 +1,4 @@
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitCheckoutContext } from "../infra/git-read-operations.js";

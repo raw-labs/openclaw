@@ -1,8 +1,9 @@
+import { GITHUB_PUBLIC_HOST } from "../../extensions/github-repositories/host-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isSecretRef, isValidEnvSecretRefId } from "../config/types.secrets.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { CLEARED_GITHUB_CREDENTIALS } from "./github-host-runtime.js";
-import { GITHUB_PUBLIC_HOST } from "./github-host.js";
+import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
 
 export const AGENT_GIT_CONFIG_PARAMETERS = "'maintenance.auto=false' 'gc.auto=0'";
 
@@ -75,4 +76,15 @@ export function githubCredentialEnvironmentExclusions(
     }
   }
   return { credentialScrubEnv, excludedStoreNames };
+}
+
+export function applyManagedGitHubIdentityEnvironment(
+  env: NodeJS.ProcessEnv | undefined,
+  overlay: PreparedGitHubToolEnvironment,
+): NodeJS.ProcessEnv {
+  return {
+    ...(env ?? process.env),
+    ...Object.fromEntries(Object.keys(overlay.credentialScrubEnv).map((name) => [name, undefined])),
+    ...overlay.localIdentityEnv,
+  };
 }

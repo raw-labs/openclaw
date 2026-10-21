@@ -1,6 +1,6 @@
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import type { ToolsGitHubStatusResult } from "../../packages/gateway-protocol/src/index.js";
 import type { GitHubIdentityScope, GitHubOAuthRecord } from "../agents/github-oauth-records.js";
-import type { GitHubToolAccount } from "../agents/github-tool-account.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 

@@ -1354,6 +1354,16 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/github-repositories:
+    dependencies:
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+    devDependencies:
+      '@openclaw/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+
   extensions/gmi:
     devDependencies:
       '@openclaw/plugin-sdk':

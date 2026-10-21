@@ -1,4 +1,4 @@
-import type { GitHubToolAccount } from "./github-tool-account.js";
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 
 export type PreparedGitHubToolEnvironment = Readonly<{
   credentialScrubEnv: Readonly<Record<string, string>>;

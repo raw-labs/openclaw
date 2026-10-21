@@ -2,7 +2,7 @@ import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
-} from "../agents/github-host.js";
+} from "../../extensions/github-repositories/host-api.js";
 import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import { runGitReadOperation } from "../infra/git-read-cache.js";
 import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";

@@ -187,16 +187,15 @@ describe("bundled plugin build entries", () => {
     }
   };
 
-  it("includes the manifest-less runtime core support package in dist build entries", () => {
-    expect(collectBuildSources()).toContain("extensions/image-generation-core/runtime-api.ts");
-  });
-
-  it("packs the runtime core support package without requiring a plugin manifest", () => {
+  it.each([
+    ["image-generation-core", "runtime-api"],
+    ["github-repositories", "host-api"],
+  ])("builds and packs the manifest-less %s public artifact", (id, artifact) => {
+    expect(collectBuildSources()).toContain(`extensions/${id}/${artifact}.ts`);
     const artifacts = listBundledPluginPackArtifacts();
-
-    expect(artifacts).toContain("dist/extensions/image-generation-core/package.json");
-    expect(artifacts).toContain("dist/extensions/image-generation-core/runtime-api.js");
-    expect(artifacts).not.toContain("dist/extensions/image-generation-core/openclaw.plugin.json");
+    expect(artifacts).toContain(`dist/extensions/${id}/package.json`);
+    expect(artifacts).toContain(`dist/extensions/${id}/${artifact}.js`);
+    expect(artifacts).not.toContain(`dist/extensions/${id}/openclaw.plugin.json`);
   });
 
   it.each([["discord", "src/voice/audio-worker.runtime", true]] as const)(

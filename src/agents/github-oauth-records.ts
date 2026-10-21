@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import { isManagedGitHubProfileId } from "../config/github-identity-profile-id.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import {
@@ -16,7 +17,6 @@ import {
   validGitHubDeviceTiming,
 } from "../shared/github-oauth-values.js";
 import type { GitHubOAuthTokenPair } from "./github-oauth-client.js";
-import type { GitHubToolAccount } from "./github-tool-account.js";
 
 const OAUTH_RECORD_PREFIX = "github-oauth-";
 const OPAQUE_ID_PATTERN = /^[a-f0-9]{32}$/u;

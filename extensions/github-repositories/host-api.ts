@@ -1,4 +1,4 @@
-import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 
 export const GITHUB_PUBLIC_HOST = "github.com";
 const GITHUB_PUBLIC_API_BASE_URL = "https://api.github.com";
