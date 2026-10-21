@@ -1,10 +1,9 @@
-import { resolveSafeTimeoutDelayMs } from "@openclaw/gateway-client/browser";
-import type { UsersGitHubAuthorizePollResult } from "../../../../packages/gateway-protocol/src/schema/users.ts";
+import { resolveSafeTimeoutDelayMs } from "openclaw/plugin-sdk/control-ui";
 import type {
+  UsersGitHubAuthorizePollResult,
   ToolsGitHubAuthorizePollResult,
   ToolsGitHubAuthorizeStartResult,
-} from "../../api/types.ts";
-import { formatUiError } from "../../lib/format-error.ts";
+} from "openclaw/plugin-sdk/control-ui";
 import {
   cancelAuthorizationRequest,
   githubAuthorizationMethod,
@@ -30,6 +29,7 @@ type AuthorizationDependencies = GitHubIdentityDependencies & {
 // The device flow owns timers and cancellation; callers own connection/access fences
 // and the distinct personal-credential or shared-configuration mutation boundary.
 export function createGitHubDeviceAuthorization(deps: AuthorizationDependencies) {
+  const formatUiError = deps.formatError;
   let state: GitHubAuthorizationState = { phase: "idle" };
   let activeOperation: AuthorizationOperation | null = null;
 
@@ -208,10 +208,11 @@ export function createGitHubDeviceAuthorization(deps: AuthorizationDependencies)
     }
     const mutation = await deps.runExternalMutation(
       (client) => {
-        if (client !== operation.owner.client) {
-          throw new Error("Connection changed before GitHub authorization was checked.");
-        }
-        return request();
+        return client.request<AuthorizationPollResult>(
+          githubAuthorizationMethod(operation.owner, "poll"),
+          { requestId: operation.start?.requestId },
+          { signal: operation.controller.signal },
+        );
       },
       {
         canDispatch: () => isCurrent(operation),

@@ -1,6 +1,5 @@
-/* @vitest-environment jsdom */
-
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+/* @vitest-environment jsdom */
 import {
   GIT_COAUTHOR_PREFERENCE_KEY,
   type UserProfile,
@@ -9,10 +8,10 @@ import { createDeferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { createApplicationConfigCapability } from "../../app/config.ts";
 import type { ApplicationGatewaySnapshot } from "../../app/context.ts";
+import type { AuthenticatedUser } from "../../app/user-profile.ts";
 // These tests own identity loading, not the lazy preference reader; settle that module at setup
 // so its cold transform cannot consume the one-second UI waits on a loaded CI runner.
 import "../../app/user-prefs-request.ts";
-import type { AuthenticatedUser } from "../../app/user-profile.ts";
 import { i18n, t } from "../../i18n/index.ts";
 import { setAvatarGatewayOrigin } from "../../lib/identity-avatar-context.ts";
 import { uploadsDisabledMessage } from "../../lib/uploads.ts";
@@ -21,10 +20,13 @@ import { openPicker, choosePickerValue } from "../../test-helpers/select-picker.
 import { waitForSolid as waitForFast, flush } from "../../test-helpers/solid-settle.ts";
 import * as avatarProcessing from "./avatar-processing.ts";
 import {
+  stubProfileAvatarProcessing,
+  selectProfileAvatar,
   createConnectedContext,
   modelAccountProfile,
   mountProfilePage,
 } from "./profile-page.test-support.tsx";
+import { disconnectedGitHub } from "./profile-rpc.test-support.ts";
 
 const modelAccountCatalog = {
   providers: [
@@ -37,37 +39,6 @@ const modelAccountStep = {
   message: "Paste the redirect URL or wait for sign-in to finish.",
   externalUrl: "https://auth.openai.com/oauth/authorize?state=s",
 };
-function stubProfileAvatarProcessing(decode = vi.fn<() => Promise<void>>(async () => undefined)) {
-  class StubUrl extends URL {
-    static override createObjectURL = vi.fn(() => "blob:avatar");
-    static override revokeObjectURL = vi.fn();
-  }
-  class StubImage {
-    decoding = "auto";
-    src = "";
-    naturalWidth = 512;
-    naturalHeight = 256;
-    decode = decode;
-  }
-  vi.stubGlobal("URL", StubUrl);
-  vi.stubGlobal("Image", StubImage);
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
-    drawImage: vi.fn(),
-  } as unknown as CanvasRenderingContext2D);
-  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback, type) => {
-    callback(new Blob([new Uint8Array([1, 2, 3])], { type: type ?? "image/png" }));
-  });
-}
-
-function selectProfileAvatar(page: ParentNode) {
-  const avatarInput = page.querySelector<HTMLInputElement>('input[type="file"]')!;
-  Object.defineProperty(avatarInput, "files", {
-    configurable: true,
-    value: [new File(["avatar"], "avatar.png", { type: "image/png" })],
-  });
-  avatarInput.dispatchEvent(new Event("change", { bubbles: true }));
-}
-
 async function startProfileSignIn(page: ParentNode) {
   page.querySelector<HTMLButtonElement>(".profile-auth-add-account")!.click();
   await waitForFast(() =>
@@ -121,6 +92,9 @@ it("refreshes translated copy when the locale changes while mounted", async () =
 it("renders identity before Usage statistics and opens the usage page", async () => {
   const profile = modelAccountProfile;
   const request = vi.fn(async (method: string) => {
+    if (method === "users.github.status") {
+      return disconnectedGitHub;
+    }
     if (method === "users.prefs.get") {
       return { status: "ok", entries: {} };
     }
@@ -137,6 +111,12 @@ it("renders identity before Usage statistics and opens the usage page", async ()
     email: profile.emails[0],
     name: profile.displayName ?? undefined,
   });
+  harness.emitHello(
+    gatewayHelloForMethods(
+      ["users.github.status", "tools.github.status", "users.listModelAccounts"],
+      ["operator.admin"],
+    ),
+  );
   const page = mountProfilePage(harness.context);
   await waitForFast(() => expect(page.querySelector("#settings-profile-identity")).not.toBeNull());
   await waitForFast(() =>
@@ -145,7 +125,12 @@ it("renders identity before Usage statistics and opens the usage page", async ()
 
   await waitForFast(() =>
     expect(request.mock.calls.map(([method]) => method).toSorted()).toEqual(
-      ["users.self", "users.listModelAccounts", "users.prefs.get"].toSorted(),
+      [
+        "users.self",
+        "users.listModelAccounts",
+        "users.prefs.get",
+        "users.github.status",
+      ].toSorted(),
     ),
   );
   const identity = page.querySelector("#settings-profile-identity");

@@ -1,21 +1,10 @@
-import { createMemo, createSignal, onSettled } from "solid-js";
-import { pathForAgentPanel } from "../../app-route-paths.ts";
-import type { ApplicationGatewaySnapshot } from "../../app/context.ts";
-import { hasOperatorAdminAccess, hasOperatorReadAccess } from "../../app/operator-access.ts";
-import {
-  SettingsRow,
-  SettingsSection,
-  SettingsSegmented,
-  SettingsStatus,
-  SettingsValue,
-} from "../../components/solid/settings-ui.tsx";
-import { registerGitHubConnectionsEnglish } from "../../i18n/locales/en-github-connections.ts";
-import { currentConfigObject } from "../../lib/config/config-state-model.ts";
-import { projectGateway, projectAgentSelection } from "../../lib/reactive/application.ts";
-import { useApplication } from "../../lib/reactive/context.ts";
-import { projectAgents } from "../../lib/reactive/domain-capabilities.ts";
-import { t } from "../../lib/reactive/i18n.ts";
-import { PROFILE_SETTINGS_TARGET_IDS } from "../../pages/config/settings-targets.ts";
+/** @jsxImportSource @solidjs/web */
+
+import type {
+  ControlUiSettingsContextV2 as ControlUiSettingsContext,
+  ControlUiContributionSettingsSnapshot as ControlUiSettingsSnapshot,
+} from "openclaw/plugin-sdk/control-ui";
+import { createMemo, createSignal, onSettled, untrack } from "solid-js";
 import {
   GitHubConnectionError,
   GitHubConnectionSetup,
@@ -24,137 +13,113 @@ import {
   GitHubUnloadedStatus,
 } from "./github-identity-view.tsx";
 import { createGitHubIdentity } from "./github-identity.ts";
-
-function access(snapshot: ApplicationGatewaySnapshot) {
-  const profileId = snapshot.phase === "connected" ? (snapshot.selfUser?.id ?? null) : null;
-  // Access comes from the authenticated connection, never a status RPC error.
-  const canRead =
-    snapshot.phase === "connected" &&
-    Boolean(snapshot.hello?.auth) &&
-    hasOperatorReadAccess(snapshot.hello?.auth ?? null);
+import { translator } from "./i18n.ts";
+import {
+  SettingsRow,
+  SettingsSection,
+  SettingsSegmented,
+  SettingsStatus,
+  SettingsValue,
+} from "./settings-components.tsx";
+import { readSettingsIdentityConfig } from "./settings-config.ts";
+export type SettingsSource = {
+  read: () => ControlUiSettingsSnapshot;
+  subscribe: (listener: () => void) => () => void;
+};
+export function createIdentityDependencies(context: ControlUiSettingsContext) {
+  const client = { request: context.request };
+  const runExternalMutation = context.runConfigMutation;
   return {
-    profileId,
-    canRead,
-    canAdmin: canRead && hasOperatorAdminAccess(snapshot.hello?.auth ?? null),
+    client,
+    translate: translator(context),
+    confirm: context.confirm,
+    formatError: context.formatError,
+    runExternalMutation,
   };
 }
-
-/** Profile credentials have their own read-scoped lifecycle, independent of users.self edits. */
-export function GitHubConnections() {
-  const context = useApplication();
-  const gateway = projectGateway(context.gateway);
-  const agents = projectAgents(context.agents);
-  const selection = projectAgentSelection(context.settingsAgentSelection);
-  const [purpose, setPurpose] = createSignal<"personal" | "system">("personal");
+export function GitHubConnections(props: {
+  context: ControlUiSettingsContext;
+  source: SettingsSource;
+}) {
+  const context = props.context;
+  const t = translator(context);
+  // The mounted owner captures its initial identity; later replacements arrive through sync.
+  const initial = untrack(() => context.props);
+  const [purpose, setPurpose] = createSignal<"personal" | "system">(
+    initial.profile?.id ? "personal" : "system",
+  );
   const [setupOpen, setSetupOpen] = createSignal(false);
-  let snapshot: ApplicationGatewaySnapshot | null = null;
-  let clientRevision = 0;
-  let canRead = false;
-  let canAdmin = false;
-  // Gateway snapshots may mutate in place; retain the previous profile transition fact.
-  let observedProfileId: string | null = null;
+  const deps = createIdentityDependencies(context);
   const authorizationSucceeded = () => setSetupOpen(false);
-  const personal = createGitHubIdentity({ authorizationSucceeded });
-  const system = createGitHubIdentity({
-    authorizationSucceeded,
-    runExternalMutation: (task, options) =>
-      context.runtimeConfig.runExternalMutation(task, options),
-  });
-
+  const personal = createGitHubIdentity({ ...deps, authorizationSucceeded });
+  const system = createGitHubIdentity({ ...deps, authorizationSucceeded });
+  let observedProfileId: string | null = initial.profile?.id ?? null;
+  let previousCanRead = initial.canRead === true;
+  let previousCanAdmin = initial.canAdmin === true;
   const syncIdentities = () => {
-    if (!snapshot) {
-      return;
+    const current = props.source.read();
+    const profileId =
+      current.profile === undefined ? observedProfileId : (current.profile?.id ?? null);
+    const canRead = current.canRead === true;
+    const canAdmin = current.canAdmin === true;
+    if (
+      observedProfileId !== profileId ||
+      (previousCanRead && !canRead) ||
+      (previousCanAdmin && !canAdmin)
+    ) {
+      setSetupOpen(false);
+      setPurpose(profileId ? "personal" : "system");
     }
+    observedProfileId = profileId;
+    previousCanRead = canRead;
+    previousCanAdmin = canAdmin;
+    const has = (method: string) => current.advertisedMethods?.includes(method) === true;
     const common = {
-      client: snapshot.client,
-      connected: snapshot.phase === "connected" && snapshot.selfUser !== undefined,
-      permissionsReady: snapshot.phase === "connected" && Boolean(snapshot.hello),
-      clientRevision,
+      client: deps.client,
+      connected: current.connected,
+      permissionsReady: current.permissionsReady ?? current.connected,
+      clientRevision: current.connectionEpoch,
     };
     personal.sync({
       ...common,
-      target: observedProfileId ? { kind: "personal", profileId: observedProfileId } : null,
-      statusReadable: canRead && observedProfileId !== null,
-      authorizable: canRead && observedProfileId !== null,
+      target: profileId ? { kind: "personal", profileId } : null,
+      statusReadable: canRead && Boolean(profileId) && has("users.github.status"),
+      authorizable: canRead && Boolean(profileId) && has("users.github.authorize.start"),
       configurable: false,
     });
-    const agentId = context.settingsAgentSelection.state.selectedId;
     system.sync({
       ...common,
-      target: agentId
+      target: current.agentId
         ? {
             kind: "shared",
             scope: "system",
-            profileId: observedProfileId,
-            agentId,
-            config: currentConfigObject(context.runtimeConfig.state),
+            profileId,
+            agentId: current.agentId,
+            config: readSettingsIdentityConfig(context, current.agentId),
           }
         : null,
-      statusReadable: canAdmin,
-      authorizable: canAdmin,
-      configurable: canAdmin,
+      statusReadable: canAdmin && has("tools.github.status"),
+      authorizable: canAdmin && has("tools.github.authorize.start"),
+      configurable: canAdmin && has("tools.github.configure"),
     });
     personal.ensureVerified();
     system.ensureVerified();
-  };
-  const applySnapshot = (next: ApplicationGatewaySnapshot) => {
-    const identityChanged =
-      !snapshot ||
-      snapshot.client !== next.client ||
-      (next.phase === "connected" &&
-        next.selfUser !== undefined &&
-        observedProfileId !== (next.selfUser?.id ?? null));
-    const changed =
-      !snapshot ||
-      snapshot.client !== next.client ||
-      snapshot.phase !== next.phase ||
-      snapshot.hello !== next.hello ||
-      (snapshot.selfUser === undefined) !== (next.selfUser === undefined) ||
-      (next.selfUser !== undefined && observedProfileId !== (next.selfUser?.id ?? null));
-    snapshot = next;
-    observedProfileId =
-      (next.phase === "connected" && next.selfUser !== undefined) || identityChanged
-        ? (next.selfUser?.id ?? null)
-        : observedProfileId;
-    // Access comes from the authenticated connection, never an error from users.github.status.
-    const previousCanRead = canRead;
-    const previousCanAdmin = canAdmin;
-    if (next.phase === "connected" || identityChanged) {
-      canRead = Boolean(next.hello?.auth) && hasOperatorReadAccess(next.hello?.auth ?? null);
-      canAdmin = canRead && hasOperatorAdminAccess(next.hello?.auth ?? null);
-    }
-    if (changed) {
-      clientRevision += 1;
-    }
-    const readAccessLost = previousCanRead && !canRead;
-    const adminAccessLost = previousCanAdmin && !canAdmin;
-    if (identityChanged || readAccessLost || adminAccessLost) {
-      setSetupOpen(false);
-      setPurpose(observedProfileId ? "personal" : "system");
-    }
-    syncIdentities();
     if (canAdmin) {
-      void context.runtimeConfig.ensureLoaded();
+      void context.ensureConfig?.();
     }
   };
   onSettled(() => {
-    const subscriptions = [
-      context.gateway.subscribe(applySnapshot),
-      context.agents.subscribe(syncIdentities),
-      context.settingsAgentSelection.subscribe(syncIdentities),
-      context.runtimeConfig.subscribe(syncIdentities),
-    ];
-    applySnapshot(context.gateway.snapshot);
-    return () => subscriptions.forEach((unsubscribe) => unsubscribe());
+    const stop = props.source.subscribe(syncIdentities);
+    syncIdentities();
+    return stop;
   });
-
   const view = createMemo(() => {
-    const current = gateway.read().snapshot;
+    const current = props.source.read();
     const personalState = personal.read();
     const systemState = system.read();
     const account = personalState.personal;
-    const agentId = selection.read().state.selectedId;
-    const agent = agents.read().agentsList?.agents?.find((entry) => entry.id === agentId);
+    const profileId =
+      current.profile === undefined ? observedProfileId : (current.profile?.id ?? null);
     const connected = account?.state === "connected";
     const reconnectRequired =
       account?.state === "unavailable" ||
@@ -162,18 +127,17 @@ export function GitHubConnections() {
       account?.refreshState === "failed";
     return {
       account,
-      agentId,
-      agent,
+      agentId: current.agentId,
+      agent: current.agents?.find((entry) => entry.id === current.agentId),
       connected,
       reconnectRequired,
-      profileId: observedProfileId,
-      canRead,
-      canAdmin,
+      profileId,
+      canRead: current.canRead === true,
+      canAdmin: current.canAdmin === true,
       systemIdentity: systemState.status?.selected.identity ?? personalState.system,
       effective: systemState.status?.effective ?? null,
       locked:
-        current.phase !== "connected" ||
-        current.selfUser === undefined ||
+        !current.connected ||
         personalState.loading ||
         systemState.loading ||
         personalState.authorizationActive ||
@@ -182,7 +146,7 @@ export function GitHubConnections() {
         systemState.busy,
       showSetup:
         setupOpen() || personalState.authorizationActive || systemState.authorizationActive,
-      personalLabel: !observedProfileId
+      personalLabel: !profileId
         ? t("githubConnections.signInRequired")
         : reconnectRequired
           ? t("githubConnections.reconnectRequired")
@@ -195,12 +159,10 @@ export function GitHubConnections() {
   const systemView = system.read;
   const active = () => (purpose() === "personal" ? personal : system);
   const openSetup = (next: "personal" | "system") => {
-    const currentAccess = access(context.gateway.snapshot);
+    const current = props.source.read();
     if (
       view().locked ||
-      (next === "personal"
-        ? !currentAccess.profileId || !currentAccess.canRead
-        : !currentAccess.canAdmin)
+      (next === "personal" ? !current.profile?.id || !current.canRead : !current.canAdmin)
     ) {
       return;
     }
@@ -213,7 +175,7 @@ export function GitHubConnections() {
   };
   return (
     <openclaw-github-connections>
-      <div id={PROFILE_SETTINGS_TARGET_IDS.githubConnections}>
+      <div id={"settings-profile-github-connections"}>
         <SettingsSection
           title={t("githubConnections.title")}
           description={t("githubConnections.description")}
@@ -334,11 +296,7 @@ export function GitHubConnections() {
                     <GitHubHealth identity={view().effective} request={systemView()} />
                     <button
                       class="btn btn--sm"
-                      onClick={() =>
-                        context.navigate("agents", {
-                          pathname: pathForAgentPanel(view().agentId!, "tools", context.basePath),
-                        })
-                      }
+                      onClick={() => context.navigateTo!({ page: "agent-tools" })}
                     >
                       {t("githubConnections.viewAgent")}
                     </button>
@@ -454,4 +412,3 @@ declare module "@solidjs/web" {
     }
   }
 }
-registerGitHubConnectionsEnglish();

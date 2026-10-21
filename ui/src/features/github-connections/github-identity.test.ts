@@ -111,7 +111,7 @@ it("keeps independent identity drafts isolated and clears only the inherited tar
 });
 
 it.each(["access", "profile"] as const)(
-  "deletes a stored handoff when %s changes before dispatch",
+  "does not stage a secret when %s changes before serialized dispatch",
   async (change) => {
     const behavior: { beforeDispatch?: () => void } = {};
     const { identity, sync, requests } = createController(behavior);
@@ -122,10 +122,8 @@ it.each(["access", "profile"] as const)(
 
     await identity.configure();
 
-    expect(requests.map((entry) => entry.method)).toEqual([
-      "secrets.store.set",
-      "secrets.store.delete",
-    ]);
+    // Config serialization admits the complete operation before any secret is staged.
+    expect(requests).toEqual([]);
     expect(identity.read().configurable).toBe(change === "profile");
     expect(identity.read().error).toBeNull();
   },
@@ -212,8 +210,8 @@ it("config.set drains drafts before managed and refreshes both edits", async () 
     await identity.configure();
 
     expect(order).toEqual([
-      "secrets.store.set",
       "config.set",
+      "secrets.store.set",
       "tools.github.configure",
       "config.get",
     ]);

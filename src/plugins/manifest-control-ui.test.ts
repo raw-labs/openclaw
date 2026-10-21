@@ -161,3 +161,28 @@ it.each([true, false])("gates generated browser paths on the build: %s", (build)
       : { ok: true, manifest: { controlUi } },
   );
 });
+
+it("discovers contributed Profile and Agent Settings without changing packaged setup views", () => {
+  const views = [
+    {
+      id: "connections",
+      section: "profile",
+      panel: "connections",
+      requiredMethods: ["tools.github.status"],
+      search: {
+        label: "GitHub connections",
+        hash: "#settings-profile-github-connections",
+        aliases: "oauth authentication",
+      },
+    },
+    { id: "identity", section: "agents", panel: "tools" },
+  ];
+  const result = readManifest({ entry, settingsViews: views });
+  expect(result).toMatchObject({ ok: true, manifest: { controlUi: { settingsViews: views } } });
+  expect(
+    readManifest({ entry, settingsViews: [views[0], { ...views[0], search: undefined }] }),
+  ).toMatchObject({ ok: false });
+  expect(readManifest({ entry, settingsViews: [{ ...views[1], panel: "files" }] })).toMatchObject({
+    ok: false,
+  });
+});

@@ -4,7 +4,6 @@ import type { AgentsFilesListResult } from "../../api/types.ts";
 import { pathForAgentPanel } from "../../app-route-paths.ts";
 import { togglePinnedAgent } from "../../app/bootstrap-navigation-preferences.ts";
 import type { ApplicationContext } from "../../app/context.ts";
-import { createGitHubIdentity } from "../../features/github-connections/github-identity.ts";
 import { t } from "../../i18n/index.ts";
 import { selectableAgentsList } from "../../lib/agents/display.ts";
 import {
@@ -17,7 +16,6 @@ import {
   type AgentsState,
 } from "../../lib/agents/index.ts";
 import { DEFAULT_AGENT_PANEL, type AgentsPanel } from "../../lib/agents/panels.ts";
-import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { createInitialCronState } from "../../lib/cron/index.ts";
 import type { CronState } from "../../lib/cron/types.ts";
 import { isGatewayAvailable } from "../../lib/gateway-availability.ts";
@@ -199,10 +197,6 @@ export function createAgentsPageState(
     getReport: () => state.agentSkillsReport,
     onPrimaryChanged: () => void refreshVisibleToolsEffectiveForCurrentSession(state),
   });
-  const githubIdentity = createGitHubIdentity({
-    runExternalMutation: (task, options) =>
-      context.runtimeConfig.runExternalMutation(task, options),
-  });
   const gateway = new GatewayPageBinding(() => publish(), {
     getGateway: () => context.gateway,
     // A new source or client owns a new set of drafts. A same-client reconnect
@@ -222,7 +216,6 @@ export function createAgentsPageState(
       if (becameConnected && Object.values(state.identityDraft).some((value) => value !== null)) {
         scheduleIdentitySave();
       }
-      syncGitHubIdentity(state.agentsSelectedId);
       if (becameAvailable && !becameConnected) {
         if (modelReader.pending) {
           catalogRecoveryPending = true;
@@ -268,7 +261,6 @@ export function createAgentsPageState(
     if (restoredIdentity) {
       scheduleIdentitySave(0);
     }
-    syncGitHubIdentity(state.agentsSelectedId);
   }
 
   function syncCurrentAgentFiles(agents = context.agents) {
@@ -438,12 +430,10 @@ export function createAgentsPageState(
       return;
     }
     if (state.agentsPanel === "tools") {
-      syncGitHubIdentity(agentId);
       if (state.toolsCatalogResult?.agentId !== agentId && !state.toolsCatalogLoading) {
         void loadToolsCatalog(state, agentId);
       }
       loadEffectiveToolsForAgent(agentId);
-      githubIdentity.ensureVerified();
       return;
     }
     if (state.agentsPanel === "channels" && !context.channels.state.channelsSnapshot) {
@@ -463,35 +453,6 @@ export function createAgentsPageState(
         cron.onRefresh();
       }
     }
-  }
-
-  function syncGitHubIdentity(agentId: string | null) {
-    const snapshot = context.gateway.snapshot;
-    const profileId = snapshot.selfUser?.id ?? null;
-    const hasScope = (method: string, scope: GatewayMethodOperatorScope) =>
-      canCallGatewayMethod(snapshot, method, scope, { requireAdvertisement: false });
-    githubIdentity.sync({
-      client: state.client,
-      connected: state.connected,
-      permissionsReady: snapshot.phase === "connected" && Boolean(snapshot.hello),
-      target: agentId
-        ? {
-            kind: "shared",
-            scope: "agent",
-            profileId,
-            agentId,
-            config: currentConfigObject(context.runtimeConfig.state),
-          }
-        : null,
-      statusReadable: hasScope("tools.github.status", "operator.read"),
-      configurable: hasScope("tools.github.configure", "operator.admin"),
-      authorizable: [
-        "tools.github.authorize.start",
-        "tools.github.authorize.poll",
-        "tools.github.authorize.cancel",
-      ].every((method) => hasScope(method, "operator.admin")),
-      clientRevision: state.requestGeneration,
-    });
   }
 
   function resetModelCatalog() {
@@ -906,9 +867,6 @@ export function createAgentsPageState(
         onClear: (agentId: string) => clearAgentSkills(agentId),
       },
       tools: {
-        githubIdentity,
-        onOpenGitHubConnections: () =>
-          context.navigate("profile", { hash: "#settings-profile-github-connections" }),
         runtimeSessionKey: state.sessionKey,
         runtimeSessionMatchesSelectedAgent: selectedAgentId === chatAgentId(),
         ...configActions.tools,
@@ -972,9 +930,8 @@ export function createAgentsPageState(
         loadActivePanelData();
         publish();
       }),
-      // Config receipts retire obsolete GitHub authorization before the next tool action.
+      // Config receipts refresh the current Settings presentation.
       context.runtimeConfig.subscribe(() => {
-        syncGitHubIdentity(state.agentsSelectedId);
         publish();
       }),
       // Session model receipts replace the tools.effective request key before older results settle.

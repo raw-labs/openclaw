@@ -2,13 +2,30 @@
   "name": "@openclaw/github-repositories",
   "version": "2026.10.5",
   "private": true,
-  "description": "OpenClaw GitHub repository integration artifacts",
+  "description": "OpenClaw GitHub Settings and repository integration artifacts",
   "type": "module",
   "dependencies": {
     "@openclaw/normalization-core": "workspace:*",
+    "@solidjs/web": "2.0.0-rc.16",
+    "solid-js": "2.0.0-rc.16",
     "yaml": "2.9.1"
   },
   "devDependencies": {
-    "@openclaw/plugin-sdk": "workspace:*"
+    "@openclaw/plugin-sdk": "workspace:*",
+    "@solidjs/compiler": "2.0.0-rc.16",
+    "esbuild": "0.28.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "controlUi": "./browser/index.tsx",
+    "assetScripts": {
+      "build": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/github-repositories",
+      "copy": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/github-repositories --copy",
+      "buildOutputs": [
+        "dist/openclaw.plugin.json"
+      ]
+    }
   }
 }

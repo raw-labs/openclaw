@@ -1,7 +1,9 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { GatewayBrowserClient } from "../../api/gateway.ts";
-import type { ToolsGitHubAuthorizeStartResult } from "../../api/types.ts";
-import type { RuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
+import type {
+  ToolsGitHubAuthorizeStartResult,
+  ControlUiSettingsClient as GatewayBrowserClient,
+  ControlUiSettingsConfigMutation,
+} from "openclaw/plugin-sdk/control-ui";
+import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 type GitHubSharedScope = "system" | "agent";
 export type GitHubIdentityScope = "personal" | GitHubSharedScope;
@@ -12,7 +14,7 @@ type GitHubConnectionOwner =
 export type GitHubConnectionTarget =
   | Extract<GitHubConnectionOwner, { kind: "personal" }>
   | (Extract<GitHubConnectionOwner, { kind: "shared" }> & {
-      config: Record<string, unknown> | null;
+      config: { system?: unknown; agent?: unknown } | null;
       profileId: string | null;
     });
 
@@ -57,7 +59,10 @@ export type AuthorizationOperation = {
 
 export type GitHubIdentityDependencies = {
   authorizationSucceeded?: () => void;
-  runExternalMutation?: RuntimeConfigCapability["runExternalMutation"];
+  translate: (key: string, params?: Record<string, string>) => string;
+  confirm: (options: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
+  formatError: (error: unknown) => string;
+  runExternalMutation?: ControlUiSettingsConfigMutation;
 };
 
 export function readGitHubIdentityDraft(value: unknown): GitHubIdentityDraft {

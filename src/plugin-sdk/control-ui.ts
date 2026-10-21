@@ -322,6 +322,11 @@ export type { DoctorMemoryStatusPayload } from "../../packages/gateway-protocol/
 export type {
   ControlUiSettingsPlacement,
   ControlUiSettingsSnapshot,
+  ControlUiContributionSettingsSnapshot,
+  ControlUiContributedSettingsView,
+  ControlUiSettingsContextV2,
+  ControlUiSettingsClient,
+  ControlUiSettingsConfigMutation,
   ControlUiSettingsComponents,
   ControlUiSettingsContext,
   ControlUiSettingsView,
@@ -329,3 +334,18 @@ export type {
   ControlUiChannelSettingsContext,
   ControlUiChannelSettingsView,
 } from "./control-ui-settings.js";
+
+// Existing Gateway wire facts used by contributed Settings; mutation authority stays with the host.
+export type {
+  GitHubIdentityFacts,
+  ToolsGitHubStatusResult,
+  ToolsGitHubAuthorizeStartResult,
+  ToolsGitHubAuthorizePollResult,
+} from "../../packages/gateway-protocol/src/schema/agents-models-skills.js";
+export type {
+  PersonalGitHubStatus,
+  UsersGitHubStatusResult,
+  UsersGitHubAuthorizePollResult,
+} from "../../packages/gateway-protocol/src/schema/users.js";
+export { generateUUID } from "../../packages/normalization-core/src/uuid.js";
+export { resolveSafeTimeoutDelayMs } from "../../packages/gateway-client/src/timeouts.js";

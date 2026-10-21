@@ -6,11 +6,15 @@ const loadI18n = useLazyEnglishTest();
 it.each([
   ["publication", false, () => import("../pages/chat/components/chat-github-publication.tsx")],
   ["PR content", false, () => import("../pages/chat/components/chat-pull-requests-content.tsx")],
-  ["connections", true, () => import("../features/github-connections/github-connections.tsx")],
+  ["connections", true, () => import("../../../extensions/github-repositories/browser/index.tsx")],
   ["CI details", false, () => import("../pages/chat/components/chat-ci-details.ts")],
   ["session hovercard", false, () => import("../components/session-hovercard-solid.tsx")],
-  ["identity", true, () => import("../features/github-connections/github-identity-view.tsx")],
-  ["identity controller", true, () => import("../features/github-connections/github-identity.ts")],
+  ["identity", true, () => import("../../../extensions/github-repositories/browser/index.tsx")],
+  [
+    "identity controller",
+    true,
+    () => import("../../../extensions/github-repositories/browser/index.tsx"),
+  ],
 ])(
   "loads only the GitHub fallback copy needed at the cold %s boundary",
   async (_surface, settings, load) => {
@@ -53,6 +57,12 @@ it.each([
       });
     try {
       await load();
+      if (settings) {
+        const { registerControlUiEnglish } = await import("../plugins/control-ui-english.ts");
+        const { settingsEnglish } =
+          await import("../../../extensions/github-repositories/english-api.ts");
+        registerControlUiEnglish(settingsEnglish);
+      }
     } finally {
       registration.mockRestore();
     }
@@ -66,8 +76,9 @@ it.each([
       expect(pullRequests.publishPr).toBeUndefined();
       expect(hovercard.agentNotepad).toBeUndefined();
       const agentTools = en.agentTools;
-      const copy = await import("./locales/en-github-connections.ts");
-      copy.registerGitHubConnectionsEnglish();
+      const copy = await import("../../../extensions/github-repositories/english-api.ts");
+      const { registerControlUiEnglish } = await import("../plugins/control-ui-english.ts");
+      registerControlUiEnglish(copy.settingsEnglish);
       expect(en.githubConnections).toBe(connections);
       expect(en.agentTools).toBe(agentTools);
       expect(t("githubConnections.manage")).toBe("Verbindungen verwalten");

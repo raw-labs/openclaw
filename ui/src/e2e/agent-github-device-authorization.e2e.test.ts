@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { expect, type Locator, type Page } from "playwright/test";
 import { it } from "vitest";
 import { installMockGateway, type MockGatewayControls } from "../test-helpers/control-ui-e2e.ts";
@@ -6,6 +8,27 @@ const suite = createControlUiE2eSuite({
   name: "Control UI GitHub connections",
   startServerBeforeBrowser: true,
 });
+import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
+import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
+let proofDir: string | undefined;
+async function captureSettings(page: Page, name: string, surface: Locator) {
+  if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
+    return;
+  }
+  proofDir ??= createControlUiE2eArtifactDir("github-settings");
+  await surface.scrollIntoViewIfNeeded();
+  const png = await takeControlUiViewportScreenshot(page, surface, [
+    surface.locator(".settings-section__heading").first(),
+  ]);
+  await writeFile(path.join(proofDir, name), png);
+}
+const nativePlugins = [
+  {
+    pluginId: "github-repositories",
+    rootDir: path.resolve(import.meta.dirname, "../../../extensions/github-repositories"),
+    source: "./browser/index.tsx",
+  },
+];
 const pageOptions = {
   locale: "en-US",
   serviceWorkers: "block" as const,
@@ -160,6 +183,7 @@ suite.define(() => {
         oauthScopes: [],
       } as const;
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         operatorScopes: adminScopes,
         methodResponses: {
           ...tools,
@@ -192,6 +216,7 @@ suite.define(() => {
       await expect(connection(profile, "system")).toContainText("No credentials");
       await expect(profile.getByText("No credentials", { exact: true }).first()).toBeVisible();
       await expect(profile.getByText(/OS account running the Gateway/)).toHaveCount(0);
+      await captureSettings(page, "profile-connections.png", profile);
       await profile.getByRole("button", { name: "View agent account", exact: true }).click();
       await expect(page).toHaveURL(/settings\/agents\/main\/tools$/);
       const section = page.locator(".settings-section").filter({
@@ -199,12 +224,14 @@ suite.define(() => {
       });
       await expect(section.getByText("No credentials", { exact: true }).first()).toBeVisible();
       await expect(section.getByText(/OS account running the Gateway/)).toHaveCount(0);
+      await captureSettings(page, "agent-tools-identity.png", section);
       await button(section, "Manage connections in Profile").click();
       await expect(page).toHaveURL(/settings\/profile#settings-profile-github-connections$/);
       await button(profile, "Change System GitHub").click();
       await visible(profile, "For the system");
       await expect(button(profile, "Continue with GitHub")).toBeVisible();
       await expect(button(profile, "Use a PAT instead")).toBeVisible();
+      await captureSettings(page, "profile-system-setup.png", profile);
       expect(await gateway.getRequests("tools.github.authorize.start")).toHaveLength(0);
       expect(await gateway.getRequests("tools.github.configure")).toHaveLength(0);
     });
@@ -212,6 +239,7 @@ suite.define(() => {
   it("preserves unidentified System management and keeps agent overrides advanced and distinct", async () => {
     await suite.withPage(pageOptions, async ({ page }) => {
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         operatorScopes: adminScopes,
         methodResponses: {
           "tools.github.status": {
@@ -275,7 +303,7 @@ suite.define(() => {
   });
   it("lets an identified reader connect, reconnect and disconnect only My GitHub", async () => {
     await suite.withPage(pageOptions, async ({ page }) => {
-      const gateway = await installMockGateway(page, readerOptions);
+      const gateway = await installMockGateway(page, { ...readerOptions, nativePlugins });
       await page.goto(`${suite.server.baseUrl}settings/profile`);
       const section = page.locator("#settings-profile-github-connections");
       await expect(connection(section, "system")).toContainText("@system-octocat");
@@ -342,6 +370,7 @@ suite.define(() => {
         },
       };
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         operatorScopes: adminScopes,
         presenceUsers,
         methodResponses: {
@@ -374,7 +403,7 @@ suite.define(() => {
   });
   it("invalidates an old personal flow when the authenticated profile changes", async () => {
     await suite.withPage(pageOptions, async ({ page }) => {
-      const gateway = await installMockGateway(page, readerOptions);
+      const gateway = await installMockGateway(page, { ...readerOptions, nativePlugins });
       await page.goto(`${suite.server.baseUrl}settings/profile`);
       const section = page.locator("#settings-profile-github-connections");
       await button(section, "Connect My GitHub").click();
