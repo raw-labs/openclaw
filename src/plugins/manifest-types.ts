@@ -620,6 +620,8 @@ export type PluginManifestToolMetadata = PluginManifestCapabilityProviderMetadat
   optional?: boolean;
   /** Built-in tool profiles that expose this plugin tool by default. */
   profiles?: PluginManifestToolProfile[];
+  /** Existing tool policy groups that include this plugin tool in allow and deny rules. */
+  policyGroups?: Array<(typeof import("../agents/tool-catalog.js").TOOL_POLICY_GROUP_IDS)[number]>;
   /** Tool execution is safe to repeat after an incomplete model turn. */
   replaySafe?: boolean;
   /** Tool execution can change durable state and failed attempts must remain visible. */

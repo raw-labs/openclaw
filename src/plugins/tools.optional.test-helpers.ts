@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import path from "node:path";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runPluginRegisterSyncInRegistry } from "./loader-module-runtime.js";
 import { createPluginRecord as createLoaderPluginRecord } from "./loader-records.js";
 import { getPluginInstance } from "./plugin-instance-scope.js";
@@ -7,6 +8,7 @@ import { bindPluginRuntimeArtifactSelection } from "./plugin-runtime-artifact-bi
 import { resolvePluginRuntimeArtifactSelection } from "./plugin-runtime-artifact-selection.js";
 import { createTestPluginRegistry } from "./registry-runtime.test-helpers.js";
 import { createPluginRuntime } from "./runtime/index.js";
+import { appendRuntimePluginToolGrant } from "./tool-grant-allowlist.js";
 import type { OpenClawPluginToolContext } from "./tool-types.js";
 
 export type MockRegistryToolEntry = {
@@ -122,4 +124,60 @@ export function createToolRuntimeRecord(
     runtimeEntry: resolvePluginRuntimeArtifactSelection({ ...artifact, entryKind: "runtime" }),
   });
   return record;
+}
+
+export function createToolManifest(
+  id: string,
+  toolNames: readonly string[],
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    id,
+    origin: "bundled" as const,
+    enabledByDefault: true,
+    channels: [],
+    providers: [],
+    contracts: { tools: [...toolNames] },
+    ...overrides,
+  };
+}
+
+export function createContext(): { config: OpenClawConfig; workspaceDir: string } {
+  return {
+    config: {
+      plugins: {
+        enabled: true,
+        load: { paths: ["/tmp/plugin.js"] },
+        slots: { memory: "none" },
+      },
+    },
+    workspaceDir: "/tmp",
+  };
+}
+
+export function createResolveToolsParams(params?: {
+  context?: ReturnType<typeof createContext> & Record<string, unknown>;
+  clientCaps?: string[];
+  toolAllowlist?: readonly string[];
+  toolDenylist?: readonly string[];
+  existingToolNames?: Set<string>;
+  env?: NodeJS.ProcessEnv;
+  suppressNameConflicts?: boolean;
+  allowGatewaySubagentBinding?: boolean;
+  runtimePluginToolGrant?: { pluginId: string; toolNames: readonly string[] };
+}) {
+  const toolAllowlist = appendRuntimePluginToolGrant(
+    [...(params?.toolAllowlist ?? [])],
+    params?.runtimePluginToolGrant,
+  );
+  return {
+    context: (params?.context ?? createContext()) as never,
+    ...(params?.clientCaps ? { clientCaps: params.clientCaps } : {}),
+    ...(toolAllowlist.length > 0 ? { toolAllowlist } : {}),
+    ...(params?.toolDenylist ? { toolDenylist: [...params.toolDenylist] } : {}),
+    ...(params?.existingToolNames ? { existingToolNames: params.existingToolNames } : {}),
+    ...(params?.env ? { env: params.env } : {}),
+    ...(params?.suppressNameConflicts ? { suppressNameConflicts: true } : {}),
+    ...(params?.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
+  };
 }

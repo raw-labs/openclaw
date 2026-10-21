@@ -7,6 +7,7 @@ import { collectBundledChannelConfigsCore } from "./bundled-channel-config-metad
 import { recordPluginCandidateInstallOwner } from "./candidate-install-owner.js";
 import type { PluginCandidate } from "./discovery.js";
 import { resolvePluginManifestInstallOwner } from "./manifest-install-owner.js";
+import { createMsteamsClawHubInstallRecord } from "./manifest-registry-installed.test-helpers.js";
 import { loadPluginManifestRegistryCore, type PluginManifestRecord } from "./manifest-registry.js";
 import { createPluginCache, withPluginCache } from "./plugin-cache.js";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "./test-helpers/fs-fixtures.js";
@@ -92,21 +93,6 @@ function makePluginDir(id: string, metadata: Record<string, unknown> = {}) {
   const dir = makeTempDir();
   writeManifest(dir, { id, ...metadata });
   return dir;
-}
-
-function createMsteamsClawHubInstallRecord(
-  installPath: string,
-  overrides: Partial<PluginInstallRecord> = {},
-): PluginInstallRecord {
-  return {
-    source: "clawhub",
-    spec: "clawhub:@openclaw/msteams",
-    installPath,
-    clawhubUrl: "https://clawhub.ai",
-    clawhubPackage: "@openclaw/msteams",
-    clawhubChannel: "official",
-    ...overrides,
-  };
 }
 
 function officialCandidate(id: string, dir: string, origin: PluginCandidate["origin"] = "global") {
@@ -938,7 +924,11 @@ describe("loadPluginManifestRegistry", () => {
           },
         ],
       },
-      memory_get: { replaySafe: true, profiles: ["coding", "messaging"] },
+      memory_get: {
+        replaySafe: true,
+        profiles: ["coding", "messaging"],
+        policyGroups: ["group:sessions", "group:openclaw"],
+      },
       memory_store: { sideEffecting: true },
     };
     const dir = makePluginDir("openai", {
@@ -963,7 +953,11 @@ describe("loadPluginManifestRegistry", () => {
       },
       toolMetadata: {
         ...tools,
-        memory_get: { ...tools.memory_get, profiles: [...tools.memory_get.profiles, "invalid"] },
+        memory_get: {
+          ...tools.memory_get,
+          profiles: [...tools.memory_get.profiles, "invalid"],
+          policyGroups: [...tools.memory_get.policyGroups, "group:unknown"],
+        },
       },
     });
     const plugin = loadSingleCandidateRegistry("openai", dir, "bundled").plugins[0];

@@ -32,6 +32,7 @@ type PluginToolMeta = {
   pluginId: string;
   kind?: PluginManifestRecord["kind"];
   optional: boolean;
+  policyGroups?: readonly string[];
   workspaceAccess?: boolean | "execute";
   replaySafe?: boolean;
   sideEffecting?: boolean;
