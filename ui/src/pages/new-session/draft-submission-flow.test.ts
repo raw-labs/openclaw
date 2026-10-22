@@ -377,7 +377,7 @@ describe("DraftSubmissionFlow", () => {
   );
   it("starts a cloud repository with its selected ref without cloning on the Gateway", async () => {
     const { context, flow, gateway, place, request } = createDraftFixture({
-      methods: ["sessions.create", "sessions.dispatch"],
+      methods: ["sessions.create", "sessions.dispatch", "fixture.repositories.search"],
       scopes: ["operator.admin", "operator.read", "operator.write"],
     });
     vi.spyOn(gateway, "cloudProfiles", "get").mockReturnValue([

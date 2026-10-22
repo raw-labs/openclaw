@@ -44,6 +44,11 @@ export const RepositoryWorkerProjectSchema = z.object({
     .object({
       kind: z.literal("repository"),
       url: z.string().max(2048),
+      repositorySourceId: z
+        .string()
+        .max(257)
+        .regex(/^[a-z0-9][a-z0-9._-]{0,127}\/[a-z0-9][a-z0-9._-]{0,127}$/u)
+        .optional(),
       repositoryId: z
         .string()
         .min(1)

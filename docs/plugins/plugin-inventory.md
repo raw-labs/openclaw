@@ -114,7 +114,7 @@ Each entry lists the package, distribution route, and description.
 
 - **[github-copilot](/plugins/reference/github-copilot)** (`@openclaw/github-copilot-provider`) - included in OpenClaw. Adds GitHub Copilot model provider support to OpenClaw.
 
-- **[github-repositories](/plugins/reference/github-repositories)** (`@openclaw/github-repositories`) - included in OpenClaw. GitHub accounts, execution identity, public link previews, and document reader.
+- **[github-repositories](/plugins/reference/github-repositories)** (`@openclaw/github-repositories`) - included in OpenClaw. GitHub accounts, repository sources, execution identity, public link previews, and document reader.
 
 - **[google](/plugins/reference/google)** (`@openclaw/google-plugin`) - included in OpenClaw. Adds Google, Google Gemini CLI, Google Vertex model provider support to OpenClaw.
 

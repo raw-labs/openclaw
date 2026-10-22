@@ -5,6 +5,7 @@ import { PROJECT_KEY, usePreparedPoolFixture } from "./prepared-pool.test-suppor
 import { createWorkerProviderIntent } from "./provider-intent.js";
 import { prepareWorkerProviderProject } from "./provider-project-preparation.js";
 import type { RepositoryWorkerProjectSnapshot } from "./repository-project-source.schema.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { workerProjectSeedKey } from "./workspace-git-base.js";
 
 const sourceAdmission = vi.hoisted(() =>
@@ -61,9 +62,11 @@ describe("prepared project retention compatibility", () => {
     });
     const prepareNodeArtifacts = vi.fn(async () => ({ artifacts, assertCurrent() {} }));
     const providerFor = vi.fn(() => fixture.provider);
+    const sources = createRepositorySourcesFixture(() => fixture.config);
     const owner = createWorkerProviderIntent({
       store: fixture.store,
       getConfig: () => fixture.config,
+      getRepositorySources: () => sources,
       projectNamespace: "gateway",
       providerFor,
       prepareNodeArtifacts,

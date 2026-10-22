@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { StatementSync } from "node:sqlite";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import * as projectGitHubSearch from "../../../extensions/github-repositories/project-search-api.js";
 import * as githubReadIdentity from "../../../extensions/github-repositories/read-identity-api.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import * as runtimeOwnership from "../../agents/harness/session-runtime-ownership.js";
@@ -28,20 +29,19 @@ import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { createOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { bumpGatewayAccessRevision } from "../gateway-access-revision.js";
-import * as projectGitHubSearch from "../project-github-search.js";
 import {
   createSessionRowProjection,
   type SessionRowProjection,
 } from "../session-row-projection.js";
 import * as rowInputs from "../session-utils-row.js";
 import { clonedProject } from "./projects-shard.test-support.js";
-import { projectsHandlers as registeredProjectsHandlers } from "./projects.js";
 import {
   execFileAsync,
   initializeRepository,
   invokeProjectMethod as invoke,
   listRegistryRecords,
   projectsHandlers,
+  registeredProjectsHandlers,
   resolveRepositoryIdentity,
   withProjectState,
 } from "./projects.test-support.js";

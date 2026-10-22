@@ -3065,6 +3065,7 @@
                   },
                   "plugins/sdk-agent-harness",
                   "plugins/sdk-execution-environments",
+                  "plugins/sdk-repository-sources",
                   {
                     "group": "Agent harness plugins",
                     "pages": [

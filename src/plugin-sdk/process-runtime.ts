@@ -77,3 +77,7 @@ export {
   hasCommandProcessCleanupError,
   readCommandProcessFailure,
 } from "../process/exec-result.js";
+
+export { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+
+export { ProjectCloneError } from "../projects/project-clone-contract.js";

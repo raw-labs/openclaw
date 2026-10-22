@@ -521,6 +521,8 @@ export type PluginManifest = {
   /** Widget data and action capabilities validated against runtime registrations. */
   dashboard?: PluginManifestDashboard;
   controlUi?: PluginManifestControlUi;
+  /** Admitted backend repository discovery, independent of browser assets. */
+  repositorySources?: import("../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySource[];
   /** Static UI contributions; omission is unspecified and an empty list declares none. */
   uiCapabilities?: PluginUiCapability[];
   themes?: PluginManifestTheme[];

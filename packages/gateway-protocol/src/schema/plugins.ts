@@ -1,5 +1,6 @@
 import type { Static } from "typebox";
 import { Type } from "typebox";
+import { ControlUiRepositorySourceSchema } from "../plugin-control-ui-repositories.js";
 import { ControlUiSettingsPlacementSchema } from "../plugin-control-ui-settings.js";
 import { PLUGIN_UI_CAPABILITIES } from "../plugin-ui-capabilities.js";
 import {
@@ -161,6 +162,12 @@ export const PluginsControlUiReloadParamsSchema = closedObject({
 export const PluginsControlUiCatalogSchema = closedObject({
   revision: NonEmptyString,
   plugins: Type.Array(PluginControlUiModuleSchema, { maxItems: 64 }),
+  repositorySources: Type.Optional(
+    Type.Array(
+      closedObject({ pluginId: NonEmptyString, ...ControlUiRepositorySourceSchema.properties }),
+      { maxItems: 1024 },
+    ),
+  ),
   diagnostics: Type.Array(PluginControlUiDiagnosticSchema, { maxItems: 64 }),
 });
 export const PluginsControlUiChangedEventSchema = closedObject({ revision: NonEmptyString });

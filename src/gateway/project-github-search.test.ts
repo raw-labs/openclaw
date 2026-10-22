@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { searchRemoteProjects } from "../../extensions/github-repositories/project-search-api.js";
 import { withinTest } from "../../test/helpers/promise.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { searchRemoteProjects } from "./project-github-search.js";
 
 function repository(fullName: string, updatedAt: string, description?: string) {
   const [owner, name] = fullName.split("/");

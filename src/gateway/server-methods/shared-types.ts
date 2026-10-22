@@ -429,6 +429,7 @@ type GatewayResidentBridgeContext = {
     typeof import("../worker-environments/repository-workspace-mutation.js").createRepositoryWorkspaceMutationService
   >;
   githubPublicationService?: import("../github-publication.js").GitHubPublicationCoordinator;
+  repositorySources?: import("../repository-sources.js").RepositorySources;
   modelAccountConnectService?: ReturnType<
     typeof import("../model-account-connect.js").createModelAccountConnectService
   >;

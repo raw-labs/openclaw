@@ -1,5 +1,5 @@
 ---
-summary: "GitHub accounts, execution identity, public link previews, and document reader."
+summary: "GitHub accounts, repository sources, execution identity, public link previews, and document reader."
 read_when:
   - You are installing, configuring, or auditing the github-repositories plugin
 title: "GitHub Repositories plugin reference"
@@ -10,7 +10,7 @@ Run `pnpm plugins:inventory:gen` to rebuild it. Hand-written text survives only
 between the openclaw-plugin-reference:manual-start and
 openclaw-plugin-reference:manual-end comment markers. -->
 
-GitHub accounts, execution identity, public link previews, and document reader.
+GitHub accounts, repository sources, execution identity, public link previews, and document reader.
 
 ## Distribution
 

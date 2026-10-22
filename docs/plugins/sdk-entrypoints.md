@@ -34,6 +34,8 @@ without adding imports from Gateway internals.
 
 Prepared process identities and scoped local launch adapters use
 [Execution environments](/plugins/sdk-execution-environments).
+Repository picker and local/worker checkout adapters use
+[Repository sources](/plugins/sdk-repository-sources).
 
 ## Where each section moved
 

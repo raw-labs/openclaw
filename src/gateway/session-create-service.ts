@@ -5,7 +5,6 @@ import {
   type ErrorShape,
   errorShape,
   missingScopeErrorShape,
-  normalizeSessionColorValue,
 } from "../../packages/gateway-protocol/src/index.js";
 import type { AdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
 import { normalizeOptionalAgentRuntimeId } from "../agents/agent-runtime-id.js";
@@ -81,6 +80,7 @@ import {
   resolveSessionCreateSpawnPolicy,
 } from "./session-create-inheritance.js";
 import {
+  prepareSessionCreateInitialFields,
   validateFreshSessionConstraints,
   withInitialAssistantTranscript,
 } from "./session-create-initial-assistant.js";
@@ -787,20 +787,12 @@ async function createGatewaySessionInScope(
         }
         const execNode = normalizeOptionalString(params.execNode);
         const execCwd = normalizeOptionalString(params.execCwd);
-        const initialAgentHarnessId = params.initialEntry
-          ? normalizeOptionalString(params.initialEntry.agentHarnessId)
-          : undefined;
-        // Initializers compare their callback snapshot with the stored row during finalization.
-        // Normalize before both so persistence cannot make this creation look like external drift.
-        const initialColor = params.initialEntry?.color
-          ? normalizeSessionColorValue(params.initialEntry.color)
-          : null;
-        if (params.initialEntry && !initialAgentHarnessId && !authorizedPluginCreation) {
-          return invalidSessionRequest(
-            params.initialEntry?.agentHarnessId !== undefined
-              ? "initial agentHarnessId must be non-empty"
-              : "trusted initial session state requires an authorized owner",
-          );
+        const initialFields = prepareSessionCreateInitialFields(
+          params.initialEntry,
+          authorizedPluginCreation,
+        );
+        if (!initialFields.ok) {
+          return initialFields;
         }
         const catalogResolvedModel = params.catalogTarget
           ? resolveSessionModelRef(params.cfg, patched.entry, target.agentId)
@@ -831,6 +823,7 @@ async function createGatewaySessionInScope(
           ...projectPreparedSessionWorkspace(existingEntry, {
             projectId,
             pendingProjectGitUrl,
+            repositorySourceId: params.repositorySourceId,
             pendingWorktree,
             spawnedCwd,
             preparedLifecycle,
@@ -856,8 +849,7 @@ async function createGatewaySessionInScope(
                 sessionDiffBaselineCapture: createSessionDiffBaselineCaptureClaim(),
               }
             : {}),
-          ...(initialAgentHarnessId ? { agentHarnessId: initialAgentHarnessId } : {}),
-          ...(initialColor ? { color: initialColor } : {}),
+          ...initialFields.fields,
           ...(createdNewEntry && params.authorizedPluginId && !params.catalogTarget
             ? { pluginOwnerId: params.authorizedPluginId }
             : {}),

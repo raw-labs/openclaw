@@ -1,6 +1,7 @@
 import { expect, vi } from "vitest";
 import { repositorySessionPrTarget } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
 import repositoryPlugin from "../../extensions/github-repositories/index.js";
+import repositoryManifest from "../../extensions/github-repositories/openclaw.plugin.json" with { type: "json" };
 import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { deleteSessionEntryLifecycle } from "../config/sessions.js";
@@ -33,6 +34,7 @@ import {
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { createRepositorySessionReadHost } from "./repository-session-read-host.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import {
@@ -96,6 +98,7 @@ export async function createFixture(
     record: createPluginRecord({
       id: "github-repositories",
       name: "GitHub repositories",
+      repositorySources: repositoryManifest.repositorySources,
     }),
     register: repositoryPlugin.register,
   });
@@ -151,6 +154,7 @@ export async function createFixture(
   context.getRuntimeConfig = getRuntimeConfig;
   const resolveGatewayContext = () => context;
   context.resolveGatewayContext = resolveGatewayContext;
+  context.repositorySources = createRepositorySources(scheduler.signal);
   const readHost = createRepositorySessionReadHost({
     signal: scheduler.signal,
     getRuntimeConfig,

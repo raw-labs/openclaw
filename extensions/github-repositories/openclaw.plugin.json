@@ -1,7 +1,7 @@
 {
   "id": "github-repositories",
   "name": "GitHub",
-  "description": "GitHub accounts, execution identity, public link previews, and document reader.",
+  "description": "GitHub accounts, repository sources, execution identity, public link previews, and document reader.",
   "enabledByDefault": true,
   "configSchema": {
     "type": "object",
@@ -84,5 +84,12 @@
   },
   "categories": [
     "developer-tools"
+  ],
+  "repositorySources": [
+    {
+      "id": "repositories",
+      "label": "GitHub",
+      "searchMethod": "projects.searchRemote"
+    }
   ]
 }

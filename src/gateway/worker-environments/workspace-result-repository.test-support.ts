@@ -20,6 +20,7 @@ import { startNodeWorkspaceTransferTestServer } from "./node-workspace-transfer.
 import type { WorkerDispatchEnvironmentService } from "./placement-dispatch-failure.js";
 import { createWorkerPlacementReclaim } from "./placement-reclaim.js";
 import { placementTurnOwner } from "./placement-record.js";
+import { createLocalRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { createRepositoryWorkspaceMutationService } from "./repository-workspace-mutation.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import { readSessionRepositoryArtifacts } from "./session-repository-checkpoints.js";
@@ -169,7 +170,9 @@ export function useRepositoryWorkspaceResultFixture() {
           ),
       }),
     };
+    const sources = createLocalRepositorySourcesFixture();
     const synced = await syncSessionRepositoryWorkspace({
+      getRepositorySources: () => sources,
       ...sessionTarget,
       repository,
       tunnel,

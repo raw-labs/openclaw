@@ -1,4 +1,3 @@
-import { parseProjectGitUrl } from "../../../../extensions/github-repositories/project-url-api.ts";
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import type { DraftPlaceBrowser } from "./draft-place-browser.ts";
 import type { DraftRepositoryStateOwner } from "./draft-repository-state.ts";
@@ -168,32 +167,6 @@ export function restoreDraftPlacePreferences(params: {
   let changed = false;
   const preferredWhere = state.whereSelectedByUser ? null : state.preferredWhereRestore;
   const preferredProject = state.projectSelectedByUser ? "" : state.preferredProjectRestore;
-  const savedRemote = state.preferredRemoteProjectRestore;
-  const activeRemote = browser.remoteProject;
-  if ((savedRemote || activeRemote) && browser.projectsReady && browser.githubHost) {
-    const matchesHost = (project: DraftRemoteProject) =>
-      parseProjectGitUrl(project.cloneUrl, browser.githubHost) !== null;
-    const staleSaved = savedRemote && !matchesHost(savedRemote);
-    const staleActive = activeRemote && !matchesHost(activeRemote);
-    if (staleSaved || staleActive) {
-      if (staleSaved) {
-        state.preferredRemoteProjectRestore = null;
-      }
-      if (staleActive) {
-        browser.clearProjectSelection();
-        state.projectSelectedByUser = false;
-      }
-      if (staleActive || (staleSaved && !activeRemote && !browser.projectId)) {
-        repositoryState.clearDetails(true);
-      }
-      state.configuredDefaultRepositoryPending =
-        !state.configuredDefaultRepositoryOptOut && !preferredProject;
-      persistPreference({
-        remoteProject: state.preferredRemoteProjectRestore ?? browser.remoteProject ?? null,
-      });
-      changed = true;
-    }
-  }
   const configuredRemoteProject = browser.defaultRemoteProject;
   const configuredProfileId = browser.defaultRemoteProjectProfileId;
   const configuredProfile = configuredProfileId
@@ -208,6 +181,7 @@ export function restoreDraftPlacePreferences(params: {
   const configuredDefaultReady =
     configuredDefaultRequested &&
     browser.projectsReady &&
+    browser.repositorySourcesReady &&
     (!configuredProfileId || gateway.cloudProfilesReady);
   const configuredDefaultAllowed = Boolean(
     configuredDefaultReady &&
@@ -217,7 +191,10 @@ export function restoreDraftPlacePreferences(params: {
         !modelControl.cloudRuntimeUnsupportedReason(configuredProfile))),
   );
   const preferredRemoteProject =
-    state.projectSelectedByUser || !browser.projectsReady
+    state.projectSelectedByUser ||
+    !browser.projectsReady ||
+    !browser.repositorySourcesReady ||
+    browser.repositorySources.length === 0
       ? null
       : restoringConfiguredRemoteProject
         ? configuredDefaultAllowed

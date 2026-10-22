@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { managedWorktrees } from "../agents/worktrees/service.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { readRuntimeConfig, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import * as backoff from "../infra/backoff.js";
 import { registerClonedProjectRegistry } from "../projects/project-registry.test-support.js";
@@ -36,10 +36,18 @@ import {
   assertReceiptOwner,
   prepareReceiptOwner,
 } from "./github-repository-publication-workspace.js";
-import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
+import { materializeSessionRepositoryWorkspaceOnGateway as invokeMaterialization } from "./session-repository-materialization.js";
+import { withRepositorySourceGatewayFixture } from "./worker-environments/repository-source.test-support.js";
 import { stageSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
+function materializeSessionRepositoryWorkspaceOnGateway(
+  params: Parameters<typeof invokeMaterialization>[0],
+) {
+  return withRepositorySourceGatewayFixture(readRuntimeConfig, (sources) =>
+    invokeMaterialization({ ...params, getRepositorySources: () => sources }),
+  );
+}
 const mocked = vi.hoisted(() => ({ run: vi.fn(), timed: vi.fn() }));
 const readFile = (root: string, name: string) => fs.readFile(path.join(root, name), "utf8");
 vi.mock("../process/exec.js", async (original) => ({
@@ -48,8 +56,15 @@ vi.mock("../process/exec.js", async (original) => ({
   runCommandWithTimeout: mocked.timed,
 }));
 // mock-isolation: Publication handoff clones a local origin without GitHub credentials.
-vi.mock("./worker-environments/repository-github-identity.js", () => ({
-  prepareRepositoryGitHubIdentity: async (_agentId: string, assertCurrent: () => void) => ({
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: async ({
+    assertActive: assertCurrent = () => {},
+  }: {
+    assertActive?: () => void;
+  }) => ({
     token: undefined,
     assertSelected: assertCurrent,
     start: async (start: () => Promise<unknown>) => await start(),

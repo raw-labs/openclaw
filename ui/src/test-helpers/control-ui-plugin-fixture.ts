@@ -2,6 +2,7 @@ import path from "node:path";
 import { controlUiPluginAssetPrefix } from "../../../src/gateway/control-ui-plugin-assets-contract.js";
 import { readPluginControlUiAssets } from "../../../src/plugins/control-ui-assets.js";
 import type { PluginManifestControlUi } from "../../../src/plugins/manifest-types.js";
+import { loadPluginManifest } from "../../../src/plugins/manifest.js";
 
 export type NativeControlUiPluginFixture = {
   pluginId: string;
@@ -16,6 +17,7 @@ export async function prepareNativeControlUiPluginFixtures(
   fixtures: readonly NativeControlUiPluginFixture[],
 ) {
   const plugins = [];
+  const repositorySources = [];
   const assets = new Map<string, { body: Buffer; contentType: string }>();
   for (const fixture of fixtures) {
     const key = `${fixture.rootDir}\0${fixture.source}`;
@@ -27,6 +29,15 @@ export async function prepareNativeControlUiPluginFixtures(
       builds.set(key, build);
     }
     const declaration = await build;
+    const manifest = loadPluginManifest(fixture.rootDir);
+    if (!manifest.ok) {
+      throw new Error(manifest.error);
+    }
+    repositorySources.push(
+      ...(manifest.manifest.repositorySources ?? []).map((source) =>
+        Object.assign({ pluginId: fixture.pluginId }, source),
+      ),
+    );
     const revision = path.basename(path.dirname(declaration.entry));
     const prefix = `${controlUiPluginAssetPrefix(fixture.pluginId)}${revision}/`;
     const generation = await readPluginControlUiAssets(fixture.rootDir, declaration);
@@ -47,6 +58,7 @@ export async function prepareNativeControlUiPluginFixtures(
     catalog: {
       revision: plugins.map((entry) => entry.revision).join("-"),
       plugins,
+      repositorySources,
       diagnostics: [],
     },
   };

@@ -6,25 +6,31 @@ import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
 import * as githubOAuthLifecycle from "../../extensions/github-repositories/account-runtime-api.js";
 import * as githubOAuth from "../../extensions/github-repositories/oauth-api.js";
+import * as projectCloning from "../../extensions/github-repositories/project-clone-api.js";
 import * as cloneRuntime from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
-import { createGitHubReadIdentity } from "../../extensions/github-repositories/read-identity-api.js";
+import {
+  createGitHubReadIdentity,
+  type GitHubReadIdentityPreparation,
+  type PreparedGitHubReadIdentity,
+  type PreparedGitHubSourceReadIdentity,
+} from "../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
 } from "../../extensions/github-repositories/tool-identity-api.js";
+import * as repositoryGitHubIdentity from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   isSessionEntryDataSql,
   observeHostDataSql,
 } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { findLiveRegistryWorktreeByOwner } from "../agents/worktrees/registry.test-support.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { readRuntimeConfig, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import * as sessionEntries from "../config/sessions/session-accessor.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import * as projectCloning from "../projects/project-clone.js";
 import { registerClonedProjectRegistry } from "../projects/project-registry.test-support.js";
 import * as secretsRuntime from "../secrets/runtime-state.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
@@ -32,11 +38,20 @@ import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { captureGitHubPublicationWorkspaceSnapshot } from "./github-publication-git-transport.js";
 import { REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS } from "./github-repository-publication-snapshot.js";
-import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
-import * as repositoryGitHubIdentity from "./worker-environments/repository-github-identity.js";
+import { materializeSessionRepositoryWorkspaceOnGateway as invokeMaterialization } from "./session-repository-materialization.js";
+import { withRepositorySourceGatewayFixture } from "./worker-environments/repository-source.test-support.js";
 import { stageSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
+
+// Bind real source/custody operations through the existing Gateway invocation seam.
+function materializeSessionRepositoryWorkspaceOnGateway(
+  params: Parameters<typeof invokeMaterialization>[0],
+) {
+  return withRepositorySourceGatewayFixture(readRuntimeConfig, (sources) =>
+    invokeMaterialization({ ...params, getRepositorySources: () => sources }),
+  );
+}
 
 const exec = promisify(execFile);
 const git = async (cwd: string, args: string[]) =>
@@ -251,7 +266,7 @@ it.each([
                 : "https://api.github.com",
           });
           expect(clone).toHaveBeenCalledWith(
-            { cfg, gitUrl: repository.url, requiredCommit: repository.baseCommit },
+            { gitUrl: repository.url, requiredCommit: repository.baseCommit },
             expect.objectContaining({ token }),
           );
         }
@@ -271,14 +286,27 @@ it.each([
   "unbound incognito",
 ] as const)("retains only committed materialization: %s", async (outcome) => {
   // Local recovery fixtures exercise retained state; identity admission is covered above.
-  vi.spyOn(repositoryGitHubIdentity, "prepareRepositoryGitHubIdentity").mockImplementation(
-    async (_agentId, assertCurrent) =>
-      createGitHubReadIdentity({
-        token: undefined,
-        selection: { source: "anonymous" },
-        assertSelected: assertCurrent,
-        readToken: async () => undefined,
-      }),
+  function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation & { allowAnonymous: true },
+  ): Promise<PreparedGitHubSourceReadIdentity>;
+  function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation,
+  ): Promise<PreparedGitHubReadIdentity>;
+  async function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation & { allowAnonymous?: boolean },
+  ): Promise<PreparedGitHubSourceReadIdentity> {
+    if (params.allowAnonymous !== true) {
+      throw new Error("Recovery fixture expects an anonymous source read");
+    }
+    return createGitHubReadIdentity({
+      token: undefined,
+      selection: { source: "anonymous" },
+      assertSelected: params.assertActive,
+      readToken: async () => undefined,
+    });
+  }
+  vi.spyOn(repositoryGitHubIdentity, "prepareGitHubReadIdentity").mockImplementation(
+    prepareRecoveryReadIdentity,
   );
   await withOpenClawTestState({ label: "repository-materialize" }, async (state) => {
     const cfg = {

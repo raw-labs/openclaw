@@ -100,6 +100,7 @@ type GatewayRequestContextRuntime = Pick<
     | "workerPlacementControlAvailable"
     | "getAttachedGatewayMethodRegistry"
   > & {
+    repositorySources?: import("./repository-sources.js").RepositorySources;
     sessionObserver: NonNullable<GatewayRequestContext["sessionObserver"]>;
     sessionActivitySummaries?: GatewayRequestContext["sessionActivitySummaries"];
     channelAdmissionAudit?: GatewayRequestContext["channelAdmissionAudit"];
@@ -536,6 +537,7 @@ export function createGatewayRequestContext(
     ...(runtime.githubPublicationService
       ? { githubPublicationService: runtime.githubPublicationService }
       : {}),
+    repositorySources: runtime.repositorySources,
     terminalSessions: runtime.terminalSessions,
     agentRunSeq: runtime.agentRunSeq,
     chatRunState: runtime.chatRunState,

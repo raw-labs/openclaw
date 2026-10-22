@@ -36,7 +36,7 @@ import type {
   ControlUiPluginCapability,
   ControlUiRegistration,
 } from "./control-ui-capability.ts";
-import type { ControlUiSettingsContribution } from "./control-ui-metadata.ts";
+import { repositorySources, type ControlUiSettingsContribution } from "./control-ui-metadata.ts";
 
 export type ControlUiPluginOwner = {
   descriptor: PluginControlUiModule;
@@ -90,6 +90,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   >();
   private catalog: readonly PluginControlUiModule[] = [];
   private catalogClient: GatewayBrowserClient | null = null;
+  private catalogRepositorySources: NonNullable<PluginsControlUiCatalog["repositorySources"]> = [];
   private firstConnection = true;
   private diagnostics: PluginControlUiDiagnostic[] = [];
   private grantTimer: ReturnType<typeof setInterval> | null = null;
@@ -105,6 +106,14 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
         revision: plugin.revision,
         placement,
       })),
+    );
+  }
+
+  get repositorySources() {
+    return repositorySources(
+      this.getContext().gateway.snapshot.client === this.catalogClient
+        ? this.catalogRepositorySources
+        : [],
     );
   }
 
@@ -302,6 +311,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
       }
       this.diagnostics = catalog.diagnostics;
       this.catalog = catalog.plugins;
+      this.catalogRepositorySources = catalog.repositorySources ?? [];
       this.catalogClient = client;
       for (const [abort, owner] of this.settingsLifetimes) {
         if (

@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { createGitHubReadIdentity } from "../../../extensions/github-repositories/read-identity-api.js";
+import type { prepareGitHubReadIdentity } from "../../../extensions/github-repositories/tool-identity-api.js";
 import { NodeWorkerWorkspaceRuntime } from "../../node-host/node-worker-workspace.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { closeOpenClawStateDatabaseByPathAsync } from "../../state/openclaw-state-db-cache.js";
@@ -15,7 +16,7 @@ import {
 import { createNodeWorkerWorkspaceActions } from "./node-worker-workspace-actions.js";
 import { createNodeWorkspaceTransferService } from "./node-workspace-transfer-service.js";
 import { startNodeWorkspaceTransferTestServer } from "./node-workspace-transfer.test-support.js";
-import { prepareRepositoryGitHubIdentity } from "./repository-github-identity.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import {
   stageSessionRepositoryCheckpoint,
@@ -30,8 +31,22 @@ import { captureWorkspaceManifest } from "./workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./workspace-manifest.js";
 import { requireWorkspaceResultGit } from "./workspace-result-git.js";
 
+// The worker source explicitly requests allowAnonymous; mock that source-read overload.
+const prepareSourceIdentity = vi.hoisted(() =>
+  vi.fn<
+    (
+      params: Parameters<typeof prepareGitHubReadIdentity>[0] & { allowAnonymous: true },
+    ) => Promise<ReturnType<typeof createGitHubReadIdentity>>
+  >(),
+);
+
 // mock-isolation: Workspace startup supplies a synthetic identity without credential discovery.
-vi.mock("./repository-github-identity.js", () => ({ prepareRepositoryGitHubIdentity: vi.fn() }));
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: prepareSourceIdentity,
+}));
 
 const session = {
   sessionId: "repository-session",
@@ -120,16 +135,14 @@ async function fixture(runSetupScript = false, preparedNode = false) {
     runSetupScript,
     assertCurrent,
   });
-  vi.mocked(prepareRepositoryGitHubIdentity)
-    .mockReset()
-    .mockResolvedValue(
-      createGitHubReadIdentity({
-        token,
-        selection: { source: "system-configured", accountId: 42 },
-        assertSelected: assertCurrent,
-        readToken: async () => token,
-      }),
-    );
+  prepareSourceIdentity.mockReset().mockResolvedValue(
+    createGitHubReadIdentity({
+      token,
+      selection: { source: "system-configured", accountId: 42 },
+      assertSelected: assertCurrent,
+      readToken: async () => token,
+    }),
+  );
   const syncWorkspace = vi.fn<WorkerTunnelHandle["syncWorkspace"]>(async (request) => {
     if (request.source.kind !== "repository") {
       throw new Error("Expected repository source");
@@ -191,6 +204,7 @@ async function fixture(runSetupScript = false, preparedNode = false) {
   };
   const start = (extra: Partial<Parameters<typeof syncSessionRepositoryWorkspace>[0]> = {}) =>
     syncSessionRepositoryWorkspace({
+      getRepositorySources: () => createRepositorySourcesFixture(() => ({})),
       ...session,
       repository,
       tunnel,
@@ -264,7 +278,9 @@ it("accepts the initial SQLite and bare Git checkpoint before sync can finish or
     "repositoryAcceptance",
     "repositoryCleanup",
   ]);
-  expect(prepareRepositoryGitHubIdentity).toHaveBeenCalledWith(session.agentId, f.assertCurrent);
+  expect(prepareSourceIdentity).toHaveBeenCalledWith(
+    expect.objectContaining({ agentId: session.agentId, assertActive: expect.any(Function) }),
+  );
   expect(f.syncWorkspace).toHaveBeenCalledWith({
     authorize: expect.any(Function),
     sessionId: session.sessionId,
@@ -305,7 +321,7 @@ it("accepts the initial SQLite and bare Git checkpoint before sync can finish or
 
 it("does not run setup when the repository did not request it", async () => {
   const f = await fixture(false);
-  vi.mocked(prepareRepositoryGitHubIdentity).mockResolvedValue(
+  prepareSourceIdentity.mockResolvedValue(
     createGitHubReadIdentity({
       token: undefined,
       selection: { source: "anonymous" },
@@ -325,7 +341,7 @@ it("does not run setup when the repository did not request it", async () => {
 it("refuses requested setup without fresh authority instead of saving an incomplete initial state", async () => {
   const f = await fixture(true);
   await expect(f.start({ runSetupScript: undefined })).rejects.toThrow("administrator");
-  expect(prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+  expect(prepareSourceIdentity).not.toHaveBeenCalled();
   expect(f.syncWorkspace).not.toHaveBeenCalled();
   expect((await f.store.get(f.repository.workspaceId))?.checkpointRef).toBeNull();
 });
@@ -333,7 +349,7 @@ it("refuses requested setup without fresh authority instead of saving an incompl
 it("refuses interrupted setup recovery before credentials or worker commands are requested", async () => {
   const f = await fixture(true);
   await expect(f.start({ recovery: true, runSetupScript: true })).rejects.toThrow("administrator");
-  expect(prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+  expect(prepareSourceIdentity).not.toHaveBeenCalled();
   expect(f.syncWorkspace).not.toHaveBeenCalled();
   expect(await f.store.get(f.repository.workspaceId)).toEqual(f.repository);
 });
@@ -503,7 +519,7 @@ it("adopts completed setup, restores accepted repository edits, and retains the 
   for (const [request] of f.syncWorkspace.mock.calls) {
     expect(request.source).not.toHaveProperty("gitToken");
   }
-  expect(prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+  expect(prepareSourceIdentity).not.toHaveBeenCalled();
   expect(await fs.readFile(path.join(f.remote, "setup.txt"), "utf8")).toBe("already prepared\n");
   expect(await f.store.get(f.repository.workspaceId)).toMatchObject({
     baseCommit: f.baseCommit,
@@ -517,7 +533,7 @@ it.each(["commit", "source manifest"] as const)(
   async (change) => {
     const f = await fixture();
     await f.start();
-    vi.mocked(prepareRepositoryGitHubIdentity).mockClear();
+    prepareSourceIdentity.mockClear();
     f.syncWorkspace.mockClear();
     await expect(
       f.start({
@@ -531,7 +547,7 @@ it.each(["commit", "source manifest"] as const)(
         },
       }),
     ).rejects.toThrow(change === "commit" ? "pinned session commit" : "pinned source manifest");
-    expect(prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+    expect(prepareSourceIdentity).not.toHaveBeenCalled();
     expect(f.syncWorkspace).not.toHaveBeenCalled();
   },
 );
@@ -564,7 +580,7 @@ it.each(["identity", "sync", "verification"] as const)(
   async (phase) => {
     const f = await fixture();
     if (phase === "identity") {
-      vi.mocked(prepareRepositoryGitHubIdentity).mockImplementationOnce(async () => {
+      prepareSourceIdentity.mockImplementationOnce(async () => {
         f.closeAuthority();
         return createGitHubReadIdentity({
           token: undefined,
