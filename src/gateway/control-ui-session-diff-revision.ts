@@ -11,7 +11,7 @@ import {
 } from "../infra/git-root.js";
 import { gitFilesystemEnvironmentRevision } from "../infra/git-worker-context.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
-import { gitOutput, runPullRequestGit } from "./control-ui-session-prs-landing.js";
+import { gitOutput, runPullRequestGit } from "../infra/repository-checkout-landing.js";
 
 type GitInstallationFiles = { revision: string; config: string[]; attributes: string[] };
 // One installation per worker; environment or executable replacement retires its discovery.

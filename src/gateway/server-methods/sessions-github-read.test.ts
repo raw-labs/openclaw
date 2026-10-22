@@ -19,7 +19,6 @@ import * as stateWriter from "../../state/openclaw-state-worker-owner.js";
 import type { UserGitHubConnection } from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
-import * as prRead from "../control-ui-session-pr-read.js";
 import * as publicationAvailability from "../github-publication-availability.js";
 import * as relevance from "../github-publication-relevance.js";
 import {
@@ -351,17 +350,11 @@ it.each([false, true])(
         source_head_commit: "1".repeat(40),
         workspace_tree: "2".repeat(40),
       };
-      const target = {
-        params: { sessionKey, agentId: "main" },
-        identity: "pr-source",
-        readSource: { agentId: "main", path: "/fixture" },
-        source: { owner: "owner", repo: "repo", branch: "feature" },
-        assertCurrent: vi.fn(),
-      };
-      vi.spyOn(prRead, "createControlUiSessionPrRead").mockReturnValue(async () => target);
       const prs = [
         {
-          ...target.source,
+          owner: "owner",
+          repo: "repo",
+          branch: "feature",
           number: 1,
           title: "Published work",
           url: "https://github.com/owner/repo/pull/1",
@@ -392,7 +385,9 @@ it.each([false, true])(
         );
       }
       expect(fixture.pullRequests.read).toHaveBeenCalledWith(
-        target,
+        expect.objectContaining({
+          session: expect.objectContaining({ sessionKey, agentId: "main" }),
+        }),
         expect.any(Function),
         "publication",
       );

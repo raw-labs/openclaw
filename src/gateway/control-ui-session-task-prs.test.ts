@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { prepareControlUiSessionPrServiceTarget } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
 import * as gitReads from "../infra/git-read-cache.js";
 import { publicationRowDefaults } from "../state/github-publication-fixtures.test-support.js";
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
@@ -9,13 +10,11 @@ import {
 } from "../test-utils/openclaw-test-state.js";
 import type { ControlUiSessionPullRequestSnapshot } from "./control-ui-contract.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-read.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import { insertRepositoryGitHubPublicationFixture } from "./github-publication-store.test-support.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication.kernel.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
 
 let state: OpenClawTestState;
 let fixture: Awaited<ReturnType<typeof createFixture>>;
@@ -120,7 +119,8 @@ it("projects three descendant receipts without mixing the parent's current branc
   });
   expect(taskNumbers()?.toSorted((a, b) => a - b)).toEqual([1, 2, 3]);
   const sharedTarget = await prepareControlUiSessionPrServiceTarget(
-    () => getSessionRowProjection(fixture.context),
+    fixture.sessionReads,
+    fixture.context.getRuntimeConfig,
     { sessionKey, agentId: "main" },
   );
   expect(sharedTarget).toBeDefined();

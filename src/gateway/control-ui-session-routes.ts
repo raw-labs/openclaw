@@ -120,7 +120,7 @@ export function createControlUiSessionRoutes(options: {
       if (isControlUiPublicSessionPath(pathname, basePath)) {
         const requestGate = publicGate();
         const card = {
-          pullRequests: options.getGatewayRequestContext?.()?.controlUiSessionPullRequests,
+          pullRequests: options.getGatewayRequestContext?.()?.repositorySessions?.presentation,
           render: async (cardInput: Parameters<PublicSessionCardRenderer["render"]>[0]) => {
             renderer ??= import("./control-ui-public-session-card.js").then((module) =>
               module.createPublicSessionCardRenderer(),

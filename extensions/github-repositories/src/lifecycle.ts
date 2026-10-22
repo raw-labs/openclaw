@@ -3,6 +3,7 @@ import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
 import { installRepositoryServices } from "../account-runtime-api.js";
 import { createGitHubOAuthLifecycle } from "../oauth-lifecycle-runtime-api.js";
+import { startGitHubSessionPresentation } from "../session-presentation-service-api.js";
 import { cleanupRetiredManagedGitHubProfiles } from "../tool-profile-cleanup-api.js";
 
 /** The managed plugin service is the sole account maintenance owner. */
@@ -40,16 +41,21 @@ export function createRepositoryAccountService(
       assertCurrent();
       let oauth: ReturnType<typeof createGitHubOAuthLifecycle> | undefined = undefined;
       let uninstall: (() => void) | undefined = undefined;
+      let presentation: ReturnType<typeof startGitHubSessionPresentation> | undefined = undefined;
       // Failed startup retains custody before a constructor can acquire subscriptions.
       stop = async () => {
         uninstall?.();
-        await oauth?.stop();
+        await Promise.all([oauth?.stop(), presentation?.stop()]);
       };
       oauth = createGitHubOAuthLifecycle({
         scheduler: service.scheduler,
         getConfig: host.getConfig,
         getPersistedConfig: readRepositoryPersistedConfig,
         warn: (message) => service.logger.warn(message),
+      });
+      presentation = startGitHubSessionPresentation({
+        scheduler: service.scheduler,
+        getConfig: host.getConfig,
       });
       uninstall = installRepositoryServices(host.identity, { oauth }, signal);
       oauth.start();

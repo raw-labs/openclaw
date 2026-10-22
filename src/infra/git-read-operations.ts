@@ -3,10 +3,7 @@ import type { ManagedWorktreeBranchesResult } from "../agents/worktrees/types.js
 import type { SessionDiffBaseline } from "../config/sessions/types.js";
 
 export type GitCheckoutContext = {
-  /** Omitted host is the public GitHub default. */
-  host?: string;
-  owner: string;
-  repo: string;
+  originUrl: string;
   branch: string | null;
   root?: string;
   defaultBranch?: string;
@@ -55,7 +52,7 @@ export type GitReadOperations = {
     output: string | null;
   };
   "checkout.context": {
-    input: { root: string; githubHost?: string };
+    input: { root: string };
     output: GitCheckoutContext | null;
   };
   "checkout.diff": { input: GitCheckoutDiffInput; output: Omit<SessionsDiffResult, "sessionKey"> };

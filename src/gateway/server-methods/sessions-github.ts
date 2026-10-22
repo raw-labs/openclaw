@@ -16,7 +16,6 @@ import { canRefreshGitHubPublicationBase } from "../../agents/sandbox/github-pub
 import { getGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
 import { OpenClawStateLeaseAcquisitionError } from "../../state/openclaw-state-lease-error.js";
-import { createControlUiSessionPrRead } from "../control-ui-session-pr-read.js";
 import { performSessionGitHubPreparation } from "../github-pr-workspace-preparation.js";
 import { performSessionGitHubAction } from "../github-publication-actions.js";
 import {
@@ -33,7 +32,6 @@ import { performSessionGitHubInspection } from "../github-publication-inspect.js
 import { isGitHubPublicationSuperseded } from "../github-publication-relevance.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
-import { getSessionRowProjection } from "../session-row-projection-access.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
 import { resolveLocalWorkspaceOwner } from "../worker-environments/local-workspace-projection.js";
 import { SessionWorkspaceReservationBusyError } from "../worker-environments/placement-workspace-reservation.kernel.js";
@@ -131,38 +129,37 @@ async function isSessionPublicationSuperseded(
   assertCurrent: () => void,
 ): Promise<boolean> {
   const { client, context } = options;
-  const prOwner = context.controlUiSessionPullRequests;
+  const prOwner = context.repositorySessions?.presentation;
   if (!client || !prOwner) {
     return false;
   }
-  const readTarget = createControlUiSessionPrRead({
-    client,
-    sessionKey: session.sessionKey,
-    agentId: session.agentId,
-    getRuntimeConfig: context.getRuntimeConfig,
-    getSessionRowProjection: () => getSessionRowProjection(context),
-    isCurrentClient: () => {
-      assertCurrent();
-      return true;
+  return await context.repositorySessions!.withRequestRead(
+    {
+      client,
+      hasCurrentClientAuthority: () => {
+        assertCurrent();
+        return true;
+      },
     },
-  });
-  assertCurrent();
-  const target = await readTarget?.();
-  assertCurrent();
-  if (!target) {
-    return false;
-  }
-  const assertReadCurrent = () => {
-    assertCurrent();
-    target.assertCurrent?.();
-  };
-  const published = await prOwner.read(target, assertReadCurrent, "publication");
-  assertReadCurrent();
-  return published.status === "ready" && !published.rateLimited
-    ? isGitHubPublicationSuperseded(snapshot, published.pullRequests, {
-        assertCurrent: assertReadCurrent,
-      })
-    : false;
+    session,
+    async (target) => {
+      assertCurrent();
+      if (!target) {
+        return false;
+      }
+      const assertReadCurrent = () => {
+        assertCurrent();
+        target.assertCurrent();
+      };
+      const published = await prOwner.read(target, assertReadCurrent, "publication");
+      assertReadCurrent();
+      return published.status === "ready" && !published.rateLimited
+        ? await isGitHubPublicationSuperseded(snapshot, published.pullRequests, {
+            assertCurrent: assertReadCurrent,
+          })
+        : false;
+    },
+  );
 }
 
 export const sessionsGitHubHandlers: GatewayRequestHandlers = {

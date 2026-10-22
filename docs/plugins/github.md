@@ -238,6 +238,33 @@ GitHub uses the generic docked link-reader contribution in the
 requests, caching, and mapping source data into the passive reader model. The
 Control UI owns tabs, layout, safe rendering, and keyboard interaction.
 
+### Session review lifetime
+
+The enabled integration also owns session pull-request snapshots, check details,
+branch caches, and the union of connected viewers' polling subscriptions.
+`reader.enabled` controls public link readers and agent tools, not these
+session-bound reviews. Disabling the whole integration withdraws the review
+service too; it does not change native repository or session access policy.
+
+The managed service starts in
+`extensions/github-repositories/src/lifecycle.ts` and installs its presentation
+through `session-presentation-service-api.ts`. Native
+`src/gateway/repository-session-read-host.ts` admits requests and selects current
+session rows. Its private plugin capability exposes bound checkout operations
+and audience-filtered publication receipts, not a database path or arbitrary
+profile lookup. Native source custody remains in
+`control-ui-session-pr-source.ts`, including private actor retention and physical
+source replacement checks.
+
+The plugin polls each watched source once, while delivery rechecks each viewer.
+Losing one viewer does not cancel a shared read still authorized by another.
+Restricted original-PR inspection borrows only the selected viewer's exact
+linked identity. Public row facts reuse branch-only snapshots; personal task
+receipts do not cross audiences. Service stop withdraws the presentation, cancels
+polling and active requests, clears review caches, and joins retained work before
+shutdown completes. Re-enable the integration and reconnect to create fresh
+subscriptions; a retired service cannot deliver a late snapshot.
+
 ## Session-bound Enterprise previews
 
 When `gateway.github.host` selects an Enterprise host, the plugin also advertises

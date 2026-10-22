@@ -1,16 +1,10 @@
-import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
-import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
-import { runGitReadOperation } from "../infra/git-read-cache.js";
-import type {
-  GitCheckoutContext,
-  GitMergedPullHead as MergedPullHead,
-} from "../infra/git-read-operations.js";
-import { createRetainedCache } from "../infra/retained-cache.js";
+import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
+import { createRetainedCache } from "openclaw/plugin-sdk/concurrency-runtime";
 import type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "./control-ui-contract.js";
+} from "openclaw/plugin-sdk/repository-session-read";
 import {
   finishPullRequest,
   loadBoundSessionPullRequest,
@@ -18,16 +12,50 @@ import {
   pullRequestMetadataSignature,
   stateOnlyPullRequestChip,
   readSessionPullRequestMetadata,
-} from "./control-ui-session-pr-metadata.js";
-import type { ControlUiSessionPrReadContext } from "./control-ui-session-pr-read.js";
+} from "./control-ui-session-pr-metadata-api.js";
+import type { ControlUiSessionPrReadContext } from "./control-ui-session-pr-read-api.js";
 import {
   createGitHubReadGroup,
   prepareSessionPullRequestGitHubRead,
-} from "./control-ui-session-pr-request.js";
-import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";
-import { readTaskPullRequestReceipts } from "./control-ui-session-task-prs.js";
-import { captureOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
-import { resolveGitHubForkParent } from "./github-repository-target.js";
+} from "./control-ui-session-pr-request-api.js";
+import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks-api.js";
+import { readTaskPullRequestReceipts } from "./control-ui-session-task-prs-api.js";
+import { gitHubPublicApi } from "./public-api.js";
+import { parseGitHubRemoteUrl } from "./remote-api.js";
+import { resolveGitHubForkParent } from "./repository-target-api.js";
+
+type MergedPullHead = Parameters<
+  import("openclaw/plugin-sdk/repository-session-read").RepositorySessionSourceScope["readCheckoutBranchFacts"]
+>[0]["mergedHeads"][number];
+export type GitHubCheckoutContext = {
+  host?: string;
+  owner: string;
+  repo: string;
+  branch: string | null;
+  root?: string;
+  defaultBranch?: string;
+};
+
+export function gitHubCheckoutContext(
+  facts: { originUrl: string; branch: string | null; root?: string; defaultBranch?: string } | null,
+  host = "github.com",
+): GitHubCheckoutContext | null {
+  if (!facts) {
+    return null;
+  }
+  const publicRemote = parseGitHubRemoteUrl(facts.originUrl);
+  const remote = publicRemote ?? parseGitHubRemoteUrl(facts.originUrl, host);
+  if (!remote) {
+    return null;
+  }
+  return {
+    ...remote,
+    ...(!publicRemote ? { host } : {}),
+    branch: facts.branch,
+    ...(facts.root ? { root: facts.root } : {}),
+    ...(facts.defaultBranch ? { defaultBranch: facts.defaultBranch } : {}),
+  };
+}
 
 const SUCCESS_CACHE_MS = 90_000;
 // Back off refetches while GitHub reports quota exhaustion; the UI keeps
@@ -75,9 +103,12 @@ type CacheEntry = {
 };
 
 const branchCache = createRetainedCache<CacheEntry>();
+export function clearSessionBranchPullRequests() {
+  branchCache.clear();
+}
 
 function branchCacheKey(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   read: Pick<
     ReturnType<typeof prepareSessionPullRequestGitHubRead>,
     "host" | "apiBaseUrl" | "cacheScope"
@@ -97,7 +128,7 @@ function branchCacheKey(
 
 /** Historical landing facts remain scoped to the current session, source, and credential. */
 export function readKnownSessionBranchMergedHeads(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   read: ControlUiSessionPrReadContext,
 ): readonly MergedPullHead[] {
   read.assertCurrent();
@@ -123,7 +154,7 @@ type LoadSessionPullRequestDeps = {
 
 // git push's own "create a pull request" hint URL; GitHub resolves the base
 // branch (including fork -> parent) so no API call is needed to build it.
-function branchCreateUrl(context: GitCheckoutContext, branchName: string): string {
+function branchCreateUrl(context: GitHubCheckoutContext, branchName: string): string {
   const owner = encodeURIComponent(context.owner);
   const repo = encodeURIComponent(context.repo);
   const branch = branchName.split("/").map(encodeURIComponent).join("/");
@@ -131,10 +162,10 @@ function branchCreateUrl(context: GitCheckoutContext, branchName: string): strin
 }
 
 async function resolveSessionBranch(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   mergedHeads: readonly MergedPullHead[],
   refresh: boolean,
-  refreshIndex: boolean,
+  sourceScope: ControlUiSessionPrReadContext["sourceScope"],
 ): Promise<ControlUiSessionBranch | undefined> {
   if (!context.branch || context.branch === context.defaultBranch) {
     return undefined;
@@ -150,18 +181,13 @@ async function resolveSessionBranch(
       createUrl: branchCreateUrl(context, context.branch),
     };
   }
-  const facts = await runGitReadOperation(
+  const facts = await sourceScope.readCheckoutBranchFacts(
     {
-      type: "pull-request.branch-facts",
-      input: {
-        root,
-        branch: context.branch,
-        defaultBranch: context.defaultBranch,
-        mergedHeads,
-        refreshIndex,
-      },
+      branch: context.branch,
+      defaultBranch: context.defaultBranch,
+      mergedHeads,
     },
-    { refresh },
+    refresh,
   );
   if (!facts) {
     return undefined;
@@ -220,7 +246,7 @@ function mergedHeadsOf(items: readonly PullListItem[]): MergedPullHead[] {
 }
 
 async function fetchBranchPullRequests(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   read: ReturnType<typeof prepareSessionPullRequestGitHubRead>,
   refresh: boolean,
 ): Promise<BranchPullRequestsSnapshot> {
@@ -290,7 +316,7 @@ async function fetchBranchPullRequests(
 }
 
 async function refreshBranchPullRequests(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   read: ReturnType<typeof prepareSessionPullRequestGitHubRead>,
   entry: CacheEntry,
 ): Promise<BranchPullRequestsSnapshot> {
@@ -360,11 +386,7 @@ export async function loadControlUiSessionPullRequests(
     };
   }
   // Publication controls deliberately consume the current branch only.
-  if (
-    deps.read.projection === "publication" ||
-    !deps.read.target.taskReceipts ||
-    deps.read.target.ownGitHubProfileId
-  ) {
+  if (deps.read.projection === "publication" || !deps.read.target.includesTaskPublications) {
     return loadControlUiSessionBranchPullRequests(params, deps);
   }
   const branch: ControlUiSessionPullRequests = deps.read.target.taskReceiptsOnly
@@ -377,14 +399,16 @@ export async function loadControlUiSessionPullRequests(
   if (!deps.read.target.taskReceiptsOnly) {
     deps.read.onBranchRead?.(branch);
   }
+  const readTaskPublications =
+    deps.read.readTaskPublications ?? deps.read.target.read?.readTaskPublications;
+  if (!readTaskPublications) {
+    throw new Error("Task publication read authority is unavailable");
+  }
   const task = await readTaskPullRequestReceipts(
-    {
-      ...deps.read.target.taskReceipts,
-      ...(branch.pullRequests.length
-        ? { branchUrls: [...new Set(branch.pullRequests.map((pr) => pr.url))] }
-        : {}),
-    },
-    deps.read.assertCurrent,
+    { readTaskPublications },
+    branch.pullRequests.length
+      ? { branchUrls: [...new Set(branch.pullRequests.map((pr) => pr.url))] }
+      : {},
     deps.cacheSignal,
   );
   if (deps.read.target.taskReceiptsOnly) {
@@ -473,17 +497,14 @@ async function loadControlUiSessionBranchPullRequests(
           throw new Error("The session pull request is not prepared on the current host");
         }
         let credential:
-          | import("./control-ui-session-pr-request.js").SessionPullRequestReadCredential
+          | import("./control-ui-session-pr-request-api.js").SessionPullRequestReadCredential
           | undefined;
         let preparedDetails: unknown;
         if (ownProfileId) {
-          const { readOwnGitHubPullRequest } = await import("./github-publication-inspect.js");
-          const inspected = await readOwnGitHubPullRequest({
-            pullRequestUrl: binding.url,
-            agentId: target.params.agentId,
-            reader: captureOwnGitHubPullRequestReader(ownProfileId, () => binding.host),
-            assertCurrent,
-          });
+          if (!target.read?.inspectBoundPullRequest) {
+            throw new Error("The current reader cannot inspect this pull request");
+          }
+          const inspected = await target.read.inspectBoundPullRequest();
           inspected.assertCurrent();
           const selected = inspected.result;
           if (
@@ -539,12 +560,9 @@ async function loadControlUiSessionBranchPullRequests(
     const source = target.source;
     const context =
       typeof source === "string"
-        ? await runGitReadOperation(
-            {
-              type: "checkout.context",
-              input: { root: source, githubHost: deps.read.target.githubHost },
-            },
-            { refresh: request.refresh },
+        ? gitHubCheckoutContext(
+            (await deps.read.sourceScope.readCheckoutFacts(request.refresh)) ?? null,
+            target.githubHost,
           )
         : source;
     assertCurrent();
@@ -588,7 +606,7 @@ async function loadControlUiSessionBranchPullRequests(
             context,
             mergedHeads,
             request.refresh === true,
-            target.refreshIndex === true,
+            deps.read.sourceScope,
           );
     assertCurrent();
     return {
@@ -622,7 +640,7 @@ function trackBranchRefresh(
 }
 
 async function cachedBranchPullRequests(
-  context: GitCheckoutContext,
+  context: GitHubCheckoutContext,
   deps: LoadSessionPullRequestDeps,
   refresh: boolean,
   sessionIdentity: string,

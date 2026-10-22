@@ -2,13 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { runGit } from "../agents/worktrees/git.js";
 import {
-  createGitCommandError,
   GitCommandTimeoutError,
+  createGitCommandError,
   requireGitCommandOutput,
-} from "../infra/git-exec.js";
-import type { GitMergedPullHead as MergedPullHead } from "../infra/git-read-operations.js";
-import { readGitHead, readGitRefs, resolveGitRefsBase } from "../infra/git-root.js";
-import { canReadGitFilesystemRefs } from "../infra/git-worker-context.js";
+} from "./git-exec.js";
+import type { GitMergedPullHead as MergedPullHead } from "./git-read-operations.js";
+import { readGitHead, readGitRefs, resolveGitRefsBase } from "./git-root.js";
+import { canReadGitFilesystemRefs } from "./git-worker-context.js";
 
 type BranchLanding = {
   complete: boolean;

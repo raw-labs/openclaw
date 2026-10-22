@@ -1,5 +1,6 @@
-import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { ControlUiSessionPullRequestChecksParams } from "../../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
+import { parseControlUiSessionPullRequestsSubscribeParams } from "../../../extensions/github-repositories/control-ui-session-pr-subscription-params-api.js";
 import {
   gitHubPublicApi,
   type ControlUiGitHubPreviewIdentity,
@@ -12,26 +13,15 @@ import {
   prepareSubagentSessionListReadCache,
 } from "../../agents/subagents/registry/subagent-registry-state.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
-import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { ControlUiLinkReaderSection } from "../../shared/control-ui-link-reader.js";
 import { truncateOptionalText } from "../../shared/text-truncate.js";
-import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import type { ControlUiSessionPreview } from "../control-ui-contract.js";
 import { withControlUiSessionGitHubRead } from "../control-ui-session-github-read.js";
-import type { ControlUiSessionPullRequestChecksParams } from "../control-ui-session-pr-check-details.js";
-import {
-  createControlUiSessionPrRead,
-  resolveControlUiSessionPrTarget,
-  type ControlUiSessionPrTarget,
-} from "../control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "../control-ui-session-pr-source.js";
-import { parseControlUiSessionPullRequestsSubscribeParams } from "../control-ui-session-pr-subscriptions.js";
 import { prepareGitHubReaderIdentity } from "../github-reader-identity.js";
 import { resolveRequestedSessionAgentId as resolveRequestedGlobalAgentId } from "../session-request-agent.js";
 import { withReadySessionRows } from "../session-row-prepared-read.js";
 import { getSessionRowProjection } from "../session-row-projection-access.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
-import { retainGatewaySessionEntryReadOnly } from "../session-utils-read-lifetime.js";
 import { resolveAgentIdOrRespondError } from "./agent-id-shared.js";
 import type {
   GatewayClient,
@@ -285,86 +275,6 @@ function parseCheckDetailsParams(
     : null;
 }
 
-async function prepareCheckDetailsSession(
-  sessionKey: string,
-  context: GatewayRequestContext,
-  assertRequestCurrent: () => void,
-): Promise<(ControlUiSessionPrTarget & { release: () => void }) | null> {
-  const sourceCfg = context.getRuntimeConfig();
-  const sourceRequest = resolveRequestedGlobalAgentId(sourceCfg, sessionKey);
-  if (!sourceRequest.ok) {
-    return null;
-  }
-  // Internal reads share the durable/memory lifetime owner; missing clients
-  // still obey role visibility and never acquire system-actor authority.
-  const fields = [
-    "repositoryWorkspaceId",
-    "worktree",
-    "spawnedCwd",
-    "spawnedWorkspaceDir",
-    "pendingWorktree",
-    "pendingProjectGitUrl",
-    "deviceFolder",
-  ] as const;
-  const selected = await retainGatewaySessionEntryReadOnly(
-    sessionKey,
-    sourceRequest.agentId,
-    (previous: InternalSessionEntry, current: InternalSessionEntry) =>
-      fields.every((field) => isDeepStrictEqual(previous[field], current[field])),
-    sourceCfg,
-    { exactRead: true },
-  );
-  let retained = false;
-  try {
-    const entry = selected.entry;
-    if (!entry?.sessionId) {
-      return null;
-    }
-    const workspaceId = entry.repositoryWorkspaceId;
-    const prepared = workspaceId
-      ? await getSessionRepositoryWorkspaceStore().prepare(workspaceId)
-      : undefined;
-    const current = () => {
-      assertRequestCurrent();
-      const cfg = context.getRuntimeConfig();
-      if (
-        !selected.isCurrentAtResponse() ||
-        createSessionListEntryFilter({ cfg, client: null })?.(selected.canonicalKey, entry) ===
-          false
-      ) {
-        return undefined;
-      }
-      const repository = prepared?.current();
-      return resolveControlUiSessionPrTarget(
-        { ...selected, cfg },
-        repository?.workspaceId === workspaceId &&
-          repository?.agentId === selected.agentId &&
-          repository.sessionKey === selected.canonicalKey
-          ? repository
-          : null,
-      );
-    };
-    const target = current();
-    if (!target) {
-      return null;
-    }
-    retained = true;
-    return {
-      ...target,
-      release: selected.release,
-      assertCurrent() {
-        if (current()?.identity !== target.identity) {
-          throw new Error("Session pull-request target changed");
-        }
-      },
-    };
-  } finally {
-    if (!retained) {
-      selected.release();
-    }
-  }
-}
-
 export const controlUiHandlers: GatewayRequestHandlers = {
   "controlUi.linkPreview": async ({
     params,
@@ -468,78 +378,49 @@ export const controlUiHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    let preparedSession: Awaited<ReturnType<typeof prepareCheckDetailsSession>> = null;
     try {
-      const reader = client
-        ? createControlUiSessionPrRead({
-            allowOwnImportedPullRequest: true,
-            client,
-            sessionKey: parsed.sessionKey,
-            getRuntimeConfig: context.getRuntimeConfig,
-            getSessionRowProjection: () => getSessionRowProjection(context),
-            isCurrentClient: () =>
-              !client.connId ||
-              context.getClientConnIds?.((candidate) => candidate === client).has(client.connId) ===
-                true,
-          })
-        : undefined;
-      const binding = client
-        ? ((await reader?.()) ?? null)
-        : (preparedSession = await prepareCheckDetailsSession(parsed.sessionKey, context, () =>
-            signal?.throwIfAborted(),
-          ));
-      if (!binding) {
+      const host = context.repositorySessions;
+      const presentation = host?.presentation;
+      if (!host || !presentation) {
         throw new gitHubPublicApi.ControlUiGitHubError(404, "Session CI details unavailable");
       }
-      let assertReadAuthority: (() => void) | undefined;
-      let readCredential:
-        | import("../control-ui-session-pr-request.js").SessionPullRequestReadCredential
-        | undefined;
-      const assertCurrent = () => {
-        let identityCurrent = false;
-        try {
-          binding.assertCurrent?.();
-          assertReadAuthority?.();
-          identityCurrent = true;
-        } catch {
-          // The read owner reports retired selections and grants as assertion failures.
-        }
-        if (signal?.aborted || !identityCurrent) {
-          throw new gitHubPublicApi.ControlUiGitHubError(409, "Session changed; reopen CI details");
-        }
-      };
-      await withControlUiSessionPrSource(
-        binding.readSource,
-        async (assertSourceCurrent, sourceIdentity) => {
-          const assertReadCurrent = () => {
-            assertSourceCurrent();
-            assertCurrent();
+      await host.withRequestRead(
+        {
+          client,
+          signal,
+          hasCurrentClientAuthority: () =>
+            !client?.connId ||
+            context.getClientConnIds?.((candidate) => candidate === client).has(client.connId) ===
+              true,
+        },
+        { sessionKey: parsed.sessionKey, allowOwnImportedPullRequest: true },
+        async (read) => {
+          if (!read) {
+            throw new gitHubPublicApi.ControlUiGitHubError(404, "Session CI details unavailable");
+          }
+          const assertCurrent = () => {
+            signal?.throwIfAborted();
+            try {
+              read.assertCurrent();
+            } catch {
+              throw new gitHubPublicApi.ControlUiGitHubError(
+                409,
+                "Session changed; reopen CI details",
+              );
+            }
+            if (host.presentation !== presentation) {
+              throw new gitHubPublicApi.ControlUiGitHubError(
+                409,
+                "Session changed; reopen CI details",
+              );
+            }
           };
-          assertReadCurrent();
-          const { loadControlUiSessionPullRequestChecks } =
-            await import("../control-ui-session-pr-check-details.js");
-          const { loadControlUiSessionPullRequests } = await import("../control-ui-session-prs.js");
-          const result = await loadControlUiSessionPullRequestChecks(
-            { ...parsed, agentId: binding.params.agentId },
-            {
-              sessionScope: binding.identity,
-              credential: () => readCredential,
-              assertCurrent: assertReadCurrent,
-              loadPullRequests: (request) =>
-                loadControlUiSessionPullRequests(request, {
-                  read: {
-                    target: binding,
-                    sourceIdentity,
-                    assertCurrent: assertReadCurrent,
-                    retainReadAuthority: (guard, credential) => {
-                      assertReadAuthority = guard;
-                      readCredential = credential;
-                    },
-                  },
-                }),
-            },
-          );
-          assertReadCurrent();
+          let result;
+          try {
+            result = await presentation.checks(read, parsed, assertCurrent);
+          } finally {
+            assertCurrent();
+          }
           respond(true, result, undefined);
         },
       );
@@ -550,8 +431,6 @@ export const controlUiHandlers: GatewayRequestHandlers = {
           ? error.message
           : gitHubPublicApi.formatControlUiGitHubPreviewError(error).message;
       respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, message));
-    } finally {
-      preparedSession?.release();
     }
   },
   "controlUi.sessionPullRequests.subscribe": async ({ params, client, context, respond }) => {
@@ -568,7 +447,7 @@ export const controlUiHandlers: GatewayRequestHandlers = {
       return;
     }
     const connId = client?.connId?.trim();
-    const subscriptions = context.controlUiSessionPullRequests;
+    const subscriptions = context.repositorySessions?.presentation;
     if (!connId || !subscriptions) {
       respond(
         false,

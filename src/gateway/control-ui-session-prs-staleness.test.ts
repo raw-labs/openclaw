@@ -132,7 +132,10 @@ it.each(["replacement", "metadata"] as const)(
           if (operation.type === "checkout.context") {
             captured.resolve();
             await release.promise;
-            return gitContext;
+            return {
+              originUrl: `https://github.com/${gitContext.owner}/${gitContext.repo}`,
+              branch: gitContext.branch,
+            };
           }
           throw new Error("Unexpected held-context Git operation");
         });
@@ -287,7 +290,10 @@ it("discards pending PR work after same-file reopen even when persisted rows are
         if (operation.type === "checkout.context") {
           entered.resolve();
           await release.promise;
-          return testGitContext;
+          return {
+            originUrl: `https://github.com/${testGitContext.owner}/${testGitContext.repo}`,
+            branch: testGitContext.branch,
+          };
         }
         throw new Error("Unexpected held-context Git operation");
       });

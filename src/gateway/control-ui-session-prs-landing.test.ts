@@ -5,7 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as worktreeGit from "../agents/worktrees/git.js";
-import { resolveBranchLanding } from "./control-ui-session-prs-landing.js";
+import { resolveBranchLanding } from "../infra/repository-checkout-landing.js";
 
 const execFileAsync = promisify(execFile);
 
