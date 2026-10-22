@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { createGitHubOAuthLifecycleHost } from "../../extensions/github-repositories/oauth-lifecycle-host-api.js";
 import { createGitHubOAuthLifecyclePolicy } from "../../extensions/github-repositories/oauth-lifecycle-policy-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 const { configuredOAuthIdentities, captureGitHubOAuthAuthorizationIdentity } =
   createGitHubOAuthLifecyclePolicy(createGitHubOAuthLifecycleHost(new AbortController().signal));
 import {
@@ -15,9 +15,9 @@ import {
 describe("GitHub OAuth maintenance inventory", () => {
   it("bounds roster reads while preserving ordered identities and fresh configuration", () => {
     const count = 128;
-    const entries: Record<string, { tools: { github?: GitHubToolIdentityConfig } }> = {};
+    const entries: Record<string, Record<string, never>> = {};
     for (let index = count; index > 0; index -= 1) {
-      entries[`agent-${String(index).padStart(3, "0")}`] = { tools: {} };
+      entries[`agent-${String(index).padStart(3, "0")}`] = {};
     }
     let reads = 0;
     const observed = new Proxy(entries, {
@@ -33,16 +33,20 @@ describe("GitHub OAuth maintenance inventory", () => {
 
     const system = identity(OLD_PROFILE, { oauth: true, author: true });
     const agent = identity(NEW_PROFILE, { oauth: true, author: true });
-    config.tools = { github: system };
-    entries["agent-128"] = { tools: { github: agent } };
-    entries["agent-064"] = { tools: { github: system } };
-    entries["agent-001"] = { tools: { github: identity(OTHER_PROFILE) } };
+    config.plugins = { entries: { "github-repositories": { config: {} } } };
+    const plugin = readGitHubConfig(config);
+    plugin.system = system;
+    plugin.agents = {
+      "agent-128": agent,
+      "agent-064": system,
+      "agent-001": identity(OTHER_PROFILE),
+    };
     expect(configuredOAuthIdentities(config)).toEqual([
       { scope: "system", agentId: "system", identity: system },
       { scope: "agent", agentId: "agent-064", identity: system },
       { scope: "agent", agentId: "agent-128", identity: agent },
     ]);
-    entries["agent-001"] = { tools: { github: agent } };
+    plugin.agents["agent-001"] = agent;
     delete entries["agent-128"];
     expect(configuredOAuthIdentities(config)).toEqual([
       { scope: "system", agentId: "system", identity: system },
@@ -54,18 +58,25 @@ describe("GitHub OAuth maintenance inventory", () => {
 
 it("never captures a GitHub App signing key in OAuth device authorization state", () => {
   const config: OpenClawConfig = {
-    tools: {
-      github: {
-        kind: "app-installation",
-        profileId: OLD_PROFILE,
-        app: {
-          appId: 1,
-          installationId: 2,
-          accountId: 3,
-          repositories: [{ id: 4, fullName: "example/project" }],
-          permissions: { contents: "read" },
-          privateKey: "synthetic-signing-key",
-          keyVersion: "synthetic-v1",
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: {
+              kind: "app-installation",
+              profileId: OLD_PROFILE,
+              app: {
+                appId: 1,
+                installationId: 2,
+                accountId: 3,
+                repositories: [{ id: 4, fullName: "example/project" }],
+                permissions: { contents: "read" },
+                privateKey: "synthetic-signing-key",
+                keyVersion: "synthetic-v1",
+              },
+            },
+          },
         },
       },
     },
@@ -74,7 +85,7 @@ it("never captures a GitHub App signing key in OAuth device authorization state"
     captureGitHubOAuthAuthorizationIdentity(config, { scope: "system", agentId: "main" }),
   ).toThrow("before connecting an OAuth identity");
   const oauth = identity(OLD_PROFILE, { oauth: true });
-  config.tools = { github: oauth };
+  readGitHubConfig(config).system = oauth;
   const captured = captureGitHubOAuthAuthorizationIdentity(config, {
     scope: "system",
     agentId: "main",

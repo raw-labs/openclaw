@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const mocks = vi.hoisted(() => ({
   mutateConfigFileWithRetry: vi.fn(),
 }));
 
-vi.mock("../config/config.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../config/config.js")>()),
+vi.mock("../config/mutate.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/mutate.js")>()),
   mutateConfigFileWithRetry: mocks.mutateConfigFileWithRetry,
 }));
 
@@ -20,7 +21,24 @@ describe("GitHub identity config mutation", () => {
       const previousIdentity = { profileId: `ghp_${"1".repeat(32)}`, ...sandboxPolicy };
       const nextIdentity = { profileId: `ghp_${"2".repeat(32)}`, kind: "oauth" as const };
       const draft: OpenClawConfig = {
-        agents: { entries: { main: { tools: { github: previousIdentity } } } },
+        agents: {
+          entries: {
+            main: {
+              tools: {},
+            },
+          },
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                agents: {
+                  main: previousIdentity,
+                },
+              },
+            },
+          },
+        },
       };
       mocks.mutateConfigFileWithRetry.mockImplementation(async ({ mutate }) => {
         await mutate(draft);
@@ -33,7 +51,7 @@ describe("GitHub identity config mutation", () => {
         identity: nextIdentity,
         expectedIdentity: previousIdentity,
       });
-      expect(draft.agents?.entries?.main?.tools?.github).toStrictEqual({
+      expect(readGitHubConfig(draft).agents?.["main"]).toStrictEqual({
         ...nextIdentity,
         ...sandboxPolicy,
       });
@@ -43,7 +61,7 @@ describe("GitHub identity config mutation", () => {
         agentId: "main",
         expectedIdentity: { ...nextIdentity, ...sandboxPolicy },
       });
-      expect(draft.agents?.entries?.main?.tools?.github).toBeUndefined();
+      expect(readGitHubConfig(draft).agents?.["main"]).toBeUndefined();
     },
   );
 });

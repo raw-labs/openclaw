@@ -38,18 +38,17 @@ import { createGatewaySidecarStopOwner } from "./server-sidecar-owners.js";
 import { bindSessionRowProjection } from "./session-row-projection-access.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
 
-const oauth = vi.hoisted(() => ({
-  create: vi.fn(),
-  install: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  uninstall: vi.fn(),
-}));
+const oauth = vi.hoisted(() => ({ create: vi.fn() }));
 
-vi.mock("../../extensions/github-repositories/oauth-lifecycle-runtime-api.js", () => ({
-  createGitHubOAuthLifecycle: oauth.create,
-  installActiveGitHubOAuthLifecycle: oauth.install,
-}));
+vi.mock(
+  "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../extensions/github-repositories/oauth-lifecycle-runtime-api.js")
+    >()),
+    createGitHubOAuthLifecycle: oauth.create,
+  }),
+);
 
 // mock-isolation: Prevent unrelated backfill; real lifetime/worker proof covers publication.
 vi.mock("./session-cost-usage-lifetime.js", () => ({
@@ -116,11 +115,7 @@ afterEach(async () => {
 
 describe("gateway lifetime sidecars", () => {
   beforeEach(() => {
-    oauth.start.mockReset();
-    oauth.stop.mockReset().mockResolvedValue(undefined);
-    oauth.uninstall.mockReset();
-    oauth.create.mockReset().mockReturnValue({ start: oauth.start, stop: oauth.stop });
-    oauth.install.mockReset().mockReturnValue(oauth.uninstall);
+    oauth.create.mockReset();
   });
 
   test("parks empty expiry, resumes on writes, and joins responsive worker sweeps on shutdown", async () => {

@@ -19,9 +19,8 @@ reader to the [Control UI](/web/control-ui), plus the `github_read` and `github_
 Public reading now belongs to the bundled `github-repositories` integration,
 which also owns account connections and managed execution identity. Its reader
 methods and agent tools keep their existing names and access scopes. The
-[GitHub identity configuration](/gateway/config-tools/github-identity) still uses
-`tools.github` and per-agent tool settings; this reader consolidation does not
-move account, service-token, or endpoint configuration.
+[canonical GitHub configuration](/plugins/github-configuration) owns shared and
+per-agent identities, service credentials, endpoint selection, and reader policy.
 
 To disable only previews, the reader, and the `github_read` / `github_search`
 tools, set `plugins.entries.github-repositories.config.reader.enabled` to `false`.
@@ -267,7 +266,7 @@ subscriptions; a retired service cannot deliver a late snapshot.
 
 ## Session-bound Enterprise previews
 
-When `gateway.github.host` selects an Enterprise host, the plugin also advertises
+When `plugins.entries.github-repositories.config.host` selects an Enterprise host, the plugin also advertises
 an exact-host, session-scoped reader. It uses the foreground session's repository
 and the selected GitHub App identity. Factory requests require the current signed-in
 operator's `session-item-read` proof and existing repository admission; a pasted

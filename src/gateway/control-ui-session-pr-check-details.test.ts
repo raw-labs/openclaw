@@ -71,8 +71,18 @@ function harness(host = "github.com") {
   if (host !== "github.com") {
     setRuntimeConfigSnapshot({
       gateway: {
-        github: { host, apiBaseUrl: `https://${host}/api/v3` },
-        controlUi: { github: { host, token: "synthetic-enterprise-token" } },
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host,
+              apiBaseUrl: `https://${host}/api/v3`,
+              service: { host, token: "synthetic-enterprise-token" },
+            },
+          },
+        },
       },
     });
   }

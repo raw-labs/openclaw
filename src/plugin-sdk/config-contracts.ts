@@ -1,3 +1,4 @@
+export { formatConcreteConfigPath } from "../shared/dot-path.js";
 export { resolveGatewayPublicOrigin } from "../config/gateway-public-origin.js";
 
 export type { ChannelGroupPolicy } from "../config/group-policy.js";

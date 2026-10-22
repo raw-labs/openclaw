@@ -63,9 +63,9 @@ secret-input metadata. The existing secret preparation owner records exact env/s
 reference exclusions, including inactive plugin paths, without resolving dormant
 credentials. Execution consumes those prepared facts.
 They do not load disabled plugin code or walk configuration again at each command.
-Until the later atomic configuration cutover, the existing core secret owner
-records exclusions for canonical `tools.github`, agent overrides, and
-`gateway.controlUi.github` credentials as well.
+GitHub service and App signing credentials declare these exclusions in the
+canonical plugin manifest. Standalone account probes use the same names-only
+owner through `channel-secret-owner-runtime`; they do not resolve secret values.
 Other secret inputs retain their existing projection policy.
 
 The `github-repositories` plugin owns native account selection, sandbox opt-in,

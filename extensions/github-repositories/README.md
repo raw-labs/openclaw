@@ -6,11 +6,10 @@ Agent → Tools. The plugin owns the existing `users.github.*` connection and `t
 The package also owns the shallow host, managed-account, and OAuth protocol artifacts used by
 native core callers. Those artifacts do not load the plugin runtime.
 
-Configuration stays canonical at `gateway.github`, `tools.github`, and
-`agents.entries.<id>.tools.github`. The Settings renderer reads those current
-owners through its one local projection; it does not introduce a second writer
-or accept a plugin-config fallback. That current-key Settings projection is removed when all GitHub configuration
-readers and writers make their final cutover together.
+Configuration is canonical at `plugins.entries.github-repositories.config`.
+Settings reads that admitted block and writes through the bounded include-aware
+configuration owner. Doctor alone recognizes retired root keys. See
+[GitHub configuration](https://docs.openclaw.ai/plugins/github-configuration).
 
 Settings contributions follow the normal admitted plugin catalog. Disabling or
 denying this plugin removes its contributed views, account RPCs, and execution
@@ -28,18 +27,17 @@ credential environment formatting. Existing repository and publication callers c
 transaction owners remain native. Repository clone/fetch transport is described below. Native OAuth records remain
 host-owned through admitted record operations.
 
-The pure `profile-id-api.ts` format also serves native configuration and persisted
+The pure `profile-id-api.ts` format also serves plugin configuration and persisted
 record validation. The native host-snapshot adapter remains for the frozen PR
 wrapper; the plugin adapter reads the same canonical in-memory snapshot. Neither
 adapter owns a second configuration or a legacy fallback. Agent selections remain
-at `agents.entries[agentId].tools.github`.
+at `plugins.entries.github-repositories.config.agents[agentId]`.
 
 The account service follows normal plugin admission. Disabling or excluding this plugin removes account RPCs and stops new refresh work; it does not erase saved credentials. Gateway storage owners retain record admission and exact refresh settlement.
 
 The execution provider contributes identity facts and private launch adapters for
 local commands and supported Docker/Podman sandboxes. Core retains approvals,
-container allocation, process supervision, and generic Git defaults. Current
-native GitHub configuration keys remain canonical until their atomic cutover.
+container allocation, process supervision, and generic Git defaults. The canonical plugin block owns shared and per-agent selections.
 
 The shallow project URL and Git clone/fetch artifacts own GitHub remote normalization and network command policy. Their current local and worker callers use the same implementation. The native managed-checkout owner retains project registration, leases, and uncertain-write cleanup. The managed account service now installs the declared source used by New Session, local preparation, worker checkout, and Gateway restoration. The source owns search and URL/account admission; native custody retains state, captured environment, registration, leases, and uncertain-write cleanup. SDK callers cannot select configuration, database paths, or environment. Host-created transport options carry the captured environment one way to the exact Git operation. See [Repository sources](https://docs.openclaw.ai/plugins/sdk-repository-sources).
 
@@ -56,8 +54,7 @@ workspace owner, separately from source checkout identity.
 Publication content reuses current native credit/sharing facts and the existing
 formatters. Withdrawal fences new effects and captured APIs without deleting
 accepted native work or redirecting it to another account. Native runtime close
-joins whole admitted operations before closing receipt custody. Current root
-configuration keys are unchanged. See the
+joins whole admitted operations before closing receipt custody. Publication uses the canonical plugin configuration. See the
 [publication lifecycle](https://docs.openclaw.ai/plugins/github-publication) for
 source ownership and recovery boundaries.
 
@@ -71,8 +68,7 @@ only these contributions without disabling accounts or native repository work.
 
 Doctor migrates the retired `github` reader policy into that setting. Its normal
 configured-plugin repair may enable and allowlist the consolidated integration;
-explicit new-plugin disable, deny, and global disable remain effective. Native
-identity/service settings keep their current keys in this preparatory change.
+explicit new-plugin disable, deny, and global disable remain effective. All account, endpoint and service settings use the canonical plugin block.
 See [GitHub reader documentation](https://docs.openclaw.ai/plugins/github).
 
 The public `public-api.ts` artifact owns native HTTP/read composition; it shares

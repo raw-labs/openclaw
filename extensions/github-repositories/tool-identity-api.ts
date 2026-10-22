@@ -4,10 +4,8 @@ import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { root as fsRoot } from "@openclaw/fs-safe/root";
 import type { GitHubIdentityFacts, ToolsGitHubStatusResult } from "@openclaw/gateway-protocol";
-import {
-  resolveAgentConfig,
-  resolveAgentWorkspaceDir,
-} from "openclaw/plugin-sdk/agent-scope-runtime";
+import { resolveAgentWorkspaceDir } from "openclaw/plugin-sdk/agent-scope-runtime";
+import { prepareExecutionEnvironmentExclusions } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { PreparedExecutionEnvironment } from "openclaw/plugin-sdk/execution-environment";
 import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
@@ -20,8 +18,14 @@ import {
   configuredAppGitHubIdentityFacts,
   configuredAppGitHubOptionsIdentity,
 } from "./app-identity-api.js";
+import { readGitHubConfig, readGitHubAgentIdentity } from "./config-api.js";
 import { resolveConfiguredGitHubApiBaseUrl } from "./host-api.js";
-import { resolveGitHubApiBaseUrl, resolveGitHubHost, withGitHubToken } from "./host-runtime-api.js";
+import {
+  CLEARED_GITHUB_CREDENTIALS,
+  resolveGitHubApiBaseUrl,
+  resolveGitHubHost,
+  withGitHubToken,
+} from "./host-runtime-api.js";
 import { readManagedGitHubToken, isPrivateManagedGitHubProfile } from "./managed-profile-read.js";
 import { verifyGitHubCredential } from "./oauth-api.js";
 import {
@@ -42,7 +46,6 @@ import {
 import { managedGitHubHosts, type GitHubToolAccount } from "./tool-account-api.js";
 import {
   applyManagedGitHubIdentityEnvironment,
-  githubCredentialEnvironmentExclusions,
   managedGitHubIdentityEnvironment,
 } from "./tool-identity-env-api.js";
 import {
@@ -78,8 +81,8 @@ export function resolveConfiguredGitHubToolIdentity(params: {
   scope: "system" | "agent";
 }): GitHubToolIdentityConfig | undefined {
   return params.scope === "agent"
-    ? resolveAgentConfig(params.config, params.agentId)?.tools?.github
-    : params.config.tools?.github;
+    ? readGitHubAgentIdentity(params.config, params.agentId)
+    : readGitHubConfig(params.config).system;
 }
 
 function resolveSystemGitHubToolIdentity(
@@ -139,18 +142,15 @@ export function prepareGitHubToolEnvironment(
   if (identity.source !== "system-detected" && identity.config.kind === "app-installation") {
     throw new Error("GitHub Apps support session reads only; select native or OAuth to run tools.");
   }
-  return prepareGitHubToolEnvironmentForIdentity(params, identity);
+  return prepareGitHubToolEnvironmentForIdentity(identity);
 }
 
 function prepareGitHubToolEnvironmentForIdentity(
-  params: Pick<GitHubIdentityPreparation, "config" | "sourceConfig" | "agentId">,
   identity: ResolvedGitHubToolIdentity,
 ): PreparedExecutionEnvironment {
   const managedLocalIdentity = identity.source !== "system-detected";
-  const { credentialScrubEnv, excludedStoreNames } = githubCredentialEnvironmentExclusions(
-    params,
-    identity.source === "system-detected" ? undefined : identity.config,
-  );
+  const credentialScrubEnv = managedLocalIdentity ? { ...CLEARED_GITHUB_CREDENTIALS } : {};
+  const excludedStoreNames: string[] = [];
   return Object.freeze({
     credentialScrubEnv: Object.freeze(credentialScrubEnv),
     localIdentityEnv: Object.freeze(
@@ -171,8 +171,15 @@ function githubIdentityProbeEnvironment(
   params: Pick<GitHubIdentityPreparation, "config" | "sourceConfig" | "env" | "agentId">,
   identity: ResolvedGitHubToolIdentity,
 ): NodeJS.ProcessEnv {
-  const overlay = prepareGitHubToolEnvironmentForIdentity(params, identity);
-  return applyManagedGitHubIdentityEnvironment(params.env, overlay);
+  const overlay = prepareGitHubToolEnvironmentForIdentity(identity);
+  const exclusions = prepareExecutionEnvironmentExclusions({
+    config: params.sourceConfig ?? params.config,
+    env: params.env,
+  });
+  return applyManagedGitHubIdentityEnvironment(params.env, {
+    ...overlay,
+    credentialScrubEnv: { ...overlay.credentialScrubEnv, ...exclusions?.credentialScrubEnv },
+  });
 }
 
 export async function resolveGitHubToolIdentityStatus(

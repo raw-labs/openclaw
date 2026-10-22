@@ -129,10 +129,20 @@ it("removes only unreferenced generations inside exact system and agent roots", 
   await linkDirectory(outside, path.join(systemRoot, systemRetired, "prior-export"));
 
   const agentDir = path.join(stateDir, "mutable-agent-dir");
-  const reviewer = { agentDir, tools: { github: { profileId: agentCurrent } } };
+  const reviewer = { agentDir };
   const result = await cleanup({
-    tools: { github: { profileId: systemCurrent } },
+    tools: {},
     agents: { entries: { reviewer } },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId: systemCurrent },
+            agents: { reviewer: { profileId: agentCurrent } },
+          },
+        },
+      },
+    },
   });
 
   await expectPresent(path.join(systemRoot, systemCurrent));
@@ -213,7 +223,18 @@ it("preserves a durable recovery generation until its OAuth record retires", asy
   const record = { profileId: recovery, scope: "system", agentId: "system" };
   oauthMocks.list.mockReturnValue([{ profileId: recovery, record }]);
 
-  const config = { tools: { github: { profileId: configured } } };
+  const config = {
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId: configured },
+          },
+        },
+      },
+    },
+  };
   const first = await cleanup(config);
 
   expect(first.warnings).toEqual([]);

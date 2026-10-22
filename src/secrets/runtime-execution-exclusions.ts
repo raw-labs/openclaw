@@ -2,7 +2,6 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import type { PluginOrigin } from "../plugins/plugin-origin.types.js";
-import { collectCoreExecutionEnvironmentExclusions } from "./runtime-config-collectors-core.js";
 import { collectPluginConfigAssignments } from "./runtime-config-collectors-plugins.js";
 import { createResolverContext } from "./runtime-shared.js";
 
@@ -19,7 +18,6 @@ export function prepareExecutionEnvironmentExclusions(params: {
     ...(params.manifestRegistry ? { manifestRegistry: params.manifestRegistry } : {}),
   });
   const input = { config: params.config, defaults: params.config.secrets?.defaults, context };
-  collectCoreExecutionEnvironmentExclusions(input);
   collectPluginConfigAssignments({
     ...input,
     loadablePluginOrigins: params.loadablePluginOrigins,

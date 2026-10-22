@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import {
   clearGitHubCredentialVerificationCache,
   pollGitHubOAuthDeviceToken,
@@ -43,7 +44,17 @@ const install = (profileDir: string, token: string, commitConfig = async () => {
 const rotate = (profileDir: string, token: string) =>
   refreshManagedGitHubProfile({ profileDir, token, expectedAccountId: account.id });
 const enterprise = (host = "ghe.example.test", apiBaseUrl = `https://${host}/api/v3`) => ({
-  gateway: { github: { host, apiBaseUrl } },
+  gateway: {},
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          host,
+          apiBaseUrl,
+        },
+      },
+    },
+  },
 });
 const personal = (accountId = account.id) =>
   preparePersonalGitHubPublicationIdentity({
@@ -157,8 +168,8 @@ describe("managed credential isolation", () => {
       await started.promise;
       setRuntimeConfigSnapshot(
         enterprise(
-          change === "host" ? "b.ghe.example.test" : config.gateway.github.host,
-          "https://b.ghe.example.test/api/v3",
+          change === "host" ? "b.ghe.example.test" : readGitHubConfig(config).host,
+          change === "API" ? "https://api.a.ghe.example.test" : "https://b.ghe.example.test/api/v3",
         ),
       );
       release.resolve(Response.json(account));
@@ -167,7 +178,18 @@ describe("managed credential isolation", () => {
   );
 
   it("pins the verified system credential for broker children across profile retirement and host changes", async () => {
-    const config = { tools: { github: { profileId, gitAuthor: { name: "Managed Author" } } } };
+    const config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId, gitAuthor: { name: "Managed Author" } },
+            },
+          },
+        },
+      },
+    };
     const profileDir = profile("system");
     await install(profileDir, "synthetic-managed-before");
     const identity = await publish(config);
@@ -232,7 +254,18 @@ describe("managed credential isolation", () => {
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await fs.writeFile(path.join(profileDir, "config.yml"), "editor: [invalid");
-    const config = { tools: { github: { profileId } } };
+    const config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId },
+            },
+          },
+        },
+      },
+    };
     const status = await statusFor(config, "system");
     expect(status.effective.credentialState).toBe("configured_unavailable");
     await fs.writeFile(path.join(profileDir, "config.yml"), "version: 1");
@@ -258,7 +291,26 @@ describe("managed credential isolation", () => {
         await expect(personal(101)).rejects.toThrow(/unavailable/);
       } else {
         const github = { profileId };
-        const config = { agents: { entries: { main: { tools: { github } } } } };
+        const config = {
+          agents: {
+            entries: {
+              main: {
+                tools: {},
+              },
+            },
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  agents: {
+                    main: github,
+                  },
+                },
+              },
+            },
+          },
+        };
         const status = await statusFor(config, scope);
         expect(status.effective).toMatchObject({
           credentialState: "configured_unavailable",

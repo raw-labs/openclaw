@@ -146,7 +146,7 @@ export function registerGitHubReader(api: OpenClawPluginApi) {
       requiredScopes: ["operator.read"],
     });
   }
-  const host = api.config.gateway?.github?.host?.trim().toLowerCase();
+  const host = readGitHubConfig(api.config).host?.trim().toLowerCase();
   if (host && host !== "github.com") {
     for (const reader of [
       {

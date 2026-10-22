@@ -117,11 +117,33 @@ describe.skipIf(process.platform === "win32")("selected GitHub profile authentic
         allowBackground: false,
         notifyOnExit: false,
         cwd: root,
-        config: { tools: { github: { profileId } } },
+        config: {
+          tools: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  system: { profileId },
+                },
+              },
+            },
+          },
+        },
         agentId: "main",
       });
       await writeProfile(profileState === "tokenless" ? undefined : "managed-token");
-      const execution = createGitHubExecutionFixture({ tools: { github: { profileId } } });
+      const execution = createGitHubExecutionFixture({
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId },
+              },
+            },
+          },
+        },
+      });
       const result = await execution.run(() =>
         tool.execute(`synthetic-auth-${profileState}`, {
           command: command(profileState, service ? "service" : "direct"),

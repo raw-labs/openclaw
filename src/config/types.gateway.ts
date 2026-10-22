@@ -35,7 +35,7 @@ export type TalkConfigResponse = TalkConfig & {
 
 export type GatewayControlUiConfig = Omit<
   NonNullable<GatewayConfigInput["controlUi"]>,
-  "github" | "dangerouslyDisableDeviceAuth"
+  "dangerouslyDisableDeviceAuth"
 > & {
   /** @deprecated Doctor-only legacy input. */
   chatMessageMaxWidth?: string;
@@ -44,7 +44,6 @@ export type GatewayControlUiConfig = Omit<
    * this break-glass flag can migrate an unpaired browser safely.
    */
   dangerouslyDisableDeviceAuth?: boolean;
-  github?: { host?: string; token?: SecretInput };
 };
 
 /** Gateway authentication strategy for WebSocket and HTTP clients. */

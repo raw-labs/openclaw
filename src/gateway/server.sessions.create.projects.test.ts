@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { captureMethodCall } from "../../test/helpers/capture-method-call.js";
 import {
@@ -151,7 +152,21 @@ async function remoteProjectFixture<T = Awaited<ReturnType<typeof registerProjec
       ...config,
       gateway: {
         ...config.gateway,
-        projects: { ...config.gateway?.projects, nativeGitHubSearch: true },
+        projects: {
+          ...config.gateway?.projects,
+        },
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(config),
+              repositorySearch: {
+                useNativeCredentials: true,
+              },
+            },
+          },
+        },
       },
     });
     projectCloneMocks.prepareIdentity.mockResolvedValue({

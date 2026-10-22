@@ -1,4 +1,3 @@
-import { resolveAgentConfig } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type {
   ExecutionEnvironmentPreparationV1,
   ExecutionEnvironmentProviderV1,
@@ -7,6 +6,7 @@ import type {
 import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
 import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { getShellConfig } from "openclaw/plugin-sdk/process-runtime";
+import { readGitHubAgentIdentity } from "./config-api.js";
 import { buildGitHubExecLaunchArgv } from "./exec-launch-api.js";
 import { CLEARED_GITHUB_CREDENTIALS } from "./host-api.js";
 import { prepareGitHubToolEnvironment } from "./tool-identity-api.js";
@@ -42,7 +42,7 @@ export const githubExecutionEnvironment: ExecutionEnvironmentProviderV1 = {
     input.signal?.throwIfAborted();
     if (
       !isBundledPluginEnabled(input.config, "github-repositories") ||
-      resolveAgentConfig(input.config, input.agentId)?.tools?.github?.allowInSandbox !== true
+      readGitHubAgentIdentity(input.config, input.agentId)?.allowInSandbox !== true
     ) {
       return undefined;
     }

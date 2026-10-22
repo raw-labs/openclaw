@@ -8,8 +8,16 @@ afterEach(() => clearRuntimeConfigSnapshot());
 
 test("Gateway GitHub reads use the configured Enterprise Server API", async () => {
   setRuntimeConfigSnapshot({
-    gateway: {
-      github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+    gateway: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host: "ghe.example.test",
+            apiBaseUrl: "https://ghe.example.test/api/v3",
+          },
+        },
+      },
     },
   });
   const { gitHubPublicApi } = await import("../../extensions/github-repositories/public-api.js");

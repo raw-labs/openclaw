@@ -369,6 +369,8 @@ export type PluginManifestSecretInputContracts = {
 };
 
 export type PluginManifestConfigContracts = {
+  /** Plugin-config-relative object maps keyed by agent id, pruned when that agent is deleted. */
+  agentConfigMaps?: string[];
   /**
    * Root-relative config paths that indicate this plugin's setup-time
    * compatibility migrations might apply. Use this to keep generic runtime
@@ -514,6 +516,8 @@ export type PluginManifest = {
   doctorContract?: PluginManifestDoctorContract;
   /** Whether the plugin public API registers structured health checks. */
   doctorHealthChecks?: boolean;
+  /** Cheap config-only findings exported by security-audit-api.js; no runtime entry is loaded. */
+  securityAuditConfig?: boolean;
   /** Static ownership metadata for doctor session-route state repairs. */
   sessionRouteStateOwners?: DoctorSessionRouteStateOwner[];
   /** Cheap QA runner metadata exposed before plugin runtime loads. */

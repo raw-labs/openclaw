@@ -27,7 +27,9 @@ function resolveGitHubApiBaseUrl(value: string | undefined): string {
     parsed.hash ||
     !["/", "", "/api/v3", "/api/v3/"].includes(parsed.pathname)
   ) {
-    throw new Error("gateway.github.apiBaseUrl must be an HTTPS GitHub API base URL");
+    throw new Error(
+      "plugins.entries.github-repositories.config.apiBaseUrl must be an HTTPS GitHub API base URL",
+    );
   }
   return parsed.origin + (parsed.pathname.startsWith("/api/v3") ? "/api/v3" : "");
 }

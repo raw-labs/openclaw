@@ -1,4 +1,3 @@
-import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { GitHubToolAccount } from "./tool-account-api.js";
 
 export type PreparedGitHubToolEnvironment = Readonly<{
@@ -23,4 +22,4 @@ export type PreparedGitHubPublicationIdentity = Readonly<{
   accessExpiresAtMs?: number;
 }>;
 
-export type GitHubToolIdentityConfig = NonNullable<NonNullable<OpenClawConfig["tools"]>["github"]>;
+export type { GitHubToolIdentityConfig } from "./config-api.js";

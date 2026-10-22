@@ -36,7 +36,19 @@ import {
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const native = (env: NodeJS.ProcessEnv) => readNativeGitHubToken(env, true);
-const enterprise = (host: string) => ({ gateway: { github: { host } } });
+const enterprise = (host: string) => ({
+  gateway: {},
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          host,
+          apiBaseUrl: host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+        },
+      },
+    },
+  },
+});
 const account = (id = 101, login = "native-user") => Response.json({ id, login, avatar_url: null });
 
 beforeEach(() => {
@@ -312,8 +324,16 @@ describe("prepared GitHub read authority", () => {
 
   it("keeps default read preparation bound to the configured Enterprise issuer", async () => {
     const config = {
-      gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     };
     const env = {
@@ -547,7 +567,16 @@ describe("prepared GitHub read authority", () => {
     const profileId = `ghp_${"3".repeat(32)}`;
     const replacementProfileId = `ghp_${"4".repeat(32)}`;
     const configured = (selectedId: string): OpenClawConfig => ({
-      tools: { github: { profileId: selectedId } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: selectedId },
+            },
+          },
+        },
+      },
     });
     let config = configured(profileId);
     const profileDir = resolveManagedGitHubProfileDir({
@@ -607,7 +636,18 @@ describe("prepared GitHub read authority", () => {
       ...readOptions({ env: { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-github-source-") } }),
       allowAnonymous: true as const,
     };
-    const configured = { tools: { github: { profileId: `ghp_${"1".repeat(32)}` } } };
+    const configured = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: `ghp_${"1".repeat(32)}` },
+            },
+          },
+        },
+      },
+    };
     await expect(
       prepareRead({
         ...options,

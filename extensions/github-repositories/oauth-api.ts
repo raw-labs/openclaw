@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
-import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
 import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
 import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
+import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveConfiguredGitHubApiBaseUrl } from "./host-api.js";
 import type { GitHubToolAccount } from "./tool-account-api.js";
 

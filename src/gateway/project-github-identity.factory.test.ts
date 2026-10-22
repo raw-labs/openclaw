@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { resolveGitHubToolIdentityStatus } from "../../extensions/github-repositories/tool-identity-api.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -132,19 +133,28 @@ beforeEach(() => {
   onRequest = undefined;
   catalog.emails = [`github:${host}:42`];
   config = {
-    gateway: { github: { host, apiBaseUrl } },
-    tools: {
-      github: {
-        kind: "app-installation",
-        profileId: "ghp_00000000000000000000000000000001",
-        app: {
-          appId: 101,
-          installationId: 202,
-          accountId: 303,
-          repositories: [{ id: 404, fullName: "example/project" }],
-          permissions,
-          privateKey,
-          keyVersion: "synthetic-v1",
+    gateway: {},
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host,
+            apiBaseUrl,
+            system: {
+              kind: "app-installation",
+              profileId: "ghp_00000000000000000000000000000001",
+              app: {
+                appId: 101,
+                installationId: 202,
+                accountId: 303,
+                repositories: [{ id: 404, fullName: "example/project" }],
+                permissions,
+                privateKey,
+                keyVersion: "synthetic-v1",
+              },
+            },
+          },
         },
       },
     },
@@ -226,7 +236,7 @@ afterEach(() => {
 
 describe("Factory project read admission composition", () => {
   function configureMultipleRepositories() {
-    const selected = config.tools?.github;
+    const selected = readGitHubConfig(config).system;
     if (selected?.kind !== "app-installation") {
       throw new Error("Expected App fixture");
     }
@@ -275,7 +285,17 @@ describe("Factory project read admission composition", () => {
           { id: 404, fullName: "example/project" },
         ],
       };
-      config = { ...config, tools: { github: { ...selected, app } } };
+      config = {
+        ...config,
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: { ...readGitHubConfig(config), system: { ...selected, app } },
+            },
+          },
+        },
+      };
       setRuntimeConfigSnapshot(config);
       try {
         await expect(identity!.start(() => fetch(issueUrl))).rejects.toThrow("changed");

@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
 import * as githubOAuthLifecycle from "../../extensions/github-repositories/account-runtime-api.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import * as githubOAuth from "../../extensions/github-repositories/oauth-api.js";
 import * as projectCloning from "../../extensions/github-repositories/project-clone-api.js";
 import * as cloneRuntime from "../../extensions/github-repositories/project-clone-runtime-api.js";
@@ -121,24 +122,43 @@ it.each([
         const cfg: OpenClawConfig = {
           agents: { entries: { main: { workspace: state.workspaceDir } } },
           gateway: {
-            controlUi: { github: { token: "synthetic-preview-token" } },
-            ...(["enterprise", "host mismatch"].includes(scenario)
-              ? { github: enterpriseGitHub }
-              : {}),
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...(["enterprise", "host mismatch"].includes(scenario) ? enterpriseGitHub : {}),
+                  service: { token: "synthetic-preview-token" },
+                },
+              },
+            },
           },
         };
         const config: OpenClawConfig = {
           ...cfg,
           ...(scenario === "enterprise"
             ? {}
-            : { tools: { github: { profileId: systemProfileId } } }),
+            : {
+                tools: {},
+                plugins: {
+                  entries: {
+                    "github-repositories": {
+                      config: {
+                        ...readGitHubConfig(cfg),
+                        system: { profileId: systemProfileId },
+                        ...(scenario === "agent"
+                          ? { agents: { main: { profileId: agentProfileId } } }
+                          : {}),
+                      },
+                    },
+                  },
+                },
+              }),
           agents: {
             entries: {
               main: {
                 workspace: state.workspaceDir,
-                ...(scenario === "agent"
-                  ? { tools: { github: { profileId: agentProfileId } } }
-                  : {}),
               },
             },
           },
@@ -310,9 +330,18 @@ it.each([
   );
   await withOpenClawTestState({ label: "repository-materialize" }, async (state) => {
     const cfg = {
-      ...(outcome === "enterprise" ? { gateway: { github: enterpriseGitHub } } : {}),
       agents: { entries: { main: { workspace: state.workspaceDir } } },
-      tools: { github: { profileId: "ghp_11111111111111111111111111111111" } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...(outcome === "enterprise" ? enterpriseGitHub : {}),
+              system: { profileId: "ghp_11111111111111111111111111111111" },
+            },
+          },
+        },
+      },
     };
     await state.writeConfig(cfg);
     setRuntimeConfigSnapshot(cfg);

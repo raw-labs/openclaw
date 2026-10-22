@@ -28,7 +28,21 @@ type Respond = GatewayRequestHandlerOptions["respond"];
 type HostReply = Awaited<ReturnType<typeof dispatchGatewayMethod>>;
 function registered(host?: string) {
   const fixture = createPluginRegistryFixture(
-    host ? { gateway: { github: { host, apiBaseUrl: `https://${host}/api/v3` } } } : {},
+    host
+      ? {
+          gateway: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  host,
+                  apiBaseUrl: `https://${host}/api/v3`,
+                },
+              },
+            },
+          },
+        }
+      : {},
   );
   registerVirtualTestPlugin({
     ...fixture,

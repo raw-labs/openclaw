@@ -11,6 +11,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
 import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
@@ -163,8 +164,22 @@ describe("board authenticated GitHub Actions", () => {
     state.applyEnv();
     config = {
       agents: { entries: { main: {} } },
-      tools: { exec: { mode: "full" }, github: { profileId } },
-      gateway: { controlUi: { github: { token: "synthetic-preview-only" } } },
+      tools: {
+        exec: { mode: "full" },
+      },
+      gateway: {
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId },
+              service: { token: "synthetic-preview-only" },
+            },
+          },
+        },
+      },
     };
     await writeCredential(token);
     native.mockReset().mockRejectedValue(new Error("Unexpected native credential subprocess"));
@@ -231,7 +246,7 @@ describe("board authenticated GitHub Actions", () => {
     return held;
   }
   function useNativeCredentials() {
-    delete config.tools!.github;
+    delete readGitHubConfig(config).system;
     native.mockImplementation(async () => commandResult(token));
   }
   function holdNativeCredentials() {
@@ -284,12 +299,12 @@ describe("board authenticated GitHub Actions", () => {
   it.each(["managed", "native environment", "native CLI"])(
     "keeps public Actions credentials and transport together with Enterprise selected (%s)",
     async (source) => {
-      config.gateway!.github = {
+      Object.assign(readGitHubConfig(config), {
         host: "ghe.example.test",
         apiBaseUrl: "https://ghe.example.test/api/v3",
-      };
+      });
       if (source !== "managed") {
-        delete config.tools!.github;
+        delete readGitHubConfig(config).system;
       }
       state.envVars.GH_TOKEN = source === "native environment" ? token : undefined;
       state.envVars.GH_HOST = "ghe.example.test";

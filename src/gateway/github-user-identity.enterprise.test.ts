@@ -37,7 +37,20 @@ function enterpriseSync(email?: string, host = "ghe.example.test") {
   return expectDefined(
     createAuthenticatedGitHubIdentitySync({
       authResult: { ok: true, method: "trusted-proxy", user: `github:${host}:101` },
-      config: { gateway: { github: { host } } },
+      config: {
+        gateway: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host,
+                apiBaseUrl:
+                  host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+              },
+            },
+          },
+        },
+      },
       authConfig: { mode: "trusted-proxy", trustedProxy: { userHeader: "x-factory-principal" } },
       requestHeaders: {
         "x-factory-github-login": "enterprise-ada",
@@ -132,7 +145,18 @@ function publicProfile() {
 function enterpriseAttribution(scope: Awaited<ReturnType<typeof creditSession>>) {
   return resolveGitCoauthorAttribution({
     ...scope,
-    config: { gateway: { github: { host: "ghe.example.test" } } },
+    config: {
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+            },
+          },
+        },
+      },
+    },
   });
 }
 
@@ -181,7 +205,23 @@ it.each(["ghe.example.test", "code.example.test"])(
         profile.id,
         publicUser.id,
       ]);
-      const params = { ...scope, config: { gateway: { github: { host } } } };
+      const params = {
+        ...scope,
+        config: {
+          gateway: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  host,
+                  apiBaseUrl:
+                    host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+                },
+              },
+            },
+          },
+        },
+      };
       const prepared = await prepareGitCoauthorAttribution(params);
       expect(prepared.attribution).toEqual(enterpriseCredit);
       expect(await resolveGitCoauthorAttribution({ ...scope, config: {} })).toEqual(publicCredit);

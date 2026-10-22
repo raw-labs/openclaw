@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { createControlUiSessionPrRead } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
 import { loadControlUiSessionPullRequests } from "../../extensions/github-repositories/control-ui-session-prs-api.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -134,8 +135,19 @@ it.each([false, true])(
         ...f.cfg,
         gateway: {
           ...f.cfg.gateway,
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: { github: { host: "ghe.example.test", token: "synthetic-enterprise-token" } },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                ...readGitHubConfig(f.cfg),
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-token" },
+              },
+            },
+          },
         },
       });
       await seedRepository(f, sessionKey, enterprise ? "ghe.example.test" : "github.com");

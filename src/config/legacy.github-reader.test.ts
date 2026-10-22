@@ -47,10 +47,10 @@ const cases: {
 ];
 
 it.each(cases)(
-  "migrates only retired reader policy through Doctor and normal activation: %j",
+  "preserves retired reader policy through canonical Doctor migration and normal activation: %j",
   async ({ plugins, reader, active }) => {
     await withTempHome(async () => {
-      const raw: OpenClawConfig = {
+      const raw = {
         plugins,
         tools: { github: { profileId: "ghp_11111111111111111111111111111111" } },
         gateway: {
@@ -74,9 +74,15 @@ it.each(cases)(
       expect(migrated.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
         reader: { enabled: reader },
       });
-      expect(migrated.config.tools?.github).toEqual(raw.tools?.github);
-      expect(migrated.config.gateway?.github).toEqual(raw.gateway?.github);
-      expect(migrated.config.gateway?.controlUi?.github).toEqual(raw.gateway?.controlUi?.github);
+      expect(migrated.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
+        system: raw.tools?.github,
+        host: raw.gateway?.github?.host,
+        apiBaseUrl: raw.gateway?.github?.apiBaseUrl,
+        service: raw.gateway?.controlUi?.github,
+      });
+      expect(migrated.config.tools).not.toHaveProperty("github");
+      expect(migrated.config.gateway).not.toHaveProperty("github");
+      expect(migrated.config.gateway?.controlUi).not.toHaveProperty("github");
       expect(migrated.config.plugins?.allow).toEqual(plugins.allow);
       expect(migrated.config.plugins?.deny).toEqual(plugins.deny);
       // Doctor follows the plugin transform with the existing generic configured-plugin repair.

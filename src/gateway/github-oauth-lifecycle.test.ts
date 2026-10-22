@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import type { GitHubToolIdentityConfig } from "../../extensions/github-repositories/config-api.js";
 import {
   GitHubAccountMismatchError,
   resolveConfiguredGitHubToolIdentity,
@@ -17,7 +19,6 @@ import {
   type GitHubIdentityScope,
 } from "../agents/github-oauth-records.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { writeHiddenGitHubSecretRecord } from "../secrets/store/secret-store.js";
 import { createDeferredCore as deferred } from "../shared/deferred.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
@@ -87,9 +88,15 @@ vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (impo
   };
 });
 
-vi.mock("../../extensions/github-repositories/tool-identity-config-api.js", () => ({
-  updateGitHubToolIdentityConfig: mocks.updateConfig,
-}));
+vi.mock(
+  "../../extensions/github-repositories/tool-identity-config-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-config-api.js")
+    >()),
+    updateGitHubToolIdentityConfig: mocks.updateConfig,
+  }),
+);
 
 vi.mock("../../extensions/github-repositories/cli-preflight-api.js", async (importOriginal) => {
   const actual =
@@ -100,17 +107,14 @@ vi.mock("../../extensions/github-repositories/cli-preflight-api.js", async (impo
 });
 
 import { GitHubCliUnavailableError } from "../../extensions/github-repositories/cli-preflight-api.js";
-import { createGitHubOAuthLifecycleHost } from "../../extensions/github-repositories/oauth-lifecycle-host-api.js";
-import { createGitHubOAuthLifecyclePolicy } from "../../extensions/github-repositories/oauth-lifecycle-policy-api.js";
-const { createGitHubOAuthInventoryReader } = createGitHubOAuthLifecyclePolicy(
-  createGitHubOAuthLifecycleHost(new AbortController().signal),
-);
 import { createGitHubOAuthLifecycle } from "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
 import { registerGitHubOAuthRetirementTests } from "./github-oauth-lifecycle.retirement.test-support.js";
 import {
   ACCOUNT,
   configForScope,
   configWithSelectedIdentity,
+  createGitHubOAuthInventoryReader,
+  expectStoredOAuth,
   identity,
   NEW_PROFILE,
   NOW,
@@ -174,10 +178,6 @@ async function selectRefreshIdentity(author = true) {
   currentConfig = configForScope("system", configured);
   await writeGitHubOAuthRecord(oauthRecord(OLD_PROFILE));
   return configured;
-}
-
-async function expectStoredOAuth(profileId: string, record: Record<string, unknown>) {
-  expect(await inspectGitHubOAuthRecord(profileId)).toMatchObject({ state: "valid", record });
 }
 
 async function advanceToPoll(requestId: string): Promise<void> {
@@ -639,7 +639,7 @@ describe("GitHub OAuth authorization lifecycle", () => {
     mocks.updateConfig.mockImplementationOnce(async (params) => {
       const next = structuredClone(runtimeBefore);
       next.tools ??= {};
-      next.tools.github = params.identity;
+      readGitHubConfig(next).system = params.identity;
       persisted = next;
       throw new Error("persisted write completed but response was lost");
     });
@@ -716,7 +716,7 @@ describe("GitHub OAuth authorization lifecycle", () => {
           setSelectedIdentity("system", "main", identity(OTHER_PROFILE, { oauth: true }));
         } else if (change === "in-place config") {
           currentConfig.tools ??= {};
-          currentConfig.tools.github = identity(OTHER_PROFILE, { oauth: true });
+          readGitHubConfig(currentConfig).system = identity(OTHER_PROFILE, { oauth: true });
         } else {
           const current = await inspectGitHubOAuthRecord(NEW_PROFILE);
           if (current.state !== "valid" || !current.record.pendingInitial) {

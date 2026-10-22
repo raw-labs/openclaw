@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 import { createGitHubPublicationProvider } from "../../../extensions/github-repositories/publication-provider-api.js";
 import {
   GitHubIdentityError,
@@ -20,6 +21,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseWorkerGitHubLaunchBinding } from "../../worker/launch-descriptor.js";
 import { RepositoryWorkerIdentityTransfer } from "../repository-worker-identity-transfer.js";
 import * as turnClaims from "./placement-turn-claim-events.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import type { WorkerTunnelHandle } from "./tunnel-contract.js";
 import {
@@ -275,7 +277,7 @@ async function bindPreparedGrant(
 
 async function prepareGrant(assertCurrent = () => {}, accessExpiresAtMs?: number) {
   if (accessExpiresAtMs !== undefined) {
-    config.tools!.github!.kind = "oauth";
+    readGitHubConfig(config).system!.kind = "oauth";
     mocks.oauth.mockResolvedValue({
       state: "valid",
       record: {
@@ -305,7 +307,18 @@ describe("worker GitHub launch binding", () => {
   beforeEach(() => {
     service = new AbortController();
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("worker-github-binding-"));
-    config = { tools: { github: { profileId, gitAuthor: { name: "Shared Bot" } } } };
+    config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId, gitAuthor: { name: "Shared Bot" } },
+            },
+          },
+        },
+      },
+    };
     setRuntimeConfigSnapshot(config);
     mocks.snapshot.mockReset().mockImplementation(() => ({ config, sourceConfig: config }));
     mocks.refresh.mockReset().mockResolvedValue(undefined);
@@ -353,7 +366,7 @@ describe("worker GitHub launch binding", () => {
     if (scenario === "unavailable managed identity" || scenario === "invalid author") {
       await installProfile();
       if (scenario === "invalid author") {
-        config.tools!.github!.gitAuthor = { name: "Invalid\nAuthor" };
+        readGitHubConfig(config).system!.gitAuthor = { name: "Invalid\nAuthor" };
       } else {
         mocks.verify.mockResolvedValue({ status: "unavailable" });
       }
@@ -384,6 +397,7 @@ describe("worker GitHub launch binding", () => {
       syncWorkspace,
     };
     const operation = syncSessionRepositoryWorkspace({
+      getRepositorySources: () => createRepositorySourcesFixture(() => config),
       ...session,
       generation: 1,
       repository: {
@@ -444,10 +458,9 @@ describe("worker GitHub launch binding", () => {
   });
 
   it("uses the agent override author without inheriting system author fields", async () => {
-    config.agents = {
-      entries: {
-        main: { tools: { github: { profileId, gitAuthor: { email: "agent@example.test" } } } },
-      },
+    config.agents = { entries: { main: {} } };
+    readGitHubConfig(config).agents = {
+      main: { profileId, gitAuthor: { email: "agent@example.test" } },
     };
     await installProfile("agent");
     expect((await prepareWorkerGitHubBinding(session))?.gitAuthor).toEqual({
@@ -458,7 +471,18 @@ describe("worker GitHub launch binding", () => {
   it.each([{ name: "Shared\nBot" }, { email: "a".repeat(257) }])(
     "omits the optional launch binding for invalid author metadata: %j",
     async (gitAuthor) => {
-      config = { tools: { github: { profileId, gitAuthor } } };
+      config = {
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId, gitAuthor },
+              },
+            },
+          },
+        },
+      };
       await installProfile();
       await expect(prepareWorkerGitHubBinding(session)).resolves.toBeUndefined();
     },
@@ -523,7 +547,18 @@ describe("worker GitHub launch binding", () => {
       await installProfile();
       mocks.repository.mockImplementation(async () => {
         if (replaced === "identity") {
-          config = { tools: { github: { profileId: "ghp_22222222222222222222222222222222" } } };
+          config = {
+            tools: {},
+            plugins: {
+              entries: {
+                "github-repositories": {
+                  config: {
+                    system: { profileId: "ghp_22222222222222222222222222222222" },
+                  },
+                },
+              },
+            },
+          };
         } else {
           mocks.worktree.mockReturnValue({ ...worktree, repoFingerprint: "replacement" });
         }

@@ -653,7 +653,7 @@ describe("createGatewayKernel", () => {
           "config.auth config.auth.snapshot-validate config.auth.runtime-overrides",
           "config.auth.startup-overrides config.auth.secret-surface config.auth.secret-preflight",
           "config.auth.preflight-override config.auth.ensure config.auth.runtime-startup-overrides",
-          "config.auth.secrets-activate agents.github-profile-cleanup plugins.bootstrap-imports",
+          "config.auth.secrets-activate plugins.bootstrap-imports",
           "cron.store-path plugins.bootstrap gateway.kernel-state node-desktop.runtime-import",
           "host-desktop.runtime-import computer.runtime-import device-identity device-pairing",
           "runtime.config control-ui.root terminal.launch-import gateway.wizard-imports tls.runtime",

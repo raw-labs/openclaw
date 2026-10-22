@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import {
@@ -9,6 +8,7 @@ import {
   type RepositoryWorkerReadLease,
   type RepositoryReadIdentityFacts,
 } from "openclaw/plugin-sdk/repository-sources";
+import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveConfiguredGitHubHost } from "./host-api.js";
 import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "./profile-id-api.js";
 import { materializeProjectClone } from "./project-clone-api.js";

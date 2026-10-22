@@ -8,12 +8,14 @@ import type {
   ControlUiLinkReaderDocument,
   ControlUiLinkReaderSection,
 } from "openclaw/plugin-sdk/control-ui-link-reader";
+import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
+import { readGitHubConfig } from "./config-api.js";
 import { resolveConfiguredGitHubApiBaseUrl, resolveConfiguredGitHubHost } from "./host-api.js";
 import * as readerApi from "./reader-api.js";
 
 export const CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE =
-  "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.";
+  "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.";
 
 export interface ControlUiGitHubError extends Error {
   readonly statusCode: number;
@@ -174,33 +176,43 @@ export function githubApiToken(
   host?: string,
 ): string | undefined {
   const selectedHost = host ?? resolveConfiguredGitHubHost(config);
-  const configured = config?.gateway?.controlUi?.github?.token;
+  const configured = readGitHubConfig(config).service?.token;
   const credentialHost =
-    config?.gateway?.controlUi?.github?.host?.trim().toLowerCase() || "github.com";
+    readGitHubConfig(config).service?.host?.trim().toLowerCase() || "github.com";
   if (configured !== undefined && (host === undefined || credentialHost === selectedHost)) {
     if (credentialHost !== selectedHost) {
       throw new SecretSurfaceUnavailableError({
         ownerKind: "capability",
-        ownerId: "control-ui-github",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
         state: "unavailable",
-        paths: ["gateway.controlUi.github.host"],
+        paths: ["plugins.entries.github-repositories.config.service.host"],
         refKeys: [],
-        reason: "service credential host does not match gateway.github.host",
+        reason:
+          "service credential host does not match plugins.entries.github-repositories.config.host",
       });
     }
-    assertSecretOwnerAvailable("capability", "control-ui-github");
-    const token = typeof configured === "string" ? configured.trim() : "";
-    if (!token) {
-      throw new SecretSurfaceUnavailableError({
-        ownerKind: "capability",
-        ownerId: "control-ui-github",
-        state: "unavailable",
-        paths: ["gateway.controlUi.github.token"],
-        refKeys: [],
-        reason: "secret reference was not materialized by the active runtime",
-      });
+    const enabled = isBundledPluginEnabled(config ?? {}, "github-repositories");
+    // Independent sign-in must not activate disabled plugin SecretRefs.
+    if (enabled || typeof configured === "string") {
+      if (enabled) {
+        assertSecretOwnerAvailable(
+          "capability",
+          "plugins.entries.github-repositories.config.service.token",
+        );
+      }
+      const token = typeof configured === "string" ? configured.trim() : "";
+      if (!token) {
+        throw new SecretSurfaceUnavailableError({
+          ownerKind: "capability",
+          ownerId: "plugins.entries.github-repositories.config.service.token",
+          state: "unavailable",
+          paths: ["plugins.entries.github-repositories.config.service.token"],
+          refKeys: [],
+          reason: "secret reference was not materialized by the active runtime",
+        });
+      }
+      return token;
     }
-    return token;
   }
   return selectedHost === "github.com"
     ? env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim() || undefined
@@ -212,8 +224,8 @@ export function hasConfiguredGitHubApiCredential(
   config: OpenClawConfig,
 ): boolean {
   return (
-    (config.gateway?.controlUi?.github?.token !== undefined &&
-      (config.gateway.controlUi.github.host?.trim().toLowerCase() || "github.com") ===
+    (readGitHubConfig(config).service?.token !== undefined &&
+      (readGitHubConfig(config).service?.host?.trim().toLowerCase() || "github.com") ===
         resolveConfiguredGitHubHost(config)) ||
     (resolveConfiguredGitHubHost(config) === "github.com" &&
       Boolean(env.GH_TOKEN?.trim() || env.GITHUB_TOKEN?.trim()))
@@ -311,7 +323,7 @@ export const gitHubPublicApi: GitHubPublicApi = (() => {
       return resolveConfiguredGitHubApiBaseUrl(getRuntimeConfigSnapshot());
     },
     get GITHUB_GRAPHQL_URL() {
-      return library.resolveGitHubApiUrls(getRuntimeConfigSnapshot()?.gateway?.github?.apiBaseUrl)
+      return library.resolveGitHubApiUrls(readGitHubConfig(getRuntimeConfigSnapshot()).apiBaseUrl)
         .graphqlUrl;
     },
     fetchGitHubApi(...args) {

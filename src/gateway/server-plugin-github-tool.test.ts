@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import {
@@ -80,11 +81,31 @@ afterEach(async () => {
 async function createFixture(allow?: string[], throughSearch = false) {
   const config: OpenClawConfig = {
     agents: {
-      entries: { reader: { workspace: state.workspaceDir, tools: { github: { profileId } } } },
+      entries: {
+        reader: {
+          workspace: state.workspaceDir,
+          tools: {},
+        },
+      },
     },
     tools: { profile: "coding", allow, toolSearch: throughSearch },
-    plugins: { allow: ["github-repositories"], slots: { memory: "none" } },
-    gateway: { controlUi: { github: { token: "synthetic-unused-service-credential" } } },
+    plugins: {
+      allow: ["github-repositories"],
+      slots: { memory: "none" },
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: "synthetic-unused-service-credential" },
+            agents: {
+              reader: { profileId },
+            },
+          },
+        },
+      },
+    },
+    gateway: {
+      controlUi: {},
+    },
   };
   setRuntimeConfigSnapshot(config);
   await writeManagedGitHubProfileFiles(
@@ -720,8 +741,8 @@ describe("GitHub agent reader", () => {
           }),
         ]);
         const requestsBeforeChange = fixture.fetcher.mock.calls.length;
-        const agent = expectDefined(fixture.config.agents?.entries?.reader, "reader configuration");
-        agent.tools = { ...agent.tools, github: { profileId: `ghp_${"8".repeat(32)}` } };
+        const plugin = readGitHubConfig(fixture.config);
+        plugin.agents = { ...plugin.agents, reader: { profileId: `ghp_${"8".repeat(32)}` } };
         setRuntimeConfigSnapshot(fixture.config);
         release.resolve();
         await rejected;
