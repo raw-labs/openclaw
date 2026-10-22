@@ -3,12 +3,9 @@ import type {
   SessionGitHubPublicationResult,
   SessionGitHubStatusResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { acquireWorktreeRunLease } from "../agents/worktrees/run-lease.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
-import { getOrCreatePromise } from "../shared/lazy-promise.js";
 import type { GitHubPublicationRow as PublicationRow } from "../state/github-publication-read.types.js";
-import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import { createGitHubPublicationWorkerScope } from "../state/github-publication-worker.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { createPersonalGitHubPublicationCoordinator } from "./github-personal-publication.js";
@@ -25,28 +22,16 @@ import {
   type GitHubPublicationClaimRequestV2,
   type GitHubPublicationSessionRequest,
 } from "./github-publication-coordinator-methods.js";
-import { GitHubPublicationAuthorityLostError } from "./github-publication-execution-identity.js";
 import { executeGitHubPublication } from "./github-publication-executor.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
-import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import {
   digestGitHubPublicationRequest as digestRequest,
   projectGitHubPublicationResult as publicationResult,
 } from "./github-publication-receipt.js";
-import {
-  readGitHubPublicationRequestInWorker,
-  reconcileGitHubPublication,
-} from "./github-publication-recovery.js";
+import { reconcileGitHubPublication } from "./github-publication-recovery.js";
 import { insertGitHubPublicationRequestAsync } from "./github-publication-request-async.js";
-import {
-  restoreGitHubPublicationRequester,
-  isGitHubPublicationRequesterV2,
-} from "./github-publication-requester.js";
+import { isGitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import { bindGitHubPublicationSourceLifetime } from "./github-publication-source.js";
 import {
-  claimGitHubPublicationExecutionAsync,
-  createGitHubPublicationExecutionStoreAsync,
-  deferGitHubPublicationRequestsAsync,
   readGitHubPublicationRequestAsync,
   runGitHubPublicationMaintenanceAsync,
 } from "./github-publication-store-async.js";
@@ -56,6 +41,7 @@ import {
   sameWorktree,
 } from "./github-publication-workspace.js";
 import { createRepositoryGitHubPublicationCoordinator } from "./github-repository-publication.js";
+import { createRepositoryPublicationHostExecution } from "./repository-publication-host-execution.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import type {
   WorkerSessionPlacementStore,
@@ -70,8 +56,6 @@ export type GitHubPublicationTranscriptReport = {
   /** Run whose tool call requested this publication, when it is known to this process. */
   runId?: string;
 };
-
-const activePublicationExecutions = new Map<string, Promise<SessionGitHubPublicationResult>>();
 
 function refuseLegacyPublication(
   method: string,
@@ -105,7 +89,6 @@ export function createGitHubPublicationCoordinator(params: {
   assertCurrent?: () => void;
   signal?: AbortSignal;
 }) {
-  const instanceId = params.placements.workspaceResultInstanceId();
   const scope = createGitHubPublicationWorkerScope(captureOpenClawStateWorkerContext());
   const assertCurrent = params.assertCurrent ?? scope.assertCurrent;
   const signal = params.signal ?? scope.signal;
@@ -227,221 +210,17 @@ export function createGitHubPublicationCoordinator(params: {
     return publicationResult(row);
   };
 
-  const processRow = (
-    initial: PublicationRow,
-    validateExecution: () => boolean,
-    assertInvocationCurrent?: () => void,
-    invocationSignal?: AbortSignal,
-  ): Promise<SessionGitHubPublicationResult> => {
-    if (initial.status === "published" || initial.status === "failed") {
-      return Promise.resolve(publicationResult(initial));
-    }
-    const executionKey = `${instanceId}\0${initial.request_id}`;
-    return getOrCreatePromise(
-      activePublicationExecutions,
-      executionKey,
-      () =>
-        params.placements.withWorkspaceExclusion(initial.session_id, async (assertOwned) => {
-          const assertCustody = () => {
-            assertCurrent();
-            assertOwned();
-          };
-          const claimed = await claimGitHubPublicationExecutionAsync(
-            initial.request_id,
-            instanceId,
-            assertCurrent,
-          );
-          if (claimed.status === "published" || claimed.status === "failed") {
-            return publicationResult(claimed);
-          }
-          const lease = await acquireWorktreeRunLease(claimed.worktree_id);
-          const validateCustody = () => {
-            assertCustody();
-            return validateExecution();
-          };
-          let effect: SessionGitHubPublicationResult["effect"];
-          let dispatched = false;
-          let requester: Awaited<ReturnType<typeof restoreGitHubPublicationRequester>> | undefined;
-          let lifecycleRevision: string | null | undefined;
-          const revokeInvocation = () => requester?.release();
-          invocationSignal?.addEventListener("abort", revokeInvocation, { once: true });
-          signal.addEventListener("abort", revokeInvocation, { once: true });
-          const getRequester = () => {
-            if (!requester) {
-              throw new GitHubPublicationRequesterUnavailableError();
-            }
-            return requester;
-          };
-          const executionStore = createGitHubPublicationExecutionStoreAsync(instanceId, {
-            assertCustody: assertCurrent,
-            assertAction() {
-              assertCustody();
-              signal.throwIfAborted();
-              invocationSignal?.throwIfAborted();
-              getRequester().signal.throwIfAborted();
-            },
-            async prepareSource() {
-              signal.throwIfAborted();
-              invocationSignal?.throwIfAborted();
-              assertInvocationCurrent?.();
-              if (!validateCustody() || lifecycleRevision === undefined) {
-                throw new GitHubPublicationAuthorityLostError(
-                  "GitHub publication source custody changed.",
-                );
-              }
-              const source = await getRequester().prepareSource({
-                agentId: claimed.agent_id,
-                sessionKey: claimed.session_key,
-                sessionId: claimed.session_id,
-                lifecycleRevision,
-                worktreeId: claimed.worktree_id,
-              });
-              try {
-                invocationSignal?.throwIfAborted();
-                assertInvocationCurrent?.();
-                if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
-                    "GitHub publication source custody changed.",
-                  );
-                }
-                return source;
-              } catch (error) {
-                await source.release();
-                throw error;
-              }
-            },
-          });
-          try {
-            assertOwned();
-            return await executeGitHubPublication({
-              initial: claimed,
-              requester: getRequester,
-              validateCustody,
-              assertWorkflowChangesAllowed: () =>
-                assertGitHubPublicationWorkflowChangesAllowed(getRequester()),
-              prepareAuthority: async () => {
-                if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
-                    "GitHub publication execution custody changed before requester preparation.",
-                  );
-                }
-                const lifecycle = await readGitHubPublicationSessionLifecycleInWorker({
-                  publicationKind: "shared",
-                  requestId: claimed.request_id,
-                }).catch((cause: unknown) => {
-                  throw new GitHubPublicationRecoveryPendingError(
-                    "GitHub publication requester metadata is unavailable; retry recovery.",
-                    { cause },
-                  );
-                });
-                if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
-                    "GitHub publication execution custody changed during requester preparation.",
-                  );
-                }
-                assertInvocationCurrent?.();
-                invocationSignal?.throwIfAborted();
-                signal.throwIfAborted();
-                requester = await restoreGitHubPublicationRequester(
-                  lifecycle?.requester_authority_json,
-                  { sessionKey: claimed.session_key, agentId: claimed.agent_id },
-                  params.getCommittedRuntimeConfig,
-                );
-                lifecycleRevision = lifecycle?.lifecycle_revision;
-                signal.throwIfAborted();
-                invocationSignal?.throwIfAborted();
-              },
-              validateAuthority: () => {
-                if (!validateCustody()) {
-                  return false;
-                }
-                getRequester().assertCurrent();
-                assertInvocationCurrent?.();
-                return true;
-              },
-              recordEffect: (kind, observed) => {
-                dispatched ||= observed === undefined;
-                effect = {
-                  kind,
-                  status: observed?.headCommit || observed?.url ? "observed" : "dispatched",
-                  ...observed,
-                };
-              },
-              bindWorkspaceSnapshot: (input) => executionStore.bindWorkspaceSnapshot(input),
-              updatePublishingFacts: (input) => executionStore.updatePublishingFacts(input),
-              complete: (row, result) => executionStore.complete(row, result),
-              defer: async (row) => {
-                await deferGitHubPublicationRequestsAsync({ kind: "request", row }, assertCurrent);
-                const deferred = await readGitHubPublicationRequestInWorker(row.request_id);
-                if (!deferred) {
-                  throw new Error("GitHub publication request disappeared.");
-                }
-                return deferred;
-              },
-            });
-          } catch (error) {
-            if (!(error instanceof GitHubPublicationRequesterUnavailableError)) {
-              throw error;
-            }
-            if (!validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
-                "GitHub publication execution custody changed before reconciliation.",
-              );
-            }
-            const current = await readGitHubPublicationRequestInWorker(claimed.request_id).catch(
-              (cause: unknown) => {
-                throw new GitHubPublicationRecoveryPendingError(
-                  "GitHub publication receipt is unavailable; retry recovery.",
-                  { cause },
-                );
-              },
-            );
-            if (!current || !validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
-                "GitHub publication execution custody changed during reconciliation.",
-              );
-            }
-            // A fresh execution knows whether it dispatched any GitHub write. Historical
-            // head facts still require observation; an absent response proves nothing.
-            if (claimed.head_commit !== null || dispatched) {
-              const observed = await reconcileGitHubPublication({
-                initial: current,
-                validateCustody,
-                complete: (row, result) => executionStore.complete(row, result),
-                pushOnly:
-                  claimed.head_commit === null && effect?.kind === "push"
-                    ? effect.status === "observed" && effect.headCommit === current.head_commit
-                      ? "observed"
-                      : "dispatched"
-                    : undefined,
-              });
-              if (observed) {
-                return observed;
-              }
-            }
-            if (!validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
-                "GitHub publication execution custody changed during reconciliation.",
-              );
-            }
-            return publicationResult(
-              await executionStore.complete(current, {
-                requestId: current.request_id,
-                status: "failed",
-                ...error.failure,
-                message: error.message,
-              }),
-            );
-          } finally {
-            signal.removeEventListener("abort", revokeInvocation);
-            invocationSignal?.removeEventListener("abort", revokeInvocation);
-            requester?.release();
-            await lease.release();
-          }
-        }),
-      { evictOnSettled: true },
-    );
-  };
+  const processRow = createRepositoryPublicationHostExecution({
+    placements: params.placements,
+    getCommittedRuntimeConfig: params.getCommittedRuntimeConfig,
+    assertCurrent,
+    signal,
+    adapter: {
+      execute: executeGitHubPublication,
+      reconcile: reconcileGitHubPublication,
+      assertWorkflowChangesAllowed: assertGitHubPublicationWorkflowChangesAllowed,
+    },
+  });
 
   const repository = createRepositoryGitHubPublicationCoordinator({
     ...params,
