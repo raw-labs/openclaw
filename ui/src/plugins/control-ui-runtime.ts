@@ -60,6 +60,7 @@ const UI_CAPABILITY_BY_CONTRIBUTION = {
   panels: "panel",
   actions: "action",
   accessories: "accessory",
+  textReferences: "link-reader",
   widgets: "widget",
   replacements: "replacement",
 } as const satisfies Record<
@@ -454,6 +455,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
         actions: new Map(),
         replacements: new Map(),
         accessories: new Map(),
+        textReferences: new Map(),
         widgets: new Map(),
       },
       selections: new Map<ControlUiSurface, string | null>(),

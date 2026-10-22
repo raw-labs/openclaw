@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { createGitHubTextReferenceProvider } from "../../../extensions/github-repositories/browser/text-reference-api.ts";
 import { GATEWAY_STARTUP_ADMISSION_WAIT_MS } from "../../../packages/gateway-protocol/src/startup-unavailable.js";
 import type { ControlUiSessionListSnapshot } from "../../../src/plugin-sdk/control-ui.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -751,4 +752,61 @@ it("shares native PR read interest and retires scoped read/translation/navigatio
   ]) {
     expect(operation).toThrow("activation has ended");
   }
+});
+
+it("fences late project aliases on same-client scope changes through the scoped host", async () => {
+  const h = createPullRequestGateway();
+  const initial = h.gateway.snapshot;
+  const hello = {
+    ...initial.hello!,
+    features: { methods: [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD, "projects.list"] },
+    auth: { ...initial.hello!.auth!, recoveryScope: "first" },
+  };
+  h.setSnapshot({ ...initial, hello });
+  const pending = [createDeferred<unknown>(), createDeferred<unknown>()];
+  let projectReads = 0;
+  h.request.mockImplementation(async (method) =>
+    method === "projects.list" ? pending[projectReads++]!.promise : { subscribed: true },
+  );
+  // The real host and native PR store serve the plugin; only Gateway transport replies are simulated.
+  const context = { ...subscriptions, gateway: h.gateway } as unknown as ApplicationContext;
+  const activation = createHost(context, undefined, h.gateway.snapshot.client!);
+  const provider = createGitHubTextReferenceProvider(activation.host);
+  const target = { sessionKey: "agent:main:main", signal: new AbortController().signal };
+  const stop = provider.observe!(target, vi.fn());
+  onTestFinished(stop);
+  await vi.waitFor(() => expect(projectReads).toBe(1));
+  const firstScope = activation.host.connection.readScopeKey;
+  h.setSnapshot({ ...h.gateway.snapshot, sessionKey: "agent:main:unrelated" });
+  expect(activation.host.connection.readScopeKey).toBe(firstScope);
+  expect(projectReads).toBe(1);
+  h.setSnapshot({
+    ...h.gateway.snapshot,
+    hello: { ...hello, auth: { ...hello.auth, recoveryScope: "second" } },
+  });
+  expect(activation.host.connection.readScopeKey).not.toBe(firstScope);
+  await vi.waitFor(() => expect(projectReads).toBe(2));
+  const aliases = (owner: string) => ({
+    projects: [
+      {
+        id: "widget",
+        displayName: "Widget",
+        originUrl: `https://github.com/${owner}/widget`,
+        source: "registered",
+      },
+    ],
+  });
+  pending[1]!.resolve(aliases("current"));
+  await vi.waitFor(() =>
+    expect(provider.snapshot(target).resolve({ text: "Widget PR #2", links: [] })[0]?.url).toBe(
+      "https://github.com/current/widget/pull/2",
+    ),
+  );
+  pending[0]!.resolve(aliases("retired"));
+  await flushSync();
+  expect(provider.snapshot(target).resolve({ text: "Widget PR #2", links: [] })[0]?.url).toBe(
+    "https://github.com/current/widget/pull/2",
+  );
+  stop();
+  expect(provider.snapshot(target).resolve({ text: "Widget PR #2", links: [] })).toEqual([]);
 });

@@ -17,6 +17,7 @@ import {
   chatDetailPanelProperties,
   createFilePresentationActions,
   createFilePresentationState,
+  createFileTextReferences,
   renderFilePanelPresentation,
 } from "./chat-detail-file-presentation.ts";
 import { createFileCopy } from "./chat-file-copy.ts";
@@ -40,6 +41,7 @@ registerEnglishCatalog(registerFilePreviewEnglish);
 
 function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
   const fileAttachment = createFileSessionAttachment(props);
+  const textReferences = createFileTextReferences(props, host);
   const gateways = nativeGatewaysCapability();
   const nativeGateways = gateways && projectOwner(gateways, (owner) => owner);
   let disposed = false;
@@ -93,6 +95,7 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
     fileSearchMatches,
     closeFileSearch,
     toggleFileSearch,
+    toggleHtmlSource,
     toggleFileWrap,
     updateFileSearch,
     moveFileSearch,
@@ -253,11 +256,6 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
       (visibleContent?.kind === "file" ? visibleContent.content : "")
     );
   }
-
-  const toggleHtmlSource = () => {
-    presentation.fileSearchOpen = false;
-    htmlPreview.toggle();
-  };
 
   function scrollToFileLine(content: FileSidebarContent) {
     const line = props.fileNavigation?.line ?? content.line;
@@ -646,6 +644,7 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
 
     t("common.loading");
     return renderFilePanelPresentation({
+      textReferences: textReferences(),
       fileAttachment: fileAttachment(),
       props,
       presentation,

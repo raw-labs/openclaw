@@ -1,4 +1,7 @@
-import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/control-ui";
+import type {
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestSnapshot,
+} from "openclaw/plugin-sdk/control-ui";
 
 type PullRequestState = ControlUiSessionPullRequest["state"];
 const STATE_ORDER: readonly PullRequestState[] = ["open", "draft", "merged", "closed"];
@@ -27,4 +30,13 @@ export function primarySessionPullRequest(requests: readonly ControlUiSessionPul
     }
   }
   return undefined;
+}
+
+export function sessionGitHubRepository(
+  snapshot:
+    | Pick<ControlUiSessionPullRequestSnapshot, "repository" | "branch" | "pullRequests">
+    | undefined,
+): { owner: string; repo: string } | null {
+  const repository = snapshot?.repository ?? snapshot?.branch ?? snapshot?.pullRequests[0];
+  return repository ? { owner: repository.owner, repo: repository.repo } : null;
 }

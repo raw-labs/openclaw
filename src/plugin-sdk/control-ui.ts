@@ -22,6 +22,8 @@ export type ControlUiDisposer = () => void;
 
 export type ControlUiConnection = {
   connected: boolean;
+  /** Opaque invalidation identity for authorized read projections, never authority. */
+  readonly readScopeKey?: string;
   canRead: boolean;
   canWrite: boolean;
   canGrant: boolean;
@@ -201,6 +203,34 @@ export type ControlUiAction = {
   ) => void | Promise<void>;
 };
 
+/** Offsets address UTF-16 code units in one prose run, excluding code and existing links. */
+export type ControlUiTextReference = Readonly<{
+  start: number;
+  end: number;
+  url: string;
+  label?: string;
+}>;
+export type ControlUiTextReferenceInput = {
+  text: string;
+  links: readonly string[];
+};
+/** Capture immutable facts; publish a new object when resolution changes, even if key is unchanged. */
+export type ControlUiTextReferenceSnapshot = Readonly<{
+  /** Deterministic identity of the immutable facts captured by resolve. */
+  key: string;
+  resolve: (input: ControlUiTextReferenceInput) => readonly ControlUiTextReference[];
+}>;
+export type ControlUiTextReferenceProvider = {
+  id: string;
+  /** Presentation requires an admitted link reader owned by this same plugin. */
+  readerId: string;
+  snapshot: (context: BoardGetParams) => ControlUiTextReferenceSnapshot;
+  observe?: (
+    context: BoardGetParams & { signal: AbortSignal },
+    changed: () => void,
+  ) => ControlUiDisposer;
+};
+
 export type ControlUiAccessory = {
   id: string;
   placement: "session-header";
@@ -324,6 +354,7 @@ export type ControlUiHost = {
     openPanel: (id: string, session?: BoardGetParams) => void;
     registerAction: (action: ControlUiAction) => ControlUiDisposer;
     registerAccessory: (accessory: ControlUiAccessory) => ControlUiDisposer;
+    registerTextReferenceProvider: (provider: ControlUiTextReferenceProvider) => ControlUiDisposer;
     registerWidget: (widget: ControlUiWidget) => ControlUiDisposer;
     registerReplacement: (replacement: ControlUiReplacement) => ControlUiDisposer;
     /** Select an owned replacement, or restore the built-in view for this surface. */

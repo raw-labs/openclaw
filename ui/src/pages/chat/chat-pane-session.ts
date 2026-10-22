@@ -1,6 +1,7 @@
 import { parseDateStringTimestampMs } from "@openclaw/normalization-core/number-coercion";
 import {
   chatBranchId,
+  sessionGitHubRepository,
   chatPullRequestId,
 } from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type {
@@ -24,7 +25,6 @@ import {
   summarizeSessionPullRequests,
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
   sessionPullRequestsForGateway,
-  sessionGitHubRepository,
 } from "../../lib/session-pull-requests.ts";
 import {
   lookupCatalogSession,
@@ -73,9 +73,6 @@ export abstract class ChatPaneSession extends ChatPaneTaskSuggestions {
   }
   protected get sessionPullRequestsBranch(): ControlUiSessionBranch | undefined {
     return this.readPullRequestSnapshot()?.branch;
-  }
-  protected get githubRepo() {
-    return sessionGitHubRepository(this.readPullRequestSnapshot());
   }
   protected get sessionPullRequestsStatus(): ControlUiSessionPullRequestSnapshot["status"] {
     return this.readPullRequestSnapshot()?.status ?? "ready";

@@ -1,7 +1,8 @@
-/* @vitest-environment jsdom */
 import { expectDefined } from "@openclaw/normalization-core/expect";
+/* @vitest-environment jsdom */
 import { createComponent } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { githubTextReferenceSnapshot } from "../../../../../extensions/github-repositories/browser/text-reference-api.ts";
 import { resolveThemeBranding } from "../../../../../packages/gateway-protocol/src/theme.ts";
 import { resolveControlUiAuthToken } from "../../../app/control-ui-auth.ts";
 import { currentThemeBranding, setCurrentThemeBranding } from "../../../app/theme-branding.ts";
@@ -334,20 +335,30 @@ describe("chat transcript invalidation", () => {
     const props = threadProps("pane-named", "agent:main:named", [
       { role: "assistant", content: "ClawSweeper PR **#1576 opened**", timestamp: 1_000 },
     ]);
-    props.githubRepo = { owner: "openclaw", repo: "openclaw" };
+    props.textReferences = [githubTextReferenceSnapshot({ owner: "openclaw", repo: "openclaw" })];
     const { container, rerender } = threadFixture(props);
     const chip = () => container.querySelector<HTMLAnchorElement>("a.markdown-github-item");
     rerender();
     expect(chip()).toBeNull();
-    props.githubRepositories = [
-      { owner: "openclaw", repo: "clawsweeper", aliases: ["ClawSweeper"] },
+    props.textReferences = [
+      githubTextReferenceSnapshot({ owner: "openclaw", repo: "openclaw" }, [
+        { owner: "openclaw", repo: "clawsweeper", aliases: ["ClawSweeper"] },
+      ]),
     ];
     rerender();
     expect(chip()?.href).toBe("https://github.com/openclaw/clawsweeper/pull/1576");
-    props.githubRepositories = [{ aliases: ["ClawSweeper"] }];
+    props.textReferences = [
+      githubTextReferenceSnapshot({ owner: "openclaw", repo: "openclaw" }, [
+        { aliases: ["ClawSweeper"] },
+      ]),
+    ];
     rerender();
     expect(chip()).toBeNull();
-    props.githubRepositories = [{ owner: "fork", repo: "clawsweeper", aliases: ["ClawSweeper"] }];
+    props.textReferences = [
+      githubTextReferenceSnapshot({ owner: "openclaw", repo: "openclaw" }, [
+        { owner: "fork", repo: "clawsweeper", aliases: ["ClawSweeper"] },
+      ]),
+    ];
     rerender();
     expect(chip()?.href).toBe("https://github.com/fork/clawsweeper/pull/1576");
   });
@@ -362,13 +373,17 @@ describe("chat transcript invalidation", () => {
     rerender();
     expect(chip()).toBeNull();
 
-    props.githubRepo = { owner: "openclaw", repo: "openclaw" };
+    props.textReferences = [
+      { ...githubTextReferenceSnapshot({ owner: "openclaw", repo: "openclaw" }), key: "same" },
+    ];
     rerender();
     expect(chip()?.href).toBe("https://github.com/openclaw/openclaw/pull/141270");
-    props.githubRepo = { owner: "other", repo: "checkout" };
+    props.textReferences = [
+      { ...githubTextReferenceSnapshot({ owner: "other", repo: "checkout" }), key: "same" },
+    ];
     rerender();
     expect(chip()?.href).toBe("https://github.com/other/checkout/pull/141270");
-    props.githubRepo = null;
+    props.textReferences = [];
     rerender();
     expect(chip()).toBeNull();
   });

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sessionGitHubRepository } from "../../../extensions/github-repositories/read-facts-api.ts";
 import {
   createGatewayHarness,
   createHello,
@@ -6,7 +7,6 @@ import {
 } from "./session-pull-requests.test-support.ts";
 import {
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionGitHubRepository,
   sessionPullRequestsForGateway,
 } from "./session-pull-requests.ts";
 import { scopedSessionArtifactKey } from "./sessions/session-key.ts";

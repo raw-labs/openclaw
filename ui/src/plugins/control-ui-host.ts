@@ -8,6 +8,7 @@ import type {
 import { serializeSidebarEntry } from "../app-navigation.ts";
 import { isRouteId, pathForRoute, pluginTabLocation } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
+import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { hasOperatorReadAccess, readGatewayOperatorAccess } from "../app/operator-access.ts";
 import {
   PLUGIN_PANEL_TOGGLE_EVENT,
@@ -119,10 +120,17 @@ export function createControlUiPluginHost(
       onError: (error) => runtime.reportError(owner.descriptor.pluginId, error),
     }),
     get connection() {
-      const snapshot = current().gateway.snapshot;
+      const gateway = current().gateway;
+      const snapshot = gateway.snapshot;
       const access = readGatewayOperatorAccess(snapshot);
       return {
         connected: snapshot.phase === "connected",
+        readScopeKey: JSON.stringify([
+          gatewayPresentationScope(gateway).key,
+          snapshot.hello?.auth?.role,
+          [...(snapshot.hello?.auth?.scopes ?? [])].toSorted(),
+          snapshot.hello?.features?.methods?.toSorted(),
+        ]),
         canRead: hasOperatorReadAccess(snapshot.hello?.auth ?? null),
         canWrite: access.canWrite,
         canGrant: access.canGrantApprovals,
@@ -371,6 +379,7 @@ export function createControlUiPluginHost(
       },
       registerAction: (value) => runtime.register(owner, "actions", value),
       registerAccessory: (value) => runtime.register(owner, "accessories", value),
+      registerTextReferenceProvider: (value) => runtime.register(owner, "textReferences", value),
       registerWidget: (value) => runtime.register(owner, "widgets", value),
       registerReplacement: (value) => runtime.register(owner, "replacements", value),
       selectReplacement(surface, id) {
