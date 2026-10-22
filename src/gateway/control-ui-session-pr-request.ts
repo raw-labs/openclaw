@@ -1,4 +1,4 @@
-import { gitHubPublicApi } from "./github-public-api.js";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 
 export type SessionPullRequestReadCredential = {
   token: string;

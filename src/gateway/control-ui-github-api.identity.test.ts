@@ -1,5 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 import {
+  gitHubPublicApi,
+  githubApiToken,
+  hasConfiguredGitHubApiCredential,
+} from "../../extensions/github-repositories/public-api.js";
+import {
   setRuntimeConfigSnapshot,
   clearRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
@@ -9,11 +14,6 @@ import {
   setActiveDegradedSecretOwners,
   SecretSurfaceUnavailableError,
 } from "../secrets/runtime-degraded-state.js";
-import {
-  gitHubPublicApi,
-  githubApiToken,
-  hasConfiguredGitHubApiCredential,
-} from "./github-public-api.js";
 
 afterEach(() => {
   setActiveDegradedSecretOwners([]);

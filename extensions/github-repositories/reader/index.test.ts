@@ -6,10 +6,12 @@ import {
 } from "openclaw/plugin-sdk/plugin-test-contracts";
 import { clearRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import repositoryPlugin from "../index.js";
+import manifest from "../openclaw.plugin.json" with { type: "json" };
 import type { ControlUiGitHubPreview } from "./api.js";
-import plugin from "./index.js";
-import manifest from "./openclaw.plugin.json" with { type: "json" };
+import { registerGitHubReader } from "./index.js";
 
+// mock-isolation: Substitute only the host RPC transport; real reader handlers parse and present its response.
 vi.mock("openclaw/plugin-sdk/gateway-method-runtime", () => ({
   dispatchGatewayMethod: vi.fn(),
 }));
@@ -30,13 +32,13 @@ function registered(host?: string) {
   );
   registerVirtualTestPlugin({
     ...fixture,
-    id: "github",
+    id: "github-repositories",
     name: "GitHub",
     contracts: {
       tools: manifest.contracts.tools,
       gatewayMethodDispatch: ["authenticated-request"],
     },
-    register: plugin.register,
+    register: registerGitHubReader,
   });
   return fixture.registry;
 }
@@ -68,7 +70,7 @@ function expectReader(registry: ReturnType<typeof registered>, host?: string) {
   expect(
     registry.registry.controlUiDescriptors.find((entry) => entry.descriptor.id === id),
   ).toMatchObject({
-    pluginId: "github",
+    pluginId: "github-repositories",
     descriptor: {
       surface: "link-reader",
       requiredScopes: ["operator.read"],
@@ -98,7 +100,7 @@ async function request(method: string, params: Record<string, unknown>) {
     context: {} as never,
     isWebchatConnect: () => false,
   });
-  registry.rollbackPluginGlobalSideEffects("github", registry.registry.plugins[0]!);
+  registry.rollbackPluginGlobalSideEffects("github-repositories", registry.registry.plugins[0]!);
   return respond;
 }
 
@@ -141,7 +143,7 @@ it.each([undefined, "ghe.example.test"])(
     expect(manifest.contracts.gatewayMethodDispatch).toEqual(["authenticated-request"]);
     for (const name of ["github.preview", "github.image", "github.detail"]) {
       expect(methods.find((entry) => entry.name === name)).toMatchObject({
-        owner: { kind: "plugin", pluginId: "github" },
+        owner: { kind: "plugin", pluginId: "github-repositories" },
         scope: "operator.read",
         profileAccess: "independent",
       });
@@ -161,7 +163,7 @@ it.each([undefined, "ghe.example.test"])(
     ).toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(dispatchGatewayMethod).not.toHaveBeenCalled();
-    registry.rollbackPluginGlobalSideEffects("github", registry.registry.plugins[0]!);
+    registry.rollbackPluginGlobalSideEffects("github-repositories", registry.registry.plugins[0]!);
     expect(registry.registry.controlUiDescriptors).toEqual([]);
     expect(registry.registry.tools).toEqual([]);
     expect(registry.registry.gatewayHandlers).toEqual({});
@@ -345,4 +347,26 @@ it("forwards the host error envelope unchanged without an identity fallback", as
   expect(respond.mock.calls[0]?.[2]).toBe(error);
   expect(fetchMock).not.toHaveBeenCalled();
   expect(dispatchGatewayMethod).toHaveBeenCalledTimes(1);
+});
+
+// Exercise the actual consolidated entry, not only its reader registration helper.
+it("disables only reader contributions while retaining native accounts and execution", () => {
+  const fixture = createPluginRegistryFixture({
+    plugins: { entries: { "github-repositories": { config: { reader: { enabled: false } } } } },
+  });
+  registerVirtualTestPlugin({
+    ...fixture,
+    id: "github-repositories",
+    name: "GitHub",
+    contracts: manifest.contracts,
+    register: repositoryPlugin.register,
+  });
+  expect(fixture.registry.registry.tools).toEqual([]);
+  expect(fixture.registry.registry.controlUiDescriptors).toEqual([]);
+  expect(fixture.registry.registry.gatewayHandlers).not.toHaveProperty("github.preview");
+  expect(fixture.registry.registry.gatewayHandlers).toHaveProperty("tools.github.status");
+  expect(fixture.registry.registry.executionEnvironments).toHaveLength(1);
+  expect(fixture.registry.registry.services.map((entry) => entry.service.id)).toContain(
+    "github-repositories.accounts",
+  );
 });

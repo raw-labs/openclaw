@@ -14,20 +14,39 @@ The bundled GitHub plugin adds public-repository link previews and a read-only
 reader to the [Control UI](/web/control-ui), plus the `github_read` and `github_search` agent tools. It is separate from the
 [GitHub Copilot model provider](/providers/github-copilot).
 
-## Upgrading with an existing plugin allowlist
+## GitHub integration and reader policy
 
-GitHub previews that previously lived in core now belong to the bundled
-`github` plugin. A nonempty `plugins.allow` list remains authoritative: if it
-omits `github`, both hovercards and the reader stay unavailable, and links open
-externally. OpenClaw does **not** add a plugin to an existing allowlist during
-an upgrade or Doctor repair.
+Public reading now belongs to the bundled `github-repositories` integration,
+which also owns account connections and managed execution identity. Its reader
+methods and agent tools keep their existing names and access scopes. The
+[GitHub identity configuration](/gateway/config-tools/github-identity) still uses
+`tools.github` and per-agent tool settings; this reader consolidation does not
+move account, service-token, or endpoint configuration.
 
-To restore previews, append `github` to your **existing** `plugins.allow` list
-without removing its other entries, then enable GitHub in **Plugins**. Keep
-`plugins.deny` and explicit disabled entries consistent with your choice. Doctor
-explains this recovery when an implicit allowlist exclusion blocks the feature.
-To intentionally keep it off and silence that notice, set
-`plugins.entries.github.enabled: false`.
+To disable only previews, the reader, and the `github_read` / `github_search`
+tools, set `plugins.entries.github-repositories.config.reader.enabled` to `false`.
+Account connections and native repository operations remain available. Disabling
+`plugins.entries.github-repositories.enabled` instead disables the whole plugin.
+
+Run `openclaw doctor --fix` to move an old `plugins.entries.github` reader entry
+or existing plugin admission policy into the new reader setting. A nonempty
+plugin allowlist that excluded `github`, or an explicit `github` deny, keeps the
+reader disabled even when no old reader entry exists. These reader restrictions
+do not disable the whole integration. A canonical reader setting wins over the
+retired one. Unknown old reader configuration or extra plugin policy is preserved
+for explicit review instead of being discarded.
+
+The reader transform leaves allow/deny lists and global plugin enablement
+unchanged. Doctor's existing configured-plugin repair may then enable
+`github-repositories` and add it to a nonempty allowlist. An explicit disable of
+the new plugin, a `github-repositories` deny entry, or global plugin disablement
+still prevents activation. The old reader ID is not an alias for the whole
+integration.
+
+Doctor also replaces exact `github` tool-policy entries with `github_read` and
+`github_search` in existing allow, alsoAllow, deny, provider, sandbox, subagent,
+and sender-policy scopes. Explicit per-tool denies remain effective. Unrelated
+plugin data and wildcard patterns are not rewritten.
 
 ## Read an item beside chat
 

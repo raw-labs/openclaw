@@ -6,6 +6,10 @@ import {
   readNonBlankString,
 } from "@openclaw/normalization-core/string-coerce";
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
+import {
+  gitHubPublicApi,
+  githubApiToken,
+} from "../../extensions/github-repositories/public-api.js";
 import type { GatewayAuthConfig, GatewayTrustedProxyConfig } from "../config/types.gateway.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { pruneMapToMaxSize } from "../infra/map-size.js";
@@ -22,7 +26,6 @@ import { classifyTailscaleLogin } from "../state/user-profiles-tailscale-login.j
 import type { CachedGitHubIdentityBinding } from "../state/user-profiles.types.js";
 import { normalizeGitHubLogin } from "../utils/github-login.js";
 import type { GatewayAuthResult } from "./auth.js";
-import { gitHubPublicApi, githubApiToken } from "./github-public-api.js";
 import type { AuthenticatedGitHubIdentitySync } from "./github-user-identity.types.js";
 import { firstHeaderValue } from "./http-header-value.js";
 

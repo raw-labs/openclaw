@@ -46,7 +46,7 @@ vi.mock("../commands/doctor-bootstrap-size.js", () => ({
   noteBootstrapFileSize: () => obs.record("bootstrap-size-advice", undefined),
 }));
 // mock-isolation: record credential-advice selection without accessing real credentials.
-vi.mock("../gateway/github-public-api.js", () => ({
+vi.mock("../../extensions/github-repositories/public-api.js", () => ({
   hasConfiguredGitHubApiCredential: () => obs.record("github-credential-advice", false),
 }));
 // mock-isolation: record advisory selection without reading or modifying real workspaces.

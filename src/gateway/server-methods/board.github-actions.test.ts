@@ -12,6 +12,7 @@ import {
   vi,
 } from "vitest";
 import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
 import { resolveManagedGitHubProfileDir } from "../../../extensions/github-repositories/tool-identity-api.js";
 import type { BoardSnapshot } from "../../../packages/gateway-protocol/src/index.js";
@@ -35,7 +36,6 @@ import {
 } from "../../test-utils/openclaw-test-state.js";
 import { toRequestUrl } from "../../test-utils/provider-usage-fetch.js";
 import { drainSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
-import { gitHubPublicApi } from "../github-public-api.js";
 import { createBoardHarness } from "./board.test-support.js";
 import type { GatewayRequestHandlerOptions, RespondFn } from "./types.js";
 

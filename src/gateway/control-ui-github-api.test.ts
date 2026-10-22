@@ -1,11 +1,11 @@
 import { once } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
-import { createDeferred } from "../../test/helpers/promise.js";
-import { SecretSurfaceUnavailableError } from "../secrets/runtime-degraded-state.js";
 import {
   CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE,
   gitHubPublicApi as api,
-} from "./github-public-api.js";
+} from "../../extensions/github-repositories/public-api.js";
+import { createDeferred } from "../../test/helpers/promise.js";
+import { SecretSurfaceUnavailableError } from "../secrets/runtime-degraded-state.js";
 
 const repoUrl = "https://api.github.com/repos/owner/repo";
 const now = 1_800_000_000_000;

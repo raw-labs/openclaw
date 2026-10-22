@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { requestCurrentGitHubOAuthRefresh } from "../../extensions/github-repositories/account-runtime-api.js";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import {
   GitHubIdentityError,
   prepareGitHubReadIdentity,
@@ -12,7 +13,6 @@ import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
 import type { BoardCapabilityAuthority } from "./board-host-tools.js";
 import { BoardGatewayUnavailableError } from "./board-view-ticket.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 import type { GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 
 const CACHE_TTL_MS = 30_000;

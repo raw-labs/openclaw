@@ -2,6 +2,8 @@
 export {
   assertSecretOwnerAvailable,
   isSecretOwnerAvailable,
+  isTrustedSecretSurfaceUnavailableError,
+  SecretSurfaceUnavailableError,
 } from "../secrets/runtime-degraded-state.js";
 
 export { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";

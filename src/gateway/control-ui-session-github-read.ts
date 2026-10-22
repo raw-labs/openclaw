@@ -3,11 +3,14 @@ import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
 } from "../../extensions/github-repositories/host-api.js";
+import {
+  gitHubPublicApi,
+  type ControlUiGitHubSessionIdentity,
+} from "../../extensions/github-repositories/public-api.js";
 import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import { runGitReadOperation } from "../infra/git-read-cache.js";
 import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { gitHubPublicApi, type ControlUiGitHubSessionIdentity } from "./github-public-api.js";
 import { prepareGatewayProjectGitHubIdentity } from "./project-github-identity.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";

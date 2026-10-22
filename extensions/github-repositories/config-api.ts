@@ -1,10 +1,17 @@
 import { resolveAgentConfig } from "openclaw/plugin-sdk/agent-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { GITHUB_PLUGIN_ID } from "./host-api.js";
 export type GitHubToolIdentityConfig = NonNullable<NonNullable<OpenClawConfig["tools"]>["github"]>;
-export const GITHUB_PLUGIN_ID = "github-repositories";
-/** The current config owner remains native until the atomic namespace cutover. */
+
+/** Account/endpoint keys remain native; only the retired reader policy belongs to this plugin. */
 export function readGitHubConfig(config?: OpenClawConfig | null) {
-  return { ...config?.gateway?.github, system: config?.tools?.github };
+  const pluginConfig = asOptionalRecord(config?.plugins?.entries?.[GITHUB_PLUGIN_ID]?.config);
+  return {
+    ...config?.gateway?.github,
+    system: config?.tools?.github,
+    reader: asOptionalRecord(pluginConfig?.reader),
+  };
 }
 export function readGitHubAgentIdentity(config: OpenClawConfig, agentId: string) {
   return resolveAgentConfig(config, agentId)?.tools?.github;

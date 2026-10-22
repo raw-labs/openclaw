@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import {
@@ -16,7 +17,6 @@ import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-c
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import * as checkDetails from "../control-ui-session-pr-check-details.js";
 import { createControlUiSessionPullRequestSubscriptions } from "../control-ui-session-pr-subscriptions.js";
-import { gitHubPublicApi } from "../github-public-api.js";
 import { createControlUiRequestOptions } from "./control-ui-request.test-support.js";
 import { controlUiHandlers } from "./control-ui.js";
 import { identifiedClient } from "./sessions-sharing.test-support.js";

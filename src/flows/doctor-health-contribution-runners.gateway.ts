@@ -109,7 +109,8 @@ export async function runWebFetchProxyHealth(ctx: DoctorHealthFlowContext): Prom
 }
 
 export async function runGitHubProjectHealth(ctx: DoctorHealthFlowContext): Promise<void> {
-  const { hasConfiguredGitHubApiCredential } = await import("../gateway/github-public-api.js");
+  const { hasConfiguredGitHubApiCredential } =
+    await import("../../extensions/github-repositories/public-api.js");
   if (!hasConfiguredGitHubApiCredential(ctx.env ?? process.env, ctx.cfg)) {
     note(
       "Set gateway.controlUi.github.token with gateway.controlUi.github.host matching gateway.github.host for private project access. Public github.com can also use GH_TOKEN/GITHUB_TOKEN; otherwise search is public-only.",

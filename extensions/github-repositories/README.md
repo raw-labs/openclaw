@@ -9,8 +9,8 @@ native core callers. Those artifacts do not load the plugin runtime.
 Configuration stays canonical at `gateway.github`, `tools.github`, and
 `agents.entries.<id>.tools.github`. The Settings renderer reads those current
 owners through its one local projection; it does not introduce a second writer
-or accept a plugin-config fallback. The reader is removed when all GitHub
-configuration readers and writers make their final cutover together.
+or accept a plugin-config fallback. That current-key Settings projection is removed when all GitHub configuration
+readers and writers make their final cutover together.
 
 Settings contributions follow the normal admitted plugin catalog. Disabling or
 denying this plugin removes its contributed views, account RPCs, and execution
@@ -48,3 +48,20 @@ artifacts. Core prepares contributor and current-sharing facts through the
 accepted session owner and still accepts, stores and deduplicates transcript
 reports. These formatters do not register a publication provider or change its
 activation, credentials, configuration, transaction or recovery ownership.
+
+## Public GitHub reader
+
+The same plugin owns public previews, document reading, `github_read`, and
+`github_search`. Reader methods, scopes, coding-profile defaults, bounded
+responses and credential admission are unchanged. Set
+`plugins.entries.github-repositories.config.reader.enabled=false` to disable
+only these contributions without disabling accounts or native repository work.
+
+Doctor migrates the retired `github` reader policy into that setting. Its normal
+configured-plugin repair may enable and allowlist the consolidated integration;
+explicit new-plugin disable, deny, and global disable remain effective. Native
+identity/service settings keep their current keys in this preparatory change.
+See [GitHub reader documentation](https://docs.openclaw.ai/plugins/github).
+
+The public `public-api.ts` artifact owns native HTTP/read composition; it shares
+the reader library and error/cooldown identities without activating the plugin.
