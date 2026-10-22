@@ -57,3 +57,6 @@ export { hasErrnoCode } from "../infra/errno.js";
 export { resolveExecutablePath } from "../infra/executable-path.js";
 export { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.js";
 export { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+
+export { quoteCliArg, quotePowerShellArg } from "../cli/quote-cli-arg.js";
+export { getShellConfig } from "../agents/shell-utils.js";

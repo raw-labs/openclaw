@@ -28,6 +28,10 @@ import {
   runBeforeToolCallHook,
 } from "../agent-tools.before-tool-call.js";
 import * as agentTools from "../agent-tools.js";
+import {
+  activateExecutionSecretSnapshot,
+  createGitHubExecutionFixture,
+} from "../execution-environment.test-support.js";
 import { createAgentRunRestartAbortError } from "../run-termination.js";
 import {
   attachInternalToolExecutionPreparer,
@@ -458,8 +462,14 @@ describe("agent harness host capability", () => {
           },
         },
       });
-      const host = createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" });
+      const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-host-execution-secrets-"));
+      await activateExecutionSecretSnapshot(attempt.config ?? {}, stateDir);
+      const execution = createGitHubExecutionFixture(attempt.config ?? {});
+      const host = execution.run(() =>
+        createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" }),
+      );
       const environment = host.capabilities.preparedEnvironment?.();
+      fs.rmSync(stateDir, { recursive: true, force: true });
 
       if (managed) {
         expect(environment?.credentialScrubEnv).toMatchObject({

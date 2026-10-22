@@ -4,6 +4,7 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../extensions/github-repositories/exec-launch-api.js";
 import { prepareGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createProcessSupervisor } from "../process/supervisor/supervisor.js";
@@ -48,7 +49,10 @@ function launch(overrides: Partial<Parameters<typeof runExecProcess>[0]> = {}) {
       GH_TOKEN: "",
       GITHUB_TOKEN: "",
     },
-    githubProfileDir: profileDir,
+    wrapLocalLaunch: (argv) =>
+      buildGitHubExecLaunchArgv([...argv], profileDir, {
+        githubHost: overrides.env?.GH_HOST ?? "github.com",
+      }),
     usePty: false,
     warnings: [],
     maxOutput: 1000,
@@ -279,7 +283,7 @@ describe.skipIf(process.platform === "win32")("local GitHub credential launch bo
       expect(input.env).toMatchObject(env);
       return supervisor.spawn(input);
     });
-    const outcome = await (await launch({ env, githubProfileDir: undefined })).promise;
+    const outcome = await (await launch({ env, wrapLocalLaunch: undefined })).promise;
     expect(outcome.aggregated).toBe("native");
     expect(env.GH_TOKEN).toBe("synthetic-native-token");
   });

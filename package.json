@@ -489,7 +489,8 @@
     "!dist/plugin-sdk/terminal-safe-text.d.ts",
     "!dist/plugin-sdk/repository-identity-host.d.ts",
     "!dist/plugin-sdk/repository-oauth-host.d.ts",
-    "!dist/plugin-sdk/repository-session-host.d.ts"
+    "!dist/plugin-sdk/repository-session-host.d.ts",
+    "!dist/plugin-sdk/worker-github-credentials.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -1737,6 +1738,13 @@
     },
     "./plugin-sdk/repository-session-host": {
       "default": "./dist/plugin-sdk/repository-session-host.js"
+    },
+    "./plugin-sdk/execution-environment": {
+      "types": "./dist/plugin-sdk/execution-environment.d.ts",
+      "default": "./dist/plugin-sdk/execution-environment.js"
+    },
+    "./plugin-sdk/worker-github-credentials": {
+      "default": "./dist/plugin-sdk/worker-github-credentials.js"
     },
     "./cli-entry": "./openclaw.mjs"
   },

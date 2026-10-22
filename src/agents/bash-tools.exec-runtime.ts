@@ -340,8 +340,8 @@ export async function runExecProcess({
   workdir: string;
   env: Record<string, string>;
   secretEgressBindings?: readonly SecretEgressSentinelBinding[];
-  /** Host-selected managed profile; never inferred from the requested environment. */
-  githubProfileDir?: string;
+  /** Host-prepared launch adapter; never inferred from requested environment. */
+  wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
   pathPrepend?: string[];
   sandbox?: BashSandboxConfig;
   containerWorkdir?: string | null;

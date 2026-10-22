@@ -383,5 +383,7 @@
   "agent-sessions",
   "llm",
   "repository-oauth-host",
-  "repository-session-host"
+  "repository-session-host",
+  "execution-environment",
+  "worker-github-credentials"
 ]

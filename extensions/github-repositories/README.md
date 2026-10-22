@@ -1,7 +1,7 @@
 # GitHub Settings and repository artifacts
 
 This plugin owns Profile → GitHub connections and the GitHub identity view in
-Agent → Tools. The plugin owns the existing `users.github.*` connection and `tools.github.*` account Gateway methods, device authorization, and OAuth refresh scheduling. Its managed service starts once per Gateway and drains accepted token rotations when stopped. Record persistence, execution, repository sources, and publication retain their native owners; identity/profile selection is implemented by the package artifacts.
+Agent → Tools. The plugin owns the existing `users.github.*` connection and `tools.github.*` account Gateway methods, device authorization, and OAuth refresh scheduling. Its managed service starts once per Gateway and drains accepted token rotations when stopped. Record persistence, repository sources, and publication retain their native owners. The package also owns the prepared execution identity provider; core retains process and sandbox custody.
 
 The package also owns the shallow host, managed-account, and OAuth protocol artifacts used by
 native core callers. Those artifacts do not load the plugin runtime.
@@ -13,21 +13,20 @@ or accept a plugin-config fallback. The reader is removed when all GitHub
 configuration readers and writers make their final cutover together.
 
 Settings contributions follow the normal admitted plugin catalog. Disabling or
-denying this plugin removes its contributed views; it does not disable the still
-native GitHub backend. Packaged Memory/channel setup views retain their separate
+denying this plugin removes its contributed views, account RPCs, and execution
+identity provider; native repository and publication methods remain at this stage. Packaged Memory/channel setup views retain their separate
 availability contract, including disabled-plugin setup.
 
 `oauth-api.ts` owns the remote GitHub protocol and verification cache.
 The identity/profile artifacts own native CLI credential selection and its cache;
 lifecycle callers explicitly invalidate both credential and verification caches
-when an identity changes. OAuth record persistence and scheduling remain host-owned.
+when an identity changes. OAuth record persistence remains host-owned; the managed plugin service owns scheduling.
 
 The identity/profile artifacts own native and managed credential selection, App
 installation protocol, profile reads and writes, retired-profile cleanup, and
-credential environment formatting. Existing host execution, repository, and
-publication callers consume these operations; their transport and transaction
-owners have not moved. Native OAuth records remain host-owned through the narrow
-read-only SDK contract.
+credential environment formatting. Existing repository and publication callers consume these operations; their
+transport and transaction owners have not moved. Native OAuth records remain
+host-owned through admitted record operations.
 
 The pure `profile-id-api.ts` format also serves native configuration and persisted
 record validation. The native host-snapshot adapter remains for the frozen PR
@@ -36,3 +35,8 @@ adapter owns a second configuration or a legacy fallback. Agent selections remai
 at `agents.entries[agentId].tools.github`.
 
 The account service follows normal plugin admission. Disabling or excluding this plugin removes account RPCs and stops new refresh work; it does not erase saved credentials. Gateway storage owners retain record admission and exact refresh settlement.
+
+The execution provider contributes identity facts and private launch adapters for
+local commands and supported Docker/Podman sandboxes. Core retains approvals,
+container allocation, process supervision, and generic Git defaults. Current
+native GitHub configuration keys remain canonical until their atomic cutover.

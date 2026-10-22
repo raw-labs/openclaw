@@ -1058,6 +1058,10 @@ const configs: UserConfig[] = [
     "worker/workspace-rsync-receiver": "src/worker/workspace-rsync-receiver.ts",
   }),
   workerHelperBuildConfig({ "worker/github-exec-launcher": "src/agents/github-exec-launcher.ts" }),
+  workerHelperBuildConfig({
+    "extensions/github-repositories/exec-credential-launcher-api":
+      "extensions/github-repositories/exec-credential-launcher-api.ts",
+  }),
   ...["service-child-relay", "service-child-group-anchor"].map((name) =>
     workerHelperBuildConfig(
       { [`worker/${name}`]: `src/process/supervisor/${name}.ts` },

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { resolveManagedGitHubProfileDir } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createExecTool } from "./bash-tools.exec-run.js";
+import { createGitHubExecutionFixture } from "./execution-environment.test-support.js";
 
 const relayCapture = vi.hoisted(() => ({
   sends: undefined as MockInstance<ChildProcess["send"]>[] | undefined,
@@ -120,10 +121,13 @@ describe.skipIf(process.platform === "win32")("selected GitHub profile authentic
         agentId: "main",
       });
       await writeProfile(profileState === "tokenless" ? undefined : "managed-token");
-      const result = await tool.execute(`synthetic-auth-${profileState}`, {
-        command: command(profileState, service ? "service" : "direct"),
-        pty,
-      });
+      const execution = createGitHubExecutionFixture({ tools: { github: { profileId } } });
+      const result = await execution.run(() =>
+        tool.execute(`synthetic-auth-${profileState}`, {
+          command: command(profileState, service ? "service" : "direct"),
+          pty,
+        }),
+      );
       const output = result.content
         .filter((item) => item.type === "text")
         .map((item) => item.text)

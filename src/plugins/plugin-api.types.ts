@@ -307,6 +307,10 @@ export type OpenClawPluginApi = {
   registerReload: (registration: OpenClawPluginReloadRegistration) => void;
   registerNodeHostCommand: (command: OpenClawPluginNodeHostCommand) => void;
   registerNodeInvokePolicy: (policy: OpenClawPluginNodeInvokePolicy) => void;
+  /** Prepare nonsecret process facts and scoped local launch adapters for this plugin. */
+  registerExecutionEnvironment: (
+    provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1,
+  ) => void;
   registerSecurityAuditCollector: (collector: OpenClawPluginSecurityAuditCollector) => void;
   registerService: {
     (service: OpenClawPluginService): void;

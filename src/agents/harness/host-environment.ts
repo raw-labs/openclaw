@@ -1,14 +1,15 @@
 import path from "node:path";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
-import { prepareGitHubToolEnvironment } from "../../../extensions/github-repositories/tool-identity-api.js";
 import type { OpenClawConfig } from "../../config/types.js";
 import {
   installationTargetEnv,
   type InstallationTarget,
 } from "../../infra/installation-target-context.js";
 import { applyPathPrepend, findPathKey, normalizePathPrepend } from "../../infra/path-prepend.js";
+import type { PluginRegistry } from "../../plugins/registry-types.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { resolveSessionAgentIdStrict } from "../agent-scope.js";
+import { capturePreparedExecutionEnvironment } from "../execution-environment.js";
 import { resolveExecToolConfig } from "../lazy-exec-tool.js";
 
 const MAX_NATIVE_OPERATION_CWD_BYTES = 4096;
@@ -40,6 +41,9 @@ export function prepareAgentHarnessEnvironment(params: {
   sessionKey?: string;
   sandboxAgentId?: string;
   installationTarget?: InstallationTarget;
+  pluginRegistry?: PluginRegistry;
+  assertCurrent: () => void;
+  signal?: AbortSignal;
 }) {
   const execConfig = resolveExecToolConfig({
     cfg: params.config,
@@ -58,11 +62,18 @@ export function prepareAgentHarnessEnvironment(params: {
     applyPathPrepend(localToolEnv, [...localToolPathPrepend]);
     Object.freeze(localToolEnv);
   }
-  const identity = prepareGitHubToolEnvironment({
-    config: params.config ?? {},
-    sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig,
-    agentId: resolveSessionAgentIdStrict(params),
-  });
+  const secrets = getActiveSecretsRuntimeConfigSnapshot();
+  const identity = capturePreparedExecutionEnvironment(
+    {
+      config: params.config ?? {},
+      sourceConfig: secrets?.sourceConfig,
+      agentId: resolveSessionAgentIdStrict(params),
+      assertCurrent: params.assertCurrent,
+      signal: params.signal,
+    },
+    params.pluginRegistry,
+    secrets?.executionEnvironmentExclusions,
+  );
   const localProcessEnv = installationTargetEnv(params.installationTarget);
   return Object.freeze({
     ...identity,

@@ -10,6 +10,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createDiagnosticLogRecordCapture } from "../logging/test-helpers/diagnostic-log-capture.js";
 import { createWarnLogCapture } from "../logging/test-helpers/warn-log-capture.js";
+import { createGitHubExecutionFixture } from "./execution-environment.test-support.js";
 import { registerSandboxBackend } from "./sandbox/backend.js";
 import type { CreateSandboxBackendParams } from "./sandbox/backend.types.js";
 import { resolveSandboxContext } from "./sandbox/context.js";
@@ -80,8 +81,8 @@ async function fixture(
         },
       },
       entries: {
-        release: { tools: { github: { ...identity, allowInSandbox: options.allowInSandbox } } },
         other: {},
+        release: { tools: { github: { ...identity, allowInSandbox: options.allowInSandbox } } },
       },
     },
   };
@@ -90,18 +91,21 @@ async function fixture(
 
 function resolve(config: OpenClawConfig, agentId = "release", required = false, creator = "alice") {
   const sessionKey = `agent:${agentId}:task`;
-  return resolveSandboxContext({
-    config,
-    sessionKey,
-    workspaceDir: config.agents?.defaults?.workspace,
-    preparedRuntimeStatus: resolvePreparedSandboxRuntimeStatus({
-      cfg: config,
+  const execution = createGitHubExecutionFixture(config);
+  return execution.run(() =>
+    resolveSandboxContext({
+      config,
       sessionKey,
-      preparedSessionEntry: required
-        ? { sandbox: "required", createdActor: { type: "human", source: "profile", id: creator } }
-        : null,
+      workspaceDir: config.agents?.defaults?.workspace,
+      preparedRuntimeStatus: resolvePreparedSandboxRuntimeStatus({
+        cfg: config,
+        sessionKey,
+        preparedSessionEntry: required
+          ? { sandbox: "required", createdActor: { type: "human", source: "profile", id: creator } }
+          : null,
+      }),
     }),
-  });
+  );
 }
 
 it.each([false, true])("isolates read-only identity (role required=%s)", async (required) => {

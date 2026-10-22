@@ -32,6 +32,9 @@ without adding imports from Gateway internals.
   [Provider Plugins](/plugins/sdk-provider-plugins) for step-by-step guides.
 </Tip>
 
+Prepared process identities and scoped local launch adapters use
+[Execution environments](/plugins/sdk-execution-environments).
+
 ## Where each section moved
 
 Every section of the single-page version now lives on this page or on one of

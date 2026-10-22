@@ -418,6 +418,11 @@ export type PluginRegistry = {
   nodeHostCommands: PluginNodeHostCommandRegistration[];
   nodeInvokePolicies: PluginNodeInvokePolicyRegistration[];
   gatewayAccessPolicies: Array<PluginRegistrationOwner & { policy: PluginGatewayAccessPolicy }>;
+  executionEnvironments: Array<
+    PluginRegistrationOwner & {
+      provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1;
+    }
+  >;
   securityAuditCollectors: Array<
     PluginRegistrationOwner & { collector: OpenClawPluginSecurityAuditCollector }
   >;

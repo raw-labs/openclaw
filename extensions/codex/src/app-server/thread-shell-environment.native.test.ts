@@ -116,6 +116,10 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
                   "[shell_environment_policy.set]",
                   `PATH=${JSON.stringify([nativeBin, "/usr/bin", "/bin"].join(path.delimiter))}`,
                   'KEEP="preserved"',
+                  // Include-only may remove HOME; Git then uses the operating-system home.
+                  // Keep this native-policy proof independent of the operator's Git config.
+                  `GIT_CONFIG_GLOBAL=${JSON.stringify(path.join(root, "empty-gitconfig"))}`,
+                  'GIT_CONFIG_NOSYSTEM="1"',
                   `GIT_CONFIG_PARAMETERS=${JSON.stringify("'user.name=Native Git'")}`,
                 ]
               : []),
@@ -124,6 +128,8 @@ describe.skipIf(process.platform === "win32")("native Codex tool PATH", () => {
                   "[shell_environment_policy.filters]",
                   'path="exclude"',
                   'KEEP="include"',
+                  'GIT_CONFIG_GLOBAL="include"',
+                  'GIT_CONFIG_NOSYSTEM="include"',
                   '"UNRELATED_*"="exclude"',
                 ]
               : []),

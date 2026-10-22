@@ -1,4 +1,3 @@
-import type { PreparedGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity.types-api.js";
 import type { NodePermissionRequest } from "../../packages/gateway-protocol/src/node-permissions.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { EventSessionRoutingPolicy } from "../infra/event-session-routing.js";
@@ -11,6 +10,7 @@ import type {
 } from "../infra/exec-approvals.js";
 import type { ExecAutoReviewer, ExecAutoReviewTranscript } from "../infra/exec-auto-review.js";
 import type { SafeBinProfileFixture } from "../infra/exec-safe-bin-policy.js";
+import type { PreparedExecutionEnvironment } from "../plugins/execution-environment-types.js";
 import type { PluginHookChannelContext } from "../plugins/hook-types.js";
 import type { TerminationReason } from "../process/supervisor/types.js";
 import type { SecretStoreExecEnvironment } from "../secrets/store/secret-store.js";
@@ -73,7 +73,7 @@ export type ExecToolDefaults = ExecToolRoutingDefaults & {
   reviewer?: ExecReviewerConfig;
   config?: OpenClawConfig;
   /** Host-prepared non-secret environment and store projection exclusions. */
-  preparedRunEnvironment?: PreparedGitHubToolEnvironment;
+  preparedRunEnvironment?: PreparedExecutionEnvironment;
   /** An explicit snapshot, including an empty one, replaces local store access. */
   preparedStoreEnvironment?: Readonly<SecretStoreExecEnvironment>;
   /** Host-prepared routing hint; remote workers have no Gateway session database. */
