@@ -17,7 +17,7 @@ import { createTimeout } from "../../lib/reactive/timers.ts";
 import { registerMenuShortcuts } from "../menu-shortcuts.ts";
 import type { OverlayPlacement } from "../overlay-anchor.ts";
 import { createOverlay, type Overlay } from "../overlay-lifecycle.ts";
-import { containsComposed, registryFor } from "../overlay-registry.ts";
+import { containsComposed, findOverlayParent, registryFor } from "../overlay-registry.ts";
 import { Icon } from "./icon.tsx";
 import { MENU_FORM_CONTROL_SELECTOR, useMenuMachine, type MenuBinding } from "./menu-machine.ts";
 import { useOverlayControl } from "./overlay-control.ts";
@@ -310,6 +310,7 @@ export function Menu(props: BranchProps): JSX.Element {
   onSettled(() => overlay.bindSurface(surface));
   const binding = useMenuMachine(overlay, direction, activate, initialIdentity.binding?.service, {
     ids: { trigger: initialIdentity.triggerId },
+    overlayParent: () => initialIdentity.parent ?? findOverlayParent(trigger),
     pointerFocus: () => props.pointerFocus ?? "menu",
   });
   onSettled(() =>

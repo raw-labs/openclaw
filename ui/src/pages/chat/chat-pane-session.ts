@@ -1,4 +1,8 @@
 import { parseDateStringTimestampMs } from "@openclaw/normalization-core/number-coercion";
+import {
+  chatBranchId,
+  chatPullRequestId,
+} from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type {
   SessionCatalogTranscriptItem,
   SessionsCatalogReadResult,
@@ -44,8 +48,6 @@ import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { resolveChatAgentId, selectedChatSessionRow } from "./chat-state-route.ts";
 import {
-  chatBranchId,
-  chatPullRequestId,
   dismissChatPullRequest,
   listDismissedChatPullRequests,
 } from "./components/chat-pull-requests.ts";

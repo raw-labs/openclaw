@@ -3,7 +3,7 @@ import { t } from "../lib/reactive/i18n.ts";
 
 type GitDiffValuesProps = {
   item: { additions?: number; deletions?: number };
-  classPrefix: "session-hovercard" | "chat-pr" | "activity-feed";
+  classPrefix: string;
   locale?: string;
   spaced?: boolean;
 };

@@ -349,3 +349,22 @@ export type {
 } from "../../packages/gateway-protocol/src/schema/users.js";
 export { generateUUID } from "../../packages/normalization-core/src/uuid.js";
 export { resolveSafeTimeoutDelayMs } from "../../packages/gateway-client/src/timeouts.js";
+
+// Native controls used by separately owned browser renderers.
+export type { ControlUiNativeHost } from "./control-ui-native.js";
+export type {
+  ControlUiPresentationHost,
+  ControlUiIconProps,
+  ControlUiMarqueeOptions,
+  ControlUiMenuControls,
+  ControlUiMenuHandle,
+  ControlUiMenuEntry,
+  ControlUiMenuItemAttributes,
+  ControlUiMenuProps,
+  ControlUiActivityPillView,
+} from "./control-ui-presentation.js";
+export type {
+  ControlUiSessionBranch,
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestSnapshot,
+} from "../gateway/control-ui-contract.js";

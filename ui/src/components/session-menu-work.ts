@@ -1,8 +1,8 @@
+import { primarySessionPullRequest } from "../../../extensions/github-repositories/read-facts-api.ts";
 import type { WorktreeRecord } from "../../../packages/gateway-protocol/src/index.js";
 import type { ControlUiSessionPullRequestSnapshot } from "../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { isNativeLocalGateway } from "../app/native-editor-locality.runtime.ts";
-import { primarySessionPullRequest } from "../lib/session-pull-request-presentation.ts";
 
 // Shared by the app sidebar and the Sessions page: both hosts resolve the
 // same worktree-session extras (PR link, checkout path) when opening the

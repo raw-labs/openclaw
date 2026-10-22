@@ -1,6 +1,7 @@
+import { createMemo, For, onSettled, Show } from "solid-js";
+import { mountSummaryRead } from "../../../../../extensions/github-repositories/browser/read-presentation-api.ts";
 import "../../../styles/chat/session-rail.css";
 import "../../../styles/chat/working-indicator.css";
-import { createMemo, For, onSettled, Show } from "solid-js";
 import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../../../api/gateway.ts";
@@ -16,6 +17,7 @@ import { cancelLayout, scheduleLayout } from "../../../lib/layout-frame.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../../lib/reactive/projection.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { repositoryReadView } from "../../../plugins/repository-read-view.tsx";
 import type {
   ChatSessionCompanionThread,
   ChatSessionCompanionTurn,
@@ -30,19 +32,6 @@ import { ChatWorkingIndicator } from "./chat-working-indicator.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 
-function checksSummary(pullRequest: ControlUiSessionPullRequest): string | null {
-  const checks = pullRequest.checks;
-  if (!checks) {
-    return null;
-  }
-  if (checks.state === "passing") {
-    return t("chat.rail.checksPassing", { count: String(checks.passed) });
-  }
-  if (checks.state === "failing") {
-    return t("chat.rail.checksFailing", { count: String(checks.failed) });
-  }
-  return t("chat.rail.checksPending", { count: String(checks.running) });
-}
 const COMPANION_HINT_KEYS = {
   busy: "chat.rail.askBusy",
   "history-unavailable": "chat.rail.askHistoryUnavailable",
@@ -185,27 +174,9 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       onDragOver={(event) => drop().onDragover(event)}
       onDrop={(event) => drop().onDrop(event)}
     >
-      {showPullRequests() && props.pullRequests.length > 0 && (
-        <div class="chat-session-rail__prs" aria-label={t("chat.rail.pullRequests")}>
-          <For each={props.pullRequests.slice(0, 2)} keyed={(pr) => pr.url}>
-            {(pullRequest) => (
-              <a
-                class="chat-session-rail__pr"
-                href={pullRequest().url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={pullRequest().title}
-              >
-                <span>#{pullRequest().number}</span>
-                <span>{t(`chat.pullRequests.${pullRequest().state}`)}</span>
-                {checksSummary(pullRequest()) && (
-                  <span class="chat-session-rail__pr-checks">{checksSummary(pullRequest())}</span>
-                )}
-              </a>
-            )}
-          </For>
-        </div>
-      )}
+      {showPullRequests() &&
+        props.pullRequests.length > 0 &&
+        repositoryReadView(mountSummaryRead, () => ({ pullRequests: props.pullRequests }))}
       <div
         class="chat-session-rail__thread"
         aria-live="polite"

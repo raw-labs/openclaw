@@ -1,11 +1,10 @@
+/** @jsxImportSource @solidjs/web */
+
 import type { JSX } from "@solidjs/web";
-import { createEffect, createUniqueId, onSettled } from "solid-js";
-import { createOverlayAnchor } from "../../../components/overlay-anchor.ts";
-import { createOverlay, findOverlayParent } from "../../../components/overlay-lifecycle.ts";
-import { Icon } from "../../../components/solid/icon.tsx";
-import "../../../components/solid/overlay.css";
-import { acquireNativeOverlaySurface } from "../../../lib/native-overlay-occlusion.ts";
-import { t } from "../../../lib/reactive/i18n.ts";
+import { createEffect, createUniqueId, onSettled, useContext } from "solid-js";
+import { NativeContext } from "./native-context.tsx";
+import { Icon } from "./presentation-components.tsx";
+import { presentationTranslator } from "./presentation-context.ts";
 
 export function ChatPullRequestChecks(props: {
   label: string;
@@ -15,17 +14,17 @@ export function ChatPullRequestChecks(props: {
   dismissed?: boolean;
   children: JSX.Element;
 }) {
+  const native = useContext(NativeContext);
+  const t = presentationTranslator();
   let details!: HTMLDetailsElement;
   let trigger!: HTMLElement;
   let surface!: HTMLElement;
   let mounted = false;
   let presented = false;
-  const overlay = createOverlay(`chat-pr-checks-${createUniqueId()}`, undefined, {
-    interactionElements: () => [details],
-    // Keyboard session switching preserves the retained disclosure's open intent.
-    dismissOutsideFocus: false,
-    acquireOcclusion: acquireNativeOverlaySurface,
-  });
+  const overlay = native.createDisclosureOverlay(
+    `chat-pr-checks-${createUniqueId()}`,
+    () => details,
+  );
   const sync = (nextPresented: boolean, dismissed?: boolean) => {
     presented = nextPresented;
     if (mounted) {
@@ -42,11 +41,7 @@ export function ChatPullRequestChecks(props: {
     (next) => sync(next.presented, next.dismissed),
   );
   onSettled(() => {
-    overlay.bindSurface(surface);
-    overlay.bindTrigger(trigger);
-    overlay.setParent(findOverlayParent(trigger));
-    const anchor = createOverlayAnchor(surface);
-    anchor.update(trigger, "top-end");
+    const stopAnchor = overlay.bind(surface, trigger);
     // Apply each native close edge synchronously; parking preserves disclosure intent.
     const stop = overlay.subscribe((open) => {
       if (presented) {
@@ -58,7 +53,7 @@ export function ChatPullRequestChecks(props: {
     return () => {
       mounted = false;
       stop();
-      anchor.dispose();
+      stopAnchor();
       overlay.dispose();
     };
   });

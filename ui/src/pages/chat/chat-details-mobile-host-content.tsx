@@ -1,4 +1,5 @@
 import { For, Show, createMemo, createSignal, onSettled } from "solid-js";
+import { chatPullRequestId } from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type { ControlUiSessionPullRequestSnapshot } from "../../../../src/gateway/control-ui-contract.js";
 import { PanelLoadingSkeleton } from "../../components/solid/panel-loading-skeleton.tsx";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
@@ -19,7 +20,7 @@ import {
   type ChatDetailsMobilePage,
 } from "./components/chat-details-mobile-content.tsx";
 import type { ChatDetailsProps } from "./components/chat-details-types.ts";
-import { chatPullRequestId, retainedPublication } from "./components/chat-pull-requests.ts";
+import { retainedPublication } from "./components/chat-pull-requests.ts";
 import { syncSessionPanelInputs, useSessionPanel } from "./components/chat-session-panel.tsx";
 import { createChatSessionSharingMobileAdapter } from "./components/chat-session-sharing-mobile-adapter.tsx";
 import type { PreparedChatSessionSharing } from "./components/chat-session-sharing-shared.tsx";

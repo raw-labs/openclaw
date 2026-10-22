@@ -2,6 +2,9 @@
  "shared": [
   "__vite-browser-external",
   "apps/shared/OpenClawKit/Sources/OpenClawKit/Resources/tool-display.json",
+  "extensions/github-repositories/browser/pull-request-ids.ts",
+  "extensions/github-repositories/browser/session-pull-request-presentation.ts",
+  "extensions/github-repositories/browser/sidebar-badge-presentation.ts",
   "extensions/github-repositories/host-api.ts",
   "extensions/github-repositories/project-url-api.ts",
   "node_modules/@floating-ui/core/dist/floating-ui.core.mjs",
@@ -955,7 +958,6 @@
   "ui/src/lib/session-display.ts",
   "ui/src/lib/session-method-access.ts",
   "ui/src/lib/session-owner.ts",
-  "ui/src/lib/session-pull-request-presentation.ts",
   "ui/src/lib/session-pull-requests.ts",
   "ui/src/lib/session-rename.ts",
   "ui/src/lib/session-run-state.ts",

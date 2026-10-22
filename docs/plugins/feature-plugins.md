@@ -470,6 +470,29 @@ The dev server serves the validated generated JavaScript and CSS without runtime
 plugin activation. Restart the dev server after editing plugin presentation
 sources to rebuild their immutable generation.
 
+### Repository read renderers
+
+The bundled GitHub package exposes two browser library entry points:
+`read-facts-api.ts` contains inert ordering, identifiers, badges, and pill facts;
+`browser/read-presentation-api.ts` mounts the actual PR read regions. Native composition
+passes current values and callbacks, then calls the returned handle's `update`
+and `dispose` methods. Each mount owns its Solid root. Shared native controls use
+the same explicit-value handle contract: `mountTextOverflow(element, { content })`
+keeps measurement in the native runtime instead of accepting a plugin reactive getter.
+
+The current read flow remains one connection owner:
+`sessionPullRequestsForGateway` receives Gateway snapshots; native pane, sidebar,
+hovercard, and Activity projections select current facts; the library renders them.
+CI request/write owners and publication controls stay native. Mobile Root/Back,
+keyboard traversal, and canonical English also retain their existing owners.
+
+This is a library boundary, not another plugin activation path. Read views retain
+native admission and remain available when the GitHub plugin is disabled; Settings
+and account/execution contributions keep their own plugin-admission contract.
+The temporary native composition adapter ends when publication and the final native
+menu reader transfer the same read store and remaining consumers atomically. No
+second subscription store or configuration fallback is introduced.
+
 ### Bundle boundaries
 
 The build emits a JavaScript entry, optional CSS, and JavaScript chunks for lazy
