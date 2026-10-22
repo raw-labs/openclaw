@@ -25,7 +25,6 @@ import {
   readSessionProgressCard,
   sessionProgressCardsForGateway,
 } from "../../lib/session-progress-cards.ts";
-import type { GitHubPublicationBinding } from "../../lib/sessions/session-capability.ts";
 import {
   areUiSessionKeysEquivalent,
   parseAgentSessionKey,
@@ -622,7 +621,6 @@ export abstract class ChatPaneStateOwner {
   protected sessionSuggestionTargetSignature = "";
   protected readonly typingActors = new Map<string, ChatTypingActorState>();
   protected readonly typingTimers = new Map<string, number>();
-  readonly publication: { binding: GitHubPublicationBinding | null } = { binding: null };
   readonly workspaceConflicts = { dismissedRefs: new Map<string, string>() };
   readonly history = projectChatFields<{
     catalogMessages: unknown[];
@@ -679,10 +677,6 @@ export abstract class ChatPaneStateOwner {
     );
   }
 
-  protected abstract refreshSessionPullRequests(options?: {
-    refresh?: boolean;
-    automatic?: boolean;
-  }): boolean;
   protected abstract commitSidebarLayout(
     layout: SidebarLayout,
     options?: Parameters<ChatPageHost["updateSidebarLayout"]>[1],

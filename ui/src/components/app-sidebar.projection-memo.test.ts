@@ -1,20 +1,16 @@
 /* @vitest-environment jsdom */
 
 import { beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/browser/session-pull-requests.ts";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
 import { createDeferred } from "../../../test/helpers/promise.ts";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { createChatSubmissions } from "../app/chat-submissions.ts";
 import type { ApplicationOverlaySnapshot } from "../app/overlays-types.ts";
 import * as sessionDisplay from "../lib/session-display.ts";
-import {
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionPullRequestsForGateway,
-} from "../lib/session-pull-requests.ts";
 import { captureBootRoster } from "../lib/sessions/session-boot-roster.ts";
 import { admitSidebarBootScope } from "../pages/chat/session-snapshot-prewarm.ts";
 import { SessionSnapshotStore } from "../pages/chat/session-snapshot-store.ts";
-import "../test-helpers/app-sidebar-suite.ts";
 import {
   catalogPage,
   createContext,
@@ -23,10 +19,12 @@ import {
   createSessionsHarness,
   mountSidebarContext,
 } from "../test-helpers/app-sidebar.ts";
+import "../test-helpers/app-sidebar-suite.ts";
 import { createApplicationContextProvider } from "../test-helpers/application-context.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../test-helpers/gateway-methods.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
+import { installRepositoryPresentation } from "../test-helpers/repository-presentation.test-support.ts";
 import { sidebarBootSnapshot } from "../test-helpers/sidebar-boot-snapshot.test-support.ts";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import * as sidebarAgentSessionRows from "./app-sidebar-agent-session-rows.ts";
@@ -61,7 +59,7 @@ function session(name: string, fields: Partial<GatewaySessionRow> = {}): Gateway
   };
 }
 
-async function mount(rows: GatewaySessionRow[]) {
+async function mount(rows: GatewaySessionRow[], repositories = false) {
   const sessions = createSessionsHarness("main", []);
   sessions.publishList({
     result: {
@@ -74,7 +72,7 @@ async function mount(rows: GatewaySessionRow[]) {
   const gateway = createGatewayHarness(
     createTestGatewayClient(vi.fn(async () => ({ questions: [] }))),
   );
-  const context = {
+  let context = {
     ...createContext(gateway.gateway, sessions.sessions, {
       defaultId: "main",
       mainKey: "main",
@@ -83,6 +81,11 @@ async function mount(rows: GatewaySessionRow[]) {
     }),
     chatSubmissions: createChatSubmissions(),
   };
+  if (repositories) {
+    const activation = installRepositoryPresentation(context);
+    context = activation.context;
+    await activation.ready;
+  }
   const overlayListeners = new Set<(snapshot: ApplicationOverlaySnapshot) => void>();
   context.overlays.subscribe = (listener) => {
     overlayListeners.add(listener);
@@ -370,15 +373,12 @@ describe("sidebar projection memo", () => {
     const target = session("live-checkout", {
       worktree: { id: "wt-live", branch: "main", repoRoot: "/synthetic/repo" },
     });
-    const { sidebar, gateway, sessions, row } = await mount([target]);
+    const { sidebar, gateway, sessions, row } = await mount([target], true);
     sidebar.connected = true;
     gateway.publish({ hello: gatewayHelloForMethods([SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]) });
     await settleLitElement(sidebar);
     const owner = getAppSidebarOwner(sidebar.hostElement)!;
     expect(owner.sidebarSnapshotSettled()).toBe(true);
-    expect(owner.readSessionPullRequestRows()).toEqual(
-      expect.arrayContaining([expect.objectContaining({ key: target.key, worktreeId: "wt-live" })]),
-    );
     const cached = sidebarBootSnapshot(captureBootRoster(sessions.sessions.state));
     expect(cached.roster?.agentId).toBe(owner.expandedAgentId());
     owner.restoreSidebarSnapshot({ ...cached, mode: "chip" });
@@ -396,9 +396,6 @@ describe("sidebar projection memo", () => {
       },
     });
     await settleLitElement(sidebar);
-    expect(sessionPullRequestsForGateway(gateway.gateway).get(target.key)?.pullRequests).toEqual([
-      { number: 42, state: "open" },
-    ]);
     expect(
       row(target.key)
         ?.querySelector('[data-pull-request-state="open"]')
@@ -723,14 +720,6 @@ describe("sidebar projection memo", () => {
       sidebar.storedOutboxes = undefined;
     });
     expect(row(target.key)?.querySelector(".session-row-badge--draft")).toBeNull();
-    await expectRowRefresh(sidebar, () =>
-      sessions.sessions.setPullRequestSummary(target.key, { numbers: [42], state: "open" }),
-    );
-    expect(sidebar.findSidebarSessionByKey(target.key)?.pullRequest).toMatchObject({
-      numbers: [42],
-      state: "open",
-    });
-    expect(row(target.key)?.querySelector('[data-pull-request-state="open"]')).not.toBeNull();
     let cancel: (() => void) | null = null;
     await expectRowRefresh(sidebar, () => {
       cancel = sessions.sessions.beginArchive(target.key, target.sessionId);

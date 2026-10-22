@@ -128,7 +128,6 @@ export interface TestChatPane extends HTMLElement, PaneTestLifecycle {
   readonly transcript: ChatTranscript;
   readonly history: ChatPaneRuntime["history"];
   readonly tasks: ChatPaneRuntime["tasks"];
-  readonly repository: ChatPaneRuntime["repository"];
   readonly headerPresentation: ChatPaneRuntime["headerPresentation"];
   readonly collaboration: ChatPaneRuntime["collaboration"];
   readonly presence: ChatPaneRuntime["presence"];
@@ -677,10 +676,6 @@ class RenderTestChatPane extends ChatPaneRuntime {
 
   override applySessionsState(state: ApplicationContext["sessions"]["state"]) {
     super.applySessionsState(state);
-  }
-
-  override refreshSessionPullRequests(options: { refresh?: boolean; automatic?: boolean } = {}) {
-    return super.refreshSessionPullRequests(options);
   }
 }
 

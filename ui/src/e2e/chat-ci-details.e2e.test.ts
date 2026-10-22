@@ -1,7 +1,12 @@
 import path from "node:path";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import { withTimeout } from "@openclaw/fs-safe/advanced";
 import type { Locator, Page } from "playwright";
 import { expect, it } from "vitest";
+import { createCiAutomationSpec } from "../../../extensions/github-repositories/browser/api.ts";
+import type { CiAutomationOption } from "../../../extensions/github-repositories/browser/api.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import {
   CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
   type ControlUiSessionPullRequest,
@@ -9,11 +14,10 @@ import {
   type ControlUiSessionPullRequestCheckDetails,
 } from "../../../src/gateway/control-ui-contract.js";
 import type { CronJob } from "../api/types.ts";
-import { ciAutomationJobSpec, type CiAutomationOption } from "../lib/session-pr-automation-spec.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { recordControlUiE2eFailureFacts } from "../test-helpers/control-ui-e2e-diagnostics.ts";
-import { controlUiSessionUrl, installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { controlUiSessionUrl } from "../test-helpers/control-ui-e2e.ts";
 import { cronListResponseFixture } from "../test-helpers/cron.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   openChatDetails,
   openDetailsPullRequests,
@@ -21,6 +25,9 @@ import {
 } from "./chat-details.test-support.ts";
 import { waitForWatchedSessionKey } from "./chat-github-publication.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
+
+const digest = (value: string) => bytesToHex(sha256(new TextEncoder().encode(value)));
+const { ciAutomationJobSpec: jobSpec } = createCiAutomationSpec(digest);
 
 const DETAILS_METHOD = "controlUi.sessionPullRequests.checks";
 const headSha = "a".repeat(40);
@@ -46,7 +53,7 @@ function automationInventory(jobs: CronJob[]) {
 }
 function automationJob(option: CiAutomationOption, enabled = true): CronJob {
   return {
-    ...ciAutomationJobSpec(automationTarget, option),
+    ...jobSpec(automationTarget, option),
     id: option,
     enabled,
     createdAtMs: 1,
@@ -254,6 +261,46 @@ async function expandLinuxJob(page: Page) {
 }
 
 suite.define(() => {
+  it.each(["inventory", "write"] as const)(
+    "settles CI automation %s across a head-only PR refresh without replay",
+    async (pending) => {
+      const fix = automationJob("autoFix");
+      const { page, gateway, publish } = await setup({ automationJobs: [fix] });
+      const displayedPr = { ...pullRequest, owner: "OpenClaw", repo: "OpenClaw" };
+      await publish(displayedPr);
+      const inventoryReads = (await gateway.getRequests("cron.list")).length;
+      if (pending === "inventory") {
+        await gateway.deferNext("cron.list");
+      }
+      await openDesktopPullRequestPage(page.locator(".chat-pr").first(), "monitoring");
+      const autoFix = page.getByRole("switch", { name: "Auto-fix CI & address comments" });
+      if (pending === "inventory") {
+        await gateway.waitForRequest("cron.list", { after: inventoryReads });
+      } else {
+        await expect.poll(() => autoFix.isEnabled()).toBe(true);
+        await gateway.deferNext("cron.update");
+        await autoFix.click();
+        await gateway.waitForRequest("cron.update");
+      }
+      // Cron declarations belong to the PR/session, not one commit. Keep the
+      // same visible control mounted while its admitted read or write settles.
+      const title = `Updated head during automation ${pending}`;
+      await publish({ ...displayedPr, headSha: "b".repeat(40), title });
+      await page.locator("a.chat-pr__link").filter({ hasText: title }).first().waitFor();
+      const saved =
+        pending === "inventory" ? fix : { ...fix, enabled: false, configRevision: "automation-v2" };
+      await gateway.setMethodResponse("cron.list", automationInventory([saved]));
+      await gateway.resolveDeferred(
+        pending === "inventory" ? "cron.list" : "cron.update",
+        // Static method fixtures use matching cases; deferred replies carry the wire page.
+        pending === "inventory" ? automationInventory([saved]).cases.at(-1)!.response : saved,
+      );
+      await expect.poll(() => autoFix.isEnabled()).toBe(true);
+      expect(await autoFix.isChecked()).toBe(pending === "inventory");
+      expect(await gateway.getRequests("cron.update")).toHaveLength(pending === "write" ? 1 : 0);
+    },
+  );
+
   it("saves selected-PR automation toggles and reconciles an uncertain write", async () => {
     const fix = automationJob("autoFix");
     const merge = automationJob("autoMerge", false);
@@ -344,9 +391,7 @@ suite.define(() => {
     await toggle.click();
     const add = await gateway.waitForRequest("cron.add");
     const merge = automationJob("autoMerge");
-    expect(add.params).toEqual(
-      ciAutomationJobSpec({ ...automationTarget, sessionKey }, "autoMerge"),
-    );
+    expect(add.params).toEqual(jobSpec({ ...automationTarget, sessionKey }, "autoMerge"));
     await gateway.setMethodResponse("cron.list", automationInventory([merge]));
     await gateway.resolveDeferred("cron.add", { job: merge });
     await expect.poll(() => toggle.isChecked()).toBe(true);
@@ -471,7 +516,7 @@ suite.define(() => {
         });
       }
       await page.getByRole("button", { name: "Checks", exact: true }).click();
-      menu = page.locator('.chat-mobile-details-page[data-details-page="pull-request-checks"]');
+      menu = page.locator('[data-repository-page="checks"]:not([hidden])');
     } else {
       menu = await openDesktopPullRequestPage(page.locator(".chat-pr").first(), "checks");
     }
@@ -480,7 +525,10 @@ suite.define(() => {
     await expect
       .poll(() =>
         menu.evaluate((element) => {
-          const bounds = element.getBoundingClientRect();
+          // The native sheet remains the viewport/scroll owner; plugin content may be taller.
+          const bounds = (
+            element.closest(".chat-mobile-details-page") ?? element
+          ).getBoundingClientRect();
           return (
             bounds.width > 0 &&
             bounds.x >= 0 &&
@@ -515,9 +563,7 @@ suite.define(() => {
       await page.locator(".chat-pr-mobile__metadata").waitFor();
       expect(await menu.isVisible()).toBe(false);
       await page.getByRole("button", { name: "CI monitoring", exact: true }).click();
-      const monitoring = page.locator(
-        '.chat-mobile-details-page[data-details-page="pull-request-monitoring"]',
-      );
+      const monitoring = page.locator('[data-repository-page="monitoring"]:not([hidden])');
       await monitoring
         .getByRole("switch", { name: "Auto-fix CI & address comments", exact: true })
         .waitFor();
@@ -542,7 +588,7 @@ suite.define(() => {
         name: "Auto-fix CI & address comments",
         exact: true,
       });
-      expect(await autoFix.isChecked()).toBe(true);
+      await expect.poll(() => autoFix.isChecked()).toBe(true);
       await gateway.deferNext("cron.update");
       await autoFix.click();
       expect((await gateway.waitForRequest("cron.update")).params).toEqual({

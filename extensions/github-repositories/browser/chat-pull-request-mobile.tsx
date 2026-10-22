@@ -1,15 +1,17 @@
+/** @jsxImportSource @solidjs/web */
+
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "openclaw/plugin-sdk/control-ui";
-/** @jsxImportSource @solidjs/web */
 import { For, Show, createSignal, onSettled, useContext } from "solid-js";
+import { ChatCiAutomation } from "./chat-ci-automation-control.tsx";
+import { ChatCiDetails } from "./chat-ci-details.tsx";
 import { ChecksRows } from "./chat-pull-request-shared.tsx";
 import { GitDiffValues } from "./native-components.tsx";
 import { Icon } from "./presentation-components.tsx";
 import { presentationTranslator, PresentationContext } from "./presentation-context.ts";
-import { chatPullRequestId } from "./pull-request-ids.ts";
-import { CiDetails, CiAutomation } from "./read-ci.tsx";
+import { chatPullRequestId } from "./pull-request-dismissal.ts";
 import { sessionPullRequestStateIcons } from "./session-pull-request-presentation.ts";
 import "./chat-pull-request-presenters.css";
 
@@ -341,7 +343,7 @@ export function ChatPullRequestMobileChecks(props: ChatPullRequestMobileCiProps)
       <Show when={props.pullRequest}>
         {(pullRequest) => (
           <>
-            <CiDetails
+            <ChatCiDetails
               pullRequest={pullRequest()}
               sessionKey={props.sessionKey}
               presented={props.presented}
@@ -373,7 +375,7 @@ export function ChatPullRequestMobileMonitoring(props: ChatPullRequestMobileCiPr
       <ChatPullRequestMobileRecovery {...props} />
       <Show when={props.pullRequest}>
         {(pullRequest) => (
-          <CiAutomation
+          <ChatCiAutomation
             pullRequest={pullRequest()}
             sessionKey={props.sessionKey}
             sessionId={props.sessionId ?? ""}

@@ -2,17 +2,23 @@
 
 import { createComponent, createSignal, flush, merge, type Setter } from "solid-js";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  ChatPullRequests,
+  type ChatPullRequestsProps,
+} from "../../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import * as staleRecovery from "../../../app/stale-chunk-reload.ts";
-import { cleanupSolid, mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { cleanupSolid } from "../../../test-helpers/mount-solid.ts";
+import { mountRepositorySolid as mountSolid } from "../../../test-helpers/repository-ci.test-support.tsx";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { pullRequest } from "./chat-pull-requests.test-support.ts";
-import { ChatPullRequests, type ChatPullRequestsProps } from "./chat-pull-requests.tsx";
 
 describe("pull request renderer loading", () => {
   afterEach(() => {
     cleanupSolid();
-    vi.doUnmock("./chat-pull-requests-content.tsx");
+    vi.doUnmock(
+      "../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx",
+    );
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -32,13 +38,16 @@ describe("pull request renderer loading", () => {
     onTestFinished(() => ready.resolve());
     let imports = 0;
     // mock-isolation: hold the module transport and render the actual PR implementation.
-    vi.doMock("./chat-pull-requests-content.tsx", async () => {
-      imports++;
-      await ready.promise;
-      return vi.importActual<typeof import("./chat-pull-requests-content.tsx")>(
-        "./chat-pull-requests-content.tsx",
-      );
-    });
+    vi.doMock(
+      "../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx",
+      async () => {
+        imports++;
+        await ready.promise;
+        return vi.importActual<
+          typeof import("../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx")
+        >("../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx");
+      },
+    );
     const initial: ChatPullRequestsProps = {
       pullRequests: [],
       status: "ready",
@@ -75,16 +84,21 @@ describe("pull request renderer loading", () => {
 
   it("keeps a failed PR renderer load visible and retries through the public component", async () => {
     // mock-isolation: fail the actual chunk boundary before any row mounts.
-    vi.doMock("./chat-pull-requests-content.tsx", () => {
-      throw new Error("PR renderer chunk could not be loaded");
-    });
+    vi.doMock(
+      "../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx",
+      () => {
+        throw new Error("PR renderer chunk could not be loaded");
+      },
+    );
     const view = mount({ pullRequests: [pullRequest()], status: "ready", onDismiss: vi.fn() });
     await waitForSolid(() =>
       expect(view.getByRole("alert").textContent).toContain(
         "PR renderer chunk could not be loaded",
       ),
     );
-    vi.doUnmock("./chat-pull-requests-content.tsx");
+    vi.doUnmock(
+      "../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx",
+    );
     view.getByRole("button", { name: "Retry" }).click();
     await waitForSolid(() =>
       expect(view.container.querySelector(".chat-pr__number")?.textContent).toBe(
@@ -97,11 +111,14 @@ describe("pull request renderer loading", () => {
     "reloads a stale PR view only for a current owner (%s)",
     async (state) => {
       // mock-isolation: fail lazy export access without Vitest wrapping the transport error.
-      vi.doMock("./chat-pull-requests-content.tsx", () => ({
-        get ChatPullRequestsContent() {
-          throw new TypeError("Failed to fetch dynamically imported module: /assets/pr.js");
-        },
-      }));
+      vi.doMock(
+        "../../../../../extensions/github-repositories/browser/chat-pull-requests-content.tsx",
+        () => ({
+          get ChatPullRequestsContent() {
+            throw new TypeError("Failed to fetch dynamically imported module: /assets/pr.js");
+          },
+        }),
+      );
       const probe = createDeferred<Response>();
       onTestFinished(() => probe.resolve(new Response("", { status: 200 })));
       const fetchDocument = vi.fn<typeof fetch>(() => probe.promise);

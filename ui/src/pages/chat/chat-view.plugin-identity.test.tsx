@@ -3,17 +3,20 @@
 import type { BoardGetParams } from "@openclaw/gateway-protocol";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type {
-  ControlUiHost,
   ControlUiSurface,
   ControlUiViewContext,
 } from "../../../../src/plugin-sdk/control-ui.js";
-import type { ApplicationContext } from "../../app/context.ts";
-import { createApplicationContextProvider } from "../../test-helpers/application-context.ts";
-import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { createControlUiPluginHost } from "../../plugins/control-ui-host.ts";
 import {
-  createSolidApplicationContextProvider,
-  createApplicationGateway,
-} from "../../test-helpers/solid-application-context.tsx";
+  ControlUiPluginRuntime,
+  type ControlUiPluginOwner,
+} from "../../plugins/control-ui-runtime.ts";
+import { disposeSidebarContextLifecycles } from "../../test-helpers/app-sidebar-context-lifecycle.ts";
+import { createContext, createGateway, createSessions } from "../../test-helpers/app-sidebar.ts";
+import { createApplicationContextProvider } from "../../test-helpers/application-context.ts";
+import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
+import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { createSolidApplicationContextProvider } from "../../test-helpers/solid-application-context.tsx";
 import { resetComposerFixture } from "./chat-composer.test-support.ts";
 import { createChatProps } from "./chat-view.test-helpers.ts";
 import { ChatView } from "./chat-view.tsx";
@@ -27,14 +30,34 @@ afterEach(() => resetComposerFixture());
 
 it("passes the pane's raw global owner to transcript and tool replacements", async () => {
   const lifetime = new AbortController();
-  const host = {
-    signal: lifetime.signal,
-    sessions: {},
-    agents: {},
-    navigation: {},
-    ui: {},
-    components: {},
-  } as unknown as ControlUiHost;
+  const client = createTestGatewayClient(async () => ({}));
+  const context = createContext(createGateway(client), createSessions("main", []));
+  const runtime = new ControlUiPluginRuntime(() => context);
+  runtime.start();
+  const owner: Omit<ControlUiPluginOwner, "host"> = {
+    descriptor: {
+      pluginId: "identity",
+      name: "Identity",
+      revision: "1",
+      entryUrl: "/identity.js",
+      styles: [],
+    },
+    client,
+    abort: lifetime,
+    disposers: new Set(),
+    selections: new Map(),
+    contributions: {
+      pages: new Map(),
+      navigation: new Map(),
+      panels: new Map(),
+      actions: new Map(),
+      accessories: new Map(),
+      widgets: new Map(),
+      replacements: new Map(),
+      textReferences: new Map(),
+    },
+  };
+  const host = createControlUiPluginHost(() => context, runtime, owner);
   const replacements = new Map(
     (["transcript", "tool-result"] as const).map((surface) => [
       surface,
@@ -56,10 +79,10 @@ it("passes the pane's raw global owner to transcript and tool replacements", asy
     ]),
   );
   const reportError = vi.fn();
-  const context = {
-    gateway: createApplicationGateway().gateway,
-    agentSelection: { state: { selectedId: "main" }, subscribe: () => () => undefined },
+  Object.assign(context, {
+    agentSelection: { ...context.agentSelection, state: { selectedId: "main", scopeId: "main" } },
     plugins: {
+      ...context.plugins,
       registrations: () => [],
       selectedReplacement: (surface: ControlUiSurface) =>
         surface === "transcript" || surface === "tool-result"
@@ -68,7 +91,7 @@ it("passes the pane's raw global owner to transcript and tool replacements", asy
       subscribe: () => () => undefined,
       reportError,
     },
-  } as unknown as ApplicationContext;
+  });
   const provider = createSolidApplicationContextProvider(context);
   const props = createChatProps({
     paneId: "native-owner",
@@ -108,6 +131,11 @@ it("passes the pane's raw global owner to transcript and tool replacements", asy
   onTestFinished(() => {
     view.unmount();
     lifetime.abort();
+    for (const dispose of owner.disposers) {
+      dispose();
+    }
+    runtime.dispose();
+    disposeSidebarContextLifecycles();
     container.remove();
   });
 

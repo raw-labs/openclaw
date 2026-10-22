@@ -1,12 +1,31 @@
 import type { ProgressCard } from "@openclaw/gateway-protocol";
-import { vi } from "vitest";
-import type { ApplicationContext } from "../app/context.ts";
+import { afterEach, vi } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
+import type { ControlUiSessionPullRequestSnapshot } from "../../../src/plugin-sdk/control-ui.ts";
+import { createApplicationConfigCapability } from "../app/config.ts";
+import {
+  applicationContext,
+  type ApplicationContext,
+  type ApplicationContextRequest,
+} from "../app/context.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
+import { listen } from "../lib/reactive/listener.ts";
+import {
+  createTestSessionCapability,
+  sessionsResult,
+} from "../lib/sessions/session-capability.test-support.ts";
+import { installRepositoryPresentation } from "../test-helpers/repository-presentation.test-support.ts";
 import { flush } from "../test-helpers/solid-settle.ts";
 import type { SidebarSessionHovercardRow } from "./app-sidebar-session-types.ts";
 import type { SessionProgressHovercardProvider } from "./session-progress-hovercard.runtime.tsx";
 import "./session-progress-hovercard.runtime.tsx";
+
+const cleanups: (() => void)[] = [];
+afterEach(() => {
+  for (const dispose of cleanups.splice(0)) {
+    dispose();
+  }
+});
 
 function subscriptions<T>() {
   const listeners = new Set<(value: T) => void>();
@@ -47,6 +66,20 @@ export function createHovercard(
   const emit = (event: string, payload: unknown) => events.emit({ type: "event", event, payload });
   const request = vi.fn(
     async (method: string, params: { sessionKey?: string; agentId?: string }) => {
+      if (method === "sessions.list") {
+        return sessionsResult([
+          {
+            key: sessionKey,
+            agentId: selectedId,
+            kind: "direct",
+            displayName: "Synthetic provider session",
+            updatedAt: 1,
+          },
+        ]);
+      }
+      if (method === "sessions.subscribe") {
+        return { subscribed: true };
+      }
       if (method === SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD) {
         return { sessions: {} };
       }
@@ -74,6 +107,7 @@ export function createHovercard(
   const gateway = {
     snapshot: {
       phase: "connected",
+      sessionKey,
       assistantAgentId: browser ? "research" : "main",
       client: { request },
       hello: {
@@ -81,14 +115,31 @@ export function createHovercard(
         features: { methods: ["progressCard.get", SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD] },
       },
     },
-    connection: { token: "", password: "" },
+    connection: { gatewayUrl: "ws://example.test", token: "", password: "" },
     subscribe: () => () => undefined,
     subscribeEvents: events.subscribe,
   } as unknown as ApplicationGateway;
-  const context = {
+  const sessionCapability = createTestSessionCapability(gateway, selectedId);
+  const subscribeNative = sessionCapability.subscribe;
+  sessionCapability.subscribe = (listener) => {
+    const stopNative = subscribeNative(listener);
+    const stopFixture = sessions.subscribe(() => listener(sessionCapability.state));
+    return () => {
+      stopNative();
+      stopFixture();
+    };
+  };
+  let context = {
     gateway,
     basePath: "",
-    sessions: { subscribe: browser ? () => () => undefined : sessions.subscribe },
+    resourceBasePath: "",
+    config: createApplicationConfigCapability({ resourceBasePath: "" }),
+    agents: {
+      state: { agentsList: { agents: [], defaultId: "research" } },
+      subscribe: () => () => undefined,
+    },
+    theme: { subscribe: () => () => undefined },
+    sessions: sessionCapability,
     agentSelection: {
       get state() {
         return { selectedId, scopeId: selectedId };
@@ -96,16 +147,34 @@ export function createHovercard(
       subscribe: selection.subscribe,
     },
   } as unknown as ApplicationContext;
+  let rosterReady = Promise.resolve();
   if (browser || triggerKind === "markdown") {
     const agentsList = { agents: [{ id: "research" }], defaultId: "research", mainKey: "main" };
-    const result = { sessions: [{ key: sessionKey, displayName: "Synthetic provider session" }] };
-    Object.assign(context, { agents: { state: { agentsList } } });
-    Object.assign(context.sessions, { state: { result } });
+    Object.assign(context, { agents: { state: { agentsList }, subscribe: () => () => undefined } });
+    rosterReady = sessionCapability.refresh();
   }
+  const repository = installRepositoryPresentation(context);
+  context = repository.context;
+  cleanups.push(repository.dispose);
   const provider = document.createElement(
     "openclaw-session-progress-hovercard-provider",
   ) as SessionProgressHovercardProvider;
   Object.assign(provider, { context, gateway });
+  cleanups.push(
+    listen(provider, "context-request", (event) => {
+      // SAFETY: the shared context token identifies this existing native bridge protocol.
+      const contextRequest = event as ApplicationContextRequest;
+      if (
+        contextRequest.context !== applicationContext ||
+        contextRequest.contextTarget === provider ||
+        !provider.context
+      ) {
+        return;
+      }
+      event.stopPropagation();
+      contextRequest.callback(provider.context, () => undefined);
+    }),
+  );
   const sidebar = Object.assign(document.createElement("openclaw-app-sidebar"), {
     expandedAgentId: () => (browser ? "research" : selectedId),
     findSidebarHovercardRowByKey: () => ({
@@ -155,11 +224,15 @@ export function createHovercard(
     getReads: () => reads("progressCard.get"),
     getPullRequestReads: () => reads(SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD),
     async mount() {
+      await rosterReady;
+      await repository.ready;
       document.body.append(provider);
       await provider.updateComplete;
       flush();
     },
     async focus() {
+      await rosterReady;
+      await repository.ready;
       await provider.updateComplete;
       trigger.dispatchEvent(new FocusEvent("focusin", { bubbles: true, composed: true }));
     },
@@ -174,6 +247,9 @@ export function createHovercard(
     updateRow(details: Partial<SidebarSessionHovercardRow>) {
       rowDetails = { ...rowDetails, ...details };
       sessions.emit();
+    },
+    emitPullRequests(snapshot: ControlUiSessionPullRequestSnapshot) {
+      emit("controlUi.sessionPullRequests.changed", { sessions: { [sessionKey]: snapshot } });
     },
     emitPullRequestStatus(status: "ready" | "rate-limited" | "unavailable") {
       emit("controlUi.sessionPullRequests.changed", {

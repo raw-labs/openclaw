@@ -1,3 +1,4 @@
+import type { ControlUiSessionHeaderFacts } from "../../../../src/plugin-sdk/control-ui.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { hasOperatorAdminAccess, hasOperatorWriteAccess } from "../../app/operator-access.ts";
 import { patchSettings } from "../../app/settings.ts";
@@ -7,7 +8,7 @@ import { personActivityRouting } from "../../components/person-activity-link.ts"
 import { isCloudWorkerPlacementState } from "../../components/session-row-badges.ts";
 import { t } from "../../i18n/index.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
-import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
+import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
 import {
   pickFreshestObserverDigest,
   projectSessionObserverDigest,
@@ -15,7 +16,6 @@ import {
 } from "../../lib/observer-digest.ts";
 import { hasSessionPresenceViewers } from "../../lib/presence-users.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
-import { GitHubPublicationOwner } from "../../lib/sessions/github-publication-owner.ts";
 import { scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
 import { resolveUiConfiguredMainKey } from "../../lib/sessions/session-key.ts";
 import { navigateToModelProvider } from "../model-providers/navigation.ts";
@@ -31,7 +31,6 @@ import {
   createChatPaneSessionActionCallbacks,
   readChatPaneComposerAccess,
   readChatPaneMutationAccess,
-  readChatPublicationAccess,
   renderChatPaneComposerControls,
 } from "./chat-pane-session-controls.ts";
 import {
@@ -265,53 +264,31 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
             navigateToModelProvider(this.context, currentAgentId, provider),
           onModelAccounts: () => this.context.navigate("profile"),
         });
-    const publicationScope = this.captureConnectionScope();
-    const readPublicationRow = () => {
+    const operationScope = this.captureConnectionScope();
+    const readOperationRow = () => {
       const row = selectedChatSessionRow(state);
-      return (
-        row && {
-          ...row,
-          agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
-          archived: this.isCurrentSessionArchived(state),
-        }
-      );
+      return row
+        ? {
+            ...row,
+            agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
+            archived: this.isCurrentSessionArchived(state),
+          }
+        : undefined;
     };
-    const publicationRow = readPublicationRow();
-    if (
-      !publicationScope ||
-      !publicationRow ||
-      isGatewayMethodAdvertised(gatewaySnapshot, "sessions.github.publish") !== true ||
-      !canCallGatewayMethod(gatewaySnapshot, "sessions.github.options", "operator.read")
-    ) {
-      this.publication.binding?.detach();
-      this.publication.binding = null;
-    } else {
-      if (!this.publication.binding?.matches(publicationRow)) {
-        this.publication.binding?.detach();
-        this.publication.binding = this.context.sessions.githubPublication.attach(
-          publicationRow,
-          GitHubPublicationOwner,
-        );
-      }
-      const publication = this.publication.binding;
-      publication?.sync({
-        ...readChatPublicationAccess(gatewaySnapshot, publicationRow, sessionParticipationBlocked),
-        personalReady:
-          !hasAbortableSessionRun(state) &&
-          (!isCloudWorkerPlacementState(placement?.state) ||
-            (Boolean(publicationRow.repositoryWorkspaceId) && placement?.state === "active")) &&
-          !workspaceConflict,
-        isPresented: () => this.presented,
-        isCurrent: () => {
-          const row = readPublicationRow();
-          return (
-            this.isConnectionScopeCurrent(publicationScope) &&
-            row !== undefined &&
-            publication?.matches(row)
-          );
-        },
-      });
-    }
+    const operationRow = readOperationRow();
+    const sessionHeaderFacts: ControlUiSessionHeaderFacts = {
+      session: operationRow,
+      participationBlocked: sessionParticipationBlocked,
+      hasActiveRun: hasAbortableSessionRun(state),
+      workspaceReady:
+        !isCloudWorkerPlacementState(placement?.state) ||
+        (Boolean(operationRow?.repositoryWorkspaceId) && placement?.state === "active"),
+      workspaceConflict: Boolean(workspaceConflict),
+      readCurrent: () =>
+        operationScope && this.isConnectionScopeCurrent(operationScope)
+          ? { ...sessionHeaderFacts, session: readOperationRow() }
+          : undefined,
+    };
     const sessionDisabledBanner = this.sessionDisabledBanner({
       catalogDisabledReason,
       modelSetupRequired,
@@ -553,16 +530,9 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       ...this.suggestionChatProps(state.connected, selectedSessionArchived, multiIdentity),
       messageReactions: this.collaboration.reactions,
       onReact: this.canReactToCurrentSession() ? this.handleMessageReaction : undefined,
-      pullRequests: this.visibleSessionPullRequests,
-      pullRequestsGateway: this.context.gateway,
-      pullRequestsSessionId: selectedSession?.sessionId,
-      pullRequestsBranch: this.sessionPullRequestsBranch,
-      pullRequestsBranchDismissed: this.sessionPullRequestsBranchDismissed,
-      pullRequestsStatus: this.sessionPullRequestsStatus,
-      onDismissPullRequest: this.dismissSessionPullRequest,
-      onDismissPullRequestsBranch: this.dismissSessionPullRequestsBranch,
+      gateway: this.context.gateway,
       onOpenSessionDiff: sessionWorkspace.onOpenDiff,
-      githubPublication: this.publication.binding?.view(),
+      sessionHeaderFacts,
       onOpenWorkspaceFile: (target) => void openSessionWorkspaceFile(state, target),
       onOpenSessionLink: (target) => navigateMarkdownSession(this.context, target),
       onNavigate: (routeId, options) => this.context.navigate(routeId, options),

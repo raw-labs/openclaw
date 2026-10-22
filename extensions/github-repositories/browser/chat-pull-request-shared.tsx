@@ -1,10 +1,13 @@
 /** @jsxImportSource @solidjs/web */
 
 import type {
+  ControlUiSessionBranch,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "openclaw/plugin-sdk/control-ui";
 import { For, Show } from "solid-js";
+import type { GitHubPublicationView } from "./github-publication-owner.ts";
+import type { PresentationValue } from "./native-context.tsx";
 import { Icon, Tooltip } from "./presentation-components.tsx";
 import { presentationTranslator } from "./presentation-context.ts";
 
@@ -12,11 +15,16 @@ export type ChatPullRequestsProps = {
   pullRequests: ControlUiSessionPullRequest[];
   sessionKey?: string;
   sessionId?: string;
-  presented?: boolean;
+  presented?: PresentationValue;
   dismissed?: boolean;
+  branch?: ControlUiSessionBranch;
+  /** Hides the branch row and its idle publish offer; retained publication outcomes stay visible. */
+  branchDismissed?: boolean;
   status: ControlUiSessionPullRequestSnapshot["status"];
   onDismiss: (pullRequest: ControlUiSessionPullRequest) => void;
-  dismissDisabled?: boolean;
+  onDismissBranch?: (branch: ControlUiSessionBranch) => void;
+  onOpenSessionDiff?: () => void;
+  publication?: GitHubPublicationView;
   /** Compact row in the user-opened Details surface; actions keep their owners. */
   compact?: boolean;
 };

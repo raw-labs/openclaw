@@ -1,11 +1,15 @@
 import type { ControlUiHost } from "openclaw/plugin-sdk/control-ui";
+import type { RepositoryBrowserRuntime } from "./repository-runtime.ts";
 import { primarySessionPullRequest } from "./session-pull-request-presentation.ts";
 
-/** The host retains native read and external-navigation ownership. */
-export function registerOpenPullRequestAction(host: ControlUiHost) {
-  const reads = host.sessionPullRequests;
+/** Dispatch always reads the current primary PR from the shared plugin store. */
+export function registerOpenPullRequestAction(
+  host: ControlUiHost,
+  runtime: RepositoryBrowserRuntime,
+) {
+  const reads = runtime;
   const presentation = host.presentation;
-  if (!reads || !presentation) {
+  if (!presentation) {
     throw new Error(
       "The GitHub Open PR action requires the current host's PR read and translation services.",
     );

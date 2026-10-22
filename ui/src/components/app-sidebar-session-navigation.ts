@@ -38,14 +38,8 @@ import {
   projectUnpinnedSessionRows,
 } from "./app-sidebar-personal-navigation.ts";
 import { sidebarPresenceScope } from "./app-sidebar-presence.ts";
-import {
-  adoptedCatalogSessionKeys,
-  type SidebarSessionCatalog,
-} from "./app-sidebar-session-catalogs.ts";
-import {
-  findSidebarHovercardRow,
-  mergeAdoptedSessionPullRequestRows,
-} from "./app-sidebar-session-lookup.ts";
+import type { SidebarSessionCatalog } from "./app-sidebar-session-catalogs.ts";
+import { findSidebarHovercardRow } from "./app-sidebar-session-lookup.ts";
 import {
   createSidebarSessionRowsComparator,
   createSidebarSessionSelection,
@@ -57,7 +51,6 @@ import {
   resolveSidebarMainSessionKey,
   type SidebarSessionNavigationState,
 } from "./app-sidebar-session-navigation-logic.ts";
-import type { SessionPullRequestIndicators } from "./app-sidebar-session-pr-indicators.ts";
 import {
   SidebarSessionProjection,
   type SidebarVisibleSections,
@@ -182,23 +175,6 @@ export abstract class AppSidebarSessionNavigationElement extends AppSidebarBase 
   }
 
   abstract readonly navigationCatalog: SidebarNavigationCatalog;
-  sessionPullRequests!: SessionPullRequestIndicators;
-
-  readSessionPullRequestRows(): readonly SidebarRecentSession[] {
-    return mergeAdoptedSessionPullRequestRows({
-      rows: [
-        ...this.visibleSessionRowsInOrder(),
-        ...(this.rosterSessionSource?.agentIds.flatMap((agentId) => {
-          const home = this.visibleHomeSession(agentId);
-          return home ? [home] : [];
-        }) ?? []),
-      ],
-      adopted: adoptedCatalogSessionKeys(this.visibleSessionCatalogs()),
-      sessionsResult: this.rosterSessionSource?.result ?? this.sessionData.sessionsResult,
-      sessionResultsByAgent: this.sessionData.sessionResultsByAgent,
-      navigationState: this.getSessionNavigationState(),
-    });
-  }
 
   private readonly readSidebarSessionSortOptions = () => ({
     sortMode: this.effectiveSessionSortMode(),

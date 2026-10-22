@@ -2,11 +2,11 @@
 
 import { createComponent, flush } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import {
   GitHubPublicationMobile,
   type GitHubPublicationMobileProps,
-} from "./chat-github-publication-mobile.tsx";
+} from "../../../../../extensions/github-repositories/browser/api.ts";
+import { mountRepositorySolid as mountSolid } from "../../../test-helpers/repository-ci.test-support.tsx";
 import { publication, sessionBranch } from "./chat-pull-requests.test-support.ts";
 
 describe("mobile publication review", () => {

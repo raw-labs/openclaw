@@ -1,10 +1,10 @@
 import { expect, it } from "vitest";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   chatSessionListResponse,
   controlUiSessionUrl,
   createChatFlowE2eSuite,
   expectDefined,
-  installMockGateway,
 } from "./chat-flow.test-support.ts";
 import { createControlUiE2eContextOptions } from "./control-ui-e2e-suite.test-support.ts";
 import { catalogList } from "./sidebar-assertions.test-support.ts";

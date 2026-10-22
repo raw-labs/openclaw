@@ -100,7 +100,7 @@ function CompanionPanel(props: Props) {
       prop:digest={props.digest}
       prop:running={Boolean(props.activeRunId)}
       prop:activeRunId={props.activeRunId}
-      prop:pullRequests={props.pullRequests}
+      prop:agentId={props.agentId ?? undefined}
       prop:companion={props.companion}
       prop:modelControls={props.companionModelControls}
       prop:client={props.state.connected ? props.state.client : null}
@@ -455,7 +455,7 @@ declare module "@solidjs/web" {
         "prop:digest"?: SidebarPanelDefinitionParams["digest"];
         "prop:running"?: boolean;
         "prop:activeRunId"?: SidebarPanelDefinitionParams["activeRunId"];
-        "prop:pullRequests"?: SidebarPanelDefinitionParams["pullRequests"];
+        "prop:agentId"?: string;
         "prop:companion"?: SidebarPanelDefinitionParams["companion"];
         "prop:modelControls"?: SidebarPanelDefinitionParams["companionModelControls"];
         "prop:client"?: SidebarPanelDefinitionParams["state"]["client"];

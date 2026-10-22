@@ -5,7 +5,6 @@ ui/src/app/router-outlet-presentation.ts	1
 ui/src/app/router-outlet.tsx	1
 ui/src/app/shell-layout-traits-solid.tsx	1
 ui/src/components/app-sidebar-render.tsx	1
-ui/src/components/app-sidebar-session-pr-indicators.ts	1
 ui/src/components/app-sidebar.tsx	1
 ui/src/components/board/board-mcp-app-content.tsx	1
 ui/src/components/board/board-view.tsx	1

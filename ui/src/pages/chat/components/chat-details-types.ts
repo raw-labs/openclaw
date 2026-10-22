@@ -1,11 +1,6 @@
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
-import type {
-  ControlUiSessionBranch,
-  ControlUiSessionPullRequest,
-  ControlUiSessionPullRequestSnapshot,
-} from "../../../../../src/gateway/control-ui-contract.js";
+import type { ControlUiSessionHeaderFacts } from "../../../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
-import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import type { ChatSessionProgressProps } from "./chat-composer-types.ts";
 import type { ChatOutputsDesktopProps } from "./chat-outputs.tsx";
 import type { ChatPanePlacementProps } from "./chat-pane-placement.tsx";
@@ -89,6 +84,7 @@ export type ChatDetailsProps = ChatSessionProgressProps &
     | "personActivity"
     | "onScrollPortRef"
   > & {
+    sessionHeaderFacts?: ControlUiSessionHeaderFacts;
     desktopPresentation?: ChatDetailsDesktopPresentation;
     desktopDisclosures?: ChatDetailsDesktopDisclosures;
     environment?: ChatDetailsEnvironmentData;
@@ -104,18 +100,10 @@ export type ChatDetailsProps = ChatSessionProgressProps &
     onHideTaskProgress?: () => void;
     onCollapseTaskProgressChange?: (collapsed: boolean) => void;
     onOpenTaskProgressSettings?: () => void;
-    pullRequests?: ControlUiSessionPullRequest[];
-    pullRequestsGateway?: ApplicationGateway;
-    pullRequestsSessionId?: string;
-    pullRequestsBranch?: ControlUiSessionBranch;
-    pullRequestsBranchDismissed?: boolean;
-    pullRequestsStatus?: ControlUiSessionPullRequestSnapshot["status"];
+    gateway?: ApplicationGateway;
     onOpenSessionDiff?: () => void;
     onOpenWorkspace?: () => void;
     /** Opens this pane's Processes panel; absent where the pane has none. */
     onOpenProcesses?: () => void;
     onCompact?: () => void | Promise<unknown>;
-    onDismissPullRequest?: (pullRequest: ControlUiSessionPullRequest) => void;
-    onDismissPullRequestsBranch?: (branch: ControlUiSessionBranch) => void;
-    githubPublication?: GitHubPublicationView;
   };

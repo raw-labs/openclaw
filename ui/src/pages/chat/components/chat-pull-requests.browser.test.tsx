@@ -1,13 +1,13 @@
 import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+import { ChatPullRequests } from "../../../../../extensions/github-repositories/browser/api.ts";
 import { PRESENTATION_CHANGED_EVENT } from "../../../lib/presentation.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
 import { publication, sessionBranch } from "./chat-pull-requests.test-support.ts";
-import { ChatPullRequests } from "./chat-pull-requests.tsx";
 import baseStyles from "../../../styles/base.css?inline";
 import desktopDetailsStyles from "../../../styles/chat/details-desktop.css?inline";
 import detailsStyles from "../../../styles/chat/details.css?inline";

@@ -1,12 +1,8 @@
 import type { ProgressCard, SessionRunStatus } from "@openclaw/gateway-protocol";
-import type {
-  ControlUiSessionPullRequest,
-  ControlUiSessionPullRequestSnapshot,
-} from "../../../../../src/gateway/control-ui-contract.js";
+import type { ControlUiAccessoryProps } from "../../../../../src/plugin-sdk/control-ui.js";
 import type { SessionGoal } from "../../../api/types.ts";
 import type { ChatGoalRecovery } from "../../../lib/chat/chat-types.ts";
 import type { SessionProgressCardRefreshState } from "../../../lib/session-progress-cards.ts";
-import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import type { ChatSubagentActivity } from "../chat-subagent-wait.ts";
 import type { ComposerActivityLayout } from "./chat-transcript-layout-owner.ts";
 
@@ -37,12 +33,14 @@ export type ChatActivityPillsProps = {
     refresh?: SessionProgressCardRefreshState;
     onOpen: OpenActivity;
   };
-  pullRequests?: {
-    /** Native visible collection, already ordered and filtered by its owner. */
-    items: readonly ControlUiSessionPullRequest[];
-    status: ControlUiSessionPullRequestSnapshot["status"];
-    onOpen: (pullRequest: ControlUiSessionPullRequest, source: HTMLButtonElement) => void;
+  contributions?: {
+    sessionKey: string;
+    agentId?: string;
+    facts?: ControlUiAccessoryProps["facts"];
+    onOpenDetailsPage?: (
+      pluginId: string,
+      page: { id: string; title: string },
+      source?: HTMLElement,
+    ) => void;
   };
-  /** Supply only an eligible branch offer or retained publication owned by this session. */
-  publication?: { view: GitHubPublicationView; onOpen: OpenActivity };
 };

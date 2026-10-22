@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { GatewayRequestError } from "../api/gateway.ts";
 import { sessionProgressCardsForGateway } from "../lib/session-progress-cards.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { flush, waitForSolid } from "../test-helpers/solid-settle.ts";
 import { sessionProgressHoverTargetFromEvent } from "./session-progress-hovercard-target.ts";
 import { createHovercard } from "./session-progress-hovercard.test-support.ts";

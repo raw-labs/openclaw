@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
+import type { GitHubPublicationView } from "../../../../../extensions/github-repositories/browser/api.ts";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import {
   paintChatPullRequests,

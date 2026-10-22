@@ -7,6 +7,7 @@ import type { ApplicationContext } from "../app/context.ts";
 import { resolveControlUiAvatarAuth } from "../app/control-ui-auth.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
 import { t } from "../i18n/index.ts";
+import { ApplicationProvider } from "../lib/reactive/context.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { projectSource } from "../lib/reactive/projection.ts";
 import { createTimeout } from "../lib/reactive/timers.ts";
@@ -14,10 +15,6 @@ import {
   sessionProgressCardsForGateway,
   type SessionProgressCardStore,
 } from "../lib/session-progress-cards.ts";
-import {
-  sessionPullRequestsForGateway,
-  type SessionPullRequestSnapshotStore,
-} from "../lib/session-pull-requests.ts";
 import { parseAgentSessionKey, scopedSessionArtifactKey } from "../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
 import type { AppSidebarElement, AppSidebarMethods } from "./app-sidebar.tsx";
@@ -83,7 +80,6 @@ function createSessionProgressHovercard(
   const watchOwner = {};
 
   let progressCards: SessionProgressCardStore | null = null;
-  let pullRequestStore: SessionPullRequestSnapshotStore | null = null;
   let activeTarget: HTMLElement | null = null;
   let activeTrigger: HTMLElement | null = null;
   let activeSession: ProgressCardGetParams | null = null;
@@ -244,15 +240,47 @@ function createSessionProgressHovercard(
     open = true;
     delayed = false;
     skipDelay.cancel();
-    const gateway = applicationGateway();
-    if (gateway) {
-      pullRequestStore = sessionPullRequestsForGateway(gateway);
-      projection.replaceSource(readSources());
-      pullRequestStore.watch(watchOwner, [artifactKey], { foreground: true });
-    }
     showCurrent();
     // The projection receives both successful loads and failures; keep the last useful card.
     void progressCards?.load(session).catch(() => {});
+  }
+
+  let contentFocus: { element: HTMLElement; index: number; href: string | null } | undefined;
+  function contentChanged(phase: "before" | "after"): void {
+    const card = hovercard.card;
+    if (!card || !open) {
+      return;
+    }
+    if (phase === "before") {
+      const element = document.activeElement;
+      if (element instanceof HTMLElement && card.contains(element)) {
+        contentFocus = {
+          element,
+          index: hovercard.focusables().indexOf(element),
+          href: element instanceof HTMLAnchorElement ? element.href : null,
+        };
+      }
+      return;
+    }
+    const focus = contentFocus;
+    contentFocus = undefined;
+    if (focus && !card.contains(document.activeElement)) {
+      const elements = hovercard.focusables();
+      const next =
+        (focus.href
+          ? elements.find(
+              (element) => element instanceof HTMLAnchorElement && element.href === focus.href,
+            )
+          : undefined) ?? elements[focus.index];
+      if (next) {
+        next.focus({ preventScroll: true });
+      } else {
+        hovercard.cardFocusInside = false;
+        hovercard.returnFocus(activeTrigger);
+        hovercard.focusInside = document.activeElement === activeTrigger;
+      }
+    }
+    hovercard.position();
   }
 
   function readCurrent(force = false): HovercardFrame | undefined {
@@ -266,7 +294,6 @@ function createSessionProgressHovercard(
       return current;
     }
     const sidebarRow = host.lookupSidebarRow?.(sessionKey);
-    const pullRequests = pullRequestStore?.get(artifactKey);
     const currentProgressCard = progressCards?.get(session);
     if (currentProgressCard !== undefined) {
       lastProgressCard = currentProgressCard;
@@ -275,16 +302,6 @@ function createSessionProgressHovercard(
     const revision = JSON.stringify({
       gateway: gatewaySnapshotRevision,
       progress: lastProgressCard?.revision ?? null,
-      pullRequests: pullRequests
-        ? {
-            branch: pullRequests.branch,
-            pullRequests: pullRequests.pullRequests,
-            taskPullRequests: pullRequests.taskPullRequests,
-            taskPullRequestCount: pullRequests.taskPullRequestCount,
-            pullRequestCount: pullRequests.pullRequestCount,
-            status: pullRequests.status,
-          }
-        : null,
       row: sidebarRow
         ? {
             label: sidebarRow.label,
@@ -355,7 +372,8 @@ function createSessionProgressHovercard(
             },
           }
         : undefined,
-      pullRequests,
+      session: currentContext ? session : undefined,
+      onContentChange: contentChanged,
       progressCard: lastProgressCard,
     };
     const commit = (card: HTMLDivElement) => {
@@ -448,7 +466,17 @@ function createSessionProgressHovercard(
         );
         return (
           <HovercardControlsContext value={controlsForHovercard(card)}>
-            <SessionHovercard {...read().input} />
+            <Show
+              when={applicationContext()}
+              keyed
+              fallback={<SessionHovercard {...read().input} session={undefined} />}
+            >
+              {(context) => (
+                <ApplicationProvider value={context}>
+                  <SessionHovercard {...read().input} />
+                </ApplicationProvider>
+              )}
+            </Show>
           </HovercardControlsContext>
         );
       }, card),
@@ -477,8 +505,6 @@ function createSessionProgressHovercard(
     current = undefined;
     activeTargetObserver.disconnect();
     progressCards?.unwatch(watchOwner);
-    pullRequestStore?.unwatch(watchOwner);
-    pullRequestStore = null;
     projection.replaceSource(readSources());
     activeTarget = null;
     activeTrigger = null;
@@ -488,26 +514,20 @@ function createSessionProgressHovercard(
     }
   }
 
-  const readSources = () => ({
-    context: applicationContext(),
-    gateway: applicationGateway(),
-    progressCards,
-    pullRequestStore,
-  });
+  const readSources = () => ({ context: applicationContext(), progressCards });
   const projection = projectSource<ReturnType<typeof readSources>, HovercardFrame | undefined>(
-    { context: null, gateway: null, progressCards: null, pullRequestStore: null },
+    { context: null, progressCards: null },
     {
       read: () => readCurrent(),
       subscribe: (sources, notify) => {
         refreshCurrent = notify;
         const stops = [
-          sources.gateway?.subscribe(() => {
+          sources.context?.gateway.subscribe(() => {
             gatewaySnapshotRevision += 1;
             notify();
           }),
           sources.context?.sessions.subscribe(notify),
           sources.progressCards?.subscribe(notify),
-          sources.pullRequestStore?.subscribe(notify),
         ];
         return () => stops.forEach((stop) => stop?.());
       },

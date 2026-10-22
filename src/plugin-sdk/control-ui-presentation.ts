@@ -1,4 +1,5 @@
 import type { ControlUiComponentHandle } from "./control-ui-components.js";
+export type ControlUiTranslationMap = { readonly [key: string]: string | ControlUiTranslationMap };
 export type ControlUiIconProps = { name: string; className?: string };
 export type ControlUiMarqueeOptions = {
   delay?: number;
@@ -76,11 +77,49 @@ export type ControlUiActivityPillView = {
   count?: string;
   description?: string;
 };
+export type ControlUiActivityPillProps = {
+  family: string;
+  view: {
+    label: string;
+    icon: string;
+    tone?: "normal" | "muted" | "ok" | "warn" | "danger" | "purple";
+    badge?: {
+      icon: string;
+      tone: "normal" | "muted" | "ok" | "warn" | "danger" | "purple";
+      label: string;
+    };
+    attention?: boolean;
+    shine?: boolean;
+    count?: string;
+    description?: string;
+  };
+  onOpen: (source: HTMLButtonElement) => void;
+  registerButton: (button: HTMLButtonElement) => () => void;
+  trailing?: HTMLElement;
+};
+export type ControlUiLazyStateProps =
+  | { status: "loading" }
+  | { status: "error"; error: unknown; onRetry: () => void; isCurrent: () => boolean };
 /** Shared visual controls and locale services, scoped to one native UI owner. */
 export type ControlUiPresentationHost = {
   readonly apiVersion: 1;
+  formatError: (error: unknown, fallback?: string) => string;
+  /** Stable declaration identity, not authorization. */
+  declarationDigest: (value: string) => string;
+  formatDuration: (ms?: number | null) => string | undefined;
+  safeExternalUrl: (value: string, base: string) => string | null;
   subscribe: (listener: () => void) => () => void;
   translate: (key: string, params?: Record<string, string>) => string;
+  registerEnglish: (catalog: ControlUiTranslationMap) => void;
+  /** Existing native loading/error presentation and guarded stale-asset recovery. */
+  mountLazyState: (
+    container: HTMLElement,
+    props: ControlUiLazyStateProps,
+  ) => ControlUiComponentHandle<ControlUiLazyStateProps>;
+  mountActivityPill: (
+    container: HTMLElement,
+    props: ControlUiActivityPillProps,
+  ) => ControlUiComponentHandle<ControlUiActivityPillProps>;
   mountIcon: (
     container: HTMLElement,
     props: ControlUiIconProps,

@@ -15,6 +15,7 @@ import { buildCatalogSessionKey } from "../lib/sessions/catalog-key.ts";
 import { openCatalogSessionInTerminal } from "../lib/sessions/catalog-terminal.ts";
 import { sessionNavigationTarget } from "../lib/sessions/route-navigation.ts";
 import { renderHoverMarquee } from "../lib/solid/hover-marquee.tsx";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import {
   formatSidebarTimestamp,
   normalizeCatalogTimestamp,
@@ -219,7 +220,19 @@ export function renderCatalogSessionRow(
             <span class="sidebar-recent-session__title-row"> {marqueeLabel} </span>
             <span class="sidebar-recent-session__details">
               <span class="sidebar-recent-session__details-endcap">
-                {<SessionRowBadges pullRequest={readSession().pullRequest} />}
+                {
+                  <SessionRowBadges
+                    accessories={
+                      <PluginContributions
+                        kind="session-row"
+                        sessionKey={key()}
+                        agentId={params.snapshot.newSessionAgentId}
+                        artifact={readSession().pullRequest}
+                        presented={true}
+                      />
+                    }
+                  />
+                }
               </span>
             </span>
           </span>

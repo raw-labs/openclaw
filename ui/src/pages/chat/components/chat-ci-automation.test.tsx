@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 import { createSignal } from "solid-js";
 import { expect, it, vi } from "vitest";
-import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { ChatCiAutomationView } from "../../../../../extensions/github-repositories/browser/api.ts";
+import { mountRepositorySolid as mountSolid } from "../../../test-helpers/repository-ci.test-support.tsx";
 import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
-import { ChatCiAutomationView } from "./chat-ci-automation.tsx";
 
 it("retries with the current callback without replacing the error button", async () => {
   const initialRetry = vi.fn();

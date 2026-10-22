@@ -1,5 +1,6 @@
 /* @vitest-environment jsdom */
 
+import { flush } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatBranchId,
@@ -9,8 +10,13 @@ import type { ControlUiSessionPullRequestCheckDetails } from "../../../../../src
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { ApplicationGateway, ApplicationGatewaySnapshot } from "../../../app/gateway.ts";
-import type { ChatCiDetailsElement } from "./chat-ci-details.ts";
-import type { ChatPullRequestsProps } from "./chat-pull-request-shared.tsx";
+type ChatCiDetailsElement = HTMLElement;
+import type { ChatPullRequestsProps } from "../../../../../extensions/github-repositories/browser/api.ts";
+import {
+  dismissChatPullRequest,
+  listDismissedChatPullRequests,
+  browserDismissalStorage,
+} from "../../../../../extensions/github-repositories/browser/api.ts";
 import {
   paintChatPullRequests,
   clearChatPullRequests,
@@ -18,7 +24,6 @@ import {
   pullRequest,
   sessionBranch,
 } from "./chat-pull-requests.test-support.ts";
-import { dismissChatPullRequest, listDismissedChatPullRequests } from "./chat-pull-requests.ts";
 
 describe("ChatPullRequests", () => {
   let container: HTMLDivElement;
@@ -481,14 +486,19 @@ describe("dismissed pull request storage", () => {
   it("drops the oldest sessions once the store limit is reached", () => {
     const chip = pullRequest();
     for (let index = 0; index < 21; index += 1) {
-      dismissChatPullRequest(`agent:main:${index}`, chatPullRequestId(chip));
+      dismissChatPullRequest(
+        browserDismissalStorage(),
+        `agent:main:${index}`,
+        chatPullRequestId(chip),
+      );
     }
-    expect(listDismissedChatPullRequests("agent:main:0").size).toBe(0);
-    expect(listDismissedChatPullRequests("agent:main:20").size).toBe(1);
+    expect(listDismissedChatPullRequests(browserDismissalStorage(), "agent:main:0").size).toBe(0);
+    expect(listDismissedChatPullRequests(browserDismissalStorage(), "agent:main:20").size).toBe(1);
   });
 
   it("keeps branches that differ only in case distinct", () => {
     const ids = dismissChatPullRequest(
+      browserDismissalStorage(),
       "agent:main:main",
       chatBranchId(sessionBranch({ owner: "OpenClaw", branch: "Feature" })),
     );
@@ -501,7 +511,9 @@ describe("dismissed pull request storage", () => {
 
   it("ignores malformed stored payloads", () => {
     localStorage.setItem("openclaw.chat.dismissedPullRequests", "not json");
-    expect(listDismissedChatPullRequests("agent:main:main").size).toBe(0);
+    expect(listDismissedChatPullRequests(browserDismissalStorage(), "agent:main:main").size).toBe(
+      0,
+    );
   });
 });
 
@@ -623,9 +635,10 @@ describe("CI job details", () => {
     };
   }
 
-  async function settle(element: ChatCiDetailsElement) {
+  async function settle(_element: ChatCiDetailsElement) {
     await vi.advanceTimersByTimeAsync(0);
-    await element.updateComplete;
+    flush();
+    await Promise.resolve();
   }
 
   beforeEach(() => {
@@ -678,15 +691,15 @@ describe("CI job details", () => {
     await settle(h.element);
     const requestsBeforeRefresh = h.request.mock.calls.length;
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(requestsBeforeRefresh + 1);
     expect(failed.open).toBe(false);
-    h.element.presented = false;
+    paintChatPullRequests({ ...h.props, presented: false }, container);
     await settle(h.element);
     const hiddenCount = h.request.mock.calls.length;
     await vi.advanceTimersByTimeAsync(60_000);
     expect(h.request).toHaveBeenCalledTimes(hiddenCount);
-    h.element.presented = true;
+    paintChatPullRequests({ ...h.props, presented: true }, container);
     await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(hiddenCount + 1);
     expect(h.disclosure.open).toBe(true);
@@ -740,10 +753,10 @@ describe("CI job details", () => {
     );
     await settle(h.element);
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(2);
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     expect(container.querySelector('.chat-ci__job[data-check-id="5"]')?.textContent).toContain(
       "Build rerun",
     );
@@ -784,7 +797,7 @@ describe("CI job details", () => {
   });
 
   it.each(["session", "head", "gateway"] as const)(
-    "retires a pending request at native %s replacement before the next DOM commit",
+    "retires a pending request when current %s inputs are replaced",
     async (change) => {
       const h = harness();
       const pending = createDeferred<ControlUiSessionPullRequestCheckDetails>();
@@ -794,11 +807,14 @@ describe("CI job details", () => {
       await settle(h.element);
       const signal = h.request.mock.calls[0]?.[2]?.signal;
       if (change === "session") {
-        h.element.sessionKey = "agent:other:main";
+        paintChatPullRequests({ ...h.props, sessionKey: "agent:other:main" }, container);
       } else if (change === "head") {
-        h.element.pullRequest = pullRequest({ headSha: "b".repeat(40) });
+        paintChatPullRequests(
+          { ...h.props, pullRequests: [pullRequest({ headSha: "b".repeat(40) })] },
+          container,
+        );
       } else {
-        h.element.gateway = { ...h.props.gateway };
+        paintChatPullRequests({ ...h.props, gateway: { ...h.props.gateway } }, container);
       }
       expect(signal?.aborted).toBe(true);
       pending.resolve(details());
@@ -823,7 +839,7 @@ describe("CI job details", () => {
     expect(container.textContent).toContain("Private build");
     h.request.mockRejectedValue(new Error("GitHub request failed: token=synthetic-secret"));
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     expect(container.querySelector(".chat-ci__job")).toBeNull();
     expect(container.textContent).not.toContain("Private build");
     expect(container.querySelector('.chat-ci__notice[data-state="unavailable"]')).not.toBeNull();
@@ -860,7 +876,7 @@ describe("CI job details", () => {
     expect(container.textContent).toContain("rate limit");
     expect(retry.disabled).toBe(true);
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     expect(h.request).toHaveBeenCalledTimes(1);
     expect(retry.disabled).toBe(false);
     retry.click();
@@ -907,7 +923,7 @@ describe("CI job details", () => {
       }),
     );
     await vi.advanceTimersByTimeAsync(30_000);
-    await h.element.updateComplete;
+    await settle(h.element);
     const link = container.querySelector<HTMLAnchorElement>(".chat-ci__job-link");
     expect(link?.href).toBe("https://ci.example.test/build/5");
     expect(link?.textContent).toContain("Open check details");

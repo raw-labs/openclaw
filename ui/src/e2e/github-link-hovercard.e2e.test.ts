@@ -2,9 +2,9 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
 import type { ControlUiLinkReaderPreview } from "../../../src/shared/control-ui-link-reader.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { installControlUiE2eRendererStallProbe } from "../test-helpers/control-ui-e2e-renderer-stall.ts";
 import {
   defaultControlUiFeatureMethods,

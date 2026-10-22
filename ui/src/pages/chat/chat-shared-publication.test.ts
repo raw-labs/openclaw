@@ -1,7 +1,8 @@
 /* @vitest-environment jsdom */
 import { createComponent, flush } from "solid-js";
 import { expect, it } from "vitest";
-import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { GitHubPublicationAction } from "../../../../extensions/github-repositories/browser/api.ts";
+import { mountRepositorySolid as mountSolid } from "../../test-helpers/repository-ci.test-support.tsx";
 import {
   options,
   requestId,
@@ -9,7 +10,6 @@ import {
   settled,
   shared,
 } from "./chat-github-publication.test-support.ts";
-import { GitHubPublicationAction } from "./components/chat-github-publication.tsx";
 
 const identity = { requestId, publisher: shared };
 const accepted = { ...identity, status: "requested" as const, message: "Accepted" };

@@ -5,11 +5,11 @@ import {
 } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import type { CronServiceContract } from "../cron/service-contract.js";
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "../cron/service/list-page-validation.js";
+} from "../../packages/gateway-protocol/src/cron-list-page-validation.js";
+import type { CronServiceContract } from "../cron/service-contract.js";
 import type { CronJob, CronJobCreate } from "../cron/types.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";

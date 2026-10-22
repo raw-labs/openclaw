@@ -123,7 +123,10 @@ export function Menu(props: {
       return { ...item, className: item.class, items: item.items.map(entry) };
     }
     if (item.kind === "content") {
-      return { ...item, content: content(() => item.content) };
+      return {
+        ...item,
+        content: item.content instanceof HTMLElement ? item.content : content(() => item.content),
+      };
     }
     return {
       ...item,

@@ -2,10 +2,10 @@ import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
   ControlUiPresentationHost,
-  ControlUiActivityPillView,
 } from "openclaw/plugin-sdk/control-ui";
+import type { GitHubPublicationView } from "./github-publication-owner.ts";
 type Translate = ControlUiPresentationHost["translate"];
-type PillView = ControlUiActivityPillView;
+type PillView = Parameters<ControlUiPresentationHost["mountActivityPill"]>[1]["view"];
 type Badge = NonNullable<PillView["badge"]>;
 const prIcons = {
   open: "gitPullRequest",
@@ -57,5 +57,95 @@ export function pullRequestView(
         : "",
       query,
     }),
+  };
+}
+
+export function publicationView(view: GitHubPublicationView, t: Translate): PillView {
+  if (view.activity !== null) {
+    return {
+      label:
+        view.activity === "read"
+          ? view.result || view.locked
+            ? t("chat.activityPills.publication.verifying")
+            : t("chat.activityPills.publication.checkingOptions")
+          : t("chat.activityPills.publication.publishing"),
+      icon: "gitPullRequest",
+      badge: { icon: "spinner", tone: "normal", label: t("chat.activityPills.pending") },
+    };
+  }
+  if (view.optionsUnavailable) {
+    return {
+      label: t("chat.activityPills.publication.unavailable"),
+      icon: "gitPullRequest",
+      badge: {
+        icon: "alertTriangle",
+        tone: "warn",
+        label: t("chat.activityPills.publication.discoveryUnavailable"),
+      },
+      attention: true,
+    };
+  }
+  // A failed verification must stay visible over the retained request/result.
+  if (view.error || (view.locked && !view.result)) {
+    return {
+      label: t("chat.activityPills.publication.unconfirmed"),
+      icon: "gitPullRequest",
+      badge: {
+        icon: "alertTriangle",
+        tone: "warn",
+        label: t("chat.activityPills.publication.verifyBeforeRetry"),
+      },
+      attention: true,
+    };
+  }
+  if (view.result?.status === "published") {
+    return {
+      label: t("chat.activityPills.publication.published"),
+      icon: "gitPullRequest",
+      badge: {
+        icon: "check",
+        tone: "ok",
+        label: t("chat.activityPills.publication.publishedBadge"),
+      },
+    };
+  }
+  if (view.result?.status === "failed") {
+    return {
+      label: t("chat.activityPills.publication.failed"),
+      icon: "gitPullRequest",
+      tone: "danger",
+      badge: { icon: "x", tone: "danger", label: t("githubPublication.statusFailed") },
+      attention: true,
+    };
+  }
+  if (view.result?.status === "needs_confirmation") {
+    return {
+      label: t("chat.activityPills.publication.confirm"),
+      icon: "gitPullRequest",
+      badge: { icon: "clock", tone: "warn", label: t("githubPublication.statusConfirm") },
+    };
+  }
+  if (view.result?.status === "requested" || view.result?.status === "publishing") {
+    return {
+      label:
+        view.result.status === "requested"
+          ? t("githubPublication.statusRequested")
+          : t("chat.activityPills.publication.publishing"),
+      icon: "gitPullRequest",
+      badge: {
+        icon: view.result.status === "requested" ? "clock" : "spinner",
+        tone: "warn",
+        label: t(
+          view.result.status === "requested"
+            ? "chat.activityPills.publication.requestedBadge"
+            : "chat.activityPills.publication.publishingBadge",
+        ),
+      },
+    };
+  }
+  return {
+    label: t("chat.pullRequests.publishPr"),
+    icon: "github",
+    description: t("chat.activityPills.publication.review"),
   };
 }

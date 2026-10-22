@@ -4496,6 +4496,10 @@ td.data-table-key-col {
   flex: 0 0 auto;
 }
 
+.session-row-badges:not(:has(.session-row-badge)) {
+  display: none;
+}
+
 .session-row-badge {
   display: inline-flex;
   align-items: center;
@@ -4510,16 +4514,10 @@ td.data-table-key-col {
   font-variant-numeric: tabular-nums;
 }
 
-.session-row-badge--pull-request[data-pull-request-state="open"],
 .session-row-badge--cloud[data-placement-state="active"] {
   color: var(--ok);
 }
 
-.session-row-badge--pull-request[data-pull-request-state="merged"] {
-  color: var(--pr-merged);
-}
-
-.session-row-badge--pull-request[data-pull-request-state="closed"],
 .session-row-badge--cloud[data-placement-state="failed"],
 .session-row-badge--cloud[data-disk-space-status="critical"] {
   color: var(--danger);

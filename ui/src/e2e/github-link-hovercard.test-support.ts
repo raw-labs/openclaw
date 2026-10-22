@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Page } from "playwright";
 import { expect } from "vitest";
 import type {
@@ -78,8 +77,4 @@ export const GITHUB_REFERENCE_READER: ControlUiLinkReaderDescriptor = {
     progressive: true,
   },
 };
-export const GITHUB_REFERENCE_PLUGIN = {
-  pluginId: "github-repositories",
-  rootDir: path.resolve(import.meta.dirname, "../../../extensions/github-repositories"),
-  source: "./browser/index.tsx",
-};
+export { GITHUB_REPOSITORY_PLUGIN as GITHUB_REFERENCE_PLUGIN } from "../test-helpers/repository-plugin.ts";

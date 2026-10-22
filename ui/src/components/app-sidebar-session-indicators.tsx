@@ -1,10 +1,11 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo, Show } from "solid-js";
+import { createMemo, createSignal, Show } from "solid-js";
 import { resolveControlUiAvatarAuth } from "../app/control-ui-auth.ts";
 import { formatDurationCompact } from "../lib/format-duration.ts";
 import { presenceMatchesProfile, projectPresencePayload } from "../lib/presence-users.ts";
 import { t } from "../lib/reactive/i18n.ts";
 import { formatSessionSnoozeWakeTime, isSessionSnoozed } from "../lib/sessions/session-snooze.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import type { CatalogBackingSessionDisplay } from "./app-sidebar-session-catalogs.ts";
 import type { SessionListHost } from "./app-sidebar-session-render-types.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
@@ -36,18 +37,12 @@ export function renderSidebarSessionIndicators(
       : !team() && attention.kind === "approval";
   });
   const childrenExpanded = createMemo(() => host().isSessionChildrenExpanded(readSession()));
-  const initialPullRequest = createMemo(
-    () => readSession().pullRequest ?? readDisplay?.()?.pullRequest,
-  );
-  const pullRequest = createMemo(() => {
-    const readSessionValue = readSession();
-    const initialPullRequestValue = initialPullRequest();
-    return host().sessionPullRequests.summary(
-      readSessionValue.key,
-      readSessionValue.worktreeId ?? "",
-      initialPullRequestValue,
-    );
-  });
+  const initialPullRequest = createMemo(() => readDisplay?.()?.pullRequest);
+  const artifact = initialPullRequest;
+  // An independently mounted renderer may report synchronously during a host commit.
+  // This is local slot presentation, not a second repository snapshot.
+  const [contributedArtifact, setContributedArtifact] = createSignal(false, { ownedWrite: true });
+  const hasArtifact = () => Boolean(initialPullRequest() || contributedArtifact());
   const ownerAttribution = createMemo(() => {
     const readSessionValue = readSession();
     return host().sessionsStatusFilter === "archived"
@@ -211,7 +206,7 @@ export function renderSidebarSessionIndicators(
     running,
     stateId,
     metaId,
-    pullRequest,
+    artifact,
     persistentIndicator,
     originIndicators,
     childrenExpanded,
@@ -232,7 +227,7 @@ export function renderSidebarSessionIndicators(
           {team() &&
           (readSession().workSession || readSession().acpSession) &&
           !readSession().workspaceKind &&
-          !pullRequest() ? (
+          !hasArtifact() ? (
             <span
               class="session-row-badge"
               role="img"
@@ -255,8 +250,17 @@ export function renderSidebarSessionIndicators(
           <SessionRowBadges
             {...readSession()}
             hasComposerDraft={readSession().hasComposerDraft === true}
-            pullRequest={pullRequest()}
-            pullRequestCount={host().sessionPullRequests.count(readSession().key)}
+            accessories={
+              <PluginContributions
+                kind="session-row"
+                sessionKey={readSession().key}
+                agentId={readSession().agentId}
+                artifact={artifact()}
+                onPresenceChange={(present: boolean) => setContributedArtifact(present)}
+                worktreeId={readSession().worktreeId}
+                presented={true}
+              />
+            }
             hasApproval={hasApproval()}
           />
           {team() ? trail() : undefined}{" "}
