@@ -6,6 +6,13 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cloneProjectCheckout,
+  ensureProjectCheckoutCommit,
+  ProjectCloneError,
+  refreshProjectCheckout,
+} from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import { parseProjectGitUrl } from "../../extensions/github-repositories/project-url-api.js";
+import {
   closeHttpServer as closeServer,
   listenLoopback as listen,
 } from "../../test/helpers/gateway-integration-fixtures.js";
@@ -22,17 +29,10 @@ import {
 import { observe } from "../state/openclaw-state-lease-async.test-support.js";
 import { createCommandResult } from "../test-utils/npm-spec-install-test-helpers.js";
 import {
-  cloneProjectCheckout,
-  ensureProjectCheckoutCommit,
-  ProjectCloneError,
-  refreshProjectCheckout,
-} from "./project-clone-runtime.js";
-import {
   materializeProjectClone,
   refreshProjectClone,
   removeClonedProjectCheckout,
 } from "./project-clone.js";
-import { parseProjectGitUrl } from "./project-git-url.js";
 import {
   listProjectRegistry,
   ProjectCheckoutError,

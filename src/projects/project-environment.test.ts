@@ -85,7 +85,7 @@ vi.mock("./project-checkout.js", () => ({
   resolveProjectCheckout: mocks.resolveCheckout,
   resolveProjectDirectory: async (directory: string) => directory,
 }));
-vi.mock("./project-clone-runtime.js", () => ({
+vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
   ProjectCloneError: class extends Error {},
   cloneProjectCheckout: mocks.clone,
   refreshProjectCheckout: mocks.refresh,

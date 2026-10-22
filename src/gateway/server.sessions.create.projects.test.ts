@@ -3,6 +3,7 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
+import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { captureMethodCall } from "../../test/helpers/capture-method-call.js";
 import {
   fixtureReceiptClientSource,
@@ -28,7 +29,6 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import { onAgentEvent, type AgentEventPayload } from "../infra/agent-events.js";
 import { readPersistedMediaFacts } from "../media/media-facts.js";
 import { resolveMediaReferenceLocalPath } from "../media/media-reference.js";
-import { ProjectCloneError } from "../projects/project-clone-runtime.js";
 import { registerProjectRegistry } from "../projects/project-registry.js";
 import { captureSessionControllerSettlement } from "../sessions/session-controller.lifecycle.js";
 import { rpcSourceTesting } from "../sessions/session-lifecycle-admission.test-support.js";

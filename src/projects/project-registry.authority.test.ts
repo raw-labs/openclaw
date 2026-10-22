@@ -40,7 +40,7 @@ vi.mock("node:fs/promises", () => ({
     rmdir: fixture.removeParent,
   },
 }));
-vi.mock("./project-clone-runtime.js", () => ({
+vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
   ProjectCloneError: class extends Error {
     constructor(_code: string, message: string) {
       super(message);

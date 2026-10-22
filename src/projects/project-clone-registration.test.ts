@@ -49,7 +49,9 @@ vi.mock("./project-checkout.js", () => ({
 
 vi.mock("./project-registry.js", () => ({ listProjectRegistry: async () => [] }));
 // mock-isolation: clone outcomes are synthetic and must not run Git or access the network.
-vi.mock("./project-clone-runtime.js", () => ({ cloneProjectCheckout: fixture.clone }));
+vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
+  cloneProjectCheckout: fixture.clone,
+}));
 
 vi.mock("../state/openclaw-state-lease-worker-operation.js", () => ({
   runWithOpenClawStateLeaseWorker: async (

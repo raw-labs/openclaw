@@ -3,6 +3,7 @@ import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
 } from "../../../extensions/github-repositories/host-api.js";
+import { ProjectCloneError } from "../../../extensions/github-repositories/project-clone-runtime-api.js";
 import { readCachedNativeGitHubToken } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
@@ -25,7 +26,6 @@ import { loadCombinedSessionStoreForGatewayCoreAsync } from "../../config/sessio
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isPathInside } from "../../infra/path-guards.js";
-import { ProjectCloneError } from "../../projects/project-clone-runtime.js";
 import {
   materializeProjectClone,
   removeClonedProjectCheckout,

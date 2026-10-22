@@ -60,3 +60,20 @@ export { withGitProcessOperation } from "../process/spawn-diagnostics.js";
 
 export { quoteCliArg, quotePowerShellArg } from "../cli/quote-cli-arg.js";
 export { getShellConfig } from "../agents/shell-utils.js";
+
+export {
+  executeGitCommand,
+  gitNullConfigPath,
+  requireGitCommandOutput,
+  type GitCommandOptions,
+} from "../infra/git-exec.js";
+
+export { withGitNetworkRetry, type GitOperationStarter } from "../infra/git-network-retry.js";
+
+export { withGitRepositoryRepair } from "../infra/git-repository-repair.js";
+
+export {
+  CommandProcessCleanupError,
+  hasCommandProcessCleanupError,
+  readCommandProcessFailure,
+} from "../process/exec-result.js";

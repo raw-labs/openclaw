@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
 import * as githubOAuthLifecycle from "../../extensions/github-repositories/account-runtime-api.js";
 import * as githubOAuth from "../../extensions/github-repositories/oauth-api.js";
+import * as cloneRuntime from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { createGitHubReadIdentity } from "../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
@@ -22,8 +24,6 @@ import * as sessionEntries from "../config/sessions/session-accessor.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import * as cloneRuntime from "../projects/project-clone-runtime.js";
-import { ProjectCloneError } from "../projects/project-clone-runtime.js";
 import * as projectCloning from "../projects/project-clone.js";
 import { registerClonedProjectRegistry } from "../projects/project-registry.test-support.js";
 import * as secretsRuntime from "../secrets/runtime-state.js";

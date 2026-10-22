@@ -25,7 +25,7 @@ when an identity changes. OAuth record persistence remains host-owned; the manag
 The identity/profile artifacts own native and managed credential selection, App
 installation protocol, profile reads and writes, retired-profile cleanup, and
 credential environment formatting. Existing repository and publication callers consume these operations; their
-transport and transaction owners have not moved. Native OAuth records remain
+transaction owners remain native. Repository clone/fetch transport is described below. Native OAuth records remain
 host-owned through admitted record operations.
 
 The pure `profile-id-api.ts` format also serves native configuration and persisted
@@ -40,3 +40,5 @@ The execution provider contributes identity facts and private launch adapters fo
 local commands and supported Docker/Podman sandboxes. Core retains approvals,
 container allocation, process supervision, and generic Git defaults. Current
 native GitHub configuration keys remain canonical until their atomic cutover.
+
+The shallow project URL and Git clone/fetch artifacts own GitHub remote normalization and network command policy. Their current local and worker callers use the same implementation. The native managed-checkout owner retains project registration, leases, and uncertain-write cleanup. This library extraction does not change plugin admission or repository-picker behavior.

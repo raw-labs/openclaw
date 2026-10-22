@@ -1,24 +1,23 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectCloneFailureCause } from "../../packages/gateway-protocol/src/index.js";
-import { hasErrnoCode } from "../infra/errno.js";
+import type { ProjectCloneFailureCause } from "@openclaw/gateway-protocol";
 import {
+  hasErrnoCode,
   executeGitCommand,
   gitNullConfigPath,
   requireGitCommandOutput,
-  type GitCommandOptions,
-} from "../infra/git-exec.js";
-import { withGitNetworkRetry, type GitOperationStarter } from "../infra/git-network-retry.js";
-import { withGitRepositoryRepair } from "../infra/git-repository-repair.js";
-import {
+  withGitNetworkRetry,
+  withGitRepositoryRepair,
   CommandProcessCleanupError,
   hasCommandProcessCleanupError,
   readCommandProcessFailure,
+  runCommandWithTimeout,
+  withGitProcessOperation,
+  type GitCommandOptions,
+  type GitOperationStarter,
   type SpawnResult,
-} from "../process/exec-result.js";
-import { runCommandWithTimeout } from "../process/exec.js";
-import { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+} from "openclaw/plugin-sdk/process-runtime";
 
 const PROJECT_CLONE_TIMEOUT_MS = 10 * 60_000;
 type ProjectCloneOptions = {
