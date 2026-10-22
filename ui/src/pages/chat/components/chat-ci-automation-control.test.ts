@@ -1,19 +1,23 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 /* @vitest-environment jsdom */
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { CiAutomationOption } from "../../../../../extensions/github-repositories/browser/api.ts";
+import { createCiAutomationSpec } from "../../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { CronJob } from "../../../api/types.ts";
-import {
-  ciAutomationJobSpec,
-  type CiAutomationOption,
-} from "../../../lib/session-pr-automation-spec.ts";
+const { ciAutomationJobSpec } = createCiAutomationSpec((value) =>
+  bytesToHex(sha256(new TextEncoder().encode(value))),
+);
 import {
   createHello as hello,
   createGatewayHarness,
   flushSync,
 } from "../../../lib/session-pull-requests.test-support.ts";
-import type { ChatCiAutomationElement } from "./chat-ci-automation-control.ts";
-import "./chat-ci-automation-control.ts";
+import type { CiAutomationTestElement as ChatCiAutomationElement } from "../../../test-helpers/repository-ci.test-support.tsx";
+import "../../../test-helpers/repository-ci.test-support.tsx";
+import { waitForSolid } from "../../../test-helpers/solid-settle.ts";
 
 const sessionKey = "agent:main:dashboard:ci-test";
 const cronStatus = { enabled: true, triggersEnabled: true, jobs: 0 };
@@ -78,8 +82,8 @@ class Fixture {
       this.root.remove();
       vi.restoreAllMocks();
     });
-    this.root.append(document.createElement("openclaw-chat-ci-automation"));
-    this.element = this.root.querySelector<ChatCiAutomationElement>("openclaw-chat-ci-automation")!;
+    this.root.append(document.createElement("oc-test-ci-automation"));
+    this.element = this.root.querySelector<ChatCiAutomationElement>("oc-test-ci-automation")!;
     Object.assign(this.element, { pullRequest: pr, gateway: this.harness.gateway, sessionKey });
   }
   async paint(sessionId: string) {
@@ -185,6 +189,7 @@ describe("CI automation popup scope", () => {
     mergeWrite.resolve({ job: job("first", "autoMerge") });
     await h.settle();
     expect(h.root.textContent).toContain("Lost acknowledgement");
+    await waitForSolid(() => h.toggles(true, true));
     h.toggles(true, true);
     h.root.querySelector<HTMLButtonElement>(".chat-ci__automation-retry")!.click();
     await h.settle();
@@ -219,6 +224,7 @@ describe("CI automation popup scope", () => {
     expect(h.request.mock.calls.some(([method]) => method === "cron.list")).toBe(true);
     const signal = h.calls("cron.list")[0]?.[2]?.signal;
     h.element.sessionId = "replacement";
+    await h.element.updateComplete;
     expect(signal?.aborted).toBe(true);
     expect(h.root.open).toBe(false);
     await h.element.updateComplete;

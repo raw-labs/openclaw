@@ -6,6 +6,7 @@ import type {
   SessionSuggestion,
   SessionSuggestionResolution,
 } from "../../../../packages/gateway-protocol/src/index.js";
+import type { ControlUiSessionHeaderFacts } from "../../../../src/plugin-sdk/control-ui.ts";
 import type { ExecApprovalDecision, ExecApprovalRequest } from "../../app/exec-approval.ts";
 import type { ImageLightboxItem } from "../../components/image-lightbox.types.ts";
 import type {
@@ -82,6 +83,7 @@ export type ChatProps = Omit<
   ChatTaskSuggestionTrayProps &
   ChatPlacementStartupNoticeProps & {
     onOpenSidebar?: (content: SidebarContent) => SidebarOpenResult;
+    sessionHeaderFacts?: ControlUiSessionHeaderFacts;
     onConversationFrameRef?: (element: HTMLElement) => void | (() => void);
     onFooterElementRef?: (element: HTMLElement) => void | (() => void);
     onCompanionStageAttachment?: (attachment: ChatAttachment, sourceSessionKey: string) => boolean;

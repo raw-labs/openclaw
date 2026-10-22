@@ -2,7 +2,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "../../cron/service/list-page-validation.js";
+} from "../../../packages/gateway-protocol/src/cron-list-page-validation.js";
 
 const CRON_SELF_LIST_MAX_PAGES = 50;
 

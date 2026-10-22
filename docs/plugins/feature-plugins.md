@@ -142,7 +142,7 @@ Its id must match the plugin manifest. Register contributions through
 | `registerPage` and `registerNavigation` | Plugin-owned routes and sidebar destinations.                                                                                           |
 | `registerAction`                        | Composer, header, or session menu actions. An optional `resolve` function supplies the current label, hidden state, and disabled state. |
 | `registerPanel`                         | Session panels.                                                                                                                         |
-| `registerAccessory`                     | Session header content.                                                                                                                 |
+| `registerAccessory`                     | Session header, context, row, hovercard, Activity, summary, and native-mobile contribution slots.                                       |
 | `registerWidget`                        | Native dashboard widget views.                                                                                                          |
 | `registerReplacement`                   | `workspace`, `session-list`, `composer`, `transcript`, or `tool-result`.                                                                |
 
@@ -470,44 +470,54 @@ The dev server serves the validated generated JavaScript and CSS without runtime
 plugin activation. Restart the dev server after editing plugin presentation
 sources to rebuild their immutable generation.
 
-### Repository read renderers
+### Repository browser contributions
 
-The bundled GitHub package exposes two browser library entry points:
-`read-facts-api.ts` contains inert ordering, identifiers, badges, and pill facts;
-`browser/read-presentation-api.ts` mounts the actual PR read regions. Native composition
-passes current values and callbacks, then calls the returned handle's `update`
-and `dispose` methods. Each mount owns its Solid root. Shared native controls use
-the same explicit-value handle contract: `mountTextOverflow(element, { content })`
-keeps measurement in the native runtime instead of accepting a plugin reactive getter.
+The GitHub browser activation owns one PR snapshot store and watched-key union.
+Session details, sidebar badges, hovercards, Activity, summaries, Open PR, and
+text references all use that store. Foreground demand has priority over passive
+row receipts within the existing cap. Closing a view releases its interest;
+connection, permission, and structural-session changes retire scoped facts.
+`read-facts-api.ts` remains the inert owner of ordering, identifiers, and badge
+and activity facts. Native composition no longer imports plugin renderers.
 
-The current read flow remains one connection owner:
-`sessionPullRequestsForGateway` receives Gateway snapshots; native pane, sidebar,
-hovercard, and Activity projections select current facts; the library renders them.
-CI request/write owners and publication controls stay native. Mobile Root/Back,
-keyboard traversal, and canonical English also retain their existing owners.
+Publication presentation and CI controls belong to the same activation. The
+Gateway remains authoritative for publication receipts and Cron jobs. Native
+session custody retains admitted publication operations across detached views,
+including unknown outcomes, the original retry key/account, and confirmation.
+Disabling the plugin removes its browser contributions and prevents new UI
+actions; it does not replay, cancel, or forget an already admitted write.
 
-This is a library boundary, not another plugin activation path. Read views retain
-native admission and remain available when the GitHub plugin is disabled; Settings
-and account/execution contributions keep their own plugin-admission contract.
-The temporary native composition adapter ends when publication and the remaining native
-readers transfer the same read store and remaining consumers atomically. No
-second subscription store or configuration fallback is introduced.
+The generic host supplies these boundaries:
+
+- `host.requests.capture()` returns request/currentness operations bound to the
+  current connection and activation, never the authenticated client or handshake.
+  It accepts cancellation and timeout options. `createSetSync()` delegates the
+  existing native batching, retry, acknowledgement, and visibility lifecycle.
+- `host.sessions.methodAccess()` retains native session-operation admission.
+  `attachOperation()` retains one plugin/factory/session operation in the native
+  bounded custody owner; disposing a presentation detaches its binding without
+  cancelling an accepted operation. `captureSummary()` captures the roster
+  writer's epoch before a read, so a retired result cannot acquire a newer epoch
+  when it publishes.
+- `host.presentation` provides shared visual controls, localized copy, formatting,
+  safe URLs, and deterministic declaration digests. `host.native` contains only
+  the existing diff and disclosure-overlay DOM operations. Plugin CI controls
+  render their own Solid components and stable host tags.
+
+Accessories can target session header, context, row, hovercard, Activity,
+summary, and mobile root/page/activity slots. Mobile pages use opaque plugin IDs;
+the native host still owns Root/Back ancestry, keyboard traversal, focus,
+geometry, close return, and pane retirement. A plugin receives navigation
+callbacks, not ownership of that host.
 
 ### Observed Open PR action
 
-The GitHub browser activation registers the session **Open PR** action in sidebar
-and Sessions menus, with the native PR icon, `g` shortcut, and new-tab metadata.
-The host's `sessionPullRequests.read/observe` port borrows the same native
-connection store; displaying a menu adds one scoped interest to its existing
-replace-set union. Closing the menu or withdrawing the activation releases it.
-The action resolves the current primary PR again at dispatch, not a cached URL.
-Native translation and safe external navigation retain their current owners.
-
-Disabling or excluding the GitHub plugin removes this registered action. It does
-not remove the independently composed read views or native publication controls.
-Publication, CI request/write custody, and mobile Root/Back remain native. The
-remaining store transfer is deferred to UI-F, with all native consumers moved
-atomically; this action introduces no second browser runtime or configuration.
+The activation registers **Open PR** in sidebar and Sessions menus with the PR
+icon, `g` shortcut, and new-tab metadata. Displaying a menu adds scoped interest
+to the same plugin store; closing it releases that interest. Dispatch resolves
+the current primary PR again, not a saved URL. Native safe external navigation
+opens it without an opener. Disabling or excluding the plugin removes the action
+and its other repository browser contributions.
 
 ### Observed text references
 
@@ -524,8 +534,8 @@ overlapping spans, admits only URLs matched by the provider's reader, and retain
 its existing Markdown safe-link policy. Both HTML and settled-transcript caches
 include snapshot identity.
 
-GitHub's provider owns shorthand grammar and project aliases. It borrows the
-existing `sessionPullRequests.read/observe` port for current repository facts and
+GitHub's provider owns shorthand grammar and project aliases. It reads the same
+plugin-owned PR store for current repository facts and
 uses scoped `host.request("projects.list", {})`, `onEvent`, and `subscribe` for
 aliases. The opaque `connection.readScopeKey` invalidates late results when the
 current principal, connection scope, permissions, or advertised methods change;
@@ -534,9 +544,9 @@ unqualified references as prose rather than choosing an old or ambiguous project
 Explicit canonical coordinates remain self-contained. The generic native project
 catalog still serves New Session; it no longer loads aliases for chat.
 
-Publication, CI custody, mobile Root/Back, and the single native PR read store
-retain their existing owners. Text references add no PR cache or application
-context to the plugin.
+Text references add no PR cache or application context. The native renderer
+retains Markdown sanitization and reader admission; the shared plugin runtime
+retains repository facts.
 
 ### Bundle boundaries
 

@@ -9,8 +9,7 @@ export function hasVisibleChatActivityPills(props: ChatActivityPillsProps): bool
           (agent) => agent.status === "running" || agent.status === "waiting",
         ) ||
         props.progress?.showInChat ||
-        props.pullRequests?.items.length ||
-        props.publication,
+        props.contributions,
       ))
   );
 }

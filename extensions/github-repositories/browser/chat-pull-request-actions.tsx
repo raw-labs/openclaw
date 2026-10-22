@@ -1,14 +1,19 @@
-import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/control-ui";
 /** @jsxImportSource @solidjs/web */
+
+import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/control-ui";
 import { createMemo, createSignal, createUniqueId, Show, useContext } from "solid-js";
+import { ChatCiAutomation } from "./chat-ci-automation-control.tsx";
+import { ChatCiDetails } from "./chat-ci-details.tsx";
 import {
   ChecksRows,
   StatusWarning,
   STATE_LABEL_KEYS,
   type ChatPullRequestsProps,
 } from "./chat-pull-request-shared.tsx";
+import { content } from "./host-control.tsx";
 import { GitDiffValues } from "./native-components.tsx";
-import { ContentPresentation } from "./native-context.tsx";
+import type { PresentationValue } from "./native-context.tsx";
+import { projectPresentation, ContentPresentation } from "./native-context.tsx";
 import {
   Icon,
   createMenuControls,
@@ -17,7 +22,6 @@ import {
   type MenuHandle,
 } from "./presentation-components.tsx";
 import { presentationTranslator, PresentationContext } from "./presentation-context.ts";
-import { CiDetails, CiAutomation } from "./read-ci.tsx";
 import { sessionPullRequestStateIcons } from "./session-pull-request-presentation.ts";
 
 const CHECK_ROLLUP = {
@@ -29,7 +33,7 @@ const CHECK_ROLLUP = {
 export function PullRequestActions(props: {
   label: string;
   disabled: boolean;
-  presented: boolean;
+  presented: PresentationValue;
   dismissed?: boolean;
   onDismiss: () => void;
   pullRequest: ControlUiSessionPullRequest;
@@ -57,7 +61,8 @@ export function PullRequestActions(props: {
     queueMicrotask(() => (previous === "checks" ? checksButton : monitoringButton)?.focus());
   };
   const [menuOpen, setMenuOpen] = createSignal(false);
-  const presented = () => parentPresented() && !props.dismissed && (props.presented ?? true);
+  const presentation = createMemo(() => projectPresentation(props.presented));
+  const presented = () => parentPresented() && !props.dismissed && presentation().read();
   const copy = async () => {
     if (copying()) {
       return;
@@ -117,7 +122,7 @@ export function PullRequestActions(props: {
           <ChecksRows checks={checks()} runningFirst />
         </div>
       </div>
-      <CiDetails
+      <ChatCiDetails
         pullRequest={props.pullRequest}
         sessionKey={props.owner.sessionKey ?? ""}
         presented={presented() && menuOpen() && page() === "checks"}
@@ -134,7 +139,7 @@ export function PullRequestActions(props: {
       aria-label={t("chat.pullRequests.ciMonitoring")}
     >
       <div class="chat-pr-menu__caption">{t("chat.pullRequests.ciMonitoring")}</div>
-      <CiAutomation
+      <ChatCiAutomation
         pullRequest={props.pullRequest}
         sessionKey={props.owner.sessionKey ?? ""}
         sessionId={props.owner.sessionId ?? ""}
@@ -150,12 +155,14 @@ export function PullRequestActions(props: {
   const ciPages: MenuEntry = {
     kind: "content",
     id: "ci-pages",
-    content: (
+    // This connected island is stable across menu page publications. Re-wrapping
+    // the same children would detach the CI owners before their visibility read.
+    content: content(() => (
       <>
         {checksContent}
         {monitoringContent}
       </>
-    ),
+    )),
   };
   const backItem = (): MenuEntry => ({
     id: "back",

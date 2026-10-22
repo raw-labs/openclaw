@@ -1,6 +1,10 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createGitHubTextReferenceProvider } from "../../../extensions/github-repositories/browser/text-reference-api.ts";
+import {
+  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+  createRepositoryBrowserRuntime,
+} from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { GATEWAY_STARTUP_ADMISSION_WAIT_MS } from "../../../packages/gateway-protocol/src/startup-unavailable.js";
 import type { ControlUiSessionListSnapshot } from "../../../src/plugin-sdk/control-ui.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -19,10 +23,6 @@ import {
   createGatewayHarness as createPullRequestGateway,
   flushSync,
 } from "../lib/session-pull-requests.test-support.ts";
-import {
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionPullRequestsForGateway,
-} from "../lib/session-pull-requests.ts";
 import {
   createGatewayHarness,
   createTestSessionCapability,
@@ -678,17 +678,31 @@ it("adapts dock operations, publishes snapshots, and retires activation and view
 it("shares native PR read interest and retires scoped read/translation/navigation handles", async () => {
   const harness = createPullRequestGateway();
   // SAFETY: this host flow reads gateway plus the shared subscription-only services.
-  const context = { ...subscriptions, gateway: harness.gateway } as unknown as ApplicationContext;
+  const context = {
+    ...subscriptions,
+    gateway: harness.gateway,
+    sessions: {
+      subscribe,
+      state: { agentId: "writer", result: null },
+      captureConnectionScope: () => ({ client: harness.gateway.snapshot.client, epoch: 0 }),
+      isConnectionScopeCurrent: () => true,
+      capturePullRequestEpoch: () => ({}),
+      pullRequestSummary: () => undefined,
+      setPullRequestSummary() {},
+    },
+  } as unknown as ApplicationContext;
   const activation = createHost(context);
   const { view, host } = scopedHost(activation.host);
-  const reads = expectDefined(host.sessionPullRequests, "PR reads");
-  const native = sessionPullRequestsForGateway(harness.gateway);
+  const plugin = createRepositoryBrowserRuntime(activation.host);
+  const reads = plugin;
+  const native = plugin.store;
   const pane = {};
   const key = "agent:writer:global";
   const target = { sessionKey: "global", agentId: "writer" };
   native.watch(pane, [key], { foreground: true });
   const changed = vi.fn();
   const stop = reads.observe(target, changed);
+  view.signal.addEventListener("abort", stop, { once: true });
   await flushSync();
   expect(harness.request).toHaveBeenCalledExactlyOnceWith(
     SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
@@ -706,8 +720,10 @@ it("shares native PR read interest and retires scoped read/translation/navigatio
   });
   expect(reads.read(target)).toBe(native.get(key));
   expect(reads.read(target)?.pullRequests[0]?.number).toBe(421);
-  const read = reads.read;
-  const observe = reads.observe;
+  const heldRequest = host.requests.capture();
+  expect(heldRequest?.isCurrent()).toBe(true);
+  const read = host.requests.capture;
+  const observe = host.requests.subscribe;
   const translate = expectDefined(host.presentation, "presentation").translate;
   const open = host.navigation.openExternal;
   const popup = vi.spyOn(window, "open").mockReturnValue(null);
@@ -723,6 +739,10 @@ it("shares native PR read interest and retires scoped read/translation/navigatio
   expect(translate("sessionsView.openPullRequest")).toBe("Open PR");
   view.abort();
   stop();
+  expect(heldRequest?.isCurrent()).toBe(false);
+  await expect(heldRequest?.request("controlUi.sessionPullRequests.subscribe", {})).rejects.toThrow(
+    "view has ended",
+  );
   const delivered = changed.mock.calls.length;
   harness.emit({
     sessions: { [key]: { pullRequests: [{ number: 422 }], status: "ready", rateLimited: false } },
@@ -732,21 +752,22 @@ it("shares native PR read interest and retires scoped read/translation/navigatio
   await flushSync();
   expect(harness.request).toHaveBeenCalledTimes(1);
   for (const operation of [
-    () => read(target),
-    () => observe(target, changed),
+    () => read(),
+    () => observe(changed),
     () => translate("sessionsView.openPullRequest"),
     () => open("https://example.test/stale"),
   ]) {
     expect(operation).toThrow("view has ended");
   }
   native.unwatch(pane);
+  plugin.store.dispose();
   expect(native.get(key)).toBeUndefined();
-  const baseRead = expectDefined(activation.host.sessionPullRequests, "PR reads").read;
+  const baseRead = activation.host.requests.capture;
   const baseTranslate = expectDefined(activation.host.presentation, "presentation").translate;
   const baseOpen = activation.host.navigation.openExternal;
   activation.dispose();
   for (const operation of [
-    () => baseRead(target),
+    () => baseRead(),
     () => baseTranslate("sessionsView.openPullRequest"),
     () => baseOpen("https://example.test/stale"),
   ]) {
@@ -769,9 +790,24 @@ it("fences late project aliases on same-client scope changes through the scoped 
     method === "projects.list" ? pending[projectReads++]!.promise : { subscribed: true },
   );
   // The real host and native PR store serve the plugin; only Gateway transport replies are simulated.
-  const context = { ...subscriptions, gateway: h.gateway } as unknown as ApplicationContext;
+  const context = {
+    ...subscriptions,
+    gateway: h.gateway,
+    sessions: {
+      subscribe,
+      state: { agentId: "writer", result: null },
+      captureConnectionScope: () => ({ client: h.gateway.snapshot.client, epoch: 0 }),
+      isConnectionScopeCurrent: () => true,
+      capturePullRequestEpoch: () => ({}),
+      pullRequestSummary: () => undefined,
+      setPullRequestSummary() {},
+    },
+  } as unknown as ApplicationContext;
   const activation = createHost(context, undefined, h.gateway.snapshot.client!);
-  const provider = createGitHubTextReferenceProvider(activation.host);
+  const provider = createGitHubTextReferenceProvider(
+    activation.host,
+    createRepositoryBrowserRuntime(activation.host),
+  );
   const target = { sessionKey: "agent:main:main", signal: new AbortController().signal };
   const stop = provider.observe!(target, vi.fn());
   onTestFinished(stop);
@@ -809,4 +845,150 @@ it("fences late project aliases on same-client scope changes through the scoped 
   );
   stop();
   expect(provider.snapshot(target).resolve({ text: "Widget PR #2", links: [] })).toEqual([]);
+});
+
+it("rejects captured summary sinks after a replacement read epoch or reconnect", () => {
+  const request = vi.fn(async () => sessionsResult([], 1));
+  const client = createTestGatewayClient(request);
+  const h = createGatewayHarness(client);
+  const sessions = createTestSessionCapability(h.gateway);
+  const activation = createHost({
+    ...subscriptions,
+    gateway: h.gateway,
+    sessions,
+  } as unknown as ApplicationContext);
+  const target = { sessionKey: "agent:main:summary" };
+  const older = activation.host.sessions.captureSummary(target);
+  const replacement = activation.host.sessions.captureSummary(target);
+  replacement.publish({ numbers: [422], state: "open" });
+  older.publish({ numbers: [421], state: "closed" });
+  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({ numbers: [422], state: "open" });
+  h.publish(false, client);
+  h.publish(true, client);
+  const current = activation.host.sessions.captureSummary(target);
+  current.publish({ numbers: [423], state: "draft" });
+  replacement.publish(undefined);
+  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({
+    numbers: [423],
+    state: "draft",
+  });
+  onTestFinished(() => sessions.dispose());
+});
+
+it.each(["truncated history", "merged", "empty rate-limited", "withdrawn rate-limited"] as const)(
+  "projects pushed plugin PR facts through the captured native summary sink: %s",
+  async (mode) => {
+    const h = createPullRequestGateway();
+    const sessions = createTestSessionCapability(h.gateway);
+    onTestFinished(() => sessions.dispose());
+    const activation = createHost({
+      ...subscriptions,
+      gateway: h.gateway,
+      sessions,
+    } as unknown as ApplicationContext);
+    const runtime = createRepositoryBrowserRuntime(activation.host);
+    const key = "agent:main:summary";
+    const owner = {};
+    sessions.setPullRequestSummary(key, { numbers: [111532], state: "merged" });
+    runtime.store.watch(owner, [key], { foreground: true });
+    await flushSync();
+    const rateLimited = mode.endsWith("rate-limited");
+    const requests =
+      mode === "truncated history"
+        ? [
+            { number: 999, state: "draft" },
+            ...Array.from({ length: 20 }, (_, i) => ({ number: i + 1, state: "closed" })),
+          ]
+        : rateLimited
+          ? []
+          : [{ number: 111532, state: "merged" }];
+    h.emit({
+      sessions: {
+        [key]: {
+          pullRequests: requests,
+          rateLimited,
+          status: rateLimited ? "rate-limited" : "ready",
+          ...(mode === "withdrawn rate-limited" ? { discardPrevious: true } : {}),
+        },
+      },
+    });
+    expect(sessions.pullRequestSummary(key)).toEqual(
+      mode === "withdrawn rate-limited"
+        ? undefined
+        : mode === "truncated history"
+          ? { numbers: [...Array.from({ length: 19 }, (_, i) => i + 1), 999], state: "draft" }
+          : { numbers: [111532], state: "merged" },
+    );
+    runtime.store.dispose();
+  },
+);
+
+it.each(["global", "main", "agent:writer:work"])(
+  "keeps the native roster summary target for %s artifact identities",
+  async (rawKey) => {
+    const request = vi.fn(async () =>
+      sessionsResult(
+        [
+          {
+            key: rawKey,
+            agentId: "writer",
+            kind: rawKey === "global" ? "global" : "direct",
+            updatedAt: 1,
+          },
+        ],
+        1,
+      ),
+    );
+    const h = createGatewayHarness(createTestGatewayClient(request), undefined, {
+      initial: { assistantAgentId: "writer", sessionKey: rawKey },
+    });
+    const sessions = createTestSessionCapability(h.gateway, "writer");
+    await sessions.refresh();
+    const activation = createHost({
+      ...subscriptions,
+      gateway: h.gateway,
+      sessions,
+    } as unknown as ApplicationContext);
+    const artifact = activation.host.sessions.artifactKey({
+      sessionKey: rawKey,
+      agentId: "writer",
+    });
+    const sink = activation.host.sessions.captureSummary({ sessionKey: artifact });
+    sink.publish({ numbers: [422], state: "open" });
+    expect(sessions.pullRequestSummary(rawKey)).toEqual({ numbers: [422], state: "open" });
+    if (artifact !== rawKey) {
+      expect(sessions.pullRequestSummary(artifact)).toBeUndefined();
+    }
+  },
+);
+
+it("captures a fresh native roster epoch for new reads after reconnect", async () => {
+  const h = createPullRequestGateway();
+  const sessions = createTestSessionCapability(h.gateway);
+  const activation = createHost({
+    ...subscriptions,
+    gateway: h.gateway,
+    sessions,
+  } as unknown as ApplicationContext);
+  const runtime = createRepositoryBrowserRuntime(activation.host);
+  const key = "agent:main:summary-reconnect";
+  const owner = {};
+  const publish = (number: number) =>
+    h.emit({
+      sessions: {
+        [key]: { pullRequests: [{ number, state: "open" }], rateLimited: false, status: "ready" },
+      },
+    });
+  runtime.store.watch(owner, [key], { foreground: true });
+  await flushSync();
+  publish(421);
+  expect(sessions.pullRequestSummary(key)).toEqual({ numbers: [421], state: "open" });
+  const hello = h.gateway.snapshot.hello;
+  h.setSnapshot({ ...h.gateway.snapshot, phase: "reconnecting", hello: null });
+  expect(sessions.pullRequestSummary(key)).toBeUndefined();
+  h.setSnapshot({ ...h.gateway.snapshot, phase: "connected", hello });
+  await flushSync();
+  publish(422);
+  expect(sessions.pullRequestSummary(key)).toEqual({ numbers: [422], state: "open" });
+  runtime.store.dispose();
 });

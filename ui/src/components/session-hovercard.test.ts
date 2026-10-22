@@ -1,16 +1,16 @@
 /* @vitest-environment jsdom */
 
 import type { ProgressCard } from "@openclaw/gateway-protocol";
-import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../src/gateway/control-ui-contract.js";
-import { mountSolid } from "../test-helpers/mount-solid.ts";
-import { flush } from "../test-helpers/solid-settle.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
-import { SessionHovercard, type SessionHovercardInput } from "./session-hovercard-solid.tsx";
+import {
+  renderRepositoryHovercard as renderCard,
+  type RepositoryHovercardInput as SessionHovercardInput,
+} from "./session-hovercard.test-support.tsx";
 
 function row(overrides: Partial<SidebarRecentSession> = {}): SidebarRecentSession {
   return {
@@ -53,48 +53,6 @@ function progressCard(): ProgressCard {
     markdown: "**Release** is ready.",
     steps: [{ step: "Verify", status: "in_progress" }],
   };
-}
-
-const updateCards = new WeakMap<HTMLElement, (input: SessionHovercardInput) => void>();
-
-function renderCard(input: SessionHovercardInput, container = document.createElement("div")) {
-  const update = updateCards.get(container);
-  if (update) {
-    update(input);
-  } else {
-    mountSolid(
-      () => {
-        const [current, setCurrent] = createSignal(input);
-        updateCards.set(container, (next) => setCurrent(next));
-        return createComponent(SessionHovercard, {
-          get row() {
-            return current().row;
-          },
-          get selfUserId() {
-            return current().selfUserId;
-          },
-          get avatarAuth() {
-            return current().avatarAuth;
-          },
-          get personActivity() {
-            return current().personActivity;
-          },
-          get automationLink() {
-            return current().automationLink;
-          },
-          get pullRequests() {
-            return current().pullRequests;
-          },
-          get progressCard() {
-            return current().progressCard;
-          },
-        });
-      },
-      { container },
-    );
-  }
-  flush();
-  return container;
 }
 
 function attributionSummary(container: ParentNode): string {

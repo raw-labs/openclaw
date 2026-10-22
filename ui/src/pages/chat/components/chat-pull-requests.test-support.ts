@@ -1,12 +1,16 @@
 import { createComponent, createSignal, flush, merge } from "solid-js";
 import type {
+  GitHubPublicationView,
+  ChatPullRequestsProps,
+} from "../../../../../extensions/github-repositories/browser/api.ts";
+import { ChatPullRequestsContent } from "../../../../../extensions/github-repositories/browser/api.ts";
+import type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
 } from "../../../../../src/gateway/control-ui-contract.js";
-import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
+import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
-import type { ChatPullRequestsProps } from "./chat-pull-request-shared.tsx";
-import { ChatPullRequestsContent } from "./chat-pull-requests-content.tsx";
+import { RepositoryPresentation } from "../../../test-helpers/repository-ci.test-support.tsx";
 
 export function pullRequest(
   overrides: Partial<ControlUiSessionPullRequest> = {},
@@ -63,22 +67,44 @@ export function sessionBranch(
   };
 }
 
+export type TestChatPullRequestsProps = ChatPullRequestsProps & { gateway?: ApplicationGateway };
+
 const views = new WeakMap<
   HTMLElement,
-  { update: (props: ChatPullRequestsProps) => void; unmount: () => void }
+  { update: (props: TestChatPullRequestsProps) => void; unmount: () => void }
 >();
 
-export function paintChatPullRequests(props: ChatPullRequestsProps, container: HTMLElement) {
+export function paintChatPullRequests(props: TestChatPullRequestsProps, container: HTMLElement) {
   const view = views.get(container);
   if (view) {
     view.update(props);
   } else {
-    let update!: (props: ChatPullRequestsProps) => void;
+    let update!: (props: TestChatPullRequestsProps) => void;
     const mounted = mountSolid(
       () => {
         const [current, setCurrent] = createSignal(props);
-        update = setCurrent;
-        return createComponent(ChatPullRequestsContent, merge(current));
+        let currentInput = props;
+        update = (next) => {
+          currentInput = next;
+          setCurrent(next);
+        };
+        return createComponent(RepositoryPresentation, {
+          get gateway() {
+            return current().gateway;
+          },
+          live: () => ({
+            sessionKey: currentInput.sessionKey ?? "",
+            sessionId: currentInput.sessionId,
+            presented:
+              typeof currentInput.presented === "object"
+                ? currentInput.presented.isPresented()
+                : (currentInput.presented ?? true),
+            pullRequest: currentInput.pullRequests[0],
+          }),
+          get children() {
+            return createComponent(ChatPullRequestsContent, merge(current));
+          },
+        });
       },
       { container },
     );

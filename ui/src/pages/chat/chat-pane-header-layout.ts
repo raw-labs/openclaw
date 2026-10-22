@@ -1,5 +1,4 @@
 import { merge, type Element } from "solid-js";
-import { chatPullRequestId } from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { t } from "../../i18n/index.ts";
@@ -70,8 +69,9 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
             ? { backTo: { area: "details" as const } }
             : {}),
           page: {
-            key: details.kind === "pull-request" ? details.id : details.kind,
-            title: details.kind === "publication" ? t("chat.pullRequests.publishPr") : title,
+            key:
+              details.kind === "contribution" ? `${details.pluginId}:${details.id}` : details.kind,
+            title,
             details,
           },
         },
@@ -92,19 +92,8 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
       },
       onOpenProgress: (source) =>
         openDetailsPage({ kind: "task-progress" }, t("sessionProgressCard.composerTitle"), source),
-      onOpenPullRequest: (request) =>
-        openDetailsPage({ kind: "pull-request", id: chatPullRequestId(request) }, request.title),
-      publication: chatProps.githubPublication
-        ? {
-            eligible: true,
-            onOpen: (source) =>
-              openDetailsPage(
-                { kind: "publication" },
-                t("chat.activityPills.publication.review"),
-                source,
-              ),
-          }
-        : undefined,
+      onOpenDetailsPage: (pluginId, page, source) =>
+        openDetailsPage({ kind: "contribution", pluginId, id: page.id }, page.title, source),
     };
   }
 
@@ -360,13 +349,6 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
               onGoalSubmit: chatProps.onGoalSubmit,
               getGoalSubmitError: () => state.chatError,
             },
-            pullRequests: this.repository.target
-              ? {
-                  snapshot: this.repository.target.store.get(this.repository.target.key),
-                  requestRefresh: () =>
-                    this.repository.target?.store.refresh(this.repository.target.key) ?? false,
-                }
-              : undefined,
           },
           mobile: this.mergedChrome && !this.onBackToSubagents,
           nativePresentation: this.sessionPresentation,

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { SessionPullRequestSnapshotStore } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type { GatewayPendingRequests } from "../../../packages/gateway-client/src/pending-request.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import { pendingSetRequests } from "./gateway-stores.test-support.ts";
@@ -7,10 +8,9 @@ import {
   createHello,
   flushSync,
 } from "./session-pull-requests.test-support.ts";
-import { sessionPullRequestsForGateway } from "./session-pull-requests.ts";
 
 let harness: ReturnType<typeof createGatewayHarness>;
-let store: ReturnType<typeof sessionPullRequestsForGateway>;
+let store: SessionPullRequestSnapshotStore;
 let owner: object;
 let pending: GatewayPendingRequests;
 let retired: string[];
@@ -20,7 +20,7 @@ const key = "agent:main:demo";
 beforeEach(() => {
   vi.useFakeTimers();
   harness = createGatewayHarness();
-  store = sessionPullRequestsForGateway(harness.gateway);
+  store = harness.repository.store;
   owner = {};
   ({ pending, retired, acknowledge } = pendingSetRequests(harness.request, "pull-requests"));
 });

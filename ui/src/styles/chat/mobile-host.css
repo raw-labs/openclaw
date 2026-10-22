@@ -175,8 +175,8 @@
     text-overflow: clip;
     white-space: nowrap;
 
-    /* Selected PR is the sole two-line heading exception. Keep the header height. */
-    &[data-details-route="pull-request"] {
+    /* Contributed page titles can be longer than fixed native labels. Keep the header height. */
+    &[data-details-route="contribution"] {
       display: -webkit-box;
       -webkit-box-orient: vertical;
       -webkit-line-clamp: 2;
@@ -363,13 +363,9 @@
     [data-details-page="sharing"],
     [data-details-page="session-access"],
     [data-details-page="task-progress"],
-    [data-details-page="pull-requests"],
-    [data-details-page="pull-request"],
-    [data-details-page="pull-request-checks"],
-    [data-details-page="pull-request-monitoring"],
+    [data-details-page="contribution"],
     [data-details-page="outputs"],
-    [data-details-page="versions"],
-    [data-details-page="publication"]
+    [data-details-page="versions"]
   )
   > .chat-mobile-details-page__body {
   padding: var(--mobile-content-inset) var(--mobile-content-inset) 24px;

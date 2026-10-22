@@ -332,7 +332,6 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
     pageState.refreshCurrentChat = async () => {
       await refreshPageChat(pageState);
     };
-    pageState.refreshSessionPullRequests = (options) => this.refreshSessionPullRequests(options);
     pageState.openSessionCompanion = (question) => this.openSessionCompanion(pageState, question);
     pageState.retireSessionCompanion = (key, agentId) =>
       this.sessionCompanionThreads.retire(key, agentId);
@@ -444,7 +443,6 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
         this.activateComposerPresentation();
       }),
     );
-    this.subscribeSessionRepositoryContext();
     chatState.addCleanup(
       this.context.gateway.subscribeEvents((event) => {
         const state = this.state;
@@ -721,7 +719,6 @@ export abstract class ChatPaneLifecycle extends ChatPaneSessionObservation {
     this.resetSessionSuggestions();
     this.resetSessionReactions();
     this.clearTypingActors();
-    this.resetSessionPullRequests();
     this.resetOlderMessagesViewport();
     this.nativeDraftCleanup?.();
     this.nativeDraftCleanup = null;

@@ -11,6 +11,7 @@ import { projectOwner } from "../../../lib/reactive/projection.ts";
 import { createSessionDiffSummary } from "../../../lib/session-diff-summary.ts";
 import { scopedSessionArtifactKey } from "../../../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import { ProcessesPanelData } from "../processes-panel-data.ts";
 import { ChatAuthorAvatar } from "./chat-author-avatar.ts";
 import { ChatDetailsBackground } from "./chat-details-background.tsx";
@@ -27,8 +28,6 @@ import type {
   ChatDetailsProps,
 } from "./chat-details-types.ts";
 import { ChatOutputsDesktop, getChatOutputsCount, hasChatDesktopOutputs } from "./chat-outputs.tsx";
-import { hasChatPullRequests } from "./chat-pull-requests.ts";
-import { ChatPullRequests, type ChatPullRequestsProps } from "./chat-pull-requests.tsx";
 import { syncSessionPanelInputs, useSessionPanel } from "./chat-session-panel.tsx";
 import { ChatSummaryAutomations } from "./chat-summary-automations.tsx";
 
@@ -65,7 +64,7 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
     const changes = createSessionDiffSummary(host.ownerDocument, () => host.isConnected);
     const syncDiffSummary = () =>
       changes.update({
-        gateway: host.props?.pullRequestsGateway,
+        gateway: host.props?.gateway,
         sessionKey: host.props?.sessionKey ?? "",
         agentId: host.props?.currentAgentId ?? undefined,
         sessionId: host.props?.selectedSession?.sessionId,
@@ -127,7 +126,27 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
       </Show>,
       <Show when={identity()} keyed>
         {(_identity) => {
-          const [pullRequestsOpen, setPullRequestsOpen] = createSignal(true);
+          const [contributionPresent, setContributionPresent] = createSignal(false, {
+            ownedWrite: true,
+          });
+          const hasChanges = () => contributionPresent() || Boolean(props.props?.onOpenSessionDiff);
+          // Retained plugin content keeps custody, but a newly arriving group starts open.
+          const [pullRequestsOpen, setPullRequestsOpen] = createSignal<boolean>((previous) =>
+            hasChanges() ? (previous ?? true) : true,
+          );
+          const repositoryControls = () => (
+            <PluginContributions
+              kind="session-context"
+              sessionKey={props.props?.sessionKey ?? ""}
+              agentId={props.props?.currentAgentId ?? undefined}
+              presented={active() && requestsExpanded()}
+              onPresenceChange={setContributionPresent}
+              compact={true}
+              dismissed={props.dismissed}
+              facts={props.props?.sessionHeaderFacts}
+              onOpenSessionDiff={props.props?.onOpenSessionDiff}
+            />
+          );
           const [sectionChoices, setSectionChoices] = createStore<
             Partial<Record<ChatDetailsDesktopSectionId, boolean>>
           >({});
@@ -261,48 +280,7 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                 : snapshot.dashboard,
             };
           });
-          const pullRequests = createMemo<ChatPullRequestsProps | null>(() => {
-            const snapshot = props.props;
-            if (!snapshot) {
-              return null;
-            }
-            const current = () => host.isConnected && props.presented && props.props === snapshot;
-            return {
-              pullRequests: snapshot.pullRequests ?? [],
-              gateway: snapshot.pullRequestsGateway,
-              sessionId: snapshot.pullRequestsSessionId,
-              sessionKey: scopedSessionArtifactKey(
-                snapshot.sessionKey,
-                snapshot.currentAgentId ?? undefined,
-              ),
-              presented: active() && requestsExpanded(),
-              dismissed: props.dismissed,
-              branch: snapshot.pullRequestsBranch,
-              branchDismissed: snapshot.pullRequestsBranchDismissed,
-              status: snapshot.pullRequestsStatus ?? "ready",
-              onDismiss: (pullRequest) => {
-                if (current()) {
-                  snapshot.onDismissPullRequest?.(pullRequest);
-                }
-              },
-              onDismissBranch: snapshot.onDismissPullRequestsBranch
-                ? (branch) => {
-                    if (current()) {
-                      snapshot.onDismissPullRequestsBranch?.(branch);
-                    }
-                  }
-                : undefined,
-              onOpenSessionDiff: snapshot.onOpenSessionDiff
-                ? () => {
-                    if (current()) {
-                      snapshot.onOpenSessionDiff?.();
-                    }
-                  }
-                : undefined,
-              publication: snapshot.githubPublication,
-              compact: true,
-            };
-          });
+
           return (
             <Show when={props.props}>
               <section
@@ -463,130 +441,120 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                 <Show when={!props.desktop}>
                   <Background details={props.props!} presented={active()} />
                 </Show>
-                <Show when={pullRequests()}>
-                  {(requests) => (
-                    <Show
-                      when={
-                        (!props.desktop && Boolean(props.props?.onOpenSessionDiff)) ||
-                        hasChatPullRequests(requests())
-                      }
-                    >
-                      <div
-                        class={[
-                          "chat-details__group",
-                          "chat-details__changes",
-                          {
-                            "chat-details__changes--summary":
-                              !props.desktop && Boolean(props.props?.onOpenSessionDiff),
-                          },
-                        ]}
+                <div
+                  hidden={!hasChanges()}
+                  class={[
+                    "chat-details__group",
+                    "chat-details__changes",
+                    {
+                      "chat-details__changes--summary":
+                        !props.desktop && Boolean(props.props?.onOpenSessionDiff),
+                    },
+                  ]}
+                >
+                  <Show
+                    when={!props.desktop}
+                    fallback={
+                      <ChatDetailsDesktopSection
+                        section="pull-requests"
+                        title={t("sessionHovercard.pullRequests")}
+                        expanded={requestsExpanded()}
+                        presented={active()}
+                        onExpandedChange={(expanded) => {
+                          setPullRequestsOpen(expanded);
+                          props.props?.desktopDisclosures?.onExpandedChange(
+                            "pull-requests",
+                            expanded,
+                          );
+                        }}
                       >
+                        {repositoryControls()}
+                      </ChatDetailsDesktopSection>
+                    }
+                  >
+                    <details
+                      data-details-group="pull-requests"
+                      open={pullRequestsOpen()}
+                      onToggle={(event) => {
+                        if (event.currentTarget.isConnected) {
+                          setPullRequestsOpen(event.currentTarget.open);
+                        }
+                      }}
+                    >
+                      <summary class="chat-details__caption">
+                        {t("chat.sessionDetails.changes")}
+
+                        <Icon name="chevronDown" />
+                      </summary>
+                      {repositoryControls()}
+                    </details>
+                  </Show>
+                  {props.props?.onOpenSessionDiff && !props.desktop && (
+                    <button
+                      type="button"
+                      class="chat-details__all-changes"
+                      aria-label={t("chat.sessionDetails.allChanges")}
+                      aria-description={summaryDescription()}
+                      title={summaryDescription()}
+                      onClick={openAllChanges}
+                    >
+                      <span>{t("chat.sessionDetails.allChanges")}</span>
+                      <span class="chat-details__change-summary" aria-hidden="true">
                         <Show
-                          when={!props.desktop}
+                          when={summary()}
                           fallback={
-                            <ChatDetailsDesktopSection
-                              section="pull-requests"
-                              title={t("sessionHovercard.pullRequests")}
-                              expanded={requestsExpanded()}
-                              presented={active()}
-                              onExpandedChange={(expanded) => {
-                                setPullRequestsOpen(expanded);
-                                props.props?.desktopDisclosures?.onExpandedChange(
-                                  "pull-requests",
-                                  expanded,
-                                );
-                              }}
-                            >
-                              <ChatPullRequests {...requests()} />
-                            </ChatDetailsDesktopSection>
+                            <span class="chat-details__change-status">
+                              {changesView.read().unavailable
+                                ? t("chat.sessionDetails.changesUnavailableShort")
+                                : "—"}
+                            </span>
                           }
                         >
-                          <details
-                            data-details-group="pull-requests"
-                            open
-                            onToggle={(event) => {
-                              if (event.currentTarget.isConnected) {
-                                setPullRequestsOpen(event.currentTarget.open);
-                              }
-                            }}
-                          >
-                            <summary class="chat-details__caption">
-                              {t("chat.sessionDetails.changes")}
-                              <span>{props.props?.pullRequests?.length || null}</span>
-                              <Icon name="chevronDown" />
-                            </summary>
-                            <ChatPullRequests {...requests()} />
-                          </details>
-                        </Show>
-                        {props.props?.onOpenSessionDiff && !props.desktop && (
-                          <button
-                            type="button"
-                            class="chat-details__all-changes"
-                            aria-label={t("chat.sessionDetails.allChanges")}
-                            aria-description={summaryDescription()}
-                            title={summaryDescription()}
-                            onClick={openAllChanges}
-                          >
-                            <span>{t("chat.sessionDetails.allChanges")}</span>
-                            <span class="chat-details__change-summary" aria-hidden="true">
-                              <Show
-                                when={summary()}
-                                fallback={
-                                  <span class="chat-details__change-status">
-                                    {changesView.read().unavailable
-                                      ? t("chat.sessionDetails.changesUnavailableShort")
-                                      : "—"}
-                                  </span>
-                                }
+                          {(value) => (
+                            <>
+                              <span class="chat-details__change-files">
+                                {fileCount(value().fileCount)}
+                              </span>
+                              <span
+                                class={[
+                                  "chat-details__change-lines",
+                                  {
+                                    "chat-details__change-lines--add": value().additions > 0,
+                                  },
+                                ]}
                               >
-                                {(value) => (
-                                  <>
-                                    <span class="chat-details__change-files">
-                                      {fileCount(value().fileCount)}
-                                    </span>
-                                    <span
-                                      class={[
-                                        "chat-details__change-lines",
-                                        {
-                                          "chat-details__change-lines--add": value().additions > 0,
-                                        },
-                                      ]}
-                                    >
-                                      +{compactNumber().format(value().additions)}
-                                    </span>
-                                    <span
-                                      class={[
-                                        "chat-details__change-lines",
-                                        {
-                                          "chat-details__change-lines--del": value().deletions > 0,
-                                        },
-                                      ]}
-                                    >
-                                      −{compactNumber().format(value().deletions)}
-                                    </span>
-                                    {value().truncated && (
-                                      <span class="chat-details__change-status">
-                                        {t("chat.sessionDetails.changesPartial")}
-                                      </span>
-                                    )}
-                                    {changesView.read().stale && (
-                                      <span class="chat-details__change-status">
-                                        {t("chat.sessionDetails.changesStale")}
-                                      </span>
-                                    )}
-                                  </>
-                                )}
-                              </Show>
-                            </span>
-                          </button>
-                        )}
-                      </div>
-                    </Show>
+                                +{compactNumber().format(value().additions)}
+                              </span>
+                              <span
+                                class={[
+                                  "chat-details__change-lines",
+                                  {
+                                    "chat-details__change-lines--del": value().deletions > 0,
+                                  },
+                                ]}
+                              >
+                                −{compactNumber().format(value().deletions)}
+                              </span>
+                              {value().truncated && (
+                                <span class="chat-details__change-status">
+                                  {t("chat.sessionDetails.changesPartial")}
+                                </span>
+                              )}
+                              {changesView.read().stale && (
+                                <span class="chat-details__change-status">
+                                  {t("chat.sessionDetails.changesStale")}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </Show>
+                      </span>
+                    </button>
                   )}
-                </Show>
+                </div>
                 <ChatSummaryAutomations
                   desktop={desktopAutomations()}
-                  gateway={props.props?.pullRequestsGateway}
+                  gateway={props.props?.gateway}
                   sessionKey={
                     props.props
                       ? scopedSessionArtifactKey(

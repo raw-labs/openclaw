@@ -1,5 +1,6 @@
 import type { ProjectsListResult } from "@openclaw/gateway-protocol";
 import type { ControlUiHost, ControlUiTextReferenceProvider } from "openclaw/plugin-sdk/control-ui";
+import type { RepositoryBrowserRuntime } from "./repository-runtime.ts";
 import { sessionGitHubRepository } from "./session-pull-request-presentation.ts";
 import { githubTextReferenceSnapshot } from "./text-reference-grammar.ts";
 import {
@@ -10,9 +11,10 @@ import {
 /** Alias facts are an observed read projection, not another PR store or RPC owner. */
 export function createGitHubTextReferenceProvider(
   host: ControlUiHost,
+  runtime: RepositoryBrowserRuntime,
 ): ControlUiTextReferenceProvider {
-  const reads = host.sessionPullRequests;
-  if (!reads || host.connection.readScopeKey === undefined) {
+  const reads = runtime;
+  if (host.connection.readScopeKey === undefined) {
     throw new Error("GitHub text references require the current host's scoped read services.");
   }
   const observers = new Set<() => void>();

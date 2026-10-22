@@ -15,17 +15,22 @@ import {
   type PluginPanelToggleDetail,
 } from "../components/panel-toggle-contract.ts";
 import { rememberSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
-import { i18n, t } from "../i18n/index.ts";
+import { i18n } from "../i18n/index.ts";
 import { redactToolDetail } from "../lib/browser-redact.ts";
 import { openExternalUrlSafe } from "../lib/open-external-url.ts";
+import { readSessionMethodAccess } from "../lib/session-method-access.ts";
 import { openPreferredApplicationSession } from "../lib/sessions/route-navigation.ts";
 import {
   normalizeSessionKeyForUiComparison,
   parseAgentSessionKey,
+  scopedSessionArtifactKey,
+  uiSessionEventMatches,
 } from "../lib/sessions/session-key.ts";
 import { createControlUiComponents } from "./control-ui-components.ts";
+import { createControlUiNativeHost } from "./control-ui-native-host.tsx";
+import { createControlUiPresentationHost } from "./control-ui-presentation-host.tsx";
+import { createControlUiRequests } from "./control-ui-requests.ts";
 import type { ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
-import { createControlUiSessionPullRequestReads } from "./control-ui-session-pull-requests.ts";
 
 export function createControlUiPluginHost(
   getContext: () => ApplicationContext,
@@ -103,17 +108,9 @@ export function createControlUiPluginHost(
       return i18n.getLocale();
     },
     redact: redactToolDetail,
-    sessionPullRequests: createControlUiSessionPullRequestReads({
-      current,
-      isCurrent: () => runtime.isCurrent(owner),
-      retain,
-    }),
-    presentation: {
-      translate(key, params) {
-        current();
-        return t(key, params);
-      },
-    },
+    requests: createControlUiRequests({ current, signal: owner.abort.signal, retain }),
+    native: createControlUiNativeHost(owner.abort.signal),
+    presentation: createControlUiPresentationHost(current, owner.abort.signal),
     components: createControlUiComponents({
       current,
       signal: owner.abort.signal,
@@ -175,6 +172,61 @@ export function createControlUiPluginHost(
       return retain(() => stops.forEach((stop) => stop()));
     },
     sessions: {
+      methodAccess: (session, request) =>
+        readSessionMethodAccess(current().gateway.snapshot, { ...request, session }).allowed,
+      attachOperation: (row, factory) =>
+        current().sessions.retainedOperations.attach(row, factory, owner.descriptor.pluginId),
+      artifactKey: ({ sessionKey, agentId }) => scopedSessionArtifactKey(sessionKey, agentId),
+      agentId: (key) => parseAgentSessionKey(key)?.agentId,
+      matches: ({ sessionKey, agentId }, eventKey, eventAgentId) => {
+        const snapshot = current().gateway.snapshot;
+        return uiSessionEventMatches(
+          {
+            assistantAgentId: agentId ?? snapshot.assistantAgentId,
+            hello: snapshot.hello,
+            sessionKey,
+          },
+          eventKey,
+          eventAgentId,
+        );
+      },
+      captureSummary: ({ sessionKey, agentId }) => {
+        const context = current();
+        const snapshot = context.gateway.snapshot;
+        // The store uses owner-qualified artifact keys; the native roster owns raw row keys.
+        const artifact = scopedSessionArtifactKey(sessionKey, agentId);
+        const rosterAgent = context.sessions.state.agentId;
+        const row = context.sessions.state.result?.sessions.find(
+          (candidate) =>
+            scopedSessionArtifactKey(
+              candidate.key,
+              candidate.agentId ?? rosterAgent ?? undefined,
+            ) === artifact,
+        );
+        const selected = scopedSessionArtifactKey(
+          snapshot.sessionKey,
+          snapshot.assistantAgentId ?? undefined,
+        );
+        const summaryKey = row?.key ?? (selected === artifact ? snapshot.sessionKey : sessionKey);
+        const rawOwner = !parseAgentSessionKey(summaryKey) ? rosterAgent : undefined;
+        const scope = context.sessions.captureConnectionScope();
+        const epoch = context.sessions.capturePullRequestEpoch(summaryKey);
+        const live = () =>
+          !owner.abort.signal.aborted &&
+          runtime.isCurrent(owner) &&
+          getContext().sessions === context.sessions &&
+          scope !== null &&
+          context.sessions.isConnectionScopeCurrent(scope) &&
+          (rawOwner === undefined || context.sessions.state.agentId === rawOwner);
+        return {
+          read: () => (live() ? context.sessions.pullRequestSummary(summaryKey) : undefined),
+          publish: (summary) => {
+            if (live()) {
+              context.sessions.setPullRequestSummary(summaryKey, summary, epoch);
+            }
+          },
+        };
+      },
       get rows() {
         return structuredClone(current().sessions.state.result?.sessions ?? []);
       },

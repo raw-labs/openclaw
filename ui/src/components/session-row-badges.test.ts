@@ -11,7 +11,7 @@ import "./tooltip.ts";
 let container: HTMLDivElement;
 let view: ReturnType<typeof mountSolid> | undefined;
 
-function renderBadges(params: SessionRowBadgesParams) {
+function renderBadges(params: SessionRowBadgesParams & { accessories?: HTMLElement }) {
   view?.unmount();
   view = mountSolid(() => createComponent(SessionRowBadges, params), { container });
 }
@@ -97,25 +97,6 @@ describe("session row placement badges", () => {
     expect(indicator?.querySelector("rect")).toBeNull();
   });
 
-  it.each([
-    { state: "open", numbers: [111532], label: "#111532 · Open" },
-    { state: "draft", numbers: [107302], label: "#107302 · Draft" },
-    {
-      state: "merged",
-      numbers: [111751, 111772],
-      label: "2 pull requests · #111751, #111772 · Merged",
-    },
-  ] as const)(
-    "renders catalog pull request metadata for $state threads",
-    ({ state, numbers, label }) => {
-      renderBadges({ pullRequest: { numbers: [...numbers], state } });
-      const indicator = badge("pull-request");
-      expectLabel(indicator, label);
-      expect(indicator?.getAttribute("data-pull-request-state")).toBe(state);
-      expect(indicator?.querySelector("svg")).not.toBeNull();
-    },
-  );
-
   it("renders a warning-colored approval-needed indicator", () => {
     renderBadges({ hasApproval: true });
 
@@ -124,10 +105,14 @@ describe("session row placement badges", () => {
     expect(indicator?.querySelector("svg")).not.toBeNull();
   });
 
-  it("keeps child placement badges hidden while showing PR and approval", () => {
+  it("keeps child placement badges hidden while showing contributed PR and approval", () => {
     renderBadges({
       isChild: true,
-      pullRequest: { numbers: [111532], state: "open" },
+      accessories: (() => {
+        const node = document.createElement("span");
+        node.className = "session-row-badge session-row-badge--pull-request";
+        return node;
+      })(),
       hasApproval: true,
       placementState: "active",
     });

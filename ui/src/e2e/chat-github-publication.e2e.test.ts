@@ -1,7 +1,7 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Locator } from "playwright";
 import { expect, it } from "vitest";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type { ControlUiMockPresenceUser } from "../test-helpers/control-ui-e2e-contract.ts";
 import {
   controlUiBundledSettingsStorageKey,
@@ -22,6 +22,7 @@ import {
   publicationOptions,
   sharedPublisher,
   showPublicationBranch,
+  waitForWatchedSessionKey,
 } from "./chat-github-publication.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
@@ -104,6 +105,49 @@ async function openPublicationPage(
 }
 
 suite.define(() => {
+  it("retires a published receipt when the local branch changes during remote backoff", async () => {
+    const { page, gateway } = await openPublicationPage(
+      {
+        methodResponses: {
+          "sessions.github.publish": {
+            ...published(
+              "8c698e8a-bdc7-4927-a0f2-73a842c2d7b7",
+              "openclaw/openclaw",
+              "feature/old",
+            ),
+            publisher: sharedPublisher,
+          },
+        },
+      },
+      "feature/old",
+    );
+    await publicationAction(page, "Publish PR").click();
+    const openPr = page.getByRole("link", { name: "Open PR", exact: true });
+    await openPr.waitFor();
+    const key = await waitForWatchedSessionKey(gateway);
+    // Local Git facts remain fresh even while the remote PR inventory is backed off.
+    await gateway.emitGatewayEvent("controlUi.sessionPullRequests.changed", {
+      sessions: {
+        [key]: {
+          pullRequests: [],
+          branch: {
+            owner: "openclaw",
+            repo: "openclaw",
+            branch: "feature/new",
+            additions: 7,
+            deletions: 2,
+          },
+          rateLimited: true,
+          status: "rate-limited",
+        },
+      },
+    });
+    await expect.poll(() => openPr.count()).toBe(0);
+    await showPublicationBranch(gateway, "feature/new");
+    await expect.poll(() => publicationAction(page, "Publish PR").isEnabled()).toBe(true);
+    expect(await gateway.getRequests("sessions.github.publish")).toHaveLength(1);
+  });
+
   it.each(["global", "per-sender"] as const)(
     "carries the selected agent through the complete %s publication flow",
     async (scope) => {

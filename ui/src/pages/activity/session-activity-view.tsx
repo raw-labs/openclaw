@@ -37,7 +37,7 @@ import {
   scopedSessionArtifactKey,
 } from "../../lib/sessions/session-key.ts";
 import { activityRunInspectorHref } from "./run-inspector-model.ts";
-import { ActivitySessionGit } from "./session-activity-git.tsx";
+import { ActivitySessionAccessories } from "./session-activity-accessories.tsx";
 import { ActivitySessionMedia } from "./session-activity-media.tsx";
 import { PeopleControl } from "./session-activity-people.tsx";
 import { renderSessionActivityPulse as SessionActivityPulse } from "./session-activity-pulse.tsx";
@@ -276,7 +276,7 @@ function SessionLinkView(props: {
           </div>
         ) : undefined}
       </div>
-      <ActivitySessionGit
+      <ActivitySessionAccessories
         context={context}
         sessionKey={scopedSessionArtifactKey(props.row.key, agentId())}
         agentId={agentId()}

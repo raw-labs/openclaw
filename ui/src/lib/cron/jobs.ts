@@ -3,7 +3,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "../../../../src/cron/service/list-page-validation.js";
+} from "../../../../packages/gateway-protocol/src/cron-list-page-validation.js";
 import type { CronCompactJob, CronJob, CronJobsListResult } from "../../api/types.ts";
 import { formatUiError } from "../format-error.ts";
 import type { CronJobsState } from "./types.ts";

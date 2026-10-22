@@ -1,16 +1,16 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Locator, Page } from "playwright";
 import { expect, it } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type { SessionParticipant } from "../../../packages/gateway-protocol/src/schema/session-participant.js";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { reconnectMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   captureUiProof,
   chatSessionListResponse,
   controlUiSessionUrl,
   createChatFlowE2eSuite,
-  installMockGateway,
   pauseVirtualClock,
 } from "./chat-flow.test-support.ts";
 import { selectAllSidebarSessions } from "./sidebar-navigation.test-support.ts";

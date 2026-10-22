@@ -1,4 +1,3 @@
-import { projectSidebarBadge } from "../../../extensions/github-repositories/read-facts-api.ts";
 // Deep import on purpose: the protocol barrel carries typebox and every
 // schema, which must stay out of the Control UI startup bundle.
 import { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/src/schema/session-placement-state.js";
@@ -6,7 +5,6 @@ import type {
   SessionPlacementDiskSpace,
   SessionPlacementMachine,
 } from "../../../packages/gateway-protocol/src/schema/session-placement.js";
-import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
 import { sessionMachineParts } from "./session-machine.ts";
@@ -18,8 +16,6 @@ export { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/
 export type SessionRowBadgesParams = {
   isChild?: boolean;
   incognito?: boolean;
-  pullRequest?: SessionCatalogPullRequestSummary;
-  pullRequestCount?: number;
   hasApproval?: boolean;
   outboxAttentionCount?: number;
   hasComposerDraft?: boolean;
@@ -33,18 +29,9 @@ export type SessionRowBadgesParams = {
 
 export type SessionRowBadge = {
   label: string;
-  icon:
-    | "incognito"
-    | "gitMerge"
-    | "gitPullRequest"
-    | "gitPullRequestDraft"
-    | "gitPullRequestClosed"
-    | "alertTriangle"
-    | "pencil"
-    | "globe";
+  icon: "incognito" | "alertTriangle" | "pencil" | "globe";
   modifier: string;
   count?: number;
-  pullRequestState?: SessionCatalogPullRequestSummary["state"];
   placementState?: SessionPlacementState;
   diskSpaceStatus?: SessionPlacementDiskSpace["status"];
   workspaceConflictCount?: number;
@@ -119,16 +106,6 @@ export function resolveSessionRowBadges(
       label: translate("sessionsView.incognito"),
       icon: "incognito",
       modifier: "incognito",
-    });
-  }
-  const pullRequest = projectSidebarBadge(params.pullRequest, params.pullRequestCount, translate);
-  if (pullRequest) {
-    badges.push({
-      label: pullRequest.label,
-      icon: pullRequest.icon,
-      count: pullRequest.count,
-      modifier: "pull-request",
-      pullRequestState: pullRequest.state,
     });
   }
   if (params.hasApproval) {

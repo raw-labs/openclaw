@@ -1,17 +1,24 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import {
+  createCiAutomationSpec,
+  createCiAutomationApi,
+  CI_AUTOMATION_OPTIONS,
+  type CiAutomationOption,
+  type CiAutomationTarget,
+} from "../../../extensions/github-repositories/browser/api.ts";
+const digest = (value: string) => bytesToHex(sha256(new TextEncoder().encode(value)));
+const {
+  ciAutomationDeclarationKey: declarationKeyFor,
+  ciAutomationJobMatches: matchesJob,
+  ciAutomationJobSpec: jobSpec,
+} = createCiAutomationSpec(digest);
+const { loadCiAutomationJobs, setCiAutomationEnabled } = createCiAutomationApi(digest);
 import { Value } from "typebox/value";
 import { beforeEach, expect, it, vi } from "vitest";
 import { CronAddParamsSchema } from "../../../packages/gateway-protocol/src/schema/cron.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { CronJob, CronJobsListResult } from "../api/types.ts";
-import {
-  CI_AUTOMATION_OPTIONS,
-  ciAutomationDeclarationKey as declarationKeyFor,
-  ciAutomationJobMatches as matchesJob,
-  ciAutomationJobSpec as jobSpec,
-  type CiAutomationOption,
-  type CiAutomationTarget,
-} from "./session-pr-automation-spec.ts";
-import { loadCiAutomationJobs, setCiAutomationEnabled } from "./session-pr-automation.ts";
 
 const target: CiAutomationTarget = {
   agentId: "main",

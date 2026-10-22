@@ -1,13 +1,13 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChatPullRequestsProps } from "../../../../../extensions/github-repositories/browser/api.ts";
 import {
   paintChatPullRequests,
   clearChatPullRequests,
   publication,
   sessionBranch,
 } from "./chat-pull-requests.test-support.ts";
-import type { ChatPullRequestsProps } from "./chat-pull-requests.tsx";
 
 describe("failed publication account discovery", () => {
   let container: HTMLDivElement;

@@ -1,13 +1,32 @@
 /** Browser-only contract for trusted native Control UI plugins. No host implementation imports. */
+
 import type {
   AgentSummary,
   BoardGetParams,
   SessionRow,
   SessionsListParams,
+  SessionCatalogPullRequestSummary,
 } from "@openclaw/gateway-protocol";
-import type { ControlUiSessionPullRequestSnapshot } from "../gateway/control-ui-contract.js";
 import type { ControlUiComponents } from "./control-ui-components.js";
 import type { ControlUiPresentationHost } from "./control-ui-presentation.js";
+import type { ControlUiRequests } from "./control-ui-requests.js";
+import type {
+  ControlUiSessionOperationBinding,
+  ControlUiSessionOperationFactory,
+} from "./control-ui-session-operation.js";
+
+export type {
+  ControlUiRequests,
+  ControlUiCapturedRequest,
+  ControlUiSetSync,
+  ControlUiSetSyncOptions,
+} from "./control-ui-requests.js";
+export type {
+  ControlUiSessionOperationOwner,
+  ControlUiSessionOperation,
+  ControlUiSessionOperationFactory,
+  ControlUiSessionOperationBinding,
+} from "./control-ui-session-operation.js";
 export { createSessionHeaderLink } from "./control-ui-session-link.js";
 export type {
   ControlUiAgentPickerProps,
@@ -71,13 +90,6 @@ export type ControlUiSessionListSubscription = {
   /** Fetch again; rejects on failure or when this query's lifetime has ended. */
   refresh: () => Promise<void>;
   dispose: ControlUiDisposer;
-};
-
-/** Borrowed presentation facts from the host's existing connection-scoped read owner. */
-export type ControlUiSessionPullRequestReads = {
-  readonly apiVersion: 1;
-  read: (target: BoardGetParams) => ControlUiSessionPullRequestSnapshot | undefined;
-  observe: (target: BoardGetParams, changed: () => void) => ControlUiDisposer;
 };
 
 export type ControlUiAgent = Readonly<AgentSummary>;
@@ -231,10 +243,49 @@ export type ControlUiTextReferenceProvider = {
   ) => ControlUiDisposer;
 };
 
+export type ControlUiSessionHeaderFacts = {
+  /** Recheck pane-held authority before acting, including deferred projections. */
+  readCurrent?: () => ControlUiSessionHeaderFacts | undefined;
+  session?: ControlUiSession;
+  participationBlocked: boolean;
+  hasActiveRun: boolean;
+  workspaceReady: boolean;
+  workspaceConflict: boolean;
+};
+export type ControlUiAccessoryProps = BoardGetParams & {
+  /** Existing physical checkout identity; absent for catalog-only session facts. */
+  worktreeId?: string;
+  facts?: ControlUiSessionHeaderFacts;
+  /** Opaque facts produced and recognized by the contributing plugin. */
+  artifact?: unknown;
+  /** Report logical content presence; the containing slot stays mounted to receive future facts. */
+  onPresenceChange?: (present: boolean) => void;
+  /** Bracket asynchronous child rendering so the host preserves focus and overlay geometry. */
+  onContentChange?: (phase: "before" | "after") => void;
+  compact?: boolean;
+  dismissed?: boolean;
+  onOpenSessionDiff?: () => void;
+  /** Opaque contributed page within the native mobile Details history. */
+  detailsPage?: string;
+  /** Navigation only; the host retains Root, Back, focus and presentation ownership. */
+  onOpenDetailsPage?: (page: { id: string; title: string }, source?: HTMLElement) => void;
+  onDetailsBack?: () => void;
+  /** Contribute controls to the containing surface's existing keyboard traversal. */
+  registerControls?: (read: () => readonly HTMLElement[]) => ControlUiDisposer;
+};
 export type ControlUiAccessory = {
   id: string;
-  placement: "session-header";
-  mount: ControlUiView<BoardGetParams>;
+  placement:
+    | "session-header"
+    | "session-context"
+    | "session-row"
+    | "session-hovercard"
+    | "session-activity"
+    | "session-summary"
+    | "session-mobile-root"
+    | "session-mobile-page"
+    | "session-mobile-activity";
+  mount: ControlUiView<ControlUiAccessoryProps>;
 };
 
 export type ControlUiWidget = {
@@ -267,8 +318,9 @@ export type ControlUiHost = {
   redact: (text: string) => string;
   readonly connection: ControlUiConnection;
   readonly components: ControlUiComponents;
-  readonly sessionPullRequests?: ControlUiSessionPullRequestReads;
-  readonly presentation?: Pick<ControlUiPresentationHost, "translate">;
+  readonly requests: ControlUiRequests;
+  readonly native?: import("./control-ui-native.js").ControlUiNativeHost;
+  readonly presentation?: ControlUiPresentationHost;
   /**
    * Native modules share the operator's authenticated Gateway authority.
    * The Gateway enforces connection scopes, not a per-plugin RPC allowlist.
@@ -283,6 +335,34 @@ export type ControlUiHost = {
   onEvent: (event: string, listener: (payload: unknown) => void) => ControlUiDisposer;
   subscribe: (listener: () => void) => ControlUiDisposer;
   sessions: {
+    methodAccess?: (
+      row: ControlUiSession,
+      request: {
+        method: string;
+        requiredScope?:
+          | "operator.admin"
+          | "operator.read"
+          | "operator.write"
+          | "operator.sessions.read"
+          | "operator.sessions.write"
+          | "operator.approvals"
+          | "operator.pairing";
+        sessionScope?: boolean;
+      },
+    ) => boolean;
+    attachOperation?: <TBinding extends object>(
+      row: ControlUiSession,
+      factory: ControlUiSessionOperationFactory<TBinding>,
+    ) => ControlUiSessionOperationBinding<TBinding> | null;
+    artifactKey: (target: BoardGetParams) => string;
+    agentId: (key: string) => string | undefined;
+    matches: (target: BoardGetParams, eventKey: string, eventAgentId?: string | null) => boolean;
+    /** Captures the roster writer's epoch BEFORE the read. A retired sink cannot publish. */
+    captureSummary: (target: BoardGetParams) => {
+      read: () => SessionCatalogPullRequestSummary | undefined;
+      publish: (summary: SessionCatalogPullRequestSummary | undefined) => void;
+    };
+
     /** The current application roster may be filtered and paginated. */
     readonly rows: readonly ControlUiSession[];
     readonly selectedKey: string;
@@ -419,4 +499,17 @@ export type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
+  ControlUiSessionPullRequests,
+  ControlUiSessionPullRequestsChanged,
+  ControlUiSessionPullRequestCheck,
+  ControlUiSessionPullRequestCheckStep,
+  ControlUiSessionPullRequestCheckDetails,
 } from "../gateway/control-ui-contract.js";
+
+export {
+  CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
+  CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
+} from "../shared/control-ui-session-pull-request-contract.js";
+
+export { readSessionMessageDisplayContent } from "../../packages/gateway-client/src/session-projection-message-content.js";
+export { readSessionProjectionFinalMessageIdentity } from "../../packages/gateway-client/src/session-projection-final-identity.js";

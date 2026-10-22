@@ -1,7 +1,16 @@
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
+import {
+  createRepositoryBrowserRuntime,
+  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+} from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type { GatewayBrowserClient, GatewayEventListener, GatewayHelloOk } from "../api/gateway.ts";
 import type { ApplicationGateway, ApplicationGatewaySnapshot } from "../app/gateway.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "./session-pull-requests.ts";
+import { createControlUiRequests } from "../plugins/control-ui-requests.ts";
+import {
+  scopedSessionArtifactKey,
+  parseAgentSessionKey,
+  uiSessionEventMatches,
+} from "./sessions/session-key.ts";
 
 export function createHello(scopes: string[] = ["operator.read"]): GatewayHelloOk {
   return {
@@ -62,7 +71,48 @@ export function createGatewayHarness() {
     start: vi.fn(),
     stop: vi.fn(),
   } as ApplicationGateway;
+  const activation = new AbortController();
+  const retained = new Set<() => void>();
+  const requests = createControlUiRequests({
+    current: () => ({ gateway }),
+    signal: activation.signal,
+    retain(dispose) {
+      retained.add(dispose);
+      return () => {
+        retained.delete(dispose);
+        dispose();
+      };
+    },
+  });
+  const repository = createRepositoryBrowserRuntime({
+    requests,
+    signal: activation.signal,
+    sessions: {
+      artifactKey: ({ sessionKey, agentId }) => scopedSessionArtifactKey(sessionKey, agentId),
+      agentId: (key) => parseAgentSessionKey(key)?.agentId,
+      matches: ({ sessionKey, agentId }, eventKey, eventAgentId) =>
+        uiSessionEventMatches(
+          {
+            sessionKey,
+            assistantAgentId: agentId ?? gateway.snapshot.assistantAgentId,
+            hello: gateway.snapshot.hello,
+          },
+          eventKey,
+          eventAgentId,
+        ),
+      captureSummary: () => ({ read: () => undefined, publish() {} }),
+    } as Pick<
+      import("../../../src/plugin-sdk/control-ui.ts").ControlUiHost["sessions"],
+      "artifactKey" | "agentId" | "matches" | "captureSummary"
+    >,
+  });
+  onTestFinished(() => {
+    activation.abort();
+    retained.forEach((dispose) => dispose());
+  });
   return {
+    repository,
+    requests,
     gateway,
     request,
     subscribeSnapshots,

@@ -14,7 +14,6 @@ import {
   type SessionReconcileOptions,
 } from "./reconcile.ts";
 import type { createSessionDeletions } from "./session-deletions.ts";
-import type { createSessionGitHubPublication } from "./session-github-publication.ts";
 import {
   areUiSessionKeysEquivalent,
   isUiGlobalSessionKey,
@@ -25,6 +24,7 @@ import {
 import type { createSessionMutations } from "./session-mutations.ts";
 import { optimisticSessionRowFields, type SessionPatchRowFact } from "./session-pending-rows.ts";
 import type { createSessionPermissionProjection } from "./session-permission-projection.ts";
+import type { createSessionRetainedOperations } from "./session-retained-operations.ts";
 import type { createSessionRosterRefresh } from "./session-roster-refresh.ts";
 import { sessionChangedSnapshots, type SessionChangedEventInfo } from "./session-row-reconcile.ts";
 import type { createSessionThinkingClaims } from "./session-thinking-claims.ts";
@@ -62,8 +62,8 @@ type Host = {
     ReturnType<typeof createSessionDeletions>,
     "acceptsGeneration" | "deletionState" | "observe"
   >;
-  githubPublication: Pick<
-    ReturnType<typeof createSessionGitHubPublication>,
+  retainedOperations: Pick<
+    ReturnType<typeof createSessionRetainedOperations>,
     "observeRows" | "observeEvent"
   >;
   roster: Pick<
@@ -270,7 +270,7 @@ export function createSessionReconciliation(host: Host) {
         : undefined);
     const notify = observed ? observation?.stage(observed, historyAgentId) : undefined;
     if (observed) {
-      host.githubPublication.observeRows([observed], historyAgentId);
+      host.retainedOperations.observeRows([observed], historyAgentId);
     }
     const agentId = options?.resultAgentId?.trim()
       ? normalizeAgentId(options.resultAgentId)
@@ -378,7 +378,7 @@ export function createSessionReconciliation(host: Host) {
                 state.agentId,
                 owned.agentId,
               );
-              host.githubPublication.observeRows([accepted], owned.agentId);
+              host.retainedOperations.observeRows([accepted], owned.agentId);
               if (result !== state.result) {
                 host.publish({ ...state, result: host.decorate(result) });
               }
@@ -410,7 +410,7 @@ export function createSessionReconciliation(host: Host) {
       roster,
       connection,
       deletions,
-      githubPublication,
+      retainedOperations,
       permissions,
       mutations,
       thinkingClaims,
@@ -440,7 +440,7 @@ export function createSessionReconciliation(host: Host) {
     }
     const previous = state.result;
     const invalidationReason = normalizeOptionalString(asNullableRecord(payload)?.reason);
-    githubPublication.observeEvent(payload);
+    retainedOperations.observeEvent(payload);
     const selectedSessionKey = host.snapshot().sessionKey?.trim();
     const archivesSelectedSession =
       eventInfo?.archived === true &&

@@ -8,6 +8,7 @@ import { useScrollState } from "../../components/solid/scroll-state.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import type { PresentationValue } from "../../lib/presentation.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
+import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
 import { PaneSubagentStop } from "./chat-pane-header-view.tsx";
 import { usePanePresentation } from "./chat-pane-presentation.ts";
 import { SidebarRegionView } from "./chat-pane-sidebar-view.tsx";
@@ -157,21 +158,11 @@ function PaneSubagentHeader(props: {
 function PaneHeaderContent(props: {
   header: ChatPaneHeaderPresentation;
   notice?: Parameters<typeof renderChatTopbarNotices>[0];
-  sessionKey: string;
-  agentId: string;
-  presentation: PresentationValue;
 }) {
-  const presented = usePanePresentation(() => props.presentation);
   return (
     <>
       <PaneHeaderView {...props.header} />
       {props.notice ? renderChatTopbarNotices(props.notice) : undefined}
-      <openclaw-plugin-contributions
-        prop:kind="session-header"
-        prop:sessionKey={props.sessionKey}
-        prop:agentId={props.agentId}
-        prop:presented={presented()}
-      />
     </>
   );
 }
@@ -214,6 +205,13 @@ function PaneContent(props: { data: PaneLayoutData; questions: ComposerQuestions
   const background = <SessionBackgroundView {...props.data.background} />;
   return (
     <>
+      <PluginContributions
+        kind="session-header"
+        sessionKey={props.data.primary.chat.sessionKey}
+        agentId={props.data.primary.chat.currentAgentId ?? undefined}
+        facts={props.data.primary.chat.sessionHeaderFacts}
+        presented={presented()}
+      />
       <SidebarRegionView
         {...props.data.region}
         header={header}

@@ -1,17 +1,14 @@
 import type { Page } from "playwright";
 import { expect, it } from "vitest";
+import type { GitHubPublicationOptions } from "../../../extensions/github-repositories/browser/api.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type {
   SessionGitHubPublicationResult,
   SessionGitHubStatusResult,
 } from "../../../packages/gateway-protocol/src/schema/session-github-publication.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
-import type { GitHubPublicationOptions } from "../lib/sessions/github-publication-owner.ts";
-import {
-  controlUiSessionUrl,
-  installMockGateway,
-  reconnectMockGateway,
-} from "../test-helpers/control-ui-e2e.ts";
+import { controlUiSessionUrl, reconnectMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiSessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import { openChatDetails, openDetailsPullRequests } from "./chat-details.test-support.ts";
 import { publicationAction } from "./chat-github-publication-accounts.test-support.ts";
 import { publicationMethods } from "./chat-github-publication.test-support.ts";

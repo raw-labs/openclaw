@@ -1,11 +1,13 @@
 import { execFile } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { promisify } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Page } from "playwright";
 import { createServer, type ViteDevServer } from "vite";
 import { expect, it, vi } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { replaceSessionEntrySync } from "../../../src/config/sessions/session-accessor.ts";
 import { GatewayClient, isGatewayProtocolResponseError } from "../../../src/gateway/client.ts";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.ts";
@@ -13,8 +15,7 @@ import type { GatewayServer } from "../../../src/gateway/server-public.ts";
 import { racePromiseWithAbortSignal } from "../../../src/infra/abort-signal.ts";
 import { loadOrCreateDeviceIdentity } from "../../../src/infra/device-identity.ts";
 import { createDeferredCore } from "../../../src/shared/deferred.ts";
-import { readResidentUserProfileId } from "../../../src/state/user-profile-list.ts";
-import { linkEmail, setUserProfileRole } from "../../../src/state/user-profile-writes.worker.ts";
+import { setUserProfileRole } from "../../../src/state/user-profile-writes.worker.ts";
 import { ensureProfileForEmail } from "../../../src/state/user-profiles.ts";
 import {
   createOpenClawTestState,
@@ -22,7 +23,6 @@ import {
 } from "../../../src/test-utils/openclaw-test-state.ts";
 import { getFreePort } from "../../../src/test-utils/ports.ts";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { evaluateControlUiContext } from "../test-helpers/control-ui-e2e-context.ts";
 import { controlUiSessionUrl } from "../test-helpers/control-ui-e2e.ts";
 import {
@@ -178,7 +178,7 @@ suite.define(() => {
             OPENCLAW_SKIP_CRON: "1",
             OPENCLAW_SKIP_GMAIL_WATCHER: "1",
             OPENCLAW_SKIP_PROVIDERS: "1",
-            OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
+            OPENCLAW_TEST_MINIMAL_GATEWAY: "0",
             VITEST: "1",
           },
         });
@@ -190,7 +190,8 @@ suite.define(() => {
           setUserProfileRole(profile.id, "reader");
         }
         const port = await getFreePort();
-        const origin = new URL(suite.server.baseUrl).origin;
+        const proxyPort = await getFreePort();
+        const origin = `http://127.0.0.1:${proxyPort}`;
         const trustedProxy = {
           allowLoopback: true,
           allowUsers: [viewerEmail, retiringEmail],
@@ -199,6 +200,14 @@ suite.define(() => {
           userHeader: "x-forwarded-user",
         };
         await state.writeConfig({
+          plugins: {
+            allow: ["github-repositories"],
+            // Explicit source selection keeps plugin SDK and native source Gateway owners together.
+            load: {
+              paths: [path.resolve(import.meta.dirname, "../../../extensions/github-repositories")],
+            },
+            entries: { "github-repositories": { enabled: true } },
+          },
           agents: {
             defaults: {
               workspace: state.workspaceDir,
@@ -210,7 +219,11 @@ suite.define(() => {
             port,
             auth: { mode: "trusted-proxy", trustedProxy },
             trustedProxies: ["127.0.0.1", "::1"],
-            controlUi: { enabled: false, allowedOrigins: [origin] },
+            controlUi: {
+              enabled: true,
+              root: path.resolve(import.meta.dirname, "../../../dist/control-ui"),
+              allowedOrigins: [origin],
+            },
             roles: {
               default: "reader",
               definitions: {
@@ -295,11 +308,22 @@ suite.define(() => {
           throw new Error(`Unexpected synthetic GitHub request: ${url.pathname}`);
         });
         restoreFetch = () => transport.mockRestore();
-        const { startGatewayServer } = await import("../../../src/gateway/server.js");
+        // Plugin SDK imports use Node native loading; keep the Gateway in that same owner graph.
+        const requireNative = createRequire(import.meta.url);
+        const { startGatewayServer }: typeof import("../../../src/gateway/server.js") =
+          requireNative("../../../src/gateway/server.ts");
+        // Post-start identity publication and reads share the Gateway's admitted resident catalog.
+        const { linkEmail }: typeof import("../../../src/state/user-profile-writes.worker.ts") =
+          requireNative("../../../src/state/user-profile-writes.worker.ts");
+        const {
+          readResidentUserProfileId,
+        }: typeof import("../../../src/state/user-profile-list.ts") = requireNative(
+          "../../../src/state/user-profile-list.ts",
+        );
         gateway = await startGatewayServer(port, {
           auth: { mode: "trusted-proxy", trustedProxy },
           bind: "loopback",
-          controlUiEnabled: false,
+          controlUiEnabled: true,
           sidecarStartup: "defer",
         });
         const forwarded = (email: string) => ({
@@ -316,7 +340,8 @@ suite.define(() => {
           logLevel: "error",
           server: {
             host: "127.0.0.1",
-            port: 0,
+            port: proxyPort,
+            strictPort: true,
             proxy: {
               "/retiring": {
                 target: `http://127.0.0.1:${port}`,
@@ -434,13 +459,8 @@ suite.define(() => {
                 }
               });
             });
-            const url = new URL(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
-            url.hash = new URLSearchParams({ gatewayUrl: browserGatewayUrl.href }).toString();
-            await page.goto(url.href);
-            await page
-              .locator("openclaw-gateway-url-confirmation")
-              .getByRole("button", { name: `Switch to ${browserGatewayUrl.host}`, exact: true })
-              .click();
+            // Native browser plugins use the actual Gateway-served same-origin UI and assets.
+            await page.goto(controlUiSessionUrl(proxyUrl, sessionKey));
             // Finish this browser's initial subscription load before timing the rendered PR state.
             expect(await waitFor(initialDelivery)).toEqual(expectedDelivery(original));
             const pane = page.locator("openclaw-chat-pane.chat-pane-cache__pane--active");

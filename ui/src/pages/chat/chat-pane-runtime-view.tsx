@@ -37,8 +37,6 @@ import { notifyRenderLifecycleForTest } from "./render-lifecycle.ts";
 export function createChatPaneView(runtime: ChatPaneRuntime) {
   for (const owner of [
     runtime.tasks,
-    runtime.publication,
-    runtime.repository,
     runtime.headerPresentation,
     runtime.collaboration,
     runtime.companionIntents,
@@ -138,16 +136,6 @@ export function createChatPaneView(runtime: ChatPaneRuntime) {
     }
     const context = runtime.context;
     const parentSession = projectOwner(runtime.parentSession, (owner) => owner.read(), Object.is);
-    const repository = createMemo(() => {
-      const target = runtime.repository.target;
-      return target
-        ? projectOwner(target.store, (owner) => owner.get(target.key), Object.is)
-        : undefined;
-    });
-    const publication = createMemo(() => {
-      const binding = runtime.publication.binding;
-      return binding ? projectOwner(binding, (owner) => owner.view()) : undefined;
-    });
     const gateway = projectGateway(context.gateway);
     const theme = projectTheme(context.theme);
     // Startup attaches one host for this mounted pane's lifetime.
@@ -245,8 +233,6 @@ export function createChatPaneView(runtime: ChatPaneRuntime) {
       () => {
         relativeTime();
         gateway.read();
-        publication()?.read();
-        repository()?.read();
         parentSession.read();
         progress.read();
         realtime()?.read();

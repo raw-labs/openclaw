@@ -1,26 +1,39 @@
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 import type { JSX } from "@solidjs/web";
-import { createComponent, createRoot, createSignal, merge } from "solid-js";
+import { createComponent, createRoot, createSignal, merge, Show } from "solid-js";
 import type { ControlUiComponentHandle } from "../../../src/plugin-sdk/control-ui-components.js";
 import type { ControlUiPresentationHost } from "../../../src/plugin-sdk/control-ui-presentation.js";
+import {
+  isStaleChunkImportError,
+  retryStaleChunkReloadWhenReachable,
+} from "../app/stale-chunk-reload.ts";
 import { iconData, type IconName } from "../components/icon-data.ts";
+import { ActivityPill } from "../components/solid/activity-pill.tsx";
 import { Icon } from "../components/solid/icon.tsx";
+import { LazyViewError } from "../components/solid/lazy-view-error.tsx";
 import { Menu, type MenuEntry } from "../components/solid/menu.tsx";
+import { PanelLoadingSkeleton } from "../components/solid/panel-loading-skeleton.tsx";
 import { createTextOverflow } from "../components/solid/text-overflow.ts";
 import { copyToClipboard } from "../lib/clipboard.ts";
 import { mountSolidContent } from "../lib/dom/solid-snapshot.ts";
+import { formatDurationCompact } from "../lib/format-duration.ts";
+import { formatUiError } from "../lib/format-error.ts";
+import { resolveSafeExternalUrl } from "../lib/open-external-url.ts";
 import { subscribeI18n, t } from "../lib/reactive/i18n.ts";
 import "../components/tooltip.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { HoverMarquee } from "../lib/solid/hover-marquee.tsx";
 import { showToast } from "../lib/toast.ts";
+import { registerControlUiEnglish } from "./control-ui-english.ts";
 
 export function createControlUiPresentationHost(
   current: () => unknown,
   signal: AbortSignal,
 ): ControlUiPresentationHost {
   const active = () => {
-    signal.throwIfAborted();
     current();
+    signal.throwIfAborted();
   };
   function mount<P extends object>(
     container: HTMLElement,
@@ -74,6 +87,44 @@ export function createControlUiPresentationHost(
   };
   return {
     apiVersion: 1,
+    mountLazyState(container, props) {
+      return mount(container, props, (read) => (
+        <Show
+          when={(() => {
+            const value = read;
+            return value.status === "error" ? value : undefined;
+          })()}
+          fallback={
+            <PanelLoadingSkeleton variant="file-list" label={t("common.loading")} compact />
+          }
+        >
+          {(state) => (
+            <LazyViewError
+              error={state().error}
+              stale={isStaleChunkImportError(state().error)}
+              inline
+              onRetry={() => {
+                active();
+                const value = state();
+                if (!value.isCurrent()) {
+                  return;
+                }
+                if (isStaleChunkImportError(value.error)) {
+                  void retryStaleChunkReloadWhenReachable({
+                    canReload: () => !signal.aborted && value.isCurrent(),
+                  });
+                } else {
+                  value.onRetry();
+                }
+              }}
+            />
+          )}
+        </Show>
+      ));
+    },
+    mountActivityPill(container, props) {
+      return mount(container, props, (read) => <ActivityPill {...read} />);
+    },
     subscribe(listener) {
       active();
       let live = true;
@@ -93,9 +144,17 @@ export function createControlUiPresentationHost(
       const stopAbort = listen(signal, "abort", stop, { once: true });
       return stop;
     },
+    formatError: formatUiError,
+    declarationDigest: (value) => bytesToHex(sha256(new TextEncoder().encode(value))),
+    formatDuration: formatDurationCompact,
+    safeExternalUrl: resolveSafeExternalUrl,
     translate(key, params) {
       active();
       return t(key, params);
+    },
+    registerEnglish(catalog) {
+      active();
+      registerControlUiEnglish(catalog);
     },
     mountIcon: (container, initial) =>
       mount(container, initial, (props) => (

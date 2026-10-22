@@ -1,8 +1,4 @@
-import { createMemo, For, onSettled, Show } from "solid-js";
-import {
-  pullRequestView,
-  chatPullRequestId,
-} from "../../../../../extensions/github-repositories/read-facts-api.ts";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import { observeScrollState } from "../../../components/scroll-state-observer.ts";
 import { progressCardPresentation } from "../../../components/session-progress-card.ts";
 import {
@@ -10,14 +6,12 @@ import {
   ActivityGlyph,
   type PillView,
 } from "../../../components/solid/activity-pill.tsx";
-import { Icon } from "../../../components/solid/icon.tsx";
 import { registerChatGoalsEnglish } from "../../../i18n/locales/en-chat-goals.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
-import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import { fnv1aUtf16 } from "../../../lib/fnv1a.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
-import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type { ChatActivityPillsProps } from "./chat-activity-pills-types.ts";
 import { hasVisibleChatActivityPills } from "./chat-activity-pills-visibility.ts";
 import "./chat-activity-pills.css";
@@ -25,9 +19,6 @@ import "./chat-activity-pills.css";
 registerEnglishCatalog(registerChatSessionEnglish);
 
 registerEnglishCatalog(registerChatGoalsEnglish);
-registerEnglishCatalog(registerGitHubEnglish);
-
-type Badge = NonNullable<PillView["badge"]>;
 
 function goalView(input: NonNullable<ChatActivityPillsProps["goal"]>): PillView {
   const goal = input.value;
@@ -79,7 +70,7 @@ function progressView(input: NonNullable<ChatActivityPillsProps["progress"]>): P
     input.endedAt,
     input.hasActiveRun,
   );
-  let badge: Badge;
+  let badge: NonNullable<PillView["badge"]>;
   if (input.refresh === "pending") {
     badge = { icon: "spinner", tone: "normal", label: t("chat.activityPills.progress.updating") };
   } else if (input.refresh === "failed" || input.refresh === "timeout") {
@@ -138,96 +129,7 @@ function progressView(input: NonNullable<ChatActivityPillsProps["progress"]>): P
   };
 }
 
-function publicationView(view: GitHubPublicationView): PillView {
-  if (view.activity !== null) {
-    return {
-      label:
-        view.activity === "read"
-          ? view.result || view.locked
-            ? t("chat.activityPills.publication.verifying")
-            : t("chat.activityPills.publication.checkingOptions")
-          : t("chat.activityPills.publication.publishing"),
-      icon: "gitPullRequest",
-      badge: { icon: "spinner", tone: "normal", label: t("chat.activityPills.pending") },
-    };
-  }
-  if (view.optionsUnavailable) {
-    return {
-      label: t("chat.activityPills.publication.unavailable"),
-      icon: "gitPullRequest",
-      badge: {
-        icon: "alertTriangle",
-        tone: "warn",
-        label: t("chat.activityPills.publication.discoveryUnavailable"),
-      },
-      attention: true,
-    };
-  }
-  // A failed verification must stay visible over the retained request/result.
-  if (view.error || (view.locked && !view.result)) {
-    return {
-      label: t("chat.activityPills.publication.unconfirmed"),
-      icon: "gitPullRequest",
-      badge: {
-        icon: "alertTriangle",
-        tone: "warn",
-        label: t("chat.activityPills.publication.verifyBeforeRetry"),
-      },
-      attention: true,
-    };
-  }
-  if (view.result?.status === "published") {
-    return {
-      label: t("chat.activityPills.publication.published"),
-      icon: "gitPullRequest",
-      badge: {
-        icon: "check",
-        tone: "ok",
-        label: t("chat.activityPills.publication.publishedBadge"),
-      },
-    };
-  }
-  if (view.result?.status === "failed") {
-    return {
-      label: t("chat.activityPills.publication.failed"),
-      icon: "gitPullRequest",
-      tone: "danger",
-      badge: { icon: "x", tone: "danger", label: t("githubPublication.statusFailed") },
-      attention: true,
-    };
-  }
-  if (view.result?.status === "needs_confirmation") {
-    return {
-      label: t("chat.activityPills.publication.confirm"),
-      icon: "gitPullRequest",
-      badge: { icon: "clock", tone: "warn", label: t("githubPublication.statusConfirm") },
-    };
-  }
-  if (view.result?.status === "requested" || view.result?.status === "publishing") {
-    return {
-      label:
-        view.result.status === "requested"
-          ? t("githubPublication.statusRequested")
-          : t("chat.activityPills.publication.publishing"),
-      icon: "gitPullRequest",
-      badge: {
-        icon: view.result.status === "requested" ? "clock" : "spinner",
-        tone: "warn",
-        label: t(
-          view.result.status === "requested"
-            ? "chat.activityPills.publication.requestedBadge"
-            : "chat.activityPills.publication.publishingBadge",
-        ),
-      },
-    };
-  }
-  return {
-    label: t("chat.pullRequests.publishPr"),
-    icon: "github",
-    description: t("chat.activityPills.publication.review"),
-  };
-}
-
+// Identity determines artwork colors, not current position or execution status.
 const avatarPalette = [
   ["#34383b", "#bdc3c7"],
   ["#34414b", "#afc4d4"],
@@ -246,6 +148,8 @@ function avatarColors(key: string) {
 
 /** Controlled mobile leaf. No navigation, queries, mutations, timers or persisted state. */
 export function ChatActivityPills(props: ChatActivityPillsProps) {
+  // Contributed mounts report presence from their own renderer lifecycle.
+  const [pluginPresent, setPluginPresent] = createSignal(false, { ownedWrite: true });
   let strip!: HTMLDivElement;
   let row!: HTMLDivElement;
   const buttons = new Set<HTMLButtonElement>();
@@ -344,7 +248,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
         strip = element;
       }}
       class="chat-activity-pills"
-      hidden={!hasVisibleChatActivityPills(props)}
+      hidden={!hasVisibleChatActivityPills(props) && !(!props.approvalPending && pluginPresent())}
       data-presented={props.presented ? "true" : "false"}
       role="group"
       aria-label={t("chat.activityPills.label")}
@@ -411,43 +315,23 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
           />
         </Show>
         <Show when={!props.approvalPending}>
-          <For each={props.pullRequests?.items ?? []} keyed={chatPullRequestId}>
-            {(pr) => (
-              <ActivityPill
-                registerButton={registerButton}
-                family="pull-request"
-                view={pullRequestView(pr(), props.pullRequests!.status, t)}
-                onOpen={(source) => props.pullRequests!.onOpen(pr(), source)}
-                trailing={
-                  <Show
-                    when={props.pullRequests!.status !== "ready"}
-                    fallback={
-                      <Show when={props.pullRequests!.items.length === 1}>
-                        <span class="activity-pill__diff">
-                          <Show when={pr().additions !== undefined}>
-                            <span class="activity-pill__additions">+{pr().additions}</span>
-                          </Show>
-                          <Show when={pr().deletions !== undefined}>
-                            <span class="activity-pill__deletions">−{pr().deletions}</span>
-                          </Show>
-                        </span>
-                      </Show>
-                    }
-                  >
-                    <span class="activity-pill__problem" aria-hidden="true">
-                      <Icon name="alertTriangle" />
-                    </span>
-                  </Show>
-                }
-              />
-            )}
-          </For>
-          <Show when={props.publication}>
-            <ActivityPill
-              registerButton={registerButton}
-              family="publication"
-              view={publicationView(props.publication!.view)}
-              onOpen={(source) => props.publication!.onOpen(source)}
+          <Show when={props.contributions}>
+            <PluginContributions
+              kind="session-mobile-activity"
+              sessionKey={props.contributions!.sessionKey}
+              agentId={props.contributions!.agentId}
+              facts={props.contributions!.facts}
+              presented={props.presented}
+              onOpenDetailsPage={props.contributions!.onOpenDetailsPage}
+              onPresenceChange={setPluginPresent}
+              registerControls={(read) => {
+                const stops = read()
+                  .filter(
+                    (element): element is HTMLButtonElement => element instanceof HTMLButtonElement,
+                  )
+                  .map(registerButton);
+                return () => stops.forEach((stop) => stop());
+              }}
             />
           </Show>
         </Show>

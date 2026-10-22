@@ -10,6 +10,7 @@ import {
   useContext,
 } from "solid-js";
 import type {
+  ControlUiAccessoryProps,
   ControlUiSurface,
   ControlUiSurfaceProps,
   ControlUiView,
@@ -69,6 +70,7 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
   let handle: ReturnType<ControlUiView<unknown>>;
   let viewContext: ControlUiViewContext<unknown> | undefined;
   let disposed = false;
+  let releasePresence: (() => void) | undefined;
   const defaultContainers = new Map<HTMLElement, () => void>();
   host.style.display = "contents";
   const resolveRegistration = (): ViewRegistration | undefined => {
@@ -85,6 +87,8 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
   registration = resolveRegistration();
   const [available, setAvailable] = createSignal(Boolean(registration));
   const unmount = () => {
+    const release = releasePresence;
+    releasePresence = undefined;
     mountAbort?.abort();
     mountAbort = undefined;
     const previous = handle;
@@ -102,6 +106,11 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
     if (!disposed) {
       setMountGeneration((generation) => generation + 1);
       setDelegated(false);
+    }
+    try {
+      release?.();
+    } catch (failure) {
+      context?.plugins.reportError(registration?.pluginId ?? "host", failure);
     }
   };
   const scheduleSync = observeSolidBridgeProperties(
@@ -143,6 +152,98 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
     }),
   );
   const scopedProps = (signal: AbortSignal): unknown => {
+    if (host.kind === "accessories") {
+      // Registration and host renderers share this SDK props contract. Data is
+      // copied; capabilities retain their current view's lifetime.
+      // SAFETY: native accessory renderers supply this SDK contract; data is copied below.
+      const {
+        facts,
+        onOpenSessionDiff,
+        onOpenDetailsPage,
+        onDetailsBack,
+        registerControls,
+        onContentChange,
+        onPresenceChange,
+        ...data
+      } = host.props as ControlUiAccessoryProps;
+      // Ending this view retires its report; an unreported registration remains visible.
+      releasePresence = onPresenceChange ? () => onPresenceChange(true) : undefined;
+      const invocation = host.props;
+      const check = () => {
+        if (disposed || !host.isConnected || signal.aborted || registration?.signal.aborted) {
+          throw new Error("This plugin UI view has ended.");
+        }
+      };
+      const snapshot = structuredClone({
+        ...data,
+        facts: facts ? { ...facts, readCurrent: undefined } : undefined,
+      });
+      return {
+        ...snapshot,
+        facts: facts
+          ? {
+              ...snapshot.facts,
+              readCurrent: facts.readCurrent
+                ? () => {
+                    check();
+                    return facts.readCurrent!();
+                  }
+                : undefined,
+            }
+          : undefined,
+        onOpenDetailsPage: onOpenDetailsPage
+          ? (page: { id: string; title: string }, source?: HTMLElement) => {
+              check();
+              if (host.presented && host.props === invocation) {
+                onOpenDetailsPage(page, source);
+              }
+            }
+          : undefined,
+        onDetailsBack: onDetailsBack
+          ? () => {
+              check();
+              if (host.presented && host.props === invocation) {
+                onDetailsBack();
+              }
+            }
+          : undefined,
+        onOpenSessionDiff: onOpenSessionDiff
+          ? () => {
+              check();
+              onOpenSessionDiff();
+            }
+          : undefined,
+        onPresenceChange: onPresenceChange
+          ? (present: boolean) => {
+              check();
+              onPresenceChange(present);
+            }
+          : undefined,
+        onContentChange: onContentChange
+          ? (phase: "before" | "after") => {
+              check();
+              onContentChange(phase);
+            }
+          : undefined,
+        registerControls: registerControls
+          ? (read: () => readonly HTMLElement[]) => {
+              check();
+              const stop = registerControls(read);
+              let stopped = false;
+              const dispose = () => {
+                if (!stopped) {
+                  stopped = true;
+                  stopAbort();
+                  stop();
+                }
+              };
+              const stopAbort = listen(signal, "abort", dispose, { once: true });
+              return dispose;
+            }
+          : undefined,
+      };
+    }
+
     if (host.kind !== "replacements" || host.surface !== "composer") {
       return structuredClone(host.props);
     }

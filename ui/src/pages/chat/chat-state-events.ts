@@ -7,11 +7,6 @@ import type { SessionObserverDigest } from "../../../../packages/gateway-protoco
 import { pruneMapToMaxSize } from "../../../../src/infra/map-size.ts";
 import { projectAssistantDisplayContent } from "../../../../src/shared/assistant-display-content.js";
 import type { GatewayEventFrame } from "../../api/gateway.ts";
-import { extractText } from "../../lib/chat/message-extract.ts";
-import {
-  isHiddenAssistantStreamText,
-  shouldHideAssistantChatMessage,
-} from "../../lib/chat/message-visibility.ts";
 import { pickFreshestObserverDigest } from "../../lib/observer-digest.ts";
 import { isSessionRunStateActive } from "../../lib/session-run-state.ts";
 import { visibleSessionMatches } from "../../lib/sessions/navigation.ts";
@@ -30,12 +25,6 @@ import { handleChatGatewayEvent, type ChatEventPayload } from "./chat-gateway.ts
 import { invalidateChatBranches, loadChatBranches } from "./chat-history-branches.ts";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";
 import { loadChatHistory } from "./chat-history.ts";
-import {
-  pullRequestLinksIn,
-  refreshPullRequestsForFinalReply,
-  refreshPullRequestsForStreamedLinks,
-  retirePullRequestRefreshes,
-} from "./chat-pull-request-refresh.ts";
 import { clearPendingQueueItemsForRun, readDeliveredQueuedChatSendForRun } from "./chat-queue.ts";
 import { chatRunPresentation } from "./chat-run-presentation.ts";
 import { flushChatQueueForEvent, resumeStoredChatOutboxes } from "./chat-send-actions.ts";
@@ -280,9 +269,6 @@ function handleSessionsChangedEvent(
   }
   const changesBranchTopology =
     matchesChat && typeof source?.reason === "string" && BRANCH_TOPOLOGY_REASONS.has(source.reason);
-  if (resetsSelectedSession || changesBranchTopology) {
-    retirePullRequestRefreshes(state);
-  }
   if (matchesChat && source?.reason === "project") {
     retireSessionWorkspaceCheckout(state);
   }
@@ -346,30 +332,6 @@ function handleSessionsChangedEvent(
     );
   }
   return matchesChat;
-}
-
-function finalAssistantReplyHasPullRequestLink(
-  state: ChatPageHost,
-  payload: ChatEventPayload | undefined,
-): boolean {
-  if (
-    payload?.state !== "final" ||
-    !visibleSessionMatches(state, payload.sessionKey, payload.agentId)
-  ) {
-    return false;
-  }
-  const finalText = extractText(payload.message);
-  const streamTexts =
-    typeof payload.runId === "string" && payload.runId === state.chatRunId
-      ? [state.chatStream, ...(state.chatStreamSegments ?? []).map((segment) => segment.text)]
-      : [];
-  const isVisible = (text: string | null | undefined) =>
-    typeof text === "string" && text.trim().length > 0 && !isHiddenAssistantStreamText(text);
-  return (
-    ((isVisible(finalText) && !shouldHideAssistantChatMessage(payload.message)) ||
-      streamTexts.some(isVisible)) &&
-    [finalText, ...streamTexts].some((text) => pullRequestLinksIn(text).length > 0)
-  );
 }
 
 function observerDigestMatchesAuthoritativeRun(
@@ -461,23 +423,12 @@ function applyPageGatewayEvent(
           ) {
             state.observerDigest = null;
           }
-          if (
-            payload?.state === "delta" &&
-            typeof payload.deltaText === "string" &&
-            sessionMatches
-          ) {
-            refreshPullRequestsForStreamedLinks(state, payload.runId, payload.deltaText);
-          }
-          const shouldRefreshPullRequests = finalAssistantReplyHasPullRequestLink(state, payload);
           if (handleChatGatewayEvent(state, payload) === "injected") {
             chatRunPresentation(state).publish();
             return;
           }
           if (terminalPayload && sessionMatches) {
             clearPendingQueueItemsForRun(state, terminalPayload.runId);
-          }
-          if (shouldRefreshPullRequests && payload) {
-            refreshPullRequestsForFinalReply(state, payload.runId, payload.message);
           }
           const shouldRecoverMissingTerminal = Boolean(
             recoveryRunId &&

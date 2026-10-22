@@ -1,9 +1,7 @@
 import { createMemo, For, onSettled, Show } from "solid-js";
-import { mountSummaryRead } from "../../../../../extensions/github-repositories/browser/read-presentation-api.ts";
+import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
 import "../../../styles/chat/session-rail.css";
 import "../../../styles/chat/working-indicator.css";
-import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
-import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { ChatSendShortcut } from "../../../app/settings.ts";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
@@ -17,7 +15,7 @@ import { cancelLayout, scheduleLayout } from "../../../lib/layout-frame.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../../lib/reactive/projection.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
-import { repositoryReadView } from "../../../plugins/repository-read-view.tsx";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type {
   ChatSessionCompanionThread,
   ChatSessionCompanionTurn,
@@ -31,7 +29,6 @@ import { SessionRailComposer, sessionRailQuestion } from "./chat-session-rail-co
 import { ChatWorkingIndicator } from "./chat-working-indicator.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
-
 const COMPANION_HINT_KEYS = {
   busy: "chat.rail.askBusy",
   "history-unavailable": "chat.rail.askHistoryUnavailable",
@@ -48,10 +45,10 @@ const COMPANION_HINT_KEYS = {
 type ChatSessionRailProps = {
   presentation?: "desktop" | "mobile";
   sessionKey: string;
+  agentId?: string;
   digest: SessionObserverDigest | null;
   running: boolean;
   activeRunId: string | null;
-  pullRequests: ControlUiSessionPullRequest[];
   companion: ChatSessionCompanionThread;
   modelControls?: ChatModelControlsProps;
   client: GatewayBrowserClient | null;
@@ -160,7 +157,7 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       cancelLayout(thread);
     };
   });
-  const showPullRequests = () =>
+  const summaryVisible = () =>
     props.digest &&
     (!props.running || (props.activeRunId && props.digest.runId === props.activeRunId));
   return (
@@ -174,9 +171,12 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       onDragOver={(event) => drop().onDragover(event)}
       onDrop={(event) => drop().onDrop(event)}
     >
-      {showPullRequests() &&
-        props.pullRequests.length > 0 &&
-        repositoryReadView(mountSummaryRead, () => ({ pullRequests: props.pullRequests }))}
+      <PluginContributions
+        kind="session-summary"
+        sessionKey={props.sessionKey}
+        agentId={props.agentId}
+        presented={props.presented && Boolean(summaryVisible())}
+      />
       <div
         class="chat-session-rail__thread"
         aria-live="polite"
@@ -341,10 +341,10 @@ defineSolidBridge<ChatSessionRailProps>("openclaw-chat-session-rail", ChatSessio
   properties: {
     presentation: { default: undefined, attribute: false },
     sessionKey: { default: "", attribute: false },
+    agentId: { default: undefined, attribute: false },
     digest: { default: null, attribute: false },
     running: { default: false, attribute: false },
     activeRunId: { default: null, attribute: false },
-    pullRequests: { default: [], attribute: false },
     companion: { default: { turns: [], loading: false, draft: "" }, attribute: false },
     modelControls: { default: undefined, attribute: false },
     client: { default: null, attribute: false },

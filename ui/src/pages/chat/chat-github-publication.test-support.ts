@@ -3,7 +3,9 @@ import {
   GitHubPublicationOwner,
   type GitHubPublicationOptions,
   type GitHubPublicationPresentationBinding,
-} from "../../lib/sessions/github-publication-owner.ts";
+} from "../../../../extensions/github-repositories/browser/api.ts";
+import { formatUiError } from "../../lib/format-error.ts";
+import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
 
 type GitHubPublicationScope = Parameters<GitHubPublicationPresentationBinding["sync"]>[0] &
   Pick<ConstructorParameters<typeof GitHubPublicationOwner>[0], "client" | "target"> & {
@@ -79,6 +81,8 @@ export function setup(initialOptions = options) {
         operation?.reset();
         operation = new GitHubPublicationOwner({
           ...next,
+          formatError: formatUiError,
+          artifactKey: scopedSessionArtifactKey(next.target.sessionKey, next.target.agentId),
           isCurrent: () => current.key === next.key && current.isCurrent(),
           reserve: () => {},
           release: () => {},

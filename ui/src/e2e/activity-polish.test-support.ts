@@ -1,7 +1,7 @@
 import type { Locator, Page } from "playwright";
 import { expect } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import type { ControlUiSessionPullRequestsChanged } from "../../../src/gateway/control-ui-contract.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import {
   defaultControlUiFeatureMethods,
   type ControlUiMockGatewayScenario,
