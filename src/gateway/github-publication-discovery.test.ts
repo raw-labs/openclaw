@@ -10,7 +10,8 @@ import { createRepositoryPublicationDiscovery } from "./repository-publication-d
 import { prepareRepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
 
 // Keep workspace qualification outside this demand-cache test; its worker suite exercises real ownership.
-vi.mock("./worker-environments/worker-github-binding.js", () => ({
+vi.mock("./worker-environments/worker-github-binding.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./worker-environments/worker-github-binding.js")>()),
   prepareRepositoryWorkerPublicationFact: vi.fn(),
 }));
 // The actual vendor issues an opaque identity lease; only credential discovery is synthetic.

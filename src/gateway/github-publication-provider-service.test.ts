@@ -48,7 +48,10 @@ vi.mock("../process/exec.js", async (importOriginal) => ({
 installGitHubPublicationTestHarness({ realWorktree: true, creatorEmail: "alice@example.test" });
 const checkpoint = vi.hoisted(() => vi.fn());
 // Repository checkpoint bytes are synthetic; the native registry, receipt and provider execution are real.
-vi.mock("./worker-environments/session-repository-checkpoints.js", () => ({
+vi.mock("./worker-environments/session-repository-checkpoints.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("./worker-environments/session-repository-checkpoints.js")
+  >()),
   withSessionRepositoryCheckpoint: (...args: unknown[]) => checkpoint(...args),
 }));
 const mocks = githubPublicationTestMocks();
