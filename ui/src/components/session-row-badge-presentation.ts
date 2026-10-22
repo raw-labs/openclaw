@@ -1,3 +1,4 @@
+import { projectSidebarBadge } from "../../../extensions/github-repositories/read-facts-api.ts";
 // Deep import on purpose: the protocol barrel carries typebox and every
 // schema, which must stay out of the Control UI startup bundle.
 import { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/src/schema/session-placement-state.js";
@@ -8,7 +9,6 @@ import type {
 import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
-import { sessionPullRequestStateIcons } from "../lib/session-pull-request-presentation.ts";
 import { sessionMachineParts } from "./session-machine.ts";
 
 export type SessionPlacementState = NonNullable<GatewaySessionRow["placement"]>["state"];
@@ -54,10 +54,6 @@ export function resolveSessionRowBadges(
   params: SessionRowBadgesParams,
   translate = t,
 ): SessionRowBadge[] {
-  const pullRequestLabel = params.pullRequest
-    ? `${params.pullRequest.numbers.map((number) => `#${number}`).join(", ")} · ${translate(`chat.pullRequests.${params.pullRequest.state}`)}`
-    : undefined;
-  const pullRequestState = params.pullRequest?.state;
   const placementState = params.isChild ? undefined : params.placementState;
   const cloudPlacementState = isCloudWorkerPlacementState(placementState)
     ? placementState
@@ -125,23 +121,14 @@ export function resolveSessionRowBadges(
       modifier: "incognito",
     });
   }
-  if (params.pullRequest || params.pullRequestCount) {
-    const count = params.pullRequestCount ?? params.pullRequest?.numbers.length ?? 0;
+  const pullRequest = projectSidebarBadge(params.pullRequest, params.pullRequestCount, translate);
+  if (pullRequest) {
     badges.push({
-      label: [
-        count > 1 || !pullRequestLabel
-          ? translate("sessionsView.pullRequestCount", { count: String(count) })
-          : "",
-        pullRequestLabel,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      icon: params.pullRequest
-        ? sessionPullRequestStateIcons[params.pullRequest.state]
-        : "gitPullRequest",
+      label: pullRequest.label,
+      icon: pullRequest.icon,
+      count: pullRequest.count,
       modifier: "pull-request",
-      pullRequestState,
-      count: count > 1 ? count : undefined,
+      pullRequestState: pullRequest.state,
     });
   }
   if (params.hasApproval) {

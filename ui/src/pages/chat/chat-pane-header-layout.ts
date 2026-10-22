@@ -1,4 +1,5 @@
 import { merge, type Element } from "solid-js";
+import { chatPullRequestId } from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { t } from "../../i18n/index.ts";
@@ -19,7 +20,6 @@ import type { ChatProps } from "./chat-view.tsx";
 import type { ChatDetailsProps } from "./components/chat-details-types.ts";
 import type { ChatDetailsElements, ChatDetailsViewProps } from "./components/chat-details.tsx";
 import type { ChatPaneHeaderProps } from "./components/chat-pane-header.types.ts";
-import { chatPullRequestId } from "./components/chat-pull-requests.ts";
 import {
   getSessionWorkspace,
   isCurrentSessionWorkspace,

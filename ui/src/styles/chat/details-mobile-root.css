@@ -36,7 +36,8 @@
   background: var(--mobile-list-surface);
 }
 
-.chat-details-mobile-root__group > * {
+.chat-details-mobile-root__group > *,
+.chat-details-mobile-root__group > oc-repository-read > .chat-pr-mobile__row {
   position: relative;
 }
 
@@ -50,7 +51,12 @@
   border-end-end-radius: 14px;
 }
 
-.chat-details-mobile-root__group > * + *::before {
+/* Read mount hosts have no box; keep the group's inset divider on its actual rows. */
+.chat-details-mobile-root__group > * + *::before,
+.chat-details-mobile-root__group
+  > oc-repository-read
+  + oc-repository-read
+  > .chat-pr-mobile__row::before {
   position: absolute;
   inset: 0 12px auto 42px;
   height: 1px;

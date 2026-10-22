@@ -1,5 +1,6 @@
 import type { JSX } from "@solidjs/web";
 import { For, Show } from "solid-js";
+import { chatPullRequestId } from "../../../../../extensions/github-repositories/read-facts-api.ts";
 import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { CronCompactJob } from "../../../api/types.ts";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
@@ -11,7 +12,6 @@ import {
   ChatPullRequestMobileRecovery,
   type ChatPullRequestMobileCollectionProps,
 } from "./chat-pull-request-mobile.tsx";
-import { chatPullRequestId } from "./chat-pull-requests.ts";
 import "../../../styles/chat/details-mobile-root.css";
 
 /** Presentation supplied by the domain owner; marks/metadata are noninteractive. */

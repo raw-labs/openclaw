@@ -65,3 +65,21 @@ See [GitHub reader documentation](https://docs.openclaw.ai/plugins/github).
 
 The public `public-api.ts` artifact owns native HTTP/read composition; it shares
 the reader library and error/cooldown identities without activating the plugin.
+
+## Read presentation library
+
+`read-facts-api.ts` provides inert PR ordering, identifiers, badge copy, and activity
+pill facts. `browser/read-presentation-api.ts` provides typed mount/update/dispose handles
+for PR rows, mobile read regions, hovercards, Activity, and session summaries.
+Renderers receive current values and callbacks plus native visual controls; they
+do not receive an application context or create a read store.
+
+The existing native connection store still owns the single replace-set subscription,
+scope invalidation, and read snapshots. Native publication controls, CI request/write
+owners, mobile Root/Back, and English remain canonical. These read views keep their
+existing native admission at this stage; disabling the plugin does not remove them.
+Settings and account/execution contributions continue to follow plugin admission.
+
+The temporary native read-composition adapter is removed when publication and the
+last native menu reader can transfer this same store and its remaining consumers
+together. There is no second store, new configuration namespace, or fallback reader.

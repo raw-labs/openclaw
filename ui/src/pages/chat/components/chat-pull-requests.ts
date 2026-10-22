@@ -1,8 +1,4 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type {
-  ControlUiSessionBranch,
-  ControlUiSessionPullRequest,
-} from "../../../../../src/gateway/control-ui-contract.js";
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import { getSafeLocalStorage } from "../../../local-storage.ts";
 import type { ChatPullRequestsProps } from "./chat-pull-request-shared.tsx";
@@ -11,16 +7,6 @@ const DISMISSED_STORAGE_KEY = "openclaw.chat.dismissedPullRequests";
 // Bounds localStorage growth: dismissals for the oldest sessions fall off
 // once this many sessions have dismissed chips.
 const DISMISSED_SESSION_LIMIT = 20;
-
-export function chatPullRequestId(pullRequest: ControlUiSessionPullRequest): string {
-  return `${pullRequest.owner}/${pullRequest.repo}#${pullRequest.number}`.toLowerCase();
-}
-
-// Shares the per-session dismissal store with PR ids; `@` keeps the namespaces apart.
-// GitHub owner/repo names are case-insensitive, but Git branch names are not.
-export function chatBranchId(branch: ControlUiSessionBranch): string {
-  return `${branch.owner}/${branch.repo}`.toLowerCase() + `@${branch.branch}`;
-}
 
 export function retainedPublication(publication: GitHubPublicationView | undefined) {
   return (

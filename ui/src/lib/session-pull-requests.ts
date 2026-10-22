@@ -1,4 +1,5 @@
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
+import { primarySessionPullRequest } from "../../../extensions/github-repositories/read-facts-api.ts";
 import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type {
   ControlUiSessionPullRequest,
@@ -15,7 +16,6 @@ import type { ApplicationGateway } from "../app/gateway.ts";
 import { createGatewayConnectionLifecycle } from "./gateway-connection-lifecycle.ts";
 import { canCallGatewayMethod } from "./gateway-methods.ts";
 import { createGatewaySetSyncLifecycle } from "./gateway-set-sync-lifecycle.ts";
-import { primarySessionPullRequest } from "./session-pull-request-presentation.ts";
 import { readSessionChangedEvent } from "./sessions/reconcile.ts";
 import { uiSessionEventMatches } from "./sessions/session-key.ts";
 

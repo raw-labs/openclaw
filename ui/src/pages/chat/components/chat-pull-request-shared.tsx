@@ -1,4 +1,4 @@
-import { For, Show } from "solid-js";
+import { Show } from "solid-js";
 import type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
@@ -31,46 +31,6 @@ export type ChatPullRequestsProps = {
   /** Compact row in the user-opened Details surface; actions keep their owners. */
   compact?: boolean;
 };
-export const STATE_LABEL_KEYS = {
-  merged: "chat.pullRequests.merged",
-  draft: "chat.pullRequests.draft",
-  closed: "chat.pullRequests.closed",
-  open: "chat.pullRequests.open",
-} as const;
-const CHECK_ROW_LABELS = {
-  failed: "chat.pullRequests.checksFailed",
-  passed: "chat.pullRequests.checksPassed",
-  running: "chat.pullRequests.checksRunning",
-  skipped: "chat.pullRequests.checksSkipped",
-} as const;
-
-export function ChecksRows(props: {
-  checks: ControlUiSessionPullRequest["checks"];
-  runningFirst?: boolean;
-}) {
-  const order = () =>
-    props.runningFirst
-      ? (["failed", "running", "passed", "skipped"] as const)
-      : (["failed", "passed", "running", "skipped"] as const);
-  return (
-    <For each={order()}>
-      {(kind) => (
-        <Show when={(props.checks?.[kind] ?? 0) !== 0}>
-          <div class={["chat-pr__checks-row", `chat-pr__checks-row--${kind}`]}>
-            <span class="chat-pr__check-symbol" aria-hidden="true">
-              <Show when={kind !== "running"} fallback={<span class="btn__spinner" />}>
-                <Icon name={kind === "failed" ? "x" : kind === "passed" ? "check" : "circle"} />
-              </Show>
-            </span>
-            <span class="chat-pr__checks-row-label">{t(CHECK_ROW_LABELS[kind])}</span>
-            <span class="chat-pr__checks-row-count">{props.checks?.[kind] ?? 0}</span>
-          </div>
-        </Show>
-      )}
-    </For>
-  );
-}
-
 export function StatusWarning(props: {
   status: ControlUiSessionPullRequestSnapshot["status"];
   text?: boolean;

@@ -500,15 +500,19 @@ function ChatCiDetailsContent(props: ChatCiDetailsProps, host: ChatCiDetailsElem
   );
 }
 
-defineSolidBridge<ChatCiDetailsProps>("openclaw-chat-ci-details", ChatCiDetailsContent, {
-  propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
-  properties: {
-    gateway: { default: undefined, attribute: false },
-    pullRequest: { default: undefined, attribute: false },
-    sessionKey: { default: "", attribute: false },
-    presented: { default: true, type: Boolean },
-    inline: { default: false, attribute: false },
-    menuControls: { default: false, attribute: false },
-    controls: { default: undefined, attribute: false },
+export const ChatCiDetails = defineSolidBridge<ChatCiDetailsProps>(
+  "openclaw-chat-ci-details",
+  ChatCiDetailsContent,
+  {
+    propertyChanged: (host, key) => inputHandlers.get(host)?.(key),
+    properties: {
+      gateway: { default: undefined, attribute: false },
+      pullRequest: { default: undefined, attribute: false },
+      sessionKey: { default: "", attribute: false },
+      presented: { default: true, type: Boolean },
+      inline: { default: false, attribute: false },
+      menuControls: { default: false, attribute: false },
+      controls: { default: undefined, attribute: false },
+    },
   },
-});
+);

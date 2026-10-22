@@ -1,28 +1,24 @@
+import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/control-ui";
+/** @jsxImportSource @solidjs/web */
 import { createMemo, createSignal, createUniqueId, Show, useContext } from "solid-js";
-import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
-import { GitDiffValues } from "../../../components/session-git-diff.tsx";
-import { Icon } from "../../../components/solid/icon.tsx";
-import {
-  createMenuControls,
-  Menu,
-  type MenuEntry,
-  type MenuHandle,
-} from "../../../components/solid/menu.tsx";
-import { copyToClipboard } from "../../../lib/clipboard.ts";
-import type { PresentationValue } from "../../../lib/presentation.ts";
-import { t } from "../../../lib/reactive/i18n.ts";
-import { projectPresentation } from "../../../lib/reactive/presentation.ts";
-import { sessionPullRequestStateIcons } from "../../../lib/session-pull-request-presentation.ts";
-import { ContentPresentation } from "../../../lib/solid/presentation.ts";
-import { showToast } from "../../../lib/toast.ts";
 import {
   ChecksRows,
   StatusWarning,
   STATE_LABEL_KEYS,
   type ChatPullRequestsProps,
 } from "./chat-pull-request-shared.tsx";
-import "./chat-ci-details.ts";
-import "./chat-ci-automation-control.ts";
+import { GitDiffValues } from "./native-components.tsx";
+import { ContentPresentation } from "./native-context.tsx";
+import {
+  Icon,
+  createMenuControls,
+  Menu,
+  type MenuEntry,
+  type MenuHandle,
+} from "./presentation-components.tsx";
+import { presentationTranslator, PresentationContext } from "./presentation-context.ts";
+import { CiDetails, CiAutomation } from "./read-ci.tsx";
+import { sessionPullRequestStateIcons } from "./session-pull-request-presentation.ts";
 
 const CHECK_ROLLUP = {
   failing: ["failed", "chat.pullRequests.checksFailed", "circleX"],
@@ -33,12 +29,14 @@ const CHECK_ROLLUP = {
 export function PullRequestActions(props: {
   label: string;
   disabled: boolean;
-  presented: PresentationValue;
+  presented: boolean;
   dismissed?: boolean;
   onDismiss: () => void;
   pullRequest: ControlUiSessionPullRequest;
   owner: ChatPullRequestsProps;
 }) {
+  const t = presentationTranslator();
+  const presentationHost = useContext(PresentationContext);
   const id = createUniqueId();
   const controls = createMenuControls();
   const parentPresented = useContext(ContentPresentation);
@@ -59,8 +57,7 @@ export function PullRequestActions(props: {
     queueMicrotask(() => (previous === "checks" ? checksButton : monitoringButton)?.focus());
   };
   const [menuOpen, setMenuOpen] = createSignal(false);
-  const presentation = createMemo(() => projectPresentation(props.presented));
-  const presented = () => parentPresented() && !props.dismissed && presentation().read();
+  const presented = () => parentPresented() && !props.dismissed && (props.presented ?? true);
   const copy = async () => {
     if (copying()) {
       return;
@@ -70,14 +67,14 @@ export function PullRequestActions(props: {
     setCopyFailed(false);
     const current = () =>
       presented() && menu?.overlay.open === true && props.pullRequest.url === url;
-    const copied = await copyToClipboard(url, current);
+    const copied = await presentationHost.copyText(url, current);
     setCopying(false);
     if (!current()) {
       return;
     }
     if (copied) {
       menu?.close();
-      showToast({ message: t("chat.pullRequests.linkCopied") });
+      presentationHost.notify(t("chat.pullRequests.linkCopied"));
     } else {
       setCopyFailed(true);
     }
@@ -120,14 +117,13 @@ export function PullRequestActions(props: {
           <ChecksRows checks={checks()} runningFirst />
         </div>
       </div>
-      <openclaw-chat-ci-details
-        prop:pullRequest={props.pullRequest}
-        prop:gateway={props.owner.gateway}
-        prop:sessionKey={props.owner.sessionKey ?? ""}
-        prop:presented={presented() && menuOpen() && page() === "checks"}
-        prop:inline={true}
-        prop:menuControls={true}
-        prop:controls={controls}
+      <CiDetails
+        pullRequest={props.pullRequest}
+        sessionKey={props.owner.sessionKey ?? ""}
+        presented={presented() && menuOpen() && page() === "checks"}
+        inline={true}
+        menuControls={true}
+        controls={controls}
       />
     </div>
   );
@@ -138,15 +134,14 @@ export function PullRequestActions(props: {
       aria-label={t("chat.pullRequests.ciMonitoring")}
     >
       <div class="chat-pr-menu__caption">{t("chat.pullRequests.ciMonitoring")}</div>
-      <openclaw-chat-ci-automation
-        prop:pullRequest={props.pullRequest}
-        prop:gateway={props.owner.gateway}
-        prop:sessionKey={props.owner.sessionKey ?? ""}
-        prop:sessionId={props.owner.sessionId ?? ""}
-        prop:presented={presented() && menuOpen() && page() === "monitoring"}
-        prop:inline={true}
-        prop:menuPresentation={true}
-        prop:controls={controls}
+      <CiAutomation
+        pullRequest={props.pullRequest}
+        sessionKey={props.owner.sessionKey ?? ""}
+        sessionId={props.owner.sessionId ?? ""}
+        presented={presented() && menuOpen() && page() === "monitoring"}
+        inline={true}
+        menuPresentation={true}
+        controls={controls}
       />
     </div>
   );

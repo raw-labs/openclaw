@@ -48,7 +48,7 @@
   height: var(--details-row-icon-slot, 16px);
 }
 
-.chat-details[data-desktop] .chat-pr.chat-pr--summary .chat-pr__icon > svg {
+.chat-details[data-desktop] .chat-pr.chat-pr--summary .chat-pr__icon svg {
   width: var(--details-row-icon-size, 15px);
   height: var(--details-row-icon-size, 15px);
 }
@@ -180,9 +180,9 @@
 
 .chat-pr-menu .oc-menu-item__icon,
 .chat-pr-menu .oc-menu-item__icon svg,
-.chat-pr-menu__fact > svg,
+.chat-pr-menu__fact svg,
 .chat-pr__check-symbol,
-.chat-pr__check-symbol > svg {
+.chat-pr__check-symbol svg {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
@@ -497,7 +497,7 @@
   width: 18px;
   height: 18px;
 }
-.chat-pr-mobile__actions svg:last-child:not(:first-child) {
+.chat-pr-mobile__actions .repository-icon:last-child:not(:first-child) svg {
   margin-inline-start: auto;
   width: 15px;
   height: 15px;
@@ -588,7 +588,7 @@
   width: 16px;
   height: 16px;
 }
-.chat-pr-mobile__checks-link svg:last-child {
+.chat-pr-mobile__checks-link .repository-icon:last-child svg {
   margin-inline-start: auto;
   color: var(--muted);
 }
@@ -626,7 +626,7 @@
   font-weight: 500;
 }
 
-.chat-pr-menu__drill-trigger > svg {
+.chat-pr-menu__drill-trigger svg {
   flex: none;
   width: 14px;
   height: 14px;
@@ -660,7 +660,7 @@
   font: inherit;
 }
 
-:is(.chat-pr-menu--drill, .chat-pr-mobile) .chat-ci__automation-option--menu > svg {
+:is(.chat-pr-menu--drill, .chat-pr-mobile) .chat-ci__automation-option--menu svg {
   width: 16px;
   height: 16px;
   color: var(--muted);

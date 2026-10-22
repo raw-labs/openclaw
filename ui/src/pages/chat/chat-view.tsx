@@ -1,6 +1,7 @@
 import { dynamic } from "@solidjs/web";
 import type { Component } from "solid-js";
 import { createMemo, lazy, Loading, merge, Show } from "solid-js";
+import { orderSessionPullRequests } from "../../../../extensions/github-repositories/read-facts-api.ts";
 import type { ControlUiSurfaceProps } from "../../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../../app/context-types.ts";
 import { createSkillFileHovercard } from "../../components/skill-file-hovercard.tsx";
@@ -14,7 +15,6 @@ import { ApplicationProvider, useOptionalApplication } from "../../lib/reactive/
 import { connectedElementRef, elementRef } from "../../lib/reactive/element-ref.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { projectPresentation } from "../../lib/reactive/presentation.ts";
-import { orderSessionPullRequests } from "../../lib/session-pull-request-presentation.ts";
 import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
 import { PluginSurface } from "../../plugins/control-ui-view.solid.tsx";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";

@@ -1,4 +1,4 @@
-import type { ControlUiSessionPullRequest } from "../../../src/gateway/control-ui-contract.js";
+import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/control-ui";
 
 type PullRequestState = ControlUiSessionPullRequest["state"];
 const STATE_ORDER: readonly PullRequestState[] = ["open", "draft", "merged", "closed"];
