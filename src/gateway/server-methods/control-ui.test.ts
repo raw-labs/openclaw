@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as checkDetails from "../../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
 import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
@@ -15,8 +16,8 @@ import {
 } from "../../secrets/runtime-degraded-state.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import * as checkDetails from "../control-ui-session-pr-check-details.js";
-import { createControlUiSessionPullRequestSubscriptions } from "../control-ui-session-pr-subscriptions.js";
+import { createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions } from "../control-ui-session-pr-subscriptions.test-support.js";
+import { startTestRepositorySessionPresentation } from "../github-account-service.test-support.js";
 import { createControlUiRequestOptions } from "./control-ui-request.test-support.js";
 import { controlUiHandlers } from "./control-ui.js";
 import { identifiedClient } from "./sessions-sharing.test-support.js";
@@ -34,12 +35,28 @@ function fixture(method: string) {
   const respond = vi.fn<RespondFn>();
   return {
     respond,
-    send: (params: Record<string, unknown>, extra?: RequestExtras) =>
-      handler({
+    send: async (params: Record<string, unknown>, extra?: RequestExtras) => {
+      const options: GatewayRequestHandlerOptions = {
         ...requestOptions(params, respond, extra),
         signal: extra?.signal,
         hasCurrentClientAuthority: extra?.hasCurrentClientAuthority,
-      }),
+      };
+      if (method !== "sessionPullRequests.checks" || options.context.repositorySessions) {
+        return await handler(options);
+      }
+      const scheduler = createTestGatewayScheduler();
+      const services = await startTestRepositorySessionPresentation(
+        options.context,
+        scheduler,
+        options.client ?? undefined,
+      );
+      try {
+        return await handler(options);
+      } finally {
+        await services.stop();
+        await scheduler.stop();
+      }
+    },
   };
 }
 
@@ -492,7 +509,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
         {
           client: { connId: "conn-control-ui" },
           context: {
-            controlUiSessionPullRequests: subscriptions,
+            repositorySessions: { presentation: subscriptions },
             logGateway: { warn },
           },
         },
@@ -536,7 +553,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
         { sessionKeys },
         {
           client: { connId: "conn-control-ui" },
-          context: { controlUiSessionPullRequests: { replace } },
+          context: { repositorySessions: { presentation: { replace } } },
         },
       );
       if (!valid) {

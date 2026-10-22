@@ -1,20 +1,20 @@
-import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
-import { createRetainedCache } from "../infra/retained-cache.js";
+import { createRetainedCache } from "openclaw/plugin-sdk/concurrency-runtime";
 import type {
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "./control-ui-contract.js";
+} from "openclaw/plugin-sdk/repository-session-read";
 import {
+  type SessionPullRequestReadCredential,
   createGitHubReadGroup,
   prepareSessionPullRequestGitHubRead,
-  type SessionPullRequestReadCredential,
-} from "./control-ui-session-pr-request.js";
+} from "./control-ui-session-pr-request-api.js";
+import type { ControlUiSessionPullRequestsParams } from "./control-ui-session-prs-api.js";
 import {
   fetchSessionPullRequestCheckDetails,
   type SessionPullRequestCheckTarget,
-} from "./control-ui-session-prs-checks.js";
-import type { ControlUiSessionPullRequestsParams } from "./control-ui-session-prs.js";
+} from "./control-ui-session-prs-checks-api.js";
+import { gitHubPublicApi } from "./public-api.js";
 
 const checkDetailsCache = createRetainedCache<{
   expiresAt: number;
@@ -203,4 +203,8 @@ export async function loadControlUiSessionPullRequestChecks(
   } finally {
     release();
   }
+}
+
+export function clearSessionPullRequestCheckDetails() {
+  checkDetailsCache.clear();
 }

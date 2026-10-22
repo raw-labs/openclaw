@@ -1,13 +1,12 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { prepareControlUiSessionPrServiceTarget } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-read.js";
 import { githubJson, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
 
 const io = vi.hoisted(() => ({ command: vi.fn(), identity: vi.fn(), currentIdentity: vi.fn() }));
 vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (original) => ({
@@ -204,7 +203,8 @@ it("does not hydrate public or service cards from an authenticated imported snap
     await f.subscriptions.pollNow();
     expect(lastSnapshot(f)?.pullRequests).toHaveLength(1);
     const service = await prepareControlUiSessionPrServiceTarget(
-      () => getSessionRowProjection(f.context),
+      f.sessionReads,
+      f.context.getRuntimeConfig,
       { sessionKey, agentId: "main" },
     );
     expect(service).toBeDefined();

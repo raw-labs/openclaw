@@ -1,20 +1,23 @@
-import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
-import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
-import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
-import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
-import { createRetainedCache } from "../infra/retained-cache.js";
-import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
-import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
+import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
+import { createRetainedCache } from "openclaw/plugin-sdk/concurrency-runtime";
+import type {
+  SessionGitHubPullRequestBinding,
+  ControlUiSessionPullRequest,
+} from "openclaw/plugin-sdk/repository-session-read";
+import {
+  asFiniteNumber,
+  isRecord,
+  readNonBlankString,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
 import {
   createGitHubReadGroup,
   prepareSessionPullRequestGitHubRead,
-} from "./control-ui-session-pr-request.js";
+} from "./control-ui-session-pr-request-api.js";
 import {
   fetchSessionPullRequestCheckRollup,
   sessionPullRequestRepositoryApiUrl,
-} from "./control-ui-session-prs-checks.js";
+} from "./control-ui-session-prs-checks-api.js";
+import { gitHubPublicApi } from "./public-api.js";
 
 type Read = ReturnType<typeof prepareSessionPullRequestGitHubRead>;
 type Entry = {
@@ -26,11 +29,9 @@ type Entry = {
   lastGood?: ControlUiSessionPullRequest;
 };
 const metadata = createRetainedCache<Entry>();
-registerOpenClawStateDatabaseLifecycleListener((event) => {
-  if (event.kind !== "opened") {
-    metadata.clear();
-  }
-});
+export function clearSessionPullRequestMetadata() {
+  metadata.clear();
+}
 
 /** One GitHub metadata read per credential/repository/number, across task and branch views. */
 export async function readSessionPullRequestMetadata(

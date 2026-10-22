@@ -18,7 +18,6 @@ import {
 } from "./control-ui-public-session-message.js";
 import { projectPublicSessionItems } from "./control-ui-public-session-project.js";
 import type { PublicSessionShareLocator } from "./control-ui-public-session-token.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
 import type { SessionRowProjection } from "./session-row-projection.js";
 import type { SessionTranscriptReadScope } from "./session-transcript-read.types.js";
@@ -268,7 +267,7 @@ export async function readPublicSessionShare(
     offset?: number;
     projection: SessionRowProjection;
     card?: boolean;
-    pullRequests?: GatewayRequestContext["controlUiSessionPullRequests"];
+    pullRequests?: import("./repository-session-read-host.js").RepositorySessionPresentation;
   },
 ): Promise<PublicSessionShareReadResult | null> {
   const { projection } = options;

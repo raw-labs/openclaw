@@ -386,5 +386,6 @@
   "repository-oauth-host",
   "repository-session-host",
   "execution-environment",
-  "worker-github-credentials"
+  "worker-github-credentials",
+  "repository-session-read"
 ]

@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import nodePath from "node:path";
 import { readRegularFile } from "@openclaw/fs-safe/advanced";
-import { unavailableDiffRevision, type DiffReadTiming } from "../infra/diff-read-timing.js";
-import { GitCommandTimeoutError, requireGitCommandOutput } from "../infra/git-exec.js";
-import type { GitReadOperations } from "../infra/git-read-operations.js";
-import { readGitHead, readGitMetadataPrefix, readGitRefs } from "../infra/git-root.js";
-import { canReadGitFilesystemRefs } from "../infra/git-worker-context.js";
-import type { GitWorkerOperations } from "../infra/git-worker-contract.js";
-import { readCheckoutDiffRevision } from "./control-ui-session-diff-revision.js";
+import { readCheckoutDiffRevision } from "../gateway/control-ui-session-diff-revision.js";
+import { unavailableDiffRevision, type DiffReadTiming } from "./diff-read-timing.js";
+import { GitCommandTimeoutError, requireGitCommandOutput } from "./git-exec.js";
+import type { GitReadOperations } from "./git-read-operations.js";
+import { readGitHead, readGitMetadataPrefix, readGitRefs } from "./git-root.js";
+import { canReadGitFilesystemRefs } from "./git-worker-context.js";
+import type { GitWorkerOperations } from "./git-worker-contract.js";
 import {
   gitOutput,
   isAncestor,
@@ -15,8 +15,7 @@ import {
   readCheckoutHead,
   readRemoteRevisions,
   resolveBranchLanding,
-} from "./control-ui-session-prs-landing.js";
-import { parseGitHubRemoteUrl } from "./github-remote.js";
+} from "./repository-checkout-landing.js";
 
 /** Observe only this checkout's refs; snapshot publication does not change PR facts. */
 export async function readCheckoutGitRevision(
@@ -166,7 +165,6 @@ function readDefaultRef(head: ReturnType<typeof readCheckoutHead>): string | nul
 
 export async function readCheckoutGitContext(
   root: string,
-  githubHost = "github.com",
 ): Promise<GitReadOperations["checkout.context"]["output"]> {
   const head = readCheckoutHead(root);
   const branch =
@@ -177,9 +175,7 @@ export async function readCheckoutGitContext(
     return null;
   }
   const remoteUrl = await gitOutput(root, ["remote", "get-url", "origin"]);
-  const publicRemote = remoteUrl ? parseGitHubRemoteUrl(remoteUrl) : null;
-  const remote = publicRemote ?? (remoteUrl ? parseGitHubRemoteUrl(remoteUrl, githubHost) : null);
-  if (!remote) {
+  if (!remoteUrl) {
     return null;
   }
   const preparedDefaultRef = readDefaultRef(head);
@@ -189,8 +185,7 @@ export async function readCheckoutGitContext(
       : preparedDefaultRef;
   const defaultBranch = defaultRef?.replace(/^origin\//, "");
   return {
-    ...remote,
-    ...(!publicRemote ? { host: githubHost } : {}),
+    originUrl: remoteUrl,
     branch: branch === "HEAD" ? null : branch,
     root,
     ...(defaultBranch ? { defaultBranch } : {}),

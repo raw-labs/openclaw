@@ -1,8 +1,8 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { prepareSessionPullRequestGitHubRead } from "../../extensions/github-repositories/control-ui-session-pr-request-api.js";
+import { sessionPullRequestRepositoryApiUrl } from "../../extensions/github-repositories/control-ui-session-prs-checks-api.js";
 import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
 import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
-import { prepareSessionPullRequestGitHubRead } from "./control-ui-session-pr-request.js";
-import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";
 
 type AcceptedSnapshot = Pick<
   GitHubPublicationExecutionRow,

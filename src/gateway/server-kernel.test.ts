@@ -3,6 +3,7 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import type { ChannelPlugin } from "../channels/plugins/types.public.js";
+import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { waitForAbortSignal } from "../infra/abort-signal.js";
 import * as deviceIdentity from "../infra/device-identity-async.js";
 import { flushDiagnosticsTimeline } from "../infra/diagnostics-timeline.js";
@@ -18,7 +19,10 @@ import { getActiveGatewayRootWorkCount } from "../process/gateway-work-admission
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { createChannelTestPluginBase, createTestRegistry } from "../test-utils/channel-plugins.js";
+import { spyOnSessionPrLoader } from "./control-ui-session-pr-subscriptions.test-support.js";
+import { startTestRepositorySessionPresentation } from "./github-account-service.test-support.js";
 import { CLI_DEFAULT_OPERATOR_SCOPES } from "./method-scopes.js";
+import { formatGatewayPendingCloseSteps } from "./restart-trace.js";
 import { dispatchGatewayRequestInProcess } from "./server-in-process-dispatch.js";
 import { closeKernelFixture, createKernelFixture } from "./server-kernel.fixture-test-support.js";
 import { createGatewayKernel } from "./server-kernel.js";
@@ -706,4 +710,74 @@ describe("createGatewayKernel", () => {
       await state.cleanup();
     }
   });
+});
+
+it("joins a withdrawn repository presentation before retiring native Gateway state", async ({
+  signal,
+}) => {
+  const fixture = await createKernelFixture("gateway-repository-review-close");
+  const entered = createDeferred();
+  const released = createDeferred();
+  let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
+  let closing: Promise<void> | undefined;
+  let reading: Promise<unknown> | undefined;
+  const loader = spyOnSessionPrLoader(async () => {
+    // Hold external review work after real native session/source admission.
+    // Cancellation cannot release custody until this accepted call unwinds.
+    entered.resolve();
+    await released.promise;
+    return { pullRequests: [], rateLimited: false };
+  });
+  try {
+    await fixture.configure();
+    kernel = await fixture.open();
+    kernel.kernel.unlockStartupMethods();
+    kernel.kernel.markSidecarsReady();
+    kernel.kernel.setDispatchReady(true);
+    const sessionKey = "agent:main:repository-review-close";
+    await upsertSessionEntryCore(
+      { agentId: "main", sessionKey },
+      {
+        sessionId: "repository-review-close",
+        updatedAt: 1,
+        spawnedCwd: fixture.state.workspaceDir,
+      },
+    );
+    const services = await startTestRepositorySessionPresentation(
+      kernel.gatewayRequestContext,
+      kernel.scheduler,
+    );
+    kernel.runtimeState.pluginServices = services;
+    const host = kernel.runtimeState.repositorySessions!;
+    const presentation = host.presentation!;
+    expect(presentation).toBeDefined();
+    reading = expect(
+      host.withRequestRead({ client: null }, { sessionKey }, async (read) => {
+        if (!read) {
+          throw new Error("Missing native repository review admission");
+        }
+        return await presentation.read(read, read.assertCurrent);
+      }),
+    ).rejects.toThrow();
+    await withinTest(entered.promise, signal);
+    let closed = false;
+    closing = kernel.closeOnStartupFailure().then(() => {
+      closed = true;
+    });
+    await withinTest(waitForAbortSignal(kernel.scheduler.signal), signal);
+    expect(host.presentation).toBeUndefined();
+    // Observe the real shutdown join, rather than guessing how many turns close needs.
+    await vi.waitFor(() =>
+      expect(formatGatewayPendingCloseSteps()).toContain("session-pull-requests"),
+    );
+    expect(closed).toBe(false);
+    released.resolve();
+    await withinTest(Promise.all([reading, closing]), signal);
+    expect(closed).toBe(true);
+  } finally {
+    released.resolve();
+    await Promise.allSettled([reading, closing]);
+    loader.mockRestore();
+    await closeKernelFixture(kernel, fixture.state);
+  }
 });

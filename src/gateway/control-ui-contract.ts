@@ -6,10 +6,10 @@ export * from "./control-ui-resource-routes.js";
 export * from "./control-ui-root-assets.js";
 export * from "./control-ui-user-avatar-route.js";
 
-export const CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT =
-  "controlUi.sessionPullRequests.changed";
-
-export const CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS = 200;
+export {
+  CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
+  CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
+} from "../shared/control-ui-session-pull-request-contract.js";
 
 /** Anonymous public-page presentation; remote URLs never cross into the renderer. */
 export type ControlUiLinkPreview = {

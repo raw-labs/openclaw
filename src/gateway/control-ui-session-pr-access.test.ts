@@ -3,6 +3,11 @@ import { copyFileSync, renameSync } from "node:fs";
 import { DatabaseSync, StatementSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as checkDetails from "../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
+import {
+  createControlUiSessionPrRead,
+  prepareControlUiSessionPrServiceTarget,
+} from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { deleteSessionEntryLifecycle } from "../config/sessions.js";
@@ -34,14 +39,9 @@ import {
   snapshot,
   type Load,
 } from "./control-ui-session-pr-access.test-support.js";
-import * as checkDetails from "./control-ui-session-pr-check-details.js";
-import {
-  createControlUiSessionPrRead,
-  prepareControlUiSessionPrServiceTarget,
-} from "./control-ui-session-pr-read.js";
-import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
 import {
   createTestSessionPrReadSource,
+  createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions,
   spyOnSessionPrLoader,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
@@ -184,7 +184,8 @@ describe.skipIf(process.platform === "win32" || Boolean(process.versions.bun))(
       await runWithSpawnBroker(ownerBroker, () =>
         withFixture("operator.read", async (f) => {
           const target = await prepareControlUiSessionPrServiceTarget(
-            () => getSessionRowProjection(f.context),
+            f.sessionReads,
+            f.context.getRuntimeConfig,
             { sessionKey, agentId: "main" },
           );
           if (!target || target.source === null) {
@@ -767,13 +768,10 @@ it("keeps warm default-loader SQL constant as readers join without a native row 
     await f.subscriptions.pollNow();
     const preparation = vi.spyOn(getSessionRowProjection(f.context)!, "withPreparedExactRows");
     try {
-      const read = createControlUiSessionPrRead({
-        client: f.client,
-        sessionKey,
-        getRuntimeConfig: f.context.getRuntimeConfig,
-        getSessionRowProjection: () => getSessionRowProjection(f.context),
-        isCurrentClient: () => !f.client.invalidated,
-      });
+      const read = createControlUiSessionPrRead(
+        f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
+        f.context.getRuntimeConfig,
+      );
       expect(await read?.()).toMatchObject({ sessionId: f.sessionId });
       expect(preparation).toHaveBeenCalledTimes(1);
       preparation.mockClear();
@@ -931,3 +929,31 @@ it.each(["concurrency limit", "earlier refresh", "refresh timer", "publication"]
     });
   },
 );
+
+it("withdraws the managed presentation and drains active transport on service stop", async () => {
+  const entered = createDeferredCore();
+  const released = createDeferredCore<Response>();
+  let transportSignal: AbortSignal | null | undefined;
+  const provider = vi.fn<typeof fetch>(async (_input, init) => {
+    transportSignal = init?.signal;
+    entered.resolve();
+    // The external provider is synthetic; the real request owner must cancel it.
+    return await released.promise;
+  });
+  await withDefaultLoader(provider, async (f) => {
+    await f.seedRepository();
+    await f.subscribe();
+    await entered.promise;
+    const presentation = f.readHost.presentation;
+    expect(presentation).toBeDefined();
+    await f.services.stop();
+    expect(f.readHost.presentation).toBeUndefined();
+    expect(transportSignal?.aborted).toBe(true);
+    released.resolve(githubJson([closedPull()]));
+    await presentation!.pollNow();
+    await f.clock.advanceBy(60_000);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(frames(f.socket)).toEqual([]);
+    expect(() => f.sessionReads.assertCurrent()).toThrow();
+  });
+});

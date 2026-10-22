@@ -95,21 +95,20 @@ serveWorkerTasks<GitWorkerReply<GitWorkerResult>, GitWorkerCommand>(
                   readRepositoryBranches(command.input.repoRoot, command.input),
               );
             case "checkout.revision":
-              return import("../gateway/control-ui-session-prs-git.runtime.js").then(
+              return import("./repository-checkout-read.runtime.js").then(
                 ({ readCheckoutGitRevision }) => readCheckoutGitRevision(command.input, diffTiming),
               );
             case "checkout.context":
-              return import("../gateway/control-ui-session-prs-git.runtime.js").then(
-                ({ readCheckoutGitContext }) =>
-                  readCheckoutGitContext(command.input.root, command.input.githubHost),
+              return import("./repository-checkout-read.runtime.js").then(
+                ({ readCheckoutGitContext }) => readCheckoutGitContext(command.input.root),
               );
             case "pull-request.branch-comparison":
-              return import("../gateway/control-ui-session-prs-git.runtime.js").then(
+              return import("./repository-checkout-read.runtime.js").then(
                 ({ readPullRequestBranchComparison }) =>
                   readPullRequestBranchComparison(command.input),
               );
             case "pull-request.branch-facts":
-              return import("../gateway/control-ui-session-prs-git.runtime.js").then(
+              return import("./repository-checkout-read.runtime.js").then(
                 ({ readPullRequestBranchFacts }) => readPullRequestBranchFacts(command.input),
               );
             case "checkout.diff":

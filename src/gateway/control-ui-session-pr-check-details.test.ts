@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { loadControlUiSessionPullRequestChecks } from "../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
-import { loadControlUiSessionPullRequestChecks } from "./control-ui-session-pr-check-details.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 
 const headSha = "a".repeat(40);

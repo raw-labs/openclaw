@@ -232,5 +232,6 @@
   "worker-task-server",
   "repository-oauth-host",
   "repository-session-host",
-  "worker-github-credentials"
+  "worker-github-credentials",
+  "repository-session-read"
 ]

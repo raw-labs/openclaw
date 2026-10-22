@@ -1021,6 +1021,9 @@
       ],
       "openclaw/plugin-sdk/repository-publication-content": [
         "../packages/plugin-sdk/dist/src/plugin-sdk/repository-publication-content.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-session-read": [
+        "../packages/plugin-sdk/dist/src/plugin-sdk/repository-session-read.d.ts"
       ]
     }
   }
