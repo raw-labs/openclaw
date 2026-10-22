@@ -1,3 +1,4 @@
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import { GitHubIdentityError } from "../../../extensions/github-repositories/tool-identity-api.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
@@ -7,7 +8,6 @@ import {
 import { capturePluginLifecycleAuthority } from "../../plugins/registry-lifecycle.js";
 import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { getAsyncWorkSignal } from "../../shared/async-work-scope.js";
-import { gitHubPublicApi } from "../github-public-api.js";
 import { prepareGitHubReaderIdentity } from "../github-reader-identity.js";
 import type { GatewayRequestHandler, GatewayRequestHandlers } from "./types.js";
 
@@ -36,7 +36,7 @@ const handleGitHubRead: GatewayRequestHandler = async (options) => {
   const assertToolAllowed = caller?.assertToolAllowed;
   const scope = getPluginRuntimeGatewayRequestScope();
   const registry = scope?.pluginRegistry;
-  const record = registry?.plugins.find((plugin) => plugin.id === "github");
+  const record = registry?.plugins.find((plugin) => plugin.id === "github-repositories");
   const pluginCurrent =
     registry &&
     record &&
@@ -45,7 +45,7 @@ const handleGitHubRead: GatewayRequestHandler = async (options) => {
     !caller ||
     !assertCaller ||
     !assertToolAllowed ||
-    client?.internal?.pluginRuntimeOwnerId !== "github" ||
+    client?.internal?.pluginRuntimeOwnerId !== "github-repositories" ||
     !pluginCurrent
   ) {
     respond(

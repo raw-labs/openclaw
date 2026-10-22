@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../state/openclaw-agent-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
@@ -17,7 +18,6 @@ import {
   routedFetch,
   testGitContext,
 } from "./control-ui-session-prs.test-support.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 import { isGitHubPublicationSuperseded } from "./github-publication-relevance.js";
 
 const { prepareRead, load } = createSessionPullRequestsFixture();

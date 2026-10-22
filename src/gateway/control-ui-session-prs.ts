@@ -1,3 +1,4 @@
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { runGitReadOperation } from "../infra/git-read-cache.js";
 import type {
@@ -25,7 +26,6 @@ import {
 } from "./control-ui-session-pr-request.js";
 import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";
 import { readTaskPullRequestReceipts } from "./control-ui-session-task-prs.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 import { captureOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
 import { resolveGitHubForkParent } from "./github-repository-target.js";
 

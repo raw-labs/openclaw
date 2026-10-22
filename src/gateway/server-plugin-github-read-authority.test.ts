@@ -25,7 +25,7 @@ import { resetTestPluginRegistry, setTestPluginRegistry } from "./test-helpers.p
 
 const { default: github } = await loadBundledPluginFacade<{
   default: OpenClawPluginDefinition;
-}>({ pluginId: "github", artifactBasename: "index.ts" });
+}>({ pluginId: "github-repositories", artifactBasename: "index.ts" });
 
 let state: Awaited<ReturnType<typeof createOpenClawTestState>> | undefined;
 beforeEach(async () => {
@@ -48,7 +48,7 @@ function fixture(method: "preview" | "detail") {
   registerVirtualTestPlugin({
     registry,
     config,
-    id: "github",
+    id: "github-repositories",
     name: "GitHub",
     contracts: {
       tools: ["github_read", "github_search"],

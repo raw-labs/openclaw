@@ -34,6 +34,7 @@ const PLUGIN_DOC_ALIASES = new Map([
   ["codex", "/plugins/codex-harness"],
   ["document-extract", "/tools/pdf"],
   ["geolocation", "/plugins/geolocation"],
+  ["github-repositories", "/plugins/github"],
   ["duckduckgo", "/tools/duckduckgo-search"],
   ["exa", "/tools/exa-search"],
   ["firecrawl", "/tools/firecrawl"],

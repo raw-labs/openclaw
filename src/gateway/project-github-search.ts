@@ -7,6 +7,7 @@ import {
   resolveConfiguredGitHubApiBaseUrl,
   resolveConfiguredGitHubHost,
 } from "../../extensions/github-repositories/host-api.js";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import type {
   RemoteProject,
   ProjectsSearchRemoteResult,
@@ -17,7 +18,6 @@ import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate
 import { logWarn } from "../logger.js";
 import { parseConfiguredProjectGitUrl } from "../projects/project-git-url.runtime.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 
 const SEARCH_CACHE_MS = 60_000;
 const SEARCH_CACHE_LIMIT = 100;

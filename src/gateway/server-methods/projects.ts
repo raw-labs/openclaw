@@ -4,6 +4,11 @@ import {
   resolveConfiguredGitHubHost,
 } from "../../../extensions/github-repositories/host-api.js";
 import { ProjectCloneError } from "../../../extensions/github-repositories/project-clone-runtime-api.js";
+import {
+  CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE,
+  gitHubPublicApi,
+  githubApiToken,
+} from "../../../extensions/github-repositories/public-api.js";
 import { readCachedNativeGitHubToken } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
@@ -41,11 +46,6 @@ import {
 import { isTrustedSecretSurfaceUnavailableError } from "../../secrets/runtime-degraded-state.js";
 import { prepareCurrentUserProfileAliases } from "../../state/user-profile-reads.js";
 import { configuredDefaultRepository } from "../configured-default-repository.js";
-import {
-  CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE,
-  gitHubPublicApi,
-  githubApiToken,
-} from "../github-public-api.js";
 import {
   WRITE_SCOPE,
   authorizeOperatorScopesForMethod,

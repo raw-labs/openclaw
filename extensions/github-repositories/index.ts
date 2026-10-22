@@ -2,6 +2,7 @@ import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { githubExecutionEnvironment } from "./execution-environment-api.js";
 import { repositoryGatewayMethods } from "./gateway-methods-api.js";
+import { registerGitHubReader } from "./reader/index.js";
 export default definePluginEntry({
   id: "github-repositories",
   name: "GitHub",
@@ -11,6 +12,7 @@ export default definePluginEntry({
       return;
     }
     api.registerExecutionEnvironment(githubExecutionEnvironment);
+    registerGitHubReader(api);
     for (const row of repositoryGatewayMethods) {
       const [method, , scope, since] = row;
       const policy: {

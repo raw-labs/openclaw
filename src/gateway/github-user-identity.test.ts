@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ControlUiGitHubError } from "../../extensions/github-repositories/public-api.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { SecretSurfaceUnavailableError } from "../secrets/runtime-degraded-state.js";
@@ -17,7 +18,6 @@ import {
 import { ensureProfileForTailscaleIdentity } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { buildAuthenticatedPresenceUser } from "./authenticated-presence-user.js";
-import type { ControlUiGitHubError } from "./github-public-api.js";
 import { createAuthenticatedGitHubIdentitySync } from "./github-user-identity.js";
 import { cfg as accessConfig } from "./github-user-identity.oidc.test-support.js";
 import { resolveAuthenticatedHttpUserProfile } from "./http-auth-user-profile.js";

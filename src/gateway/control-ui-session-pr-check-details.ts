@@ -1,3 +1,4 @@
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import { createRetainedCache } from "../infra/retained-cache.js";
 import type {
   ControlUiSessionPullRequestCheckDetails,
@@ -14,7 +15,6 @@ import {
   type SessionPullRequestCheckTarget,
 } from "./control-ui-session-prs-checks.js";
 import type { ControlUiSessionPullRequestsParams } from "./control-ui-session-prs.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 
 const checkDetailsCache = createRetainedCache<{
   expiresAt: number;

@@ -1,5 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import {
+  gitHubPublicApi,
+  type ControlUiGitHubPreviewIdentity,
+  type ControlUiGitHubSessionIdentity,
+} from "../../../extensions/github-repositories/public-api.js";
 import { GitHubIdentityError } from "../../../extensions/github-repositories/tool-identity-api.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import {
@@ -21,11 +26,6 @@ import {
 } from "../control-ui-session-pr-read.js";
 import { withControlUiSessionPrSource } from "../control-ui-session-pr-source.js";
 import { parseControlUiSessionPullRequestsSubscribeParams } from "../control-ui-session-pr-subscriptions.js";
-import {
-  gitHubPublicApi,
-  type ControlUiGitHubPreviewIdentity,
-  type ControlUiGitHubSessionIdentity,
-} from "../github-public-api.js";
 import { prepareGitHubReaderIdentity } from "../github-reader-identity.js";
 import { resolveRequestedSessionAgentId as resolveRequestedGlobalAgentId } from "../session-request-agent.js";
 import { withReadySessionRows } from "../session-row-prepared-read.js";

@@ -1,6 +1,7 @@
 import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { createRetainedCache } from "../infra/retained-cache.js";
@@ -14,7 +15,6 @@ import {
   fetchSessionPullRequestCheckRollup,
   sessionPullRequestRepositoryApiUrl,
 } from "./control-ui-session-prs-checks.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 
 type Read = ReturnType<typeof prepareSessionPullRequestGitHubRead>;
 type Entry = {

@@ -1,13 +1,15 @@
 import type { LegacyConfigMigrationSpec } from "../../../config/legacy.shared.js";
 import {
   findLegacyToolNamePaths,
+  GITHUB_READER_TOOL_GROUP_MIGRATION,
+  type LegacyToolNameMigration,
   IMAGE_INSPECTION_TOOL_NAME_MIGRATION,
   migrateLegacyToolNamePolicies,
   TASK_SUGGESTION_TOOL_NAME_MIGRATION,
 } from "./legacy-tool-name-migration.js";
 import { TOOL_POLICY_ROOTS } from "./legacy-tool-policy-scopes.js";
 
-const TOOL_NAME_MIGRATIONS = [
+const TOOL_NAME_MIGRATIONS: { id: string; migration: LegacyToolNameMigration }[] = [
   {
     id: "tools.suggest-task-name",
     migration: TASK_SUGGESTION_TOOL_NAME_MIGRATION,
@@ -16,14 +18,15 @@ const TOOL_NAME_MIGRATIONS = [
     id: "tools.view-image-name",
     migration: IMAGE_INSPECTION_TOOL_NAME_MIGRATION,
   },
-] as const;
+  { id: "tools.github-reader-group", migration: GITHUB_READER_TOOL_GROUP_MIGRATION },
+];
 
 export const LEGACY_CONFIG_MIGRATIONS_RUNTIME_TOOL_NAMES =
   TOOL_NAME_MIGRATIONS.map<LegacyConfigMigrationSpec>((migration) => ({
     id: migration.id,
     legacyRules: TOOL_POLICY_ROOTS.map((root) => ({
       path: [root],
-      message: `Tool policies still rely on legacy ${migration.migration.legacyName} coverage; run "openclaw doctor --fix" to preserve equivalent ${migration.migration.canonicalName} access.`,
+      message: `Tool policies still rely on legacy ${migration.migration.legacyName} coverage; run "openclaw doctor --fix" to preserve equivalent ${[migration.migration.canonicalName, ...(migration.migration.additionalCanonicalNames ?? [])].join(", ")} access.`,
       match: (value) => findLegacyToolNamePaths(value, migration.migration, [root]).length > 0,
     })),
     apply: (raw, changes) => {
@@ -34,7 +37,7 @@ export const LEGACY_CONFIG_MIGRATIONS_RUNTIME_TOOL_NAMES =
         return;
       }
       changes.push(
-        `Migrated legacy ${migration.migration.legacyName} policy coverage to ${migration.migration.canonicalName} in ${paths.join(", ")}.`,
+        `Migrated legacy ${migration.migration.legacyName} policy coverage to ${[migration.migration.canonicalName, ...(migration.migration.additionalCanonicalNames ?? [])].join(", ")} in ${paths.join(", ")}.`,
       );
     },
   }));

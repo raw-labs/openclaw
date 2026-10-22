@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 import { isGitHubPublicationSuperseded } from "./github-publication-relevance.js";
 
 const source = "1".repeat(40);

@@ -1,22 +1,16 @@
 import {
-  resolveConfiguredGitHubApiBaseUrl,
-  resolveConfiguredGitHubHost,
-} from "../../extensions/github-repositories/host-api.js";
-import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import {
-  createLazyFacadeObjectValue,
-  loadBundledPluginPublicSurfaceModuleSyncCore,
-} from "../plugin-sdk/facade-loader.js";
-import {
   assertSecretOwnerAvailable,
   isTrustedSecretSurfaceUnavailableError,
   SecretSurfaceUnavailableError,
-} from "../secrets/runtime-degraded-state.js";
+} from "openclaw/plugin-sdk/channel-secret-owner-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import type {
   ControlUiLinkReaderDocument,
   ControlUiLinkReaderSection,
-} from "../shared/control-ui-link-reader.js";
+} from "openclaw/plugin-sdk/control-ui-link-reader";
+import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
+import { resolveConfiguredGitHubApiBaseUrl, resolveConfiguredGitHubHost } from "./host-api.js";
+import * as readerApi from "./reader-api.js";
 
 export const CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE =
   "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.";
@@ -239,13 +233,10 @@ type GitHubTransportApi = Omit<
   ) => Promise<ControlUiLinkReaderDocument>;
 };
 
-// The existing loader owns library caching and retirement. Host-specific
-// callbacks stay here, rather than consulting another loader’s state.
-export const gitHubPublicApi = createLazyFacadeObjectValue<GitHubPublicApi>(() => {
-  const library = loadBundledPluginPublicSurfaceModuleSyncCore<GitHubTransportApi>({
-    dirName: "github",
-    artifactBasename: "api.js",
-  });
+// Reader and native HTTP consumers share one library and cooldown owner.
+// Importing this public artifact never registers tools or activates the plugin.
+export const gitHubPublicApi: GitHubPublicApi = (() => {
+  const library: GitHubTransportApi = readerApi;
   const resolveScope = (env: NodeJS.ProcessEnv = process.env, host?: string) => {
     const config = getRuntimeConfigSnapshot();
     const configuredHost = resolveConfiguredGitHubHost(config);
@@ -362,4 +353,4 @@ export const gitHubPublicApi = createLazyFacadeObjectValue<GitHubPublicApi>(() =
       );
     },
   };
-});
+})();

@@ -11,8 +11,13 @@ function migrate(id: string, raw: Record<string, unknown>) {
 
 describe("legacy tool name migrations", () => {
   it.each([
-    { id: "tools.suggest-task-name", legacy: "spawn_task", canonical: "suggest_task" },
-    { id: "tools.view-image-name", legacy: "image", canonical: "view_image" },
+    { id: "tools.suggest-task-name", legacy: "spawn_task", canonical: ["suggest_task"] },
+    { id: "tools.view-image-name", legacy: "image", canonical: ["view_image"] },
+    {
+      id: "tools.github-reader-group",
+      legacy: "github",
+      canonical: ["github_read", "github_search"],
+    },
   ])("rewrites $legacy only on core-owned policy surfaces", ({ id, legacy, canonical }) => {
     const sender = () => ({ "id:guest": { deny: [legacy] } });
     const policy = () => ({
@@ -36,17 +41,20 @@ describe("legacy tool name migrations", () => {
     };
     expect(migrate(id, raw)).toHaveLength(1);
     for (const tools of [raw.tools, raw.agents.entries.main.tools]) {
-      expect(tools.allow).toEqual([canonical, "read"]);
-      expect(tools.byProvider.openai.deny).toEqual([canonical]);
-      expect(tools.sandbox.tools.alsoAllow).toEqual([canonical]);
-      expect(tools.toolsBySender["id:guest"].deny).toEqual([canonical]);
+      expect(tools.allow).toEqual([...canonical, "read"]);
+      expect(tools.byProvider.openai.deny).toEqual([...canonical]);
+      expect(tools.sandbox.tools.alsoAllow).toEqual([...canonical]);
+      expect(tools.toolsBySender["id:guest"].deny).toEqual([...canonical]);
     }
-    expect(raw.tools.subagents.tools.deny).toEqual([canonical]);
+    expect(raw.tools.subagents.tools.deny).toEqual([...canonical]);
     expect(raw.channels.discord.guilds["1"]).toEqual({
-      tools: { allow: [canonical] },
-      toolsBySender: { "id:guest": { deny: [canonical] } },
+      tools: { allow: [...canonical] },
+      toolsBySender: { "id:guest": { deny: [...canonical] } },
     });
-    expect(raw.gateway.tools).toEqual({ allow: [canonical], deny: [canonical, "image_generate"] });
+    expect(raw.gateway.tools).toEqual({
+      allow: [...canonical],
+      deny: [...canonical, "image_generate"],
+    });
     expect(raw.tools.agentToAgent.allow).toEqual([legacy]);
     expect(raw.plugins.entries.example.config.toolsAllow).toEqual([legacy]);
   });
@@ -60,4 +68,18 @@ describe("legacy tool name migrations", () => {
     expect(migrate("tools.view-image-name", raw)).toHaveLength(changed);
     expect(raw.tools.allow).toEqual(expected);
   });
+});
+
+// Dynamic plugin groups retire to exact tools; wildcard grants are never broadened.
+it("leaves broad wildcard and unrelated allow/deny fields unchanged for the retired reader", () => {
+  const raw = {
+    tools: { allow: ["git*"], agentToAgent: { allow: ["github"] } },
+    plugins: {
+      allow: ["github"],
+      entries: { unrelated: { config: { tools: { deny: ["github"] } } } },
+    },
+  };
+  const before = structuredClone(raw);
+  expect(migrate("tools.github-reader-group", raw)).toEqual([]);
+  expect(raw).toEqual(before);
 });

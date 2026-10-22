@@ -12,7 +12,7 @@ test("Gateway GitHub reads use the configured Enterprise Server API", async () =
       github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
     },
   });
-  const { gitHubPublicApi } = await import("./github-public-api.js");
+  const { gitHubPublicApi } = await import("../../extensions/github-repositories/public-api.js");
   const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
 
   expect(gitHubPublicApi.GITHUB_API_BASE_URL).toBe("https://ghe.example.test/api/v3");
