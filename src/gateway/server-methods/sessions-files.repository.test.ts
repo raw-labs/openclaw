@@ -31,10 +31,10 @@ import {
 } from "../../worker/node-workspace-protocol.js";
 import { WORKSPACE_INSPECTION_COMMAND } from "../../worker/workspace-inspection-protocol.js";
 import {
-  readGitHubRepositoryPublicationBlob,
-  readGitHubRepositoryPublicationMetadata,
-  REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS,
-} from "../github-repository-publication-snapshot.js";
+  readRepositoryPublicationBlob,
+  readRepositoryPublicationMetadata,
+  REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS,
+} from "../repository-publication-snapshot.js";
 import { nodeWorkerGatewayNamespace } from "../worker-environments/node-worker-gateway-namespace.js";
 import {
   BUILD,
@@ -354,7 +354,7 @@ async function withCheckpointAcceptance(failCapture = false) {
           process.execPath,
           [
             "-e",
-            REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS,
+            REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS,
             workspace,
             source.baseCommit!,
             publicationStagingRoot,
@@ -402,15 +402,13 @@ it("accepts editor bytes and Git-normalized publication before acknowledging the
     async ({ stagingRoot, publicationDigest, publicationStagingRoot }) => {
       expect(fs.readFileSync(path.join(stagingRoot, "changed.txt"), "utf8")).toBe("saved\r\n");
       expect(publicationDigest).toBeDefined();
-      const { snapshot: publication } = await readGitHubRepositoryPublicationMetadata(
+      const { snapshot: publication } = await readRepositoryPublicationMetadata(
         publicationStagingRoot!,
         publicationDigest!,
       );
       const published = publication.entries.find((entry) => entry.path === "changed.txt")!;
       expect(
-        (
-          await readGitHubRepositoryPublicationBlob(publicationStagingRoot!, published.sha!)
-        ).toString(),
+        (await readRepositoryPublicationBlob(publicationStagingRoot!, published.sha!)).toString(),
       ).toBe("saved\n");
     },
   );

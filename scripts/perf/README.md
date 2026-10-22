@@ -1287,12 +1287,16 @@ handler. Use request IDs and timestamps to distinguish the critical path from
 background work; never add stage totals together. Gateway diagnostics separately
 record response bytes and dispatch work.
 For simultaneous comparisons using one checkout, place the baseline receipt
-owner beside `src/gateway/github-publication-shared-read.ts` and the baseline
-availability owner beside `src/gateway/github-publication-availability.ts`.
-Pass `--github-observation-owner <baseline-receipt-file>` and
-`--github-availability-owner <baseline-availability-file>` only on A. The result
-records their loaded paths and override flags in `githubObservation.owner` and
-`githubObservation.availabilityOwner`, and rejects a run unless both owners loaded
+owner beside `src/gateway/repository-publication-shared-read.ts`, the baseline
+workspace/session owner beside `src/gateway/repository-publication-workspace-authority.ts`,
+and the vendor identity owner beside
+`extensions/github-repositories/publication-availability-api.ts`.
+Pass `--github-observation-owner <baseline-receipt-file>`,
+`--github-availability-owner <baseline-workspace-file>`, and
+`--github-identity-owner <baseline-identity-file>` only on A for the owners being
+compared. The result records their loaded paths and override flags in
+`githubObservation.owner`, `githubObservation.availabilityOwner`, and
+`githubObservation.identityOwner`, and rejects a run unless all three owners loaded
 and the handler was observed. Both sides must
 enable identical observation and use separate fixtures, ports, and CPU sets.
 

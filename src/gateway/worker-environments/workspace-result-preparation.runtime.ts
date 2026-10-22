@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import {
-  parseGitHubRepositoryPublicationSnapshot,
-  readGitHubRepositoryPublicationBlob,
-} from "../github-repository-publication-snapshot.js";
+  parseRepositoryPublicationObjectSnapshot,
+  readRepositoryPublicationBlob,
+} from "../repository-publication-snapshot.js";
 import { readWorkspaceGitEntry, writeWorkspaceGitInput } from "./workspace-git-input.js";
 import { parseChangedWorkspaceResult } from "./workspace-manifest-comparison.js";
 import type {
@@ -49,7 +49,7 @@ async function publicationStageSource(
 ) {
   const { publication, stagingRoot } = params;
   const metadata = bufferView(publication.metadata);
-  const snapshot = parseGitHubRepositoryPublicationSnapshot(
+  const snapshot = parseRepositoryPublicationObjectSnapshot(
     metadata.toString("utf8"),
     publication.publicationDigest,
   );
@@ -82,7 +82,7 @@ async function publicationStageSource(
   let bytes = metadata.byteLength;
   for (const sha of blobs) {
     assertBeforeMutation?.();
-    const content = await readGitHubRepositoryPublicationBlob(stagingRoot, sha);
+    const content = await readRepositoryPublicationBlob(stagingRoot, sha);
     assertBeforeMutation?.();
     bytes += content.byteLength;
     if (bytes > MAX_RECONCILIATION_TOTAL_BYTES) {
@@ -110,7 +110,7 @@ async function publicationStageSource(
       // Keep only metadata between passes; never retain the complete blob inventory.
       const content =
         inline.get(entry.path) ??
-        (await readGitHubRepositoryPublicationBlob(stagingRoot, entry.path.slice("blobs/".length)));
+        (await readRepositoryPublicationBlob(stagingRoot, entry.path.slice("blobs/".length)));
       if (
         entry.type !== "file" ||
         content.byteLength !== entry.size ||

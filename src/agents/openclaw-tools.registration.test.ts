@@ -471,6 +471,20 @@ describe("gateway client capability tool filtering", () => {
   });
 
   it.each([
+    { label: "global disable", plugins: { enabled: false } },
+    { label: "entry disable", plugins: { entries: { "github-repositories": { enabled: false } } } },
+    { label: "deny", plugins: { deny: ["github-repositories"] } },
+    { label: "allowlist exclusion", plugins: { allow: ["visitor-access"] } },
+  ])(
+    "omits publication tools for plugin $label despite prepared workspace access",
+    ({ plugins }) => {
+      const tools = createOpenClawTools({ config: { plugins }, githubPublicationAvailable: true });
+      expect(hasTool(tools, "github_publish")).toBe(false);
+      expect(hasTool(tools, "github_identity_status")).toBe(false);
+    },
+  );
+
+  it.each([
     {
       scope: "operator.sessions.write",
       publishing: false,

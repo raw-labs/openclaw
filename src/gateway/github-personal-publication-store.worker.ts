@@ -13,7 +13,7 @@ import type { DB } from "../state/openclaw-state-db.generated.js";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { resolvePersonalGitHubOwnerInDatabase } from "../state/user-github-connections.kernel.js";
 import { personalGitHubRequestDigest } from "./github-personal-publication-store.js";
-import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
+import { projectGitHubPublicationResult } from "./repository-publication-receipt.js";
 
 export type PersonalGitHubPublicationRow = DB["github_personal_publication_requests"];
 const table = "github_personal_publication_requests";

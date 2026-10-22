@@ -32,6 +32,7 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { createRequesterPublicationFixture } from "./github-publication-requester.test-support.js";
 import { commandResult, githubPublicationTestMocks } from "./github-publication.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -269,13 +270,19 @@ export async function fixture(
       params: Record<string, unknown>,
     ) => {
       const respond = vi.fn();
+      const context = Object.assign(createRequestContext(), f.guestSource.context, {
+        githubPublicationService: f.coordinator,
+        workerSessionPlacementService: f.placements,
+      });
+      context.resolveGatewayContext = () => context;
+      await installPublicationRpcFixture(context, {
+        ...f.coordinator,
+        inspectPullRequest: f.coordinator.provider.inspectPullRequest,
+      });
       await handleGatewayRequest({
         req: { type: "req", id: randomUUID(), method, params },
         client: f.guestSource.client,
-        context: Object.assign(createRequestContext(), f.guestSource.context, {
-          githubPublicationService: f.coordinator,
-          workerSessionPlacementService: f.placements,
-        }),
+        context,
         isWebchatConnect: () => false,
         respond,
         signal,

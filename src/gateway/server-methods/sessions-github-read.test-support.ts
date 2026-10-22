@@ -4,6 +4,7 @@ import {
   type PersonalGitHubAction,
 } from "../../../extensions/github-repositories/personal-oauth-api.js";
 import { personalGitHubStatusAsync as personalGitHubStatus } from "../../../extensions/github-repositories/personal-status-api.js";
+import * as publicationAvailability from "../../../extensions/github-repositories/publication-availability-api.js";
 import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
@@ -15,9 +16,8 @@ import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { installGitHubAccountFixture } from "../github-account-service.test-support.js";
-import * as publicationAvailability from "../github-publication-availability.js";
 import { createRepositorySessionReadHost } from "../repository-session-read-host.js";
-import { handleGatewayRequest } from "../server-methods.js";
+import { handleGatewayRequest, createRequestGatewayMethodRegistry } from "../server-methods.js";
 import { getSessionRowProjection } from "../session-row-projection-access.js";
 import { initializeSessionReadContext } from "./sessions-read-cache.test-support.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
@@ -191,6 +191,8 @@ function createFixture(
       new Set(connected && (!filter || filter(client)) ? [client.connId] : []),
     githubPublicationService: publication,
   } as unknown as GatewayRequestContext;
+  const methods = createRequestGatewayMethodRegistry();
+  context.getGatewayMethodRegistry = () => methods;
   context.resolveGatewayContext = () => context;
   const readScheduler = createTestGatewayScheduler();
   const readHost = createRepositorySessionReadHost({
@@ -213,9 +215,13 @@ function createFixture(
     knownMergedHeads: vi.fn(),
     pollNow: vi.fn(),
   } as never);
-  installGitHubAccountFixture(context, {
-    personal: { ...personalLifecycle, status: personalConnectionStatus },
-  } as never);
+  installGitHubAccountFixture(
+    context,
+    {
+      personal: { ...personalLifecycle, status: personalConnectionStatus },
+    } as never,
+    publication,
+  );
   const invoke = async (
     method: "sessions.github.options" | "sessions.github.status",
     params: Record<string, unknown>,

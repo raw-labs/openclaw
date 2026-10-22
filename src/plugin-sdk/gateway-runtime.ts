@@ -55,8 +55,8 @@ export type {
 export type {
   GitHubPublicationClaimRequestV2,
   GitHubPublicationSessionRequestV2,
-} from "../gateway/github-publication-coordinator-methods.js";
-export type { PersonalGitHubSessionActionV2 } from "../gateway/github-personal-publication.js";
+} from "../gateway/repository-publication-admission.js";
+export type { PersonalGitHubSessionActionV2 } from "../gateway/repository-publication-personal.js";
 
 /** Prepare a host-owned requester from this handler's admitted Gateway authority. */
 export async function prepareGitHubPublicationRequesterV2(

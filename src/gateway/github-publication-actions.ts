@@ -1,4 +1,16 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import { readRepositoryServices } from "../../extensions/github-repositories/account-runtime-api.js";
+import {
+  assertExpectedSharedGitHubPublisher,
+  currentGitHubPublicationConfig,
+  matchesCurrentGitHubPublicationIdentity,
+  prepareCurrentGitHubPublicationIdentity,
+} from "../../extensions/github-repositories/publication-availability-api.js";
+import {
+  githubPublicationApiArgs,
+  runGitHubPublicationCommand as runPublicationCommand,
+} from "../../extensions/github-repositories/publication-git-transport-api.js";
+import { assertExistingPullRequestWriteAccess } from "../../extensions/github-repositories/publication-pr-preflight-api.js";
 import type {
   SessionGitHubActionParams,
   SessionGitHubActionResult,
@@ -9,19 +21,8 @@ import { redactToolDetail } from "../logging/redact.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
 import { preparePublishingSession, pullRequestState } from "./github-publication-action-target.js";
-import {
-  assertExpectedSharedGitHubPublisher,
-  currentGitHubPublicationConfig,
-  matchesCurrentGitHubPublicationIdentity,
-  prepareCurrentGitHubPublicationIdentity,
-} from "./github-publication-availability.js";
 import { uploadGitHubPublicationEvidence } from "./github-publication-evidence.js";
-import {
-  githubPublicationApiArgs,
-  runPublicationCommand,
-} from "./github-publication-git-transport.js";
-import { inspectOwnGitHubPullRequest } from "./github-publication-inspect.js";
-import { assertExistingPullRequestWriteAccess } from "./github-publication-pr-preflight.js";
+import { prepareOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
 import { prepareGitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 
@@ -74,7 +75,7 @@ export async function performSessionGitHubAction(options: Options): Promise<void
   if (params.action === "merge" && !params.mergeMethod) {
     throw new Error("Select the repository's intended mergeMethod before merging.");
   }
-  const service = context.githubPublicationService;
+  const service = readRepositoryServices(context)?.publication;
   if (!service) {
     throw new Error("GitHub publication is unavailable on this Gateway.");
   }
@@ -95,6 +96,9 @@ export async function performSessionGitHubAction(options: Options): Promise<void
   const admitted = await prepareGitHubPublicationRequesterV2(options, session);
   resources.defer(admitted.release);
   const assertRequester = () => {
+    if (readRepositoryServices(context)?.publication !== service) {
+      throw new Error("The repository publisher stopped; inspect the current PR before retrying.");
+    }
     target.assertCurrent();
     admitted.requester.assertCurrent();
     if (
@@ -158,7 +162,7 @@ export async function performSessionGitHubAction(options: Options): Promise<void
     requestedScopes: ["operator.write"],
     allowedScopes: admitted.requester.snapshot.scopes,
   });
-  let inspection: Awaited<ReturnType<typeof inspectOwnGitHubPullRequest>> | undefined;
+  let inspection: Awaited<ReturnType<typeof service.inspectPullRequest>> | undefined;
   const assertIdentity = () => {
     assertRequester();
     if (!matchesCurrentGitHubPublicationIdentity({ agentId: session.agentId, identity })) {
@@ -194,10 +198,10 @@ export async function performSessionGitHubAction(options: Options): Promise<void
   const read = async () => {
     assertCurrent();
     if (binding && !fullWrite) {
-      inspection = await inspectOwnGitHubPullRequest({
+      inspection = await service.inspectPullRequest({
         pullRequestUrl: binding.url,
         agentId: session.agentId,
-        requester: admitted.requester,
+        reader: prepareOwnGitHubPullRequestReader(admitted.requester),
         assertCurrent: assertIdentity,
       });
     }

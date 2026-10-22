@@ -492,7 +492,8 @@
     "!dist/plugin-sdk/repository-session-host.d.ts",
     "!dist/plugin-sdk/worker-github-credentials.d.ts",
     "!dist/plugin-sdk/repository-publication-content.d.ts",
-    "!dist/plugin-sdk/repository-session-read.d.ts"
+    "!dist/plugin-sdk/repository-session-read.d.ts",
+    "!dist/plugin-sdk/repository-publication-engine.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -1757,6 +1758,9 @@
     "./plugin-sdk/repository-sources": {
       "types": "./dist/plugin-sdk/repository-sources.d.ts",
       "default": "./dist/plugin-sdk/repository-sources.js"
+    },
+    "./plugin-sdk/repository-publication-engine": {
+      "default": "./dist/plugin-sdk/repository-publication-engine.js"
     },
     "./cli-entry": "./openclaw.mjs"
   },

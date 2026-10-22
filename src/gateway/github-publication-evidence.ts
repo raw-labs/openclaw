@@ -3,6 +3,10 @@ import path from "node:path";
 import { detectMime } from "@openclaw/media-core/mime";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
+import {
+  githubPublicationApiArgs,
+  runGitHubPublicationCommand as runPublicationCommand,
+} from "../../extensions/github-repositories/publication-git-transport-api.js";
 import type { PreparedGitHubPublicationIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   GITHUB_PUBLICATION_EVIDENCE_MAX_BYTES,
@@ -14,10 +18,6 @@ import { canUploadGitHubPublicationEvidence } from "../agents/sandbox/github-pub
 import type { SandboxContext } from "../agents/sandbox/types.js";
 import { cancelUnreadResponseBody, readResponseWithLimit } from "../infra/http-response-body.js";
 import { fetchWithSsrFGuard } from "../infra/net/fetch-guard.js";
-import {
-  githubPublicationApiArgs,
-  runPublicationCommand,
-} from "./github-publication-git-transport.js";
 
 const MEDIA_TYPES = new Map([
   [".png", "image/png"],

@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rejectGitHubPublicationSelection } from "../../../extensions/github-repositories/publication-failure-api.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
 import {
@@ -12,11 +13,8 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { getUserProfileDisplay } from "../../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import {
-  GitHubPublicationRequesterUnavailableError,
-  rejectGitHubPublicationSelection,
-} from "../github-publication-failure.js";
-import type { GitHubPublicationCoordinator } from "../github-publication.js";
+import { RepositoryPublicationRequesterUnavailableError } from "../repository-publication-engine-errors.js";
+import type { GitHubPublicationCoordinator } from "../repository-publication-engine.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import { createSyntheticPluginRuntimeClient } from "../server-plugin-runtime-client.js";
 import { createOperatorWsClient } from "../server/ws-connection/authenticated-request-dispatch.test-support.js";
@@ -253,7 +251,7 @@ describe("sessions.github.publish", () => {
           expect(mocks.request).not.toHaveBeenCalled();
           expect(respond).toHaveBeenCalledWith(false, undefined, {
             code: "UNAVAILABLE",
-            message: new GitHubPublicationRequesterUnavailableError().message,
+            message: new RepositoryPublicationRequesterUnavailableError().message,
           });
           return;
         }
@@ -350,7 +348,7 @@ describe("sessions.github.publish", () => {
     expect(requester.snapshot).toEqual(expectedSystemRequester.snapshot);
     expect(() => requester.assertCurrent()).not.toThrow();
     authorized = false;
-    expect(() => requester.assertCurrent()).toThrow(GitHubPublicationRequesterUnavailableError);
+    expect(() => requester.assertCurrent()).toThrow(RepositoryPublicationRequesterUnavailableError);
     request.resolve({ ...acceptedPublication, requestId: "publication-revoked" });
 
     await expect(pending).rejects.toBe(changed);

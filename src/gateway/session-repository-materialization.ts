@@ -10,14 +10,14 @@ import {
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
-import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
-import {
-  assertSafeGitPublicationWorkspace,
-  createGitHubPublicationCommandRunner,
-} from "./github-publication-git-transport.js";
 import { readRepositoryGitHubPublicationBranchAsync } from "./github-publication-store-async.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
-import { prepareRepositoryPublicationRestore } from "./github-repository-publication-restore.js";
+import { publicationBaseBranch } from "./repository-publication-base-ref.js";
+import {
+  assertSafeGitPublicationWorkspace,
+  createPublicationCommandRunner,
+} from "./repository-publication-git.js";
+import { prepareRepositoryPublicationRestore } from "./repository-publication-restore.js";
 import type { RepositorySources } from "./repository-sources.js";
 import { retainGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
 import type { GatewaySessionEntryRead } from "./session-utils-store.js";
@@ -157,14 +157,14 @@ async function materializeCapturedRepositoryWorkspace(
     step,
     require: command,
     run,
-  } = createGitHubPublicationCommandRunner(assertCurrent, "session.materialize");
+  } = createPublicationCommandRunner(assertCurrent, "session.materialize");
   const remoteHead = await step(() => restored.readRemoteHead(repository.branch));
   if (remoteHead !== (published?.pushed_head_commit ?? undefined)) {
     throw new Error(
       "Repository publication branch differs from its recorded push; review the remote branch before retrying the Gateway move",
     );
   }
-  const requestedBase = parseGitHubPublicationBaseBranch(repository.requestedRef ?? "HEAD", "HEAD");
+  const requestedBase = publicationBaseBranch(repository.requestedRef ?? "HEAD", "HEAD");
   const baseRef =
     published?.base_branch ??
     (requestedBase !== "HEAD" && (await step(() => restored.readRemoteHead(requestedBase)))

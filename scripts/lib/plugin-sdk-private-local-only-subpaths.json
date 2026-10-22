@@ -233,5 +233,6 @@
   "repository-oauth-host",
   "repository-session-host",
   "worker-github-credentials",
-  "repository-session-read"
+  "repository-session-read",
+  "repository-publication-engine"
 ]

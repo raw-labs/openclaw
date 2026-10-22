@@ -433,6 +433,7 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
                 await import("./worker-turn-transcript-target.js");
               assertPreparationCurrent();
               const executionOptions = {
+                readWorkerPublicationFact: options.readWorkerPublicationFact,
                 environments: options.environments,
                 onHandoff: (custody?: { requiresTerminalReceipt: true }) => {
                   handedOff = true;

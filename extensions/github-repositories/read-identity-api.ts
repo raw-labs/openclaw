@@ -30,14 +30,23 @@ const nativeTokens = createStaleWhileRevalidateCache<string | undefined>({
   cacheable: (token) => token !== undefined,
 });
 
-export const githubIdentityChanges: { onChange?: () => void } = {};
+const identityChangeListeners = new Set<() => void>();
+
+export function subscribeGitHubIdentityChanges(listener: () => void) {
+  identityChangeListeners.add(listener);
+  return () => {
+    identityChangeListeners.delete(listener);
+  };
+}
 
 export function clearNativeGitHubTokenCache(): void {
   nativeTokens.clear();
-  try {
-    githubIdentityChanges.onChange?.();
-  } catch {
-    // Discovery is best effort; cache retirement must still succeed.
+  for (const listener of identityChangeListeners) {
+    try {
+      listener();
+    } catch {
+      // Discovery is best effort; one retired owner must not block another.
+    }
   }
 }
 

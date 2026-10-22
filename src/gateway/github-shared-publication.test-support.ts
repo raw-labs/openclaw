@@ -2,8 +2,6 @@ import { replaceSessionEntrySync } from "../config/sessions/session-accessor.js"
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
 import { runOpenClawStateWriteTransaction } from "../state/openclaw-state-db.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
-import type { PublicationSessionIdentity } from "./github-publication-availability.js";
-import { digestGitHubPublicationRequest } from "./github-publication-receipt.js";
 import { ensureGitHubPublicationStoreFixture } from "./github-publication-store.test-support.js";
 import { insertGitHubPublicationRequest } from "./github-publication-store.worker.js";
 import {
@@ -16,10 +14,12 @@ import {
   systemPublicationRequester,
 } from "./github-publication.test-support.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication-store.js";
+import { digestGitHubPublicationRequest } from "./repository-publication-receipt.js";
+import type { RepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 
 export { createTestGitHubPublicationCoordinator as sharedPublicationCoordinator } from "./github-publication.test-support.js";
 
-export const sharedPublicationSession: PublicationSessionIdentity = {
+export const sharedPublicationSession: RepositoryPublicationSession = {
   sessionId: SESSION_ID,
   sessionKey: SESSION_KEY,
   agentId: "main",
@@ -29,7 +29,7 @@ export const sharedPublicationSession: PublicationSessionIdentity = {
 export function insertSharedWorktreeReceipt(
   requestId: string,
   options: {
-    session?: PublicationSessionIdentity;
+    session?: RepositoryPublicationSession;
     idempotencyKey?: string;
     createdAtMs?: number;
     worktreeId?: string;
@@ -63,7 +63,7 @@ export function insertSharedWorktreeReceipt(
       identity: {
         source: "system-configured",
         profileId: "fixture-profile",
-        account: { accountId: 42, login: "fixture-bot", avatarUrl: null },
+        account: { accountId: 42, login: "fixture-bot" },
       },
       snapshot: {
         sourceHeadCommit: OLD_HEAD,

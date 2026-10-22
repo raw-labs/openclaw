@@ -1,10 +1,10 @@
 import { requestCurrentGitHubOAuthRefresh } from "../../../extensions/github-repositories/account-runtime-api.js";
+import { currentGitHubPublicationConfig } from "../../../extensions/github-repositories/publication-availability-api.js";
 import {
   GitHubIdentityError,
   prepareGitHubReadIdentity,
 } from "../../../extensions/github-repositories/tool-identity-api.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
-import { currentGitHubPublicationConfig } from "../github-publication-availability.js";
 
 /** Checkout requires identity admission; optional publication discovery cannot authorize anonymous Git. */
 export async function prepareRepositoryGitHubIdentity(agentId: string, assertCurrent: () => void) {

@@ -1,0 +1,271 @@
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { formatErrorMessage } from "../infra/errors.js";
+import { AsyncWorkScope } from "../shared/async-work-scope.js";
+import { githubPublicationReceipts } from "../state/github-publication-receipts.js";
+import { createGitHubPublicationWorkerScope } from "../state/github-publication-worker.js";
+import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
+import {
+  listRepositoryGitHubPublicationsAsync,
+  listSharedGitHubPublicationsAsync,
+  requirePersonalGitHubPublicationConfirmationAsync,
+} from "./github-publication-store-async.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-engine-contract.js";
+import { createGitHubPublicationCoordinator } from "./repository-publication-engine.js";
+import type { RepositoryPublicationTranscriptRuntime } from "./repository-publication-transcript.js";
+import { reportRepositoryPublicationTranscript } from "./repository-publication-transcript.js";
+import type {
+  WorkerSessionPlacementStore,
+  WorkerSessionTurnClaim,
+} from "./worker-environments/placement-store.js";
+
+export function createRepositoryPublicationRuntime(params: {
+  context: OpenClawStateWorkerContext;
+  signal: AbortSignal;
+  provider: RepositoryPublicationProvider;
+  formatReport: RepositoryPublicationProvider["formatReport"];
+  placements: WorkerSessionPlacementStore;
+  getCommittedRuntimeConfig: () => OpenClawConfig;
+  loadSessionRuntime: () => Promise<RepositoryPublicationTranscriptRuntime>;
+  warn: (message: string) => void;
+}) {
+  const context = params.context;
+  const scope = createGitHubPublicationWorkerScope(context);
+  const work = new AsyncWorkScope();
+  const admit = <T>(run: () => Promise<T>): Promise<T> => {
+    if (work.isClosing) {
+      throw new Error("Repository publication runtime is closing.");
+    }
+    return work.track(run);
+  };
+  const pendingRequests = new Set<string>();
+  let pendingKnown = false;
+  let reconcileNeeded = true;
+  let loadingUpdates: Map<string, boolean> | undefined;
+  const updatePending = (key: string, pending: boolean) => {
+    if (pending) {
+      pendingRequests.add(key);
+    } else {
+      pendingRequests.delete(key);
+    }
+    loadingUpdates?.set(key, pending);
+  };
+  const stopFacts = githubPublicationReceipts.subscribeFacts((change) => {
+    if (change.kind === "unknown" && change.identity === context.admission.identity.key) {
+      pendingKnown = false;
+      reconcileNeeded = true;
+    }
+    if (
+      change.kind !== "committed" ||
+      change.receipt.source.identity !== context.admission.identity.key
+    ) {
+      return;
+    }
+    for (const [key, fact] of change.receipt.facts) {
+      if (fact.kind === "unknown") {
+        pendingKnown = false;
+        reconcileNeeded = true;
+      } else if (fact.kind === "absent") {
+        updatePending(key, false);
+      } else if (fact.kind === "postimage" && "status" in fact.value) {
+        const row = fact.value;
+        updatePending(
+          key,
+          ((row.status === "requested" || row.status === "publishing") &&
+            row.identity_source !== "personal") ||
+            ((row.status === "published" || row.status === "failed") &&
+              row.reported_at_ms === null),
+        );
+        reconcileNeeded = true;
+      }
+    }
+  });
+  const loadPendingRequests = async () => {
+    const updates = new Map<string, boolean>();
+    loadingUpdates = updates;
+    pendingKnown = true;
+    try {
+      const [shared, repository] = await Promise.all([
+        listSharedGitHubPublicationsAsync({ pending: true }),
+        listRepositoryGitHubPublicationsAsync({
+          ownerProfileId: null,
+          pending: true,
+        }),
+      ]);
+      pendingRequests.clear();
+      for (const row of shared) {
+        pendingRequests.add(JSON.stringify(["shared", row.request_id]));
+      }
+      for (const row of repository) {
+        pendingRequests.add(JSON.stringify(["repository", row.request_id]));
+      }
+      // Receipts committed while the startup snapshot loaded take precedence over that snapshot.
+      for (const [key, pending] of updates) {
+        updatePending(key, pending);
+      }
+    } catch (error) {
+      pendingKnown = false;
+      throw error;
+    } finally {
+      loadingUpdates = undefined;
+    }
+  };
+  const nativeCoordinator = createGitHubPublicationCoordinator({
+    ...params,
+    assertCurrent: () => {
+      params.signal.throwIfAborted();
+      scope.assertCurrent();
+    },
+    signal: AbortSignal.any([scope.signal, params.signal]),
+  });
+  // Existing native callers and service APIs share this operation lifetime. Receipt
+  // custody stays open until the entire accepted operation has settled.
+  const coordinator: typeof nativeCoordinator = {
+    ...nativeCoordinator,
+    preparePullRequest: (...args) => admit(() => nativeCoordinator.preparePullRequest(...args)),
+    refreshBase: (...args) => admit(() => nativeCoordinator.refreshBase(...args)),
+    requestForClaimV2: (...args) => admit(() => nativeCoordinator.requestForClaimV2(...args)),
+    requestForSessionV2: (...args) => admit(() => nativeCoordinator.requestForSessionV2(...args)),
+    requestPersonalForSessionV2: (...args) =>
+      admit(() => nativeCoordinator.requestPersonalForSessionV2(...args)),
+    confirmPersonalV2: (...args) => admit(() => nativeCoordinator.confirmPersonalV2(...args)),
+    prepareClaimWorkspace: (...args) =>
+      admit(() => nativeCoordinator.prepareClaimWorkspace(...args)),
+    processClaim: (...args) => admit(() => nativeCoordinator.processClaim(...args)),
+    resumeSessionRequests: (...args) =>
+      admit(() => nativeCoordinator.resumeSessionRequests(...args)),
+    deferClaimPreparationAsync: (...args) =>
+      admit(() => nativeCoordinator.deferClaimPreparationAsync(...args)),
+    deferOrphanedRequestsAsync: (...args) =>
+      admit(() => nativeCoordinator.deferOrphanedRequestsAsync(...args)),
+    markReportedAsync: (...args) => admit(() => nativeCoordinator.markReportedAsync(...args)),
+  };
+  const ready = requirePersonalGitHubPublicationConfirmationAsync(
+    params.placements.workspaceResultInstanceId(),
+    scope.assertCurrent,
+  );
+  // Startup and every runtime operation join the same failure; avoid an unhandled early rejection.
+  void work.track(() => ready).catch(() => {});
+  const reportDeferred = async (
+    publication: import("./repository-publication-engine.js").GitHubPublicationTranscriptReport,
+  ) => {
+    try {
+      const presentation = params.formatReport(publication.result);
+      await reportRepositoryPublicationTranscript(
+        params.loadSessionRuntime,
+        (requestId) => nativeCoordinator.markReportedAsync(requestId),
+        { ...publication, requestId: publication.result.requestId, ...presentation },
+      );
+      return true;
+    } catch (error) {
+      params.warn(
+        `GitHub publication result reporting deferred for ${publication.sessionId}: ${formatErrorMessage(error)}`,
+      );
+      return false;
+    }
+  };
+  const prepareAcceptedWorkspacePublication = async (claim: WorkerSessionTurnClaim) => {
+    await ready;
+    try {
+      await nativeCoordinator.prepareClaimWorkspace(claim);
+    } catch {
+      await nativeCoordinator.deferClaimPreparationAsync(claim);
+    }
+  };
+  const publishAcceptedWorkspace = async (claim: WorkerSessionTurnClaim) => {
+    await ready;
+    const placement = await params.placements.getAsync(claim.sessionId);
+    if (!placement) {
+      params.warn(`GitHub publication deferred because placement ${claim.sessionId} disappeared.`);
+      return;
+    }
+    let results;
+    try {
+      results = await nativeCoordinator.processClaim(claim);
+    } catch (error) {
+      params.warn(
+        `GitHub publication deferred for ${claim.sessionId}: ${formatErrorMessage(error)}`,
+      );
+      throw error;
+    }
+    for (const result of results) {
+      if (result.status !== "published" && result.status !== "failed") {
+        continue;
+      }
+      await reportDeferred({
+        sessionId: placement.sessionId,
+        sessionKey: placement.sessionKey,
+        agentId: placement.agentId,
+        result,
+      });
+    }
+  };
+  const reconcilePublications = async (isStopping?: () => boolean) => {
+    // Retain accepted and uncertain outcomes while the native provider is unavailable.
+    // Re-enable joins the existing recovery owner instead of inventing a failure or retry.
+    if (isStopping?.()) {
+      return;
+    }
+    await ready;
+    if (isStopping?.()) {
+      return;
+    }
+    if (!pendingKnown) {
+      await loadPendingRequests();
+    }
+    if (isStopping?.()) {
+      return;
+    }
+    if (!reconcileNeeded && pendingRequests.size === 0) {
+      return;
+    }
+    reconcileNeeded = false;
+    try {
+      await nativeCoordinator.deferOrphanedRequestsAsync();
+      if (!isStopping?.()) {
+        await nativeCoordinator.resumeSessionRequests(isStopping);
+      }
+    } catch (error) {
+      reconcileNeeded = true;
+      params.warn(`GitHub publication recovery deferred: ${formatErrorMessage(error)}`);
+    }
+    if (isStopping?.()) {
+      reconcileNeeded = true;
+      return;
+    }
+    try {
+      for (const publication of await nativeCoordinator.listUnreportedResultsAsync()) {
+        if (isStopping?.()) {
+          reconcileNeeded = true;
+          break;
+        }
+        if (!(await reportDeferred(publication))) {
+          reconcileNeeded = true;
+        }
+      }
+    } catch (error) {
+      reconcileNeeded = true;
+      throw error;
+    }
+  };
+  return {
+    resolveGitAuthor(agentId: string) {
+      return params.provider.resolveGitAuthor?.(agentId);
+    },
+    ready,
+    close: async () => {
+      stopFacts();
+      await work.drain();
+      await scope.close();
+    },
+    coordinator,
+    inspectPullRequest: (
+      input: Parameters<RepositoryPublicationProvider["inspectPullRequest"]>[0],
+    ) => admit(() => params.provider.inspectPullRequest(input)),
+    prepareAcceptedWorkspacePublication: (claim: WorkerSessionTurnClaim) =>
+      admit(() => prepareAcceptedWorkspacePublication(claim)),
+    publishAcceptedWorkspace: (claim: WorkerSessionTurnClaim) =>
+      admit(() => publishAcceptedWorkspace(claim)),
+    reconcilePublications: (isStopping?: () => boolean) =>
+      admit(() => reconcilePublications(isStopping)),
+  };
+}

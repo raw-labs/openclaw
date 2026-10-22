@@ -4,6 +4,7 @@ import { createShowWidgetTool, hasRegisteredShowWidgetKinds } from "../canvas/wi
 import { getRuntimeConfig, selectApplicableRuntimeConfig } from "../config/config.js";
 import { resolveControlUiSessionLinkBase } from "../config/control-ui-link-base.js";
 import { isEmbeddedMode } from "../infra/embedded-mode.js";
+import { isBundledPluginEnabled } from "../plugins/config-state.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { getActiveRuntimeWebToolsMetadataFromState } from "../secrets/runtime-web-tools-state.js";
 import { isCronRunSessionKey } from "../sessions/session-key-utils.js";
@@ -441,6 +442,7 @@ function* createOpenClawToolsSteps(
     : null;
   const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
   const githubActionsAvailable = hasSessionControlAuthority(options?.sessionControlAuthority);
+  const githubEnabled = isBundledPluginEnabled(availabilityConfig ?? {}, "github-repositories");
   const tools: AnyAgentTool[] = [
     ...createInstalledSkillTools(options?.installedSkills ?? []),
     createDashboardTool({
@@ -526,9 +528,12 @@ function* createOpenClawToolsSteps(
     heartbeatTool,
     createDecisionTool(sessionAgentId, options),
     createTtsTool({ ...options, agentId: sessionAgentId }),
-    options?.githubPublicationAvailable !== undefined ? createGitHubIdentityStatusTool() : null,
-    options?.githubPublicationAvailable === true ||
-    (options?.githubPublicationAvailable === false && githubActionsAvailable)
+    githubEnabled && options?.githubPublicationAvailable !== undefined
+      ? createGitHubIdentityStatusTool()
+      : null,
+    githubEnabled &&
+    (options?.githubPublicationAvailable === true ||
+      (options?.githubPublicationAvailable === false && githubActionsAvailable))
       ? createGitHubPublishTool({
           ...options,
           publicationAvailable: options.githubPublicationAvailable,

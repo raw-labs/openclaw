@@ -7,7 +7,6 @@ import {
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
-import { digestGitHubPublicationRequest } from "../gateway/github-publication-receipt.js";
 import {
   insertGitHubPublicationRequestAsync,
   insertRepositoryGitHubPublicationAsync,
@@ -27,6 +26,7 @@ import {
   insertRepositoryGitHubPublicationInDatabase,
 } from "../gateway/github-repository-publication-store.worker.js";
 import { repositoryGitHubPublicationDigest } from "../gateway/github-repository-publication.kernel.js";
+import { digestGitHubPublicationRequest } from "../gateway/repository-publication-receipt.js";
 import * as workerAdmission from "../infra/sqlite-worker-operation-admission.js";
 import { sqliteWorkerOwnerProbe } from "../infra/sqlite-worker-owner-probe.test-support.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -327,7 +327,7 @@ it("creates the lazy shared schema and publishes lifecycle authority before its 
       identity: {
         source: "system-configured",
         profileId: "fixture-profile",
-        account: { accountId: 42, login: "fixture-bot", avatarUrl: null },
+        account: { accountId: 42, login: "fixture-bot" },
       },
     },
     source,

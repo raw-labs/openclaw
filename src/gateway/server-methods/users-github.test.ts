@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
 import { GitHubCliUnavailableError } from "../../../extensions/github-repositories/cli-preflight-api.js";
 import { createGitHubOAuthLifecycle } from "../../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
+import { bindPersonalGitHubPublicationSelection } from "../../../extensions/github-repositories/personal-publication-api.js";
 import {
   prepareGitHubToolEnvironment,
   resolveManagedGitHubProfileDir,
@@ -68,7 +69,6 @@ import {
   installGitHubAccountFixture,
   installGitHubAccountRpcFixture,
 } from "../github-account-service.test-support.js";
-import { bindPersonalGitHubPublicationSelection } from "../github-personal-publication.js";
 import { invalidateOperatorRolePolicy } from "../operator-role-policy.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 import {
@@ -184,10 +184,6 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       {
         owner: owner(),
         assertCurrent() {},
-        sessionId: "publication-session",
-        sessionKey: "agent:main:publication",
-        agentId: "main",
-        lifecycleRevision: null,
       },
       { generation: connection.generation, account: connection.selection },
     );

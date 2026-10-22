@@ -2,9 +2,9 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { SessionGitHubPublicationPublished } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import { prepareGitHubPublicationSession } from "./github-publication-availability.js";
+import { prepareRepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 
-type SessionRead = Awaited<ReturnType<typeof prepareGitHubPublicationSession>>;
+type SessionRead = Awaited<ReturnType<typeof prepareRepositoryPublicationSession>>;
 
 /** Keep every selected parent alive; a reparented child cannot redirect a retained action. */
 export async function preparePublishingSession(
@@ -13,7 +13,7 @@ export async function preparePublishingSession(
   resources: DisposableStack,
 ) {
   const source = resources.use(
-    await prepareGitHubPublicationSession(params.sessionKey, {
+    await prepareRepositoryPublicationSession(params.sessionKey, {
       agentId: params.agentId,
       assertCurrent,
     }),
@@ -21,7 +21,7 @@ export async function preparePublishingSession(
   const selected =
     params.publishingSessionKey && params.publishingSessionKey !== source.loaded.canonicalKey
       ? resources.use(
-          await prepareGitHubPublicationSession(params.publishingSessionKey, { assertCurrent }),
+          await prepareRepositoryPublicationSession(params.publishingSessionKey, { assertCurrent }),
         )
       : source;
   const readers: SessionRead[] = [source, selected];
@@ -43,7 +43,7 @@ export async function preparePublishingSession(
     }
     seen.add(identity);
     const lineage = resources.use(
-      await prepareGitHubPublicationSession(key, {
+      await prepareRepositoryPublicationSession(key, {
         agentId: parseAgentSessionKey(key) ? undefined : agentId,
         assertCurrent,
         fields: ["sessionId", "lifecycleRevision", "parentSessionKey", "spawnedBy"],

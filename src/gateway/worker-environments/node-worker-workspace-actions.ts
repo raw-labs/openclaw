@@ -7,7 +7,7 @@ import {
   type NodeWorkerWorkspaceExecResult,
 } from "../../worker/node-workspace-protocol.js";
 import { NODE_WORKSPACE_EMPTY_MANIFEST_REF } from "../../worker/node-workspace-transfer-protocol.js";
-import { prepareRepositoryPublicationRestore } from "../github-repository-publication-restore.js";
+import { prepareRepositoryPublicationRestore } from "../repository-publication-restore.js";
 import { createNodeWorkerRepositoryPreparation } from "./node-worker-repository-preparation.js";
 import {
   createNodeWorkerWorkspaceFallback,

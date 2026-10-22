@@ -15,9 +15,9 @@ import {
   guestScopes,
   holdWorkerTurn,
 } from "./github-publication-requester.test-support.js";
-import * as repositoryPublicationExecutor from "./github-repository-publication-executor.js";
 import { observeRepositoryCommands } from "./github-repository-publication.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
+import * as repositoryPublicationExecutor from "./repository-publication-object-dispatch.js";
 
 const mocks = githubPublicationTestMocks();
 const checkpoint = vi.hoisted(() => vi.fn());
@@ -310,11 +310,11 @@ describe("repository checkpoint workflow authority", () => {
   it("rechecks the publisher after workflow authorization at the ref update boundary", async () => {
     const f = await createFixture();
     await f.repository.capture("accepted code\n", "publisher-at-ref", { [workflow]: definition });
-    const execute = repositoryPublicationExecutor.executeRepositoryGitHubPublication;
+    const execute = repositoryPublicationExecutor.executeRepositoryPublication;
     let pushRecorded = false;
     let publisherRevoked = false;
     const intercepted = vi
-      .spyOn(repositoryPublicationExecutor, "executeRepositoryGitHubPublication")
+      .spyOn(repositoryPublicationExecutor, "executeRepositoryPublication")
       .mockImplementation((params) =>
         execute({
           ...params,

@@ -20,8 +20,8 @@ import type {
 } from "../state/github-publication-worker.types.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.js";
-import type { GitHubPublicationEffectTransition } from "./github-publication-execution-effects.js";
 import type { GitHubPublicationSourceCapability } from "./github-publication-source.js";
+import type { GitHubPublicationEffectTransition } from "./repository-publication-effects.js";
 
 /** Native callers retain live memory authority; durable execution predicates stay in the worker. */
 export type GitHubPublicationTransitionAuthority = {

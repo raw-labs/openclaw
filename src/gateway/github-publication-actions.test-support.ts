@@ -7,10 +7,12 @@ import {
 } from "./github-publication.test-support.js";
 import { randomUUID } from "node:crypto";
 import { expect, vi } from "vitest";
+import { readRepositoryServices } from "../../extensions/github-repositories/account-runtime-api.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import {
   createGitHubPublicationRequesterFixture,
   createRequesterPublicationFixture,
@@ -200,6 +202,9 @@ export function createPublicationActionInvoker(
   ) => {
     const principal =
       actor === "guest" ? f.guestSource : actor === "writer" ? writerSource : f.maintainerSource;
+    if (!readRepositoryServices(principal.context)) {
+      await installPublicationRpcFixture(principal.context, f.coordinator);
+    }
     const callGateway: InProcessGatewayCaller = async <T>(
       method: string,
       params: Record<string, unknown>,

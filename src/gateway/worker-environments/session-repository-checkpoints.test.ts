@@ -11,7 +11,7 @@ import { StateDatabaseReadAdmissionInvalidatedError } from "../../state/openclaw
 import { closeOpenClawStateDatabaseByPathAsync } from "../../state/openclaw-state-db-cache.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { createSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
-import * as publicationSnapshot from "../github-repository-publication-snapshot.js";
+import * as publicationSnapshot from "../repository-publication-snapshot.js";
 import {
   forkSessionRepositoryWorkspace as forkWorkspace,
   readSessionRepositoryArtifacts as readArtifacts,
@@ -222,8 +222,8 @@ it.for([
         return queued;
       });
     };
-    const metadata = publicationSnapshot.readGitHubRepositoryPublicationMetadata;
-    vi.spyOn(publicationSnapshot, "readGitHubRepositoryPublicationMetadata").mockImplementation(
+    const metadata = publicationSnapshot.readRepositoryPublicationMetadata;
+    vi.spyOn(publicationSnapshot, "readRepositoryPublicationMetadata").mockImplementation(
       async (...args) => {
         const result = await metadata(...args);
         if (boundary === "metadata") {

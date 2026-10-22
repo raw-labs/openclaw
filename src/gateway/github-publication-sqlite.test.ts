@@ -7,7 +7,6 @@ import {
   runOpenClawStateWriteTransaction,
 } from "../state/openclaw-state-db.js";
 import { requireNativeSqliteDatabase } from "../test-utils/native-sqlite.js";
-import { digestGitHubPublicationRequest as requestDigest } from "./github-publication-receipt.js";
 import { readSharedGitHubPublicationRequestInDatabase as readShared } from "./github-publication-shared-read.kernel.js";
 import {
   claimGitHubPublicationExecutionFixture as claimExecution,
@@ -28,6 +27,7 @@ import {
   sharedPublicationSession as session,
   sharedRepositoryWorkspace,
 } from "./github-shared-publication.test-support.js";
+import { digestGitHubPublicationRequest as requestDigest } from "./repository-publication-receipt.js";
 
 installGitHubPublicationTestHarness();
 afterEach(() => vi.restoreAllMocks());

@@ -15,7 +15,6 @@ import { updateUserGitHubConnection } from "../state/user-github-connections.tes
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
 import { installGitHubAccountFixture } from "./github-account-service.test-support.js";
-import type { PersonalGitHubSessionActionV2 } from "./github-personal-publication.js";
 import {
   SESSION_ID,
   SESSION_KEY,
@@ -23,6 +22,7 @@ import {
   githubPublicationTestMocks,
 } from "./github-publication.test-support.js";
 import { resolveGatewayOperatorAccessAuthority } from "./operator-access-policy.js";
+import type { PersonalGitHubSessionActionV2 } from "./repository-publication-personal.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { preparePersonalGitHubSessionActionV2 } from "./server-methods/github-personal-authorization.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
@@ -234,9 +234,13 @@ export async function callPersonalPublicationRpc(
   const respond = vi.fn();
   const personal = createPersonalGitHubOAuthLifecycle();
   const rpcContext = { ...context, githubPublicationService: coordinator };
-  const uninstall = installGitHubAccountFixture(rpcContext, {
-    personal: { ...personal, status: personalGitHubStatus },
-  } as never);
+  const uninstall = installGitHubAccountFixture(
+    rpcContext,
+    {
+      personal: { ...personal, status: personalGitHubStatus },
+    } as never,
+    coordinator,
+  );
   try {
     await handleGatewayRequest({
       req: { type: "req", id: randomUUID(), method, params },

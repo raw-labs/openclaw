@@ -13,12 +13,12 @@ import { getRuntimeConfig, setRuntimeConfigSnapshot } from "../config/config.js"
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { addSessionMember } from "../config/sessions/session-sharing-store.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { prepareGitHubPublicationSession } from "./github-publication-availability.js";
 import {
   createRequesterPublicationFixture,
   guestScopes,
 } from "./github-publication-requester.test-support.js";
 import type { OperatorScope } from "./operator-scopes.js";
+import { prepareRepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
@@ -166,7 +166,7 @@ describe("registered session GitHub publication access", () => {
 
   it("invalidates publication metadata after committed workspace and lifecycle updates", async () => {
     await createFixture();
-    using session = await prepareGitHubPublicationSession(SESSION_KEY, { agentId: "main" });
+    using session = await prepareRepositoryPublicationSession(SESSION_KEY, { agentId: "main" });
     const initial = session.loaded.entry!;
     const scope = {
       agentId: "main",
@@ -178,7 +178,7 @@ describe("registered session GitHub publication access", () => {
     const worktree = { ...initial.worktree!, branch: "updated-publication-branch" };
     await upsertSessionEntryCore(scope, { worktree });
     expect(() => session.readCurrent()).toThrow("GitHub publication session lifecycle changed.");
-    using replacement = await prepareGitHubPublicationSession(SESSION_KEY, { agentId: "main" });
+    using replacement = await prepareRepositoryPublicationSession(SESSION_KEY, { agentId: "main" });
     expect(replacement.readCurrent().entry?.worktree).toEqual(worktree);
     await upsertSessionEntryCore(scope, { lifecycleRevision: "replacement-publication" });
     expect(() => replacement.readCurrent()).toThrow(

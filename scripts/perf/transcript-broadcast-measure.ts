@@ -79,6 +79,7 @@ const { values } = parseArgs({
     "github-options-observe": { type: "boolean", default: false },
     "github-observation-owner": { type: "string" },
     "github-availability-owner": { type: "string" },
+    "github-identity-owner": { type: "string" },
     "stream-start-diagnostics": { type: "boolean", default: false },
     "stream-start-allocations": { type: "boolean", default: false },
     "active-work-diagnostics": { type: "boolean", default: false },
@@ -135,7 +136,9 @@ if (!values["state-dir"]) {
 if (
   (values["github-options-observe"] &&
     (!values["dashboard-rpc"] || path.resolve(values.entry) !== path.resolve("src/entry.ts"))) ||
-  ((values["github-observation-owner"] || values["github-availability-owner"]) &&
+  ((values["github-observation-owner"] ||
+    values["github-availability-owner"] ||
+    values["github-identity-owner"]) &&
     !values["github-options-observe"])
 ) {
   throw new Error(
@@ -575,6 +578,7 @@ const githubStages: Array<{
 }> = [];
 let githubObservationOwner: { path: string; override: boolean } | undefined;
 let githubAvailabilityOwner: { path: string; override: boolean } | undefined;
+let githubIdentityOwner: { path: string; override: boolean } | undefined;
 type GitHubFixtureRequest = {
   phase: "setup/preflight" | "measurement" | "outside-measurement";
   route: string;
@@ -1561,6 +1565,9 @@ const env = {
   ...(values["github-observation-owner"]
     ? { OPENCLAW_BENCH_GITHUB_OBSERVATION_OWNER: path.resolve(values["github-observation-owner"]) }
     : {}),
+  ...(values["github-identity-owner"]
+    ? { OPENCLAW_BENCH_GITHUB_IDENTITY_OWNER: path.resolve(values["github-identity-owner"]) }
+    : {}),
   ...(values["github-availability-owner"]
     ? {
         OPENCLAW_BENCH_GITHUB_AVAILABILITY_OWNER: path.resolve(values["github-availability-owner"]),
@@ -1607,6 +1614,14 @@ function launch(args: string[], name: string, extraEnv: NodeJS.ProcessEnv = {}, 
       typeof message.override === "boolean"
     ) {
       githubAvailabilityOwner = { path: message.path, override: message.override };
+    }
+    if (
+      isRecord(message) &&
+      message.channel === "github-options-identity-loaded" &&
+      typeof message.path === "string" &&
+      typeof message.override === "boolean"
+    ) {
+      githubIdentityOwner = { path: message.path, override: message.override };
     }
     if (isRecord(message) && message.channel === "dashboard-github-fixture") {
       dashboardFixtureRequests++;
@@ -4197,10 +4212,11 @@ try {
     values["github-options-observe"] &&
     (!githubObservationOwner ||
       !githubAvailabilityOwner ||
+      !githubIdentityOwner ||
       !githubStages.some(({ phase }) => phase === "handler"))
   ) {
     throw new Error(
-      "GitHub options source observation requires both owners loaded and a measured handler",
+      "GitHub options source observation requires all three owners loaded and a measured handler",
     );
   }
   let wholeSoakAllocation;
@@ -4386,6 +4402,7 @@ try {
                   githubObservation: {
                     owner: githubObservationOwner,
                     availabilityOwner: githubAvailabilityOwner,
+                    identityOwner: githubIdentityOwner,
                     stages: githubStages,
                   },
                 }
