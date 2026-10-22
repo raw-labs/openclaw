@@ -172,6 +172,7 @@
   "reply-payload-testing",
   "reply-reference",
   "repository-identity-host",
+  "repository-publication-content",
   "request-url",
   "response-limit-runtime",
   "retry-runtime",

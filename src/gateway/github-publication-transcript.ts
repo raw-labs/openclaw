@@ -1,4 +1,4 @@
-import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { formatGitHubPublicationTranscript } from "../../extensions/github-repositories/publication-transcript-api.js";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
 import { getRuntimeConfig } from "../config/config.js";
 import { appendSessionTranscriptReport } from "../config/sessions/session-accessor.js";
@@ -11,30 +11,6 @@ import type {
   GitHubPublicationCoordinator,
   GitHubPublicationTranscriptReport,
 } from "./github-publication.js";
-
-const GITHUB_PUBLICATION_RESPONSE_PREFIX = "github-publication:";
-
-function formatGitHubPublicationResult(result: SessionGitHubPublicationResult): string {
-  const publisher = result.publisher;
-  const source =
-    publisher?.source === "personal"
-      ? "My GitHub"
-      : publisher?.source === "agent-override"
-        ? "Agent override"
-        : "System";
-  const acting = publisher ? ` Using @${publisher.login} (${source}).` : "";
-  switch (result.status) {
-    case "published":
-      return `Published ${result.repository} branch ${result.branch}: ${result.url}${acting}`;
-    case "failed":
-      return `GitHub publication failed: ${result.message} ${result.nextAction}${acting}`;
-    case "publishing":
-    case "requested":
-    case "needs_confirmation":
-      return `${result.message}${acting}`;
-  }
-  return result satisfies never;
-}
 
 export async function reportGitHubPublicationTranscript(
   loadSessionRuntime: () => Promise<{
@@ -73,6 +49,7 @@ export async function reportGitHubPublicationTranscript(
   if (entry?.sessionId !== params.sessionId || target.canonicalKey !== params.sessionKey) {
     throw new Error("GitHub publication transcript owner changed");
   }
+  const report = formatGitHubPublicationTranscript(params.result);
   const appended = await appendSessionTranscriptReport(
     {
       agentId: target.agentId,
@@ -85,11 +62,11 @@ export async function reportGitHubPublicationTranscript(
       message: attachSessionTranscriptRunId(
         {
           role: "assistant",
-          content: [{ type: "text", text: formatGitHubPublicationResult(params.result) }],
+          content: [{ type: "text", text: report.text }],
           api: "openai-responses",
           provider: "openclaw",
           model: "gateway-publication",
-          responseId: `${GITHUB_PUBLICATION_RESPONSE_PREFIX}${params.result.requestId}`,
+          responseId: report.responseId,
           usage: makeZeroUsageSnapshot(),
           stopReason: "stop",
           timestamp: Date.now(),

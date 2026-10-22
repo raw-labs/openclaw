@@ -1001,6 +1001,9 @@
       ],
       "openclaw/plugin-sdk/worker-github-credentials": [
         "../../packages/plugin-sdk/dist/src/plugin-sdk/worker-github-credentials.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-publication-content": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-publication-content.d.ts"
       ]
     }
   }

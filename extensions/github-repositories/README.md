@@ -42,3 +42,9 @@ container allocation, process supervision, and generic Git defaults. Current
 native GitHub configuration keys remain canonical until their atomic cutover.
 
 The shallow project URL and Git clone/fetch artifacts own GitHub remote normalization and network command policy. Their current local and worker callers use the same implementation. The native managed-checkout owner retains project registration, leases, and uncertain-write cleanup. This library extraction does not change plugin admission or repository-picker behavior.
+
+GitHub publication body, credit layout and transcript text are shallow library
+artifacts. Core prepares contributor and current-sharing facts through the
+accepted session owner and still accepts, stores and deduplicates transcript
+reports. These formatters do not register a publication provider or change its
+activation, credentials, configuration, transaction or recovery ownership.
