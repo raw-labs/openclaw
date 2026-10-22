@@ -80,6 +80,7 @@
   "transport-ready-runtime",
   "exec-approvals-runtime",
   "repository-identity-host",
+  "repository-publication-content",
   "runtime-config-snapshot",
   "runtime-group-policy",
   "model-session-runtime",

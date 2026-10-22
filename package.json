@@ -490,7 +490,8 @@
     "!dist/plugin-sdk/repository-identity-host.d.ts",
     "!dist/plugin-sdk/repository-oauth-host.d.ts",
     "!dist/plugin-sdk/repository-session-host.d.ts",
-    "!dist/plugin-sdk/worker-github-credentials.d.ts"
+    "!dist/plugin-sdk/worker-github-credentials.d.ts",
+    "!dist/plugin-sdk/repository-publication-content.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -776,6 +777,9 @@
     },
     "./plugin-sdk/repository-identity-host": {
       "default": "./dist/plugin-sdk/repository-identity-host.js"
+    },
+    "./plugin-sdk/repository-publication-content": {
+      "default": "./dist/plugin-sdk/repository-publication-content.js"
     },
     "./plugin-sdk/runtime-config-snapshot": {
       "types": "./dist/plugin-sdk/runtime-config-snapshot.d.ts",
