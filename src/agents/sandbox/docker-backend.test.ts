@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../../extensions/github-repositories/exec-launch-api.js";
 import { managedGitHubIdentityEnvironment } from "../../../extensions/github-repositories/tool-identity-env-api.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -593,12 +594,24 @@ process.stdout.write(JSON.stringify({
       {
         managedLocalIdentity: true,
         credentialScrubEnv: { GH_TOKEN: "", GITHUB_TOKEN: "", PREVIEW_TOKEN: "" },
-        localIdentityEnv: managedGitHubIdentityEnvironment({
-          profileDir: profile,
-          host,
-          gitAuthor: { name: "Release Agent", email: "release@example.test" },
-        }),
+        localIdentityEnv: {
+          ...managedGitHubIdentityEnvironment({
+            profileDir: profile,
+            host,
+            gitAuthor: { name: "Release Agent", email: "release@example.test" },
+          }),
+          GH_CONFIG_DIR: "/openclaw/github",
+        },
         excludedStoreNames: [],
+        wrapLocalLaunch: (argv) =>
+          buildGitHubExecLaunchArgv([...argv], profile, { githubHost: host }),
+        readOnlyResourceMounts: [{ hostPath: profile, containerPath: "/openclaw/github" }],
+        inheritedEnvironmentNames: [
+          "GH_TOKEN",
+          "GH_ENTERPRISE_TOKEN",
+          "GITHUB_TOKEN",
+          "GITHUB_ENTERPRISE_TOKEN",
+        ],
       },
     );
     const spec = await backend.buildExecSpec({

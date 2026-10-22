@@ -2,7 +2,6 @@ import path from "node:path";
 import { omitGatewayCredentialEnv } from "../infra/host-env-security.js";
 import { prependShellPath } from "../infra/login-shell-path-carrier.js";
 import { findPathKey, removePathPrepend } from "../infra/path-prepend.js";
-import { buildGitHubExecLaunchArgv } from "./github-exec-launch.js";
 import { maybeWrapCommandWithShellSnapshot } from "./shell-snapshot.js";
 import { getShellConfig } from "./shell-utils.js";
 
@@ -12,7 +11,7 @@ export async function prepareHostExecSpawn(params: {
   workdir: string;
   env: Record<string, string>;
   pathPrepend?: string[];
-  githubProfileDir?: string;
+  wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
   usePty: boolean;
 }) {
   const { shell, args: shellArgs } = getShellConfig();
@@ -48,11 +47,7 @@ export async function prepareHostExecSpawn(params: {
   const shellArgv = [shell, ...shellArgs, commandWithShellSnapshot];
   return {
     mode: params.usePty ? ("pty" as const) : ("child" as const),
-    argv: params.githubProfileDir
-      ? buildGitHubExecLaunchArgv(shellArgv, params.githubProfileDir, {
-          githubHost: env.GH_HOST,
-        })
-      : shellArgv,
+    argv: params.wrapLocalLaunch ? [...params.wrapLocalLaunch(shellArgv)] : shellArgv,
     env,
     cwd: params.workdir,
     stdinMode: params.usePty ? ("pipe-open" as const) : ("pipe-closed" as const),

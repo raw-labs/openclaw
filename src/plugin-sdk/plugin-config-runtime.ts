@@ -7,6 +7,7 @@ import { normalizePluginsConfig as readNormalizedPluginsConfig } from "../plugin
 export {
   createNormalizedPluginsConfig as normalizePluginsConfig,
   resolveEffectiveEnableState,
+  isBundledPluginEnabled,
 } from "../plugins/config-state.js";
 export { mergeDeep } from "../infra/deep-merge.js";
 

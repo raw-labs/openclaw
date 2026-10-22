@@ -256,6 +256,11 @@ export function createAgentHarnessHostCapabilities(params: {
     sessionKey: attempt.sessionKey,
     sandboxAgentId: attempt.sandboxAgentId,
     installationTarget,
+    pluginRegistry:
+      attempt.preparedModelRuntime?.pluginRegistry ??
+      getPluginRuntimeGatewayRequestScope()?.pluginRegistry,
+    assertCurrent: assertActive,
+    signal: capabilityAbortController.signal,
   });
   const skillUsagePaths = attempt.sandbox?.skillUsagePaths
     ? cloneSnapshot(attempt.sandbox.skillUsagePaths)

@@ -2,7 +2,10 @@ import { normalizeProviderId } from "@openclaw/model-catalog-core/provider-id";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginOrigin } from "../plugins/plugin-origin.types.js";
 import { collectChannelConfigAssignments } from "./runtime-config-collectors-channels.js";
-import { collectCoreConfigAssignments } from "./runtime-config-collectors-core.js";
+import {
+  collectCoreExecutionEnvironmentExclusions,
+  collectCoreConfigAssignments,
+} from "./runtime-config-collectors-core.js";
 import { collectPluginConfigAssignments } from "./runtime-config-collectors-plugins.js";
 import type { ResolverContext } from "./runtime-shared.js";
 
@@ -29,6 +32,12 @@ export async function collectConfigAssignments(params: {
   }
   params.context.managedSyntheticAuthProviders = managedSyntheticAuthProviders;
   const defaults = params.context.sourceConfig.secrets?.defaults;
+
+  collectCoreExecutionEnvironmentExclusions({
+    config: params.context.sourceConfig,
+    defaults,
+    context: params.context,
+  });
 
   collectCoreConfigAssignments({
     config: params.config,

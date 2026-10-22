@@ -1,11 +1,11 @@
 import { fileURLToPath } from "node:url";
 import {
-  GITHUB_PUBLIC_HOST,
-  resolveConfiguredGitHubHost,
-} from "../../extensions/github-repositories/host-api.js";
-import { quoteCliArg, quotePowerShellArg } from "../cli/quote-cli-arg.js";
-import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
-import { resolveRuntimeWorkerArgv } from "../infra/runtime-worker-url.js";
+  quoteCliArg,
+  quotePowerShellArg,
+  resolveRuntimeWorkerUrl,
+  resolveRuntimeWorkerArgv,
+} from "openclaw/plugin-sdk/process-runtime";
+import { GITHUB_PUBLIC_HOST, resolveConfiguredGitHubHost } from "./host-api.js";
 
 /** Carry only a selected profile path through supervision; resolve its token in the child. */
 export function buildGitHubExecLaunchArgv(
@@ -16,8 +16,18 @@ export function buildGitHubExecLaunchArgv(
     externalCommandShell?: { shell: string; args: readonly string[] };
   },
 ): string[] {
-  const workerUrl = resolveRuntimeProcessEntrypointUrl("githubExec");
-  const host = resolveConfiguredGitHubHost({ gateway: { github: { host: options?.githubHost } } });
+  const workerUrl = resolveRuntimeWorkerUrl({
+    currentModuleUrl: import.meta.url,
+    sourceWorkerName: "exec-credential-launcher-api",
+    distWorkerPath: "extensions/github-repositories/exec-credential-launcher-api.js",
+    package: {
+      name: "@openclaw/github-repositories",
+      distWorkerPath: "exec-credential-launcher-api.js",
+    },
+  });
+  const host = resolveConfiguredGitHubHost({
+    gateway: { github: { host: options?.githubHost } },
+  });
   const launcher = [process.execPath, ...resolveRuntimeWorkerArgv(workerUrl), profileDir, host];
   // GH_HOST is a default, not an authentication boundary. Do not expose a public
   // token through the Enterprise family when a command selects a different host.

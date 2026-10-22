@@ -1,9 +1,11 @@
+/** Canonical current gh profile/child format for worker launch bindings.
+ * Account selection, host policy and sandbox admission remain in the GitHub plugin.
+ */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { inspectPathPermissions } from "@openclaw/fs-safe/permissions";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { parseDocument } from "yaml";
-import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { readSecureFile } from "../infra/fs-safe.js";
 
 export const GITHUB_EXEC_CREDENTIAL_UNAVAILABLE =
@@ -37,7 +39,10 @@ async function privateProfileStat(profileDir: string) {
 /** Called only inside the local launcher, never by the Gateway or its supervision pipeline. */
 export async function readGitHubExecToken(profileDir: string, host?: string): Promise<string> {
   try {
-    const githubHost = resolveConfiguredGitHubHost({ gateway: { github: { host } } });
+    const githubHost = host?.trim().toLowerCase() || "github.com";
+    if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/u.test(githubHost) || githubHost.includes("..")) {
+      throw new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
+    }
     const profile = await privateProfileStat(profileDir);
     const realProfileDir = await fs.realpath(profileDir);
     const filePath = path.join(profileDir, "hosts.yml");
@@ -83,4 +88,35 @@ export async function readGitHubExecToken(profileDir: string, host?: string): Pr
     // Never retain a filesystem/YAML cause: it may contain the credential or private paths.
     throw new Error(GITHUB_EXEC_CREDENTIAL_UNAVAILABLE);
   }
+}
+
+export function managedGitHubIdentityEnvironment(params: {
+  profileDir: string;
+  host?: string;
+  gitAuthor?: { name?: string; email?: string };
+  gitConfig?: readonly (readonly [string, string])[];
+}): Readonly<Record<string, string> & { GH_CONFIG_DIR: string }> {
+  const author = params.gitAuthor;
+  const gitConfigEntries = [
+    ...(params.gitConfig ?? []),
+    ...Object.entries({
+      ...(author?.name ? { "user.name": author.name } : {}),
+      ...(author?.email ? { "user.email": author.email } : {}),
+    }),
+  ];
+  const gitConfigEnv = Object.fromEntries(
+    gitConfigEntries.flatMap(([key, value], index) => [
+      [`GIT_CONFIG_KEY_${index}`, key],
+      [`GIT_CONFIG_VALUE_${index}`, value],
+    ]),
+  );
+  return {
+    GH_CONFIG_DIR: params.profileDir,
+    GH_HOST: params.host ?? "github.com",
+    ...(gitConfigEntries.length > 0
+      ? { GIT_CONFIG_COUNT: String(gitConfigEntries.length), ...gitConfigEnv }
+      : {}),
+    ...(author?.name ? { GIT_AUTHOR_NAME: author.name, GIT_COMMITTER_NAME: author.name } : {}),
+    ...(author?.email ? { GIT_AUTHOR_EMAIL: author.email, GIT_COMMITTER_EMAIL: author.email } : {}),
+  };
 }

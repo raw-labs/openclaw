@@ -230,5 +230,6 @@
   "windows-spawn",
   "worker-task-server",
   "repository-oauth-host",
-  "repository-session-host"
+  "repository-session-host",
+  "worker-github-credentials"
 ]

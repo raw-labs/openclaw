@@ -191,31 +191,16 @@ export async function prepareSecretsRuntimeSnapshot(params: {
     migrationDegradedOwners = loaded.degradedOwners;
   }
   let executionEnvironmentExclusions: SecretExecutionEnvironmentExclusions | undefined;
-  if (
-    !includeConfigRefs &&
-    isRecord(sourceConfig.plugins?.entries) &&
-    Object.keys(sourceConfig.plugins.entries).length > 0
-  ) {
-    // CLI config resolution owns materialization. This same metadata pass records only names.
-    const [{ collectPluginConfigAssignments }, { createResolverContext }] = await Promise.all([
-      import("./runtime-config-collectors-plugins.js"),
-      import("./runtime-shared.js"),
-    ]);
-    const exclusionManifestRegistry =
-      params.manifestRegistry ?? params.pluginMetadataSnapshot?.manifestRegistry;
-    const exclusionContext = createResolverContext({
-      sourceConfig,
-      env: runtimeEnv,
-      ...(exclusionManifestRegistry ? { manifestRegistry: exclusionManifestRegistry } : {}),
-    });
-    collectPluginConfigAssignments({
+  if (!includeConfigRefs) {
+    // CLI materialization and standalone tool preparation use the same names-only owner.
+    const { prepareExecutionEnvironmentExclusions } =
+      await import("./runtime-execution-exclusions.js");
+    executionEnvironmentExclusions = prepareExecutionEnvironmentExclusions({
       config: sourceConfig,
-      defaults: sourceConfig.secrets?.defaults,
-      context: exclusionContext,
+      env: runtimeEnv,
+      manifestRegistry: params.manifestRegistry ?? params.pluginMetadataSnapshot?.manifestRegistry,
       loadablePluginOrigins: params.loadablePluginOrigins,
-      mode: "execution-exclusions",
     });
-    executionEnvironmentExclusions = exclusionContext.executionEnvironmentExclusions;
   }
   if (
     canUseSecretsRuntimeFastPath({

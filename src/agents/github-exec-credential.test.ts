@@ -12,7 +12,7 @@ const permissions = vi.hoisted(() => ({
 vi.mock("@openclaw/fs-safe/permissions", () => ({ inspectPathPermissions: permissions.inspect }));
 vi.mock("../infra/fs-safe.js", () => ({ readSecureFile: permissions.read }));
 
-import { readGitHubExecToken } from "./github-exec-credential.js";
+import { readGitHubExecToken } from "../worker/worker-github-credentials.js";
 
 let platformMock: ReturnType<typeof mockProcessPlatform> | undefined;
 let profileDir: string;

@@ -9,6 +9,8 @@ import {
   resolveAgentWorkspaceDir,
 } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { PreparedExecutionEnvironment } from "openclaw/plugin-sdk/execution-environment";
+import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/repository-identity-host";
 import { composeSessionEntryCommitGuards } from "openclaw/plugin-sdk/session-binding-runtime";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
@@ -39,7 +41,6 @@ import {
 } from "./read-identity-api.js";
 import { managedGitHubHosts, type GitHubToolAccount } from "./tool-account-api.js";
 import {
-  AGENT_GIT_CONFIG_PARAMETERS,
   applyManagedGitHubIdentityEnvironment,
   githubCredentialEnvironmentExclusions,
   managedGitHubIdentityEnvironment,
@@ -51,7 +52,6 @@ import {
 import type {
   GitHubToolIdentityConfig,
   PreparedGitHubPublicationIdentity,
-  PreparedGitHubToolEnvironment,
 } from "./tool-identity.types-api.js";
 import { resolveManagedGitHubProfileDir } from "./tool-profile-path-api.js";
 
@@ -126,7 +126,15 @@ type ResolvedGitHubToolIdentity = ReturnType<typeof resolveGitHubToolIdentity>;
 /** Prepares the non-secret child overlay and store exclusions once per agent run. */
 export function prepareGitHubToolEnvironment(
   params: GitHubIdentityPreparation,
-): PreparedGitHubToolEnvironment {
+): PreparedExecutionEnvironment {
+  if (!isBundledPluginEnabled(params.config, "github-repositories")) {
+    return Object.freeze({
+      credentialScrubEnv: Object.freeze({}),
+      localIdentityEnv: Object.freeze({}),
+      excludedStoreNames: Object.freeze([]),
+      managedLocalIdentity: false,
+    });
+  }
   const identity = resolveGitHubToolIdentity(params);
   if (identity.source !== "system-detected" && identity.config.kind === "app-installation") {
     throw new Error("GitHub Apps support session reads only; select native or OAuth to run tools.");
@@ -137,7 +145,7 @@ export function prepareGitHubToolEnvironment(
 function prepareGitHubToolEnvironmentForIdentity(
   params: Pick<GitHubIdentityPreparation, "config" | "sourceConfig" | "agentId">,
   identity: ResolvedGitHubToolIdentity,
-): PreparedGitHubToolEnvironment {
+): PreparedExecutionEnvironment {
   const managedLocalIdentity = identity.source !== "system-detected";
   const { credentialScrubEnv, excludedStoreNames } = githubCredentialEnvironmentExclusions(
     params,
@@ -153,8 +161,6 @@ function prepareGitHubToolEnvironmentForIdentity(
           })
         : {},
     ),
-    // Execution adapters append this after resolving their native Git configuration.
-    localGitConfigParameters: AGENT_GIT_CONFIG_PARAMETERS,
     excludedStoreNames: Object.freeze(excludedStoreNames),
     managedLocalIdentity,
     ...(managedLocalIdentity ? { hostExecutionRequired: true as const } : {}),
