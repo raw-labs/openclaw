@@ -33,6 +33,7 @@ import {
   selectDraftDeviceFolder,
   selectDraftCloudProfile,
   selectDraftWorktree,
+  selectDraftNewWorkspace,
 } from "./draft-target-actions.ts";
 import { DraftTerminalHostState } from "./draft-terminal-host-state.ts";
 import { DraftRestoredFolderValidation } from "./folder-validation.ts";
@@ -233,7 +234,11 @@ export class DraftPlaceState {
   }
 
   get currentCheckoutUnavailableReason(): string | undefined {
-    const reason = this.repositoryState.currentCheckoutUnavailable;
+    const sourceStatus = this.browser.repositorySourceStatus;
+    if (sourceStatus === "unavailable") {
+      return t("newSession.repositorySourceUnavailable");
+    }
+    const reason = sourceStatus ?? this.repositoryState.currentCheckoutUnavailable;
     return reason === "checking"
       ? t("newSession.checkingPlace")
       : reason === "worktree"
@@ -397,6 +402,9 @@ export class DraftPlaceState {
     if (this.deviceFolder) {
       return !this.deviceFolderAvailable || !isAbsolutePath(this.deviceFolder.path.trim());
     }
+    if (this.browser.repositorySourceStatus) {
+      return true;
+    }
     if (this.hostedEnvironment || this.freshWorkspace) {
       return false;
     }
@@ -537,7 +545,11 @@ export class DraftPlaceState {
     if (params.repository) {
       this.browser.selectProject({
         kind: "remote",
-        project: { identity: params.repository.url, cloneUrl: params.repository.url },
+        project: {
+          identity: params.repository.url,
+          cloneUrl: params.repository.url,
+          sourceId: params.repositorySource,
+        },
       });
       this.repositoryState.setDetail("baseRef", params.repository.ref ?? "", false);
       this.repositoryState.load();
@@ -621,30 +633,10 @@ export class DraftPlaceState {
   }
 
   selectNewWorkspace() {
-    const snapshot = this.read();
-    if (snapshot.submitting || snapshot.pendingPlacementSessionKey || !this.remotePlacement) {
-      return;
-    }
-    this.folderValidation.cancel();
-    this.browser.clearProjectSelection();
-    this.browser.resetProjectSearch();
-    this.callbacks.onError(null);
-    this.deviceFolderValue = null;
-    this.folderValue = this.workspacePath();
-    this.selection.folderSelectedByUser = true;
-    markDraftPlaceProjectChoice(this.selection, true);
-    this.selection.freshWorkspace = true;
-    this.repositoryState.selectWorktree(false);
-    this.persistPreference({
-      folder: this.folderValue,
-      projectId: "",
-      remoteProject: null,
-      defaultRepositoryOptOut: true,
-      worktree: true,
-      freshWorkspace: true,
+    selectDraftNewWorkspace(this.targetActions(), () => {
+      this.folderValue = this.workspacePath();
+      return this.folderValue;
     });
-    this.browser.close();
-    this.callbacks.changed();
   }
 
   selectProjectId(projectId: string) {

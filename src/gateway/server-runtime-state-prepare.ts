@@ -30,6 +30,7 @@ import { publishHooksTokenEnvKey } from "./hooks.js";
 import { isLoopbackHost } from "./net.js";
 import { createNodeReapprovalCoordinator } from "./node-reapproval-coordinator.js";
 import { GatewayOperatorAccessUnavailableError } from "./operator-access-policy.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import type { GatewayInstanceRuntime } from "./server-instance-runtime.types.js";
@@ -133,12 +134,14 @@ export async function prepareGatewayKernelState(params: {
     }),
   );
   await startupTrace.measure("device-pairing", () => readDevicePairingNodeSnapshot());
+  const repositorySources = createRepositorySources(scheduler.signal);
   const workerEnvironmentRuntime = workerEnvironmentStartup
     ? await startupTrace.measure("worker-environments.runtime-imports", async () => {
         const workerModule = await import("./server-worker-environment-startup.js");
         return await workerModule.createGatewayWorkerEnvironmentRuntime({
           scheduler,
           getPluginRegistry: () => pluginRuntime.registry,
+          getRepositorySources: () => repositorySources,
           getPortalRuntime: () => pluginGatewayContext.current,
           resolveGatewayContext: resolvePluginGatewayContext,
           desktopSessionRegistry,
@@ -199,6 +202,7 @@ export async function prepareGatewayKernelState(params: {
             placements: workerEnvironmentStartup.placementStore,
             initialPlacements: await workerEnvironmentStartup.placementStore.listAsync(),
             getCommittedRuntimeConfig,
+            getRepositorySources: () => repositorySources,
             environments: workerEnvironmentService,
             gatewayNamespace: nodeWorkerGatewayNamespace,
             nodeWorkerBundleRetention,
@@ -563,6 +567,7 @@ export async function prepareGatewayKernelState(params: {
     workerPlacementRuntime,
     githubPublicationRuntime,
     githubPublicationService: githubPublicationRuntime?.coordinator,
+    repositorySources,
     workerPlacementControlAvailable,
     desktopSessionRegistry,
     nodeDesktopStreamBroker,

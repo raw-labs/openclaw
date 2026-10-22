@@ -6,6 +6,8 @@ const enNewSessionSetup = {
   newSession: {
     openClawWorker: "OpenClaw worker",
     deviceFolder: "Existing folder on device",
+    repositorySourceUnavailable:
+      "This repository source is unavailable. Re-enable its plugin or choose another repository or local folder. Your selection has been kept.",
     deviceFolderDescription:
       "Work in place on the selected device. Files are not copied to the Gateway.",
     deviceFolderPath: "Absolute path on device",
@@ -188,9 +190,8 @@ const enNewSessionSetup = {
     projects: "Projects",
     projectsAdminHint: "Admins can register projects from Browse folders",
     projectSearchPlaceholder: "Search projects or paste a Git URL",
-    githubProjects: "GitHub",
-    githubTokenHint:
-      "No Control UI GitHub credential or shared Gateway environment token is configured; public GitHub results only.",
+    remoteCredentialHint:
+      "Searching public {source} repositories. Connect an account for private repository access.",
     cloneProject: "Clone",
     recentFolders: "Recent",
     what: "What",

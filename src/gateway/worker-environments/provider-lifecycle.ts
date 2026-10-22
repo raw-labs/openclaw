@@ -229,8 +229,7 @@ export function createWorkerProviderLifecycle(
         const requireProjectOwner = () => {
           cancellation?.assertActive();
           beforeProvision?.();
-          const current = requireCurrentOwner(record);
-          if (options.isStopping() || current.destroyRequestedAtMs !== null) {
+          if (options.isStopping() || requireCurrentOwner(record).destroyRequestedAtMs !== null) {
             throw new Error("Worker project preparation owner is no longer current");
           }
         };
@@ -240,6 +239,7 @@ export function createWorkerProviderLifecycle(
           record,
           namespace: options.projectNamespace,
           getConfig: options.getConfig,
+          getRepositorySources: options.getRepositorySources,
           requireCurrent: requireProjectOwner,
           signal: workSignal,
         });

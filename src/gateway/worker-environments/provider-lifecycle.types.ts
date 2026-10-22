@@ -34,6 +34,7 @@ export type WorkerEnvironmentAbandonment = {
 export type WorkerProviderLifecycleInputOptions = {
   store: WorkerEnvironmentStore;
   getConfig: () => OpenClawConfig;
+  getRepositorySources?: () => import("../repository-sources.js").RepositorySources;
   resolveProvider: (providerId: string) => WorkerProvider | undefined;
   prepareInstallation: (
     install: WorkerInstallationArtifact["install"],

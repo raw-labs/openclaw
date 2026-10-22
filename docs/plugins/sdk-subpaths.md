@@ -41,6 +41,13 @@ the compatibility queue with `pnpm plugins:boundary-report:summary`.
 
 For the plugin authoring guide, see [Plugin SDK overview](/plugins/sdk-overview).
 
+## Repository sources
+
+`plugin-sdk/repository-sources` provides managed service registration, source
+contracts, invocation-bound native checkout custody, and task-bound worker
+checkout transfer. See [Repository sources](/plugins/sdk-repository-sources) for
+caller options, lifecycle, and the one-way native transport environment contract.
+
 ## Plugin entry
 
 Native feature authoring uses `plugin-sdk/feature-contract`

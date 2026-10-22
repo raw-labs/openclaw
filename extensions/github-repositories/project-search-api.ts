@@ -1,24 +1,22 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { RemoteProject, ProjectsSearchRemoteResult } from "@openclaw/gateway-protocol";
+import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
+import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
+import { createSubsystemLogger } from "openclaw/plugin-sdk/logging-core";
+import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
+import { getAsyncWorkSignal } from "openclaw/plugin-sdk/process-runtime";
+import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import {
+  isRecord,
   normalizeOptionalString,
   readNonBlankString,
-} from "@openclaw/normalization-core/string-coerce";
-import {
-  resolveConfiguredGitHubApiBaseUrl,
-  resolveConfiguredGitHubHost,
-} from "../../extensions/github-repositories/host-api.js";
-import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
-import type {
-  RemoteProject,
-  ProjectsSearchRemoteResult,
-} from "../../packages/gateway-protocol/src/index.js";
-import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
-import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
-import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
-import { logWarn } from "../logger.js";
-import { parseConfiguredProjectGitUrl } from "../projects/project-git-url.runtime.js";
-import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+} from "openclaw/plugin-sdk/string-coerce-runtime";
+import { resolveConfiguredGitHubApiBaseUrl, resolveConfiguredGitHubHost } from "./host-api.js";
+import { parseProjectGitUrl } from "./project-url-api.js";
+import { gitHubPublicApi } from "./public-api.js";
+const parseConfiguredProjectGitUrl = (url: string) =>
+  parseProjectGitUrl(url, resolveConfiguredGitHubHost(getRuntimeConfigSnapshot()));
 
+const log = createSubsystemLogger("github/projects");
 const SEARCH_CACHE_MS = 60_000;
 const SEARCH_CACHE_LIMIT = 100;
 const SEARCH_RESULT_LIMIT = 10;
@@ -26,17 +24,18 @@ const AFFILIATED_RESULT_LIMIT = 10;
 // GitHub owner/repo shapes; an exact match resolves directly instead of relying
 // on search ranking (search tokenizes the slash and matches thousands of repos).
 const EXACT_REPO_QUERY = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\/[A-Za-z0-9._-]+$/;
-
-type SearchPage = { projects: RemoteProject[]; etag?: string; credentialScope: string };
+type SearchPage = {
+  projects: RemoteProject[];
+  etag?: string;
+  credentialScope: string;
+};
 const searchCaches = new WeakMap<
   typeof fetch,
   ReturnType<typeof createStaleWhileRevalidateCache<SearchPage>>
 >();
-
 function boundedString(value: unknown, maxLength: number): string | undefined {
   return normalizeOptionalString(value)?.slice(0, maxLength);
 }
-
 function parseRepository(value: unknown): RemoteProject | null {
   if (!isRecord(value)) {
     return null;
@@ -59,11 +58,18 @@ function parseRepository(value: unknown): RemoteProject | null {
     cloneUrl: clone.url,
     webUrl,
     private: value.private === true,
-    ...(description ? { description } : {}),
-    ...(defaultBranch ? { defaultBranch } : {}),
+    ...(description
+      ? {
+          description,
+        }
+      : {}),
+    ...(defaultBranch
+      ? {
+          defaultBranch,
+        }
+      : {}),
   };
 }
-
 function repositoryArray(value: unknown): RemoteProject[] {
   const items = Array.isArray(value)
     ? value
@@ -75,7 +81,6 @@ function repositoryArray(value: unknown): RemoteProject[] {
     return parsed ? [parsed] : [];
   });
 }
-
 function matchesAffiliatedQuery(project: RemoteProject, query: string): boolean {
   const needle = query.toLowerCase();
   return [project.name, project.fullName, project.description ?? ""]
@@ -83,29 +88,39 @@ function matchesAffiliatedQuery(project: RemoteProject, query: string): boolean 
     .toLowerCase()
     .includes(needle);
 }
-
 type GitHubSearchRequest = (
   url: string,
-  options?: { optionalAuth?: boolean; optional?: boolean; single?: boolean },
+  options?: {
+    optionalAuth?: boolean;
+    optional?: boolean;
+    single?: boolean;
+  },
 ) => Promise<RemoteProject[]>;
-
 async function loadExactRepository(
   query: string,
   request: GitHubSearchRequest,
 ): Promise<RemoteProject | null> {
   const url = new URL(`repos/${query}`, `${gitHubPublicApi.GITHUB_API_BASE_URL}/`);
-  return (await request(url.href, { optional: true, single: true }))[0] ?? null;
+  return (
+    (
+      await request(url.href, {
+        optional: true,
+        single: true,
+      })
+    )[0] ?? null
+  );
 }
-
 async function loadAffiliatedRepositories(request: GitHubSearchRequest): Promise<RemoteProject[]> {
   const url = new URL("user/repos", `${gitHubPublicApi.GITHUB_API_BASE_URL}/`);
   url.searchParams.set("affiliation", "owner,collaborator,organization_member");
   url.searchParams.set("sort", "updated");
   url.searchParams.set("direction", "desc");
   url.searchParams.set("per_page", String(AFFILIATED_RESULT_LIMIT));
-  return request(url.href, { optional: true, optionalAuth: false });
+  return request(url.href, {
+    optional: true,
+    optionalAuth: false,
+  });
 }
-
 async function loadRepositorySearch(
   query: string,
   request: GitHubSearchRequest,
@@ -115,7 +130,6 @@ async function loadRepositorySearch(
   url.searchParams.set("per_page", String(SEARCH_RESULT_LIMIT));
   return request(url.href);
 }
-
 async function searchProjectsUncached(params: {
   query: string;
   request: GitHubSearchRequest;
@@ -160,7 +174,12 @@ export async function searchRemoteProjects(
     signal?: AbortSignal;
   } = {},
 ): Promise<ProjectsSearchRemoteResult> {
-  const config = getRuntimeConfigSnapshot();
+  const config = getRuntimeConfigSnapshot() ?? {};
+  if (!isBundledPluginEnabled(config, "github-repositories")) {
+    throw new Error(
+      "Native GitHub repositories are disabled. Enable the github-repositories plugin and restart the Gateway.",
+    );
+  }
   const host = options.host ?? resolveConfiguredGitHubHost(config);
   const apiBaseUrl = options.apiBaseUrl ?? resolveConfiguredGitHubApiBaseUrl(config);
   const assertCurrent = () => {
@@ -204,7 +223,7 @@ export async function searchRemoteProjects(
     createStaleWhileRevalidateCache<SearchPage>({
       maxEntries: SEARCH_CACHE_LIMIT,
       ttlMs: SEARCH_CACHE_MS,
-      onBackgroundError: () => logWarn("projects: GitHub repository search refresh failed"),
+      onBackgroundError: () => log.warn("projects: GitHub repository search refresh failed"),
     });
   searchCaches.set(fetchImpl, cache);
   let stale = false;
@@ -242,7 +261,11 @@ export async function searchRemoteProjects(
             const repository = single ? parseRepository(value) : null;
             const projects = single ? (repository ? [repository] : []) : repositoryArray(value);
             assertTransportCurrent();
-            return { projects, etag: response.headers.get("etag") ?? undefined, credentialScope };
+            return {
+              projects,
+              etag: response.headers.get("etag") ?? undefined,
+              credentialScope,
+            };
           };
           try {
             return await (optionalAuth
@@ -277,11 +300,20 @@ export async function searchRemoteProjects(
   try {
     // The Gateway owns refresh work; each dispatch still requires its initiating authority.
     const result = await racePromiseWithAbortSignal(
-      searchProjectsUncached({ query: query.trim().toLowerCase(), request, token }),
+      searchProjectsUncached({
+        query: query.trim().toLowerCase(),
+        request,
+        token,
+      }),
       options.signal,
     );
     assertTransportCurrent();
-    return stale ? { ...result, stale: true } : result;
+    return stale
+      ? {
+          ...result,
+          stale: true,
+        }
+      : result;
   } finally {
     assertSelected();
   }

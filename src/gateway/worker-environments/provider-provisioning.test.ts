@@ -1,5 +1,8 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { describe, expect, it, vi } from "vitest";
+import { requireGit } from "../../agents/worktrees/git.js";
 import {
   WorkerProviderError,
   type WorkerMachineOption,
@@ -7,18 +10,114 @@ import {
   type WorkerProvider,
 } from "../../plugins/types.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { hashWorkerCredential } from "./credential.js";
 import { DEVICE_WORKER_PROVIDER_ID } from "./device-provider-identity.js";
 import {
   readWorkerPlacementIdentity,
   projectWorkerSessionPlacement,
 } from "./placement-projector.js";
+import { repository } from "./provider-lifecycle.test-support.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
+import { createWorkerEnvironmentService } from "./service.js";
 import * as support from "./service.test-support.js";
 
 type WorkerEnvironmentServiceError = support.WorkerEnvironmentServiceError;
 
 describe("worker environment service", () => {
   support.setupWorkerEnvironmentServiceSuite();
+
+  it("retains the admitted repository source through the actual provider preparation caller", async () => {
+    const local = await repository("source", { disableSigning: true });
+    const tree = await requireGit(local.root, ["rev-parse", "HEAD^{tree}"]);
+    const nativeConfig = path.join(support.testState.root, "native");
+    const emptyPath = path.join(support.testState.root, "bin");
+    await fs.mkdir(nativeConfig);
+    await fs.mkdir(emptyPath);
+    // The real local Git source supplies object identities. Only remote HTTP
+    // metadata and the provider boundary are synthetic; no operator CLI can run.
+    vi.stubEnv("PATH", emptyPath);
+    vi.stubEnv("GH_CONFIG_DIR", nativeConfig);
+    vi.stubEnv("GH_TOKEN", undefined);
+    vi.stubEnv("GITHUB_TOKEN", undefined);
+    vi.stubEnv("GH_ENTERPRISE_TOKEN", undefined);
+    vi.stubEnv("GITHUB_ENTERPRISE_TOKEN", undefined);
+    vi.stubEnv("OPENCLAW_STATE_DIR", support.testState.root);
+    support.testState.config.agents = { entries: { main: { workspace: local.root } } };
+    const url = "https://github.com/acme/provider-source.git";
+    const sources = createRepositorySourcesFixture(() => support.testState.config);
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      expect(request.method).toBe("GET");
+      expect(request.headers.has("authorization")).toBe(false);
+      const pathname = new URL(request.url).pathname;
+      let body: unknown;
+      if (pathname === "/repos/acme/provider-source") {
+        body = {
+          node_id: "R_provider_fixture",
+          clone_url: url,
+          private: false,
+          default_branch: "main",
+        };
+      } else if (pathname.startsWith("/repos/acme/provider-source/commits/")) {
+        body = { sha: local.baseCommit, commit: { tree: { sha: tree } } };
+      } else if (pathname === `/repos/acme/provider-source/git/commits/${local.baseCommit}`) {
+        body = { sha: local.baseCommit, tree: { sha: tree } };
+      } else if (pathname === `/repos/acme/provider-source/git/trees/${tree}`) {
+        body = { sha: tree, truncated: false, tree: [] };
+      } else {
+        throw new Error(`Unexpected repository metadata request: ${pathname}`);
+      }
+      return new Response(JSON.stringify(body));
+    });
+    const reachedProvider = new Error("Fixture provider preparation boundary reached");
+    const provider = support.createProvider({
+      supportsProjectPreparation: () => true,
+      prepareProvision: async (_profile, _operation, options) => {
+        expect(options?.project).toBeDefined();
+        // No remote allocation is requested. Reaching this I/O boundary proves
+        // real lifecycle preparation retained source access after intent admission.
+        throw reachedProvider;
+      },
+    });
+    const service = createWorkerEnvironmentService({
+      scheduler: createTestGatewayScheduler(),
+      store: support.testState.store,
+      getConfig: () => support.testState.config,
+      getRepositorySources: () => sources,
+      projectNamespace: "provider-source-test",
+      resolveProvider: (id) => (id === provider.id ? provider : undefined),
+      prepareInstallation: support.testState.prepareInstallation,
+      bootstrapWorker: support.testState.bootstrapWorker,
+      resolveSshIdentity: async () => ({ kind: "path", path: "/synthetic/worker-key" }),
+      now: () => support.testState.nowMs,
+      reconcileIntervalMs: 25,
+    });
+    support.testState.service = service;
+    try {
+      const admittedIntent = await service.prepareProjectIntent("development", {
+        repository: { agentId: "main", url },
+      });
+      await expect(
+        service.createWithRequest({
+          profileId: "development",
+          idempotencyKey: "repository-source",
+          admittedIntent,
+        }),
+      ).rejects.toThrow(reachedProvider.message);
+      expect(support.testState.store.list()).toMatchObject([
+        {
+          state: "failed",
+          leaseId: null,
+          lastError: reachedProvider.message,
+          profileSnapshot: { project: { baseCommit: local.baseCommit, source: { url } } },
+        },
+      ]);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
 
   it("projects live provisioning status and closes retained reports after settlement", async () => {
     const entered = createDeferredCore();

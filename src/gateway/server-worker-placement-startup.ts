@@ -44,7 +44,7 @@ import {
   WorkerDispatchTargetChangedError,
 } from "./server-worker-placement-session-target.js";
 import { recoverGatewayWorkerPlacementWorkspaces } from "./server-worker-placement-workspace-recovery.js";
-import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
+import { prepareSessionRepositoryGatewayMove } from "./session-repository-materialization.js";
 import { createDevicePlacementAuthority } from "./worker-environments/device-placement-eligibility.js";
 import {
   createNodeWorkspaceRetainCoordinator,
@@ -83,6 +83,7 @@ export type GatewayWorkerPlacementRuntimeParams = {
   placements: WorkerSessionPlacementStore;
   initialPlacements: readonly WorkerSessionPlacementRecord[];
   getCommittedRuntimeConfig: () => OpenClawConfig;
+  getRepositorySources?: () => import("./repository-sources.js").RepositorySources;
   environments: WorkerEnvironmentService;
   gatewayNamespace: string;
   nodeWorkerBundleRetention?: NodeWorkerBundleRetention;
@@ -212,6 +213,7 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
   const publishPlacementChanges = createGatewayWorkerPlacementChangePublisher(params);
   const dispatchService = coordinateWorkerPlacementDispatch(
     createWorkerPlacementDispatchService({
+      getRepositorySources: params.getRepositorySources,
       placements: params.placements,
       initialPlacements: params.initialPlacements,
       environments: params.environments,
@@ -279,17 +281,13 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
       }),
       resolveWorkspace,
       prepareGatewayMove: (identity) =>
-        params.placements.withWorkspaceExclusion(
-          identity.sessionId,
-          async (assertOwned) =>
-            await materializeSessionRepositoryWorkspaceOnGateway({
-              cfg: getRuntimeConfig(),
-              ...identity,
-              assertCurrent: () => {
-                assertOwned();
-                identity.assertCurrent();
-              },
-            }),
+        prepareSessionRepositoryGatewayMove(
+          {
+            placements: params.placements,
+            getConfig: getRuntimeConfig,
+            getRepositorySources: params.getRepositorySources,
+          },
+          identity,
         ),
       workspaceOperations,
       prepareAcceptedWorkspacePublication,

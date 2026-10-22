@@ -24,4 +24,12 @@ export const repositoryGatewayMethods = [
     SIDECAR_CONTROL_PLANE_WRITE,
   ],
   ["users.github.disconnect", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
+  [
+    "projects.searchRemote",
+    "projects",
+    "operator.read",
+    "2026.8",
+    { description: "Search GitHub repositories that can be cloned as managed projects." },
+  ],
+  ["projects.add", "projects", "operator.write", "2026.8", CONTROL_PLANE_WRITE],
 ] as const;

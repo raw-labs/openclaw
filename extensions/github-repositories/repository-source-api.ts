@@ -1,0 +1,62 @@
+import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
+import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import type { RepositorySource } from "openclaw/plugin-sdk/repository-sources";
+import { resolveConfiguredGitHubHost } from "./host-api.js";
+import { materializeProjectClone, refreshProjectClone } from "./project-clone-api.js";
+import { parseProjectGitUrl } from "./project-url-api.js";
+import { githubApiToken } from "./public-api.js";
+import { prepareGitHubReadIdentity } from "./tool-identity-api.js";
+import { createGitHubWorkerSource } from "./worker-source-api.js";
+
+/** GitHub owns URL selection and credential custody; the host receives checkout facts only. */
+export function createGitHubRepositorySource(
+  getRuntimeConfig: () => OpenClawConfig,
+  refresh: (agentId: string) => Promise<void>,
+): RepositorySource {
+  return {
+    id: "github-repositories/repositories",
+    worker: createGitHubWorkerSource(getRuntimeConfig, refresh),
+    resolve(raw) {
+      return parseProjectGitUrl(raw, resolveConfiguredGitHubHost(getRuntimeConfig())) ?? undefined;
+    },
+    async prepare(input) {
+      const config = getRuntimeConfig();
+      input.assertCurrent();
+      const configuredToken = githubApiToken(process.env, config);
+      const identity =
+        !configuredToken && config.gateway?.projects?.nativeGitHubSearch === true
+          ? await prepareGitHubReadIdentity({
+              agentId: input.agentId,
+              config,
+              sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig ?? config,
+              getCurrentConfig: getRuntimeConfig,
+              assertActive: input.assertCurrent,
+              allowAppInstallation: false,
+              refresh: async () => {},
+            })
+          : undefined;
+      const assertCurrent = () => {
+        input.assertCurrent();
+        identity?.assertSelected();
+      };
+      assertCurrent();
+      const options = {
+        signal: input.signal,
+        token: configuredToken ?? identity?.token,
+        assertCurrent,
+        startRun: identity?.start,
+      };
+      const project = await materializeProjectClone({ gitUrl: input.url }, options);
+      assertCurrent();
+      return {
+        project: { id: project.id, repoRoot: project.repoRoot, source: project.source },
+        assertCurrent,
+        async refresh() {
+          assertCurrent();
+          await refreshProjectClone(project, options);
+          assertCurrent();
+        },
+      };
+    },
+  };
+}

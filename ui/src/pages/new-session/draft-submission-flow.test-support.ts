@@ -118,11 +118,26 @@ export function createDraftFixture(options: FixtureOptions = {}) {
                   role: "operator",
                   scopes: options.scopes ?? ["operator.read", "operator.write"],
                 },
-                features: { methods: options.methods ?? ["sessions.create"] },
+                features: {
+                  methods: options.methods ?? ["sessions.create", "fixture.repositories.search"],
+                },
               }
             : null,
       },
       setSessionKey: vi.fn(),
+    },
+    plugins: {
+      registryStatus: "complete",
+      repositorySources: [
+        {
+          pluginId: "fixture",
+          key: "fixture/repos",
+          id: "repos",
+          label: "Repositories",
+          searchMethod: "fixture.repositories.search",
+        },
+      ],
+      subscribe: () => () => undefined,
     },
     agents,
     sessions: {

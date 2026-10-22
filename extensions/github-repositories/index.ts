@@ -34,9 +34,13 @@ export default definePluginEntry({
         {
           scope,
           since,
-          profileAccess: method.startsWith("users.") ? "required" : "independent",
+          profileAccess:
+            method.startsWith("users.") || method.startsWith("projects.")
+              ? "required"
+              : "independent",
           ...(policy.startup ? { startup: "unavailable-until-sidecars" } : {}),
           ...(policy.controlPlaneWrite ? { controlPlaneWrite: true } : {}),
+          ...(policy.description ? { description: policy.description } : {}),
         },
       );
     }

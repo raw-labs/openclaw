@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { closeOpenClawStateDatabaseForTest } from "../../state/openclaw-state-db.js";
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 
 const directories = useAutoCleanupTempDirTracker(afterEach);
 
@@ -28,6 +29,7 @@ it("admits public source without a native CLI and fences later configured identi
   const tree = "b".repeat(40);
   const repositoryUrl = "https://github.com/acme/public-project.git";
   const config = { agents: { entries: { "public-source": { workspace: root } } } };
+  const sources = createRepositorySourcesFixture(() => config);
   // Only HTTP is substituted: identity selection, missing CLI execution,
   // configuration absence and durable agent ownership use their real owners.
   const fetchMock = vi.fn<typeof fetch>(async (input, init) => {
@@ -60,6 +62,7 @@ it("admits public source without a native CLI and fences later configured identi
     repository: { agentId: "public-source", url: repositoryUrl },
     namespace: "public-source-test",
     getConfig: () => config,
+    getRepositorySources: () => sources,
     assertCurrent: () => {},
   });
 
@@ -70,6 +73,7 @@ it("admits public source without a native CLI and fences later configured identi
     expected: admitted.project,
     namespace: "public-source-test",
     getConfig: () => config,
+    getRepositorySources: () => sources,
     assertCurrent: () => {},
   });
   expect(reopened.project).toEqual(admitted.project);

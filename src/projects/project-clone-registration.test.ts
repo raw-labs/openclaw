@@ -1,6 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
 import type { OpenClawStateLeaseContext } from "../state/openclaw-state-lease.js";
-import { materializeProjectClone } from "./project-clone.js";
+import { materializeProjectClone } from "./project-clone.test-support.js";
 import type { ProjectRegistryRecord } from "./project-registry.types.js";
 type LeaseRun = (lease: OpenClawStateLeaseContext) => Promise<unknown>;
 
@@ -49,9 +49,15 @@ vi.mock("./project-checkout.js", () => ({
 
 vi.mock("./project-registry.js", () => ({ listProjectRegistry: async () => [] }));
 // mock-isolation: clone outcomes are synthetic and must not run Git or access the network.
-vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
-  cloneProjectCheckout: fixture.clone,
-}));
+vi.mock(
+  "../../extensions/github-repositories/project-clone-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../extensions/github-repositories/project-clone-runtime-api.js")
+    >()),
+    cloneProjectCheckout: fixture.clone,
+  }),
+);
 
 vi.mock("../state/openclaw-state-lease-worker-operation.js", () => ({
   runWithOpenClawStateLeaseWorker: async (

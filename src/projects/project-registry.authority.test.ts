@@ -40,13 +40,6 @@ vi.mock("node:fs/promises", () => ({
     rmdir: fixture.removeParent,
   },
 }));
-vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
-  ProjectCloneError: class extends Error {
-    constructor(_code: string, message: string) {
-      super(message);
-    }
-  },
-}));
 vi.mock("../agents/agent-scope-config.js", () => ({ withAgentRosterFactsBatch: vi.fn() }));
 vi.mock("../agents/agent-scope.js", () => ({
   listAgentIds: vi.fn(),

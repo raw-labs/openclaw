@@ -1,9 +1,5 @@
 import os from "node:os";
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
-import {
-  readProjectCheckoutRemoteHead,
-  ProjectCloneError,
-} from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { captureSessionEntrySourceAssertion } from "../config/sessions/session-entry-source-authority.js";
 import {
@@ -13,7 +9,6 @@ import {
 } from "../config/sessions/session-source-authority.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
-import { materializeProjectClone } from "../projects/project-clone.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
 import {
@@ -23,16 +18,18 @@ import {
 import { readRepositoryGitHubPublicationBranchAsync } from "./github-publication-store-async.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { prepareRepositoryPublicationRestore } from "./github-repository-publication-restore.js";
+import type { RepositorySources } from "./repository-sources.js";
 import { retainGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
 import type { GatewaySessionEntryRead } from "./session-utils-store.js";
 import { prepareSessionWorktree } from "./session-worktree-preparation.js";
-import { prepareRepositoryGitHubIdentity } from "./worker-environments/repository-github-identity.js";
+import type { WorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 import { withSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { applyStagedWorkerWorkspace } from "./worker-environments/workspace-reconcile-apply.js";
 
 /** Explicit Gateway moves and failed-placement recovery restore only accepted source results. */
 export async function materializeSessionRepositoryWorkspaceOnGateway(params: {
   cfg: OpenClawConfig;
+  getRepositorySources?: () => RepositorySources;
   sessionId: string;
   sessionKey: string;
   agentId: string;
@@ -42,7 +39,9 @@ export async function materializeSessionRepositoryWorkspaceOnGateway(params: {
   const initial = await retainGatewaySessionEntryReadOnly(
     params.sessionKey,
     params.agentId,
-    (previous, current) => previous.repositoryWorkspaceId === current.repositoryWorkspaceId,
+    (previous, current) =>
+      previous.repositoryWorkspaceId === current.repositoryWorkspaceId &&
+      previous.repositorySourceId === current.repositorySourceId,
     params.cfg,
   );
   try {
@@ -108,7 +107,8 @@ async function materializeCapturedRepositoryWorkspace(
     if (
       current?.sessionId !== params.sessionId ||
       current.lifecycleRevision !== initial.entry?.lifecycleRevision ||
-      current.repositoryWorkspaceId !== workspaceId
+      current.repositoryWorkspaceId !== workspaceId ||
+      current.repositorySourceId !== initial.entry?.repositorySourceId
     ) {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");
     }
@@ -120,59 +120,45 @@ async function materializeCapturedRepositoryWorkspace(
       storePath: initial.storePath,
     },
     readSource: initial.capturedReadSource,
-    fields: ["sessionId", "lifecycleRevision", "repositoryWorkspaceId"],
+    fields: ["sessionId", "lifecycleRevision", "repositoryWorkspaceId", "repositorySourceId"],
     expected: initial.entry,
     assertCurrent: assertEntryCurrent,
     refuse: () => {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");
     },
   });
-  const assertCurrent = composeSessionSourceAssertion(
+  const assertSessionCurrent = composeSessionSourceAssertion(
     [params.assertCurrent, entrySource],
     (assertSources) => {
       assertSources();
       assertOtherOwners();
     },
   );
-  assertCurrent();
-  const github = await prepareRepositoryGitHubIdentity(params.agentId, assertCurrent);
-  assertCurrent();
-  const cloneOptions = {
+  assertSessionCurrent();
+  const sourceOwner = params
+    .getRepositorySources?.()
+    .resolve(repository.url, initial.entry.repositorySourceId);
+  if (!sourceOwner) {
+    throw new Error("Repository source service is unavailable; retry after Gateway startup.");
+  }
+  const restored = await sourceOwner.restoreWorker({
+    agentId: params.agentId,
+    requiredCommit: published?.pushed_head_commit ?? repository.baseCommit,
     signal: params.signal,
-    token: github.token,
-    assertCurrent: github.assertSelected,
+    assertCurrent: assertSessionCurrent,
+  });
+  const assertCurrent = () => {
+    assertSessionCurrent();
+    restored.assertCurrent();
   };
-  const requiredCommit = published?.pushed_head_commit ?? repository.baseCommit;
-  const project = await github
-    .start(() =>
-      materializeProjectClone(
-        {
-          cfg: params.cfg,
-          gitUrl: repository.url,
-          requiredCommit,
-        },
-        cloneOptions,
-      ),
-    )
-    .catch((error: unknown) => {
-      if (error instanceof ProjectCloneError && error.failure === "auth_required") {
-        throw new ProjectCloneError(
-          error.failure,
-          "GitHub could not authenticate this repository with the selected shared GitHub identity. Check its repository access or reconnect it in Settings, then retry the Gateway move.",
-        );
-      }
-      throw error;
-    });
   assertCurrent();
+  const project = restored.project;
   const {
     step,
     require: command,
     run,
   } = createGitHubPublicationCommandRunner(assertCurrent, "session.materialize");
-  const source = { url: repository.url, target: project.repoRoot };
-  const remoteHead = await step(() =>
-    readProjectCheckoutRemoteHead({ ...source, branch: repository.branch }, cloneOptions),
-  );
+  const remoteHead = await step(() => restored.readRemoteHead(repository.branch));
   if (remoteHead !== (published?.pushed_head_commit ?? undefined)) {
     throw new Error(
       "Repository publication branch differs from its recorded push; review the remote branch before retrying the Gateway move",
@@ -181,10 +167,7 @@ async function materializeCapturedRepositoryWorkspace(
   const requestedBase = parseGitHubPublicationBaseBranch(repository.requestedRef ?? "HEAD", "HEAD");
   const baseRef =
     published?.base_branch ??
-    (requestedBase !== "HEAD" &&
-    (await step(() =>
-      readProjectCheckoutRemoteHead({ ...source, branch: requestedBase }, cloneOptions),
-    ))
+    (requestedBase !== "HEAD" && (await step(() => restored.readRemoteHead(requestedBase)))
       ? requestedBase
       : "HEAD");
   if (published?.pushed_head_commit) {
@@ -333,4 +316,31 @@ async function materializeCapturedRepositoryWorkspace(
       await workspace.rollback?.();
     }
   }
+}
+
+/** Placement exclusion and source-bound restoration share the existing native custody owner. */
+export async function prepareSessionRepositoryGatewayMove(
+  options: {
+    placements: Pick<WorkerSessionPlacementStore, "withWorkspaceExclusion">;
+    getConfig: () => OpenClawConfig;
+    getRepositorySources?: () => RepositorySources;
+  },
+  identity: Omit<
+    Parameters<typeof materializeSessionRepositoryWorkspaceOnGateway>[0],
+    "cfg" | "getRepositorySources"
+  >,
+): Promise<void> {
+  await options.placements.withWorkspaceExclusion(
+    identity.sessionId,
+    async (assertOwned) =>
+      await materializeSessionRepositoryWorkspaceOnGateway({
+        ...identity,
+        cfg: options.getConfig(),
+        getRepositorySources: options.getRepositorySources,
+        assertCurrent: () => {
+          assertOwned();
+          identity.assertCurrent();
+        },
+      }),
+  );
 }

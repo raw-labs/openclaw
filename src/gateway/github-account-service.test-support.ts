@@ -17,6 +17,7 @@ import { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-ow
 import { startPluginServices } from "../plugins/services.js";
 import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { createRepositorySessionReadHost } from "./repository-session-read-host.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
@@ -72,12 +73,17 @@ export async function startTestRepositorySessionPresentation(
   const fixture = createPluginRegistryFixture(context.getRuntimeConfig());
   registerTestPlugin({
     ...fixture,
-    record: createPluginRecord({ id: repositoryManifest.id, name: repositoryManifest.name }),
+    record: createPluginRecord({
+      id: repositoryManifest.id,
+      name: repositoryManifest.name,
+      repositorySources: repositoryManifest.repositorySources,
+    }),
     register: repositoryPlugin.register,
   });
   setActivePluginRegistry(fixture.registry.registry);
   onTestFinished(resetPluginRuntimeStateForTest);
   context.resolveGatewayContext ??= () => context;
+  context.repositorySources ??= createRepositorySources(scheduler.signal);
   context.repositorySessions ??= createRepositorySessionReadHost({
     signal: scheduler.signal,
     getRuntimeConfig: context.getRuntimeConfig,

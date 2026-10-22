@@ -1,7 +1,6 @@
 import fsp from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { resolveConfiguredGitHubToolIdentity } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
@@ -36,7 +35,13 @@ import { prepareWorkerProjectSnapshot, workerLocalProjectKey } from "./workspace
 
 type WorkerProviderIntentOptions = Pick<
   WorkerProviderLifecycleOptions,
-  "store" | "getConfig" | "projectNamespace" | "prepareNodeArtifacts" | "isStopping" | "withLock"
+  | "store"
+  | "getConfig"
+  | "getRepositorySources"
+  | "projectNamespace"
+  | "prepareNodeArtifacts"
+  | "isStopping"
+  | "withLock"
 > & {
   providerFor: (providerId: string) => WorkerProvider;
   resumeProvision: (
@@ -55,7 +60,13 @@ export type WorkerProviderIntentPreparationOptions = {
   projectCommit?: string;
   /** Refill only: the retained source already admitted an empty committed workspace. */
   emptyWorkspace?: true;
-  repository?: { agentId: string; url: string; ref?: string; baseCommit?: string };
+  repository?: {
+    agentId: string;
+    url: string;
+    ref?: string;
+    baseCommit?: string;
+    repositorySourceId?: string;
+  };
   projectRepository?: RepositoryWorkerProjectSnapshot;
   runSetupScript?: boolean;
   signal?: AbortSignal;
@@ -217,6 +228,7 @@ export function createWorkerProviderIntent(options: WorkerProviderIntentOptions)
             : { repository: createOptions.repository! }),
           namespace: options.projectNamespace,
           getConfig: options.getConfig,
+          getRepositorySources: options.getRepositorySources,
           assertCurrent: () => {
             requireProfileId(profileId, signal);
           },
@@ -370,32 +382,22 @@ export function createWorkerProviderIntent(options: WorkerProviderIntentOptions)
       return invalid("configured profile changed");
     }
     const isSourceOwnerCurrent = () => {
-      const sourceConfig = options.getConfig();
-      if (project && "source" in project) {
-        const { agent, identity } = project.source.owner;
-        const agentIdentity = resolveConfiguredGitHubToolIdentity({
-          config: sourceConfig,
-          agentId: agent.agentId,
-          scope: "agent",
-        });
-        const systemIdentity = resolveConfiguredGitHubToolIdentity({
-          config: sourceConfig,
-          agentId: agent.agentId,
-          scope: "system",
-        });
-        const selected = agentIdentity ?? systemIdentity;
-        const selectedSource = agentIdentity ? "agent-override" : "system-configured";
-        if (
-          selected
-            ? identity.source !== selectedSource ||
-              !("profileId" in identity) ||
-              identity.profileId !== selected.profileId
-            : identity.source !== "anonymous" && identity.source !== "system-detected"
-        ) {
-          return false;
-        }
+      if (!project || !("source" in project)) {
+        return true;
       }
-      return true;
+      try {
+        const source = options
+          .getRepositorySources?.()
+          .resolve(project.source.url, project.source.repositorySourceId);
+        return (
+          source?.isWorkerIdentityCurrent({
+            agentId: project.source.owner.agent.agentId,
+            identity: project.source.owner.identity,
+          }) ?? false
+        );
+      } catch {
+        return false;
+      }
     };
     if (!isSourceOwnerCurrent()) {
       return invalid("repository owner changed");

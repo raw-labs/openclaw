@@ -28,11 +28,8 @@ import {
 } from "../state/openclaw-state-db.js";
 import { observe } from "../state/openclaw-state-lease-async.test-support.js";
 import { createCommandResult } from "../test-utils/npm-spec-install-test-helpers.js";
-import {
-  materializeProjectClone,
-  refreshProjectClone,
-  removeClonedProjectCheckout,
-} from "./project-clone.js";
+import { removeClonedProjectCheckout } from "./project-clone.js";
+import { materializeProjectClone, refreshProjectClone } from "./project-clone.test-support.js";
 import {
   listProjectRegistry,
   ProjectCheckoutError,

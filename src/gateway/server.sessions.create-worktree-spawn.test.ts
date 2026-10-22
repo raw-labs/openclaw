@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
-import "../agents/subagents/spawn/subagent-spawn-model.mocks.shared.js";
 import fs from "node:fs/promises";
+import "../agents/subagents/spawn/subagent-spawn-model.mocks.shared.js";
 import path from "node:path";
 import { promisify } from "node:util";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
@@ -44,12 +44,18 @@ import {
   getGatewayConfigModule,
   setupGatewaySessionsHandlerTestHarness,
 } from "./test/server-sessions.test-helpers.js";
+import { createRepositorySourcesFixture } from "./worker-environments/repository-source.test-support.js";
 
 const projectCloneMocks = vi.hoisted(() => ({
   materializeProjectClone: vi.fn(),
   refreshProjectClone: vi.fn(),
 }));
-vi.mock("../projects/project-clone.js", () => projectCloneMocks);
+vi.mock("../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/project-clone-api.js")
+  >()),
+  ...projectCloneMocks,
+}));
 
 let createRepository: ReturnType<typeof createWorktreeSpawnRepositoryFixture>;
 const { createSessionStoreDir } = setupGatewaySessionsHandlerTestHarness(async (makeTempDir) => {
@@ -187,6 +193,7 @@ async function createVisibleSpawnTool() {
   const { getRuntimeConfig } = await getGatewayConfigModule();
   const context = createDirectChatContext({
     getRuntimeConfig,
+    repositorySources: createRepositorySourcesFixture(getRuntimeConfig),
     trackExecution: async (run) => await run(),
   });
   const registerRun = vi.fn();
@@ -383,16 +390,14 @@ test("visible spawn tool preserves project validation and external cwd authoriza
   ]) {
     await expect(spawn(options)).rejects.toThrow(/cannot be combined/);
   }
-  for (const projectGitUrl of [
-    "/tmp/repo",
-    "file:///tmp/repo",
-    "https://example.com/repo.git",
-    "not-a-url",
-  ]) {
+  for (const projectGitUrl of ["/tmp/repo", "file:///tmp/repo", "not-a-url"]) {
     await expect(spawn({ projectGitUrl })).rejects.toThrow(
-      "Use a GitHub HTTPS or git@github.com repository URL",
+      "Select a supported repository URL with its repository source.",
     );
   }
+  await expect(spawn({ projectGitUrl: "https://example.com/repo.git" })).rejects.toThrow(
+    "No enabled repository source accepts this URL.",
+  );
   await expect(spawn({ projectId: "missing-project" })).rejects.toThrow("unknown project id");
   const result = await spawn({ cwd: repository, worktree: true });
   expect(result.details).toMatchObject({

@@ -19,6 +19,7 @@ import { ManagedWorktreeService, managedWorktrees } from "../agents/worktrees/se
 import { materializeManagedWorktreeFixtures } from "../agents/worktrees/service.test-support.js";
 import type { dispatchInboundMessage } from "../auto-reply/dispatch.js";
 import { getRuntimeConfig } from "../config/io.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import {
   listSessionPendingInputs,
   loadTranscriptEventsSync,
@@ -37,6 +38,7 @@ import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
 } from "../state/openclaw-state-db.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createChatRunState } from "./server-chat-state.js";
 import {
   controlUiClient,
@@ -60,12 +62,18 @@ vi.mock("../auto-reply/reply/conversation-label-generator.js", () => ({
   generateConversationLabelWithFallback: titleMocks.generate,
 }));
 
-vi.mock("../projects/project-clone.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../projects/project-clone.js")>();
+vi.mock("../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/project-clone-api.js")
+    >();
   return { ...actual, materializeProjectClone: projectCloneMocks.materialize };
 });
-vi.mock("./project-github-identity.js", () => ({
-  prepareGatewayProjectGitHubIdentity: projectCloneMocks.prepareIdentity,
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: projectCloneMocks.prepareIdentity,
 }));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -138,6 +146,14 @@ async function remoteProjectFixture<T = Awaited<ReturnType<typeof registerProjec
   const materialization = createDeferredCore<T>();
   projectCloneMocks.materialize.mockReturnValueOnce(materialization.promise);
   if (options.recordInput) {
+    const config = getRuntimeConfig();
+    setRuntimeConfigSnapshot({
+      ...config,
+      gateway: {
+        ...config.gateway,
+        projects: { ...config.gateway?.projects, nativeGitHubSearch: true },
+      },
+    });
     projectCloneMocks.prepareIdentity.mockResolvedValue({
       token: "protected-native-token",
       assertSelected: projectCloneMocks.assertSelected,
@@ -859,4 +875,33 @@ test("sessions.create reports an unavailable registered project with truthful re
   expect(created.error?.message).toMatch(
     /; update the agent workspace path or re-register the project$/u,
   );
+});
+
+test("sessions.create refuses an unavailable selected source while local sessions remain usable", async () => {
+  const root = tempDirs.make("openclaw-session-source-disabled-");
+  testState.agentConfig = { workspace: await initializeRepository(root, "workspace") };
+  await createSessionStoreDir();
+  const lifetime = new AbortController();
+  const sources = createRepositorySources(lifetime.signal);
+  const selected = await directSessionReq(
+    "sessions.create",
+    {
+      agentId: "main",
+      repository: { url: "https://github.com/openclaw/openclaw.git" },
+      repositorySource: "github-repositories/repositories",
+    },
+    { ...controlUiClient, context: { repositorySources: sources } },
+  );
+  expect(selected).toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+  expect(projectCloneMocks.materialize).not.toHaveBeenCalled();
+  const local = await directSessionReq(
+    "sessions.create",
+    { agentId: "main" },
+    {
+      ...controlUiClient,
+      context: { repositorySources: sources },
+    },
+  );
+  expect(local.ok, JSON.stringify(local.error)).toBe(true);
+  lifetime.abort();
 });

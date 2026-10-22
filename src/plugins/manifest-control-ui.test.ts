@@ -20,7 +20,12 @@ function writeJson(dir: string, file: string, value: unknown) {
   fs.writeFileSync(path.join(dir, file), JSON.stringify(value));
 }
 
-function fixture(controlUi: unknown, uiCapabilities?: unknown, channels?: string[]) {
+function fixture(
+  controlUi: unknown,
+  uiCapabilities?: unknown,
+  channels?: string[],
+  repositorySources?: unknown,
+) {
   const plugin = writePlugin({ id: "native-ui", registration: "" });
   writeJson(plugin.dir, "openclaw.plugin.json", {
     id: plugin.id,
@@ -28,6 +33,7 @@ function fixture(controlUi: unknown, uiCapabilities?: unknown, channels?: string
     controlUi,
     uiCapabilities,
     channels,
+    repositorySources,
   });
   return plugin;
 }
@@ -162,27 +168,44 @@ it.each([true, false])("gates generated browser paths on the build: %s", (build)
   );
 });
 
-it("discovers contributed Profile and Agent Settings without changing packaged setup views", () => {
-  const views = [
-    {
-      id: "connections",
-      section: "profile",
-      panel: "connections",
-      requiredMethods: ["tools.github.status"],
-      search: {
-        label: "GitHub connections",
-        hash: "#settings-profile-github-connections",
-        aliases: "oauth authentication",
-      },
-    },
-    { id: "identity", section: "agents", panel: "tools" },
+it("admits distinct settings contributions in one slot and a repository source", () => {
+  const settingsViews = ["connections", "service"].map((id) => ({
+    id,
+    section: "profile",
+    panel: "connections",
+    requiredMethods: ["fixture.status"],
+    search: { label: id, hash: `#${id}`, aliases: "repository" },
+  }));
+  const controlUi = { entry: "dist/control-ui/index.js", settingsViews };
+  const repositorySources = [
+    { id: "repositories", label: "Repositories", searchMethod: "fixture.search" },
   ];
-  const result = readManifest({ entry, settingsViews: views });
-  expect(result).toMatchObject({ ok: true, manifest: { controlUi: { settingsViews: views } } });
   expect(
-    readManifest({ entry, settingsViews: [views[0], { ...views[0], search: undefined }] }),
+    loadPluginManifest(fixture(controlUi, undefined, undefined, repositorySources).dir),
+  ).toMatchObject({ ok: true, manifest: { controlUi, repositorySources } });
+  expect(
+    loadPluginManifest(fixture(undefined, undefined, undefined, repositorySources).dir),
+  ).toMatchObject({ ok: true, manifest: { controlUi: undefined, repositorySources } });
+  expect(
+    loadPluginManifest(
+      fixture({ ...controlUi, settingsViews: [settingsViews[0], settingsViews[0]] }).dir,
+    ),
   ).toMatchObject({ ok: false });
-  expect(readManifest({ entry, settingsViews: [{ ...views[1], panel: "files" }] })).toMatchObject({
+  expect(
+    loadPluginManifest(
+      fixture(controlUi, undefined, undefined, [
+        { ...repositorySources[0], credential: "forbidden" },
+      ]).dir,
+    ),
+  ).toMatchObject({ ok: false });
+  for (const id of ["Repositories", "repositories/extra", "-repositories", "r".repeat(129)]) {
+    expect(
+      loadPluginManifest(
+        fixture(controlUi, undefined, undefined, [{ ...repositorySources[0], id }]).dir,
+      ),
+    ).toMatchObject({ ok: false });
+  }
+  expect(loadPluginManifest(fixture({ ...controlUi, repositorySources }).dir)).toMatchObject({
     ok: false,
   });
 });

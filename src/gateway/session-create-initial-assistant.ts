@@ -1,3 +1,5 @@
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeSessionColorValue } from "../../packages/gateway-protocol/src/index.js";
 import type { SessionEntry } from "../config/sessions.js";
 import { prepareInitialAssistantTranscript } from "../config/sessions/session-accessor.sqlite-transcript-message-append.js";
 import type { CreateGatewaySessionParams } from "./session-create-service.types.js";
@@ -18,6 +20,32 @@ type FreshSessionConstraints = {
   hasWorkspacePreparation: boolean;
   hasSpawnToolPolicy: boolean;
 };
+
+export function prepareSessionCreateInitialFields(
+  initialEntry: CreateGatewaySessionParams["initialEntry"],
+  authorizedPluginCreation: boolean,
+) {
+  const agentHarnessId = initialEntry
+    ? normalizeOptionalString(initialEntry.agentHarnessId)
+    : undefined;
+  // Initializers compare their callback snapshot with the stored row during finalization.
+  // Normalize before both so persistence cannot make this creation look like external drift.
+  const color = initialEntry?.color ? normalizeSessionColorValue(initialEntry.color) : null;
+  if (initialEntry && !agentHarnessId && !authorizedPluginCreation) {
+    return invalidSessionRequest(
+      initialEntry.agentHarnessId !== undefined
+        ? "initial agentHarnessId must be non-empty"
+        : "trusted initial session state requires an authorized owner",
+    );
+  }
+  return {
+    ok: true as const,
+    fields: {
+      ...(agentHarnessId ? { agentHarnessId } : {}),
+      ...(color ? { color } : {}),
+    },
+  };
+}
 
 /** Validate creation-only state before an existing session can be adopted. */
 export function validateFreshSessionConstraints(input: FreshSessionConstraints) {

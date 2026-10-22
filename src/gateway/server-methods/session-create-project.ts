@@ -1,7 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { ok, type Result } from "@openclaw/normalization-core/result";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { githubApiToken } from "../../../extensions/github-repositories/public-api.js";
 import {
   ErrorCodes,
   errorShape,
@@ -21,10 +20,8 @@ import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-events.js";
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
-import { toErrorObject } from "../../infra/errors.js";
+import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
 import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
-import { materializeProjectClone, refreshProjectClone } from "../../projects/project-clone.js";
-import { parseConfiguredProjectGitUrl } from "../../projects/project-git-url.runtime.js";
 import { resolveProjectDirectory } from "../../projects/project-registry.js";
 import {
   getRpcSourceIdentity,
@@ -39,13 +36,13 @@ import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-wo
 import { runOpenClawStateWorkerOperation } from "../../state/openclaw-state-worker-store.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import { ADMIN_SCOPE } from "../operator-scopes.js";
-import { prepareGatewayProjectGitHubIdentity } from "../project-github-identity.js";
+import type { RepositorySources } from "../repository-sources.js";
 import type {
   PrepareGatewaySessionLifecycle,
   PreparedGatewaySessionLifecycle,
 } from "../session-create-service.types.js";
 import { commitPreparedSessionWorkspace } from "../session-lifecycle-preparation.js";
-import { invalidSessionRequest } from "../session-request-error.js";
+import { invalidSessionRequest, unavailableSessionRequest } from "../session-request-error.js";
 import { resolveExplicitSessionName } from "../session-title-state.js";
 import {
   prepareSessionWorktree,
@@ -64,6 +61,36 @@ const workspacePreparations = new KeyedAsyncQueue();
 
 type RepositorySource = NonNullable<SessionsCreateParams["repository"]>;
 
+export function resolveSessionCreateRepositorySource(
+  params: SessionsCreateParams,
+  sources: RepositorySources | undefined,
+): Result<ReturnType<RepositorySources["resolve"]> | undefined, ErrorShape> {
+  const url = params.repository?.url ?? params.projectGitUrl;
+  if ((url && !normalizeSessionProjectGitUrl(url)) || (params.repositorySource && !url)) {
+    return invalidSessionRequest("Select a supported repository URL with its repository source.");
+  }
+  if (!url && !params.repositorySource) {
+    return ok(undefined);
+  }
+  try {
+    if (!url || !sources) {
+      throw new Error(
+        "Repository sources are unavailable. Enable the source plugin or choose a local folder.",
+      );
+    }
+    const source = sources.resolve(url, params.repositorySource);
+    if (params.repository) {
+      params.repository.url = source.url;
+    }
+    if (params.projectGitUrl) {
+      params.projectGitUrl = source.url;
+    }
+    return ok(source);
+  } catch (error) {
+    return unavailableSessionRequest(formatErrorMessage(error));
+  }
+}
+
 export function resolveSessionRepositoryCreation(
   params: SessionsCreateParams,
   hasInitialTurn: boolean,
@@ -75,7 +102,7 @@ export function resolveSessionRepositoryCreation(
   const ref = params.repository.ref?.trim();
   if (!url || (ref !== undefined && (!ref || ref.startsWith("-") || /\s|\0/u.test(ref)))) {
     return invalidSessionRequest(
-      "Use a GitHub repository URL and a nonempty branch, tag, or commit ref.",
+      "Use a supported repository URL and a nonempty branch, tag, or commit ref.",
     );
   }
   if (
@@ -210,9 +237,25 @@ export function validateSessionWorktreeSelection(
 }
 
 export function normalizeSessionProjectGitUrl(value: unknown): string | undefined {
-  return typeof value === "string" && value.length <= 2048
-    ? parseConfiguredProjectGitUrl(value)?.url
-    : undefined;
+  if (typeof value !== "string" || value.length > 2048) {
+    return undefined;
+  }
+  const raw = value.trim();
+  if (!raw || raw.startsWith("-") || /[\s\0]/u.test(raw)) {
+    return undefined;
+  }
+  const url = URL.parse(raw);
+  if (
+    url &&
+    (url.protocol === "https:" || url.protocol === "ssh:") &&
+    !url.password &&
+    !url.search &&
+    !url.hash &&
+    (url.protocol === "ssh:" || !url.username)
+  ) {
+    return raw;
+  }
+  return /^[^@/:]+@[A-Za-z0-9.-]+:[^/].+/u.test(raw) ? raw : undefined;
 }
 
 export function validateSessionProjectPreparation(params: {
@@ -233,7 +276,7 @@ export function validateSessionProjectPreparation(params: {
   if (!normalizeSessionProjectGitUrl(params.gitUrl)) {
     return errorShape(
       ErrorCodes.INVALID_REQUEST,
-      "Use a GitHub HTTPS or git@github.com repository URL. Local paths and file URLs are not accepted.",
+      "Use a supported HTTPS or SSH repository URL. Local paths and file URLs are not accepted.",
     );
   }
   if (params.projectId || params.cwd || params.execNode) {
@@ -352,7 +395,7 @@ export async function prepareSessionWorkspaceForRun(params: {
   sessionKey: string;
   storePath: string;
   context: Parameters<typeof emitSessionsChanged>[0] &
-    Pick<GatewayRequestHandlerOptions["context"], "logGateway">;
+    Pick<GatewayRequestHandlerOptions["context"], "logGateway" | "repositorySources">;
   signal: AbortSignal;
   assertCurrent: SessionSourceAssertion;
   runSetupScript: boolean;
@@ -410,6 +453,7 @@ export async function prepareSessionWorkspaceForRun(params: {
           current.lifecycleRevision !== entry.lifecycleRevision ||
           current.projectId !== saved.projectId ||
           current.pendingProjectGitUrl !== saved.pendingProjectGitUrl ||
+          current.repositorySourceId !== saved.repositorySourceId ||
           !isDeepStrictEqual(current.pendingWorktree, pending)
         ) {
           throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);
@@ -428,35 +472,29 @@ export async function prepareSessionWorkspaceForRun(params: {
         delete entry.pendingWorktree;
         return;
       }
-      const configuredToken = gitUrl ? githubApiToken(process.env, cfg) : undefined;
-      const projectIdentity =
-        gitUrl && !configuredToken
-          ? await prepareGatewayProjectGitHubIdentity({
-              agentId,
-              assertActive: assertRunOwnership,
-              config: cfg,
-              context,
-            })
-          : undefined;
-      const projectToken = configuredToken ?? projectIdentity?.token;
-      const assertProjectCurrent = () => {
+      const assertSavedProjectCurrent = () => {
         assertRunOwnership();
         if (metadata) {
           assertSavedWorkspaceIntent(metadata.readCurrent());
         }
-        projectIdentity?.assertSelected();
       };
-      const cloneOptions = {
-        signal,
-        token: projectToken,
-        assertCurrent: assertProjectCurrent,
-        startRun: projectIdentity?.start,
-      };
-      const project = gitUrl
-        ? await materializeProjectClone({ cfg, gitUrl }, cloneOptions)
+      const source = gitUrl
+        ? context.repositorySources?.resolve(gitUrl, saved.repositorySourceId)
         : undefined;
-      projectIdentity?.assertSelected();
-      assertRunOwnership();
+      if (gitUrl && !source) {
+        throw new Error("The repository source is unavailable. Enable its plugin and retry.");
+      }
+      const preparedProject = await source?.prepare({
+        agentId,
+        signal,
+        assertCurrent: assertSavedProjectCurrent,
+      });
+      const assertProjectCurrent = () => {
+        assertSavedProjectCurrent();
+        preparedProject?.assertCurrent();
+      };
+      const project = preparedProject?.project;
+      assertProjectCurrent();
       const directory = project
         ? await resolveProjectDirectory(project.repoRoot)
         : pending?.workspace;
@@ -492,10 +530,10 @@ export async function prepareSessionWorkspaceForRun(params: {
           if (
             !resolved.ok &&
             resolved.error.code === ErrorCodes.INVALID_REQUEST &&
-            project?.source === "cloned"
+            project?.source === "cloned" &&
+            preparedProject
           ) {
-            await refreshProjectClone(project, cloneOptions);
-            projectIdentity?.assertSelected();
+            await preparedProject.refresh();
             assertRunOwnership();
             resolved = await resolveSessionWorktreeBase(directory, pending.baseRef, signal);
           }

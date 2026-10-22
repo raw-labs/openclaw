@@ -53,15 +53,6 @@ import {
   workerWorkspaceResultRef,
 } from "./workspace-result-staging.js";
 
-// mock-isolation: This fixture clones a local Git origin without GitHub credentials.
-vi.mock("./repository-github-identity.js", () => ({
-  prepareRepositoryGitHubIdentity: async (_agentId: string, assertCurrent: () => void) => ({
-    token: undefined,
-    assertSelected: assertCurrent,
-    start: async (start: () => Promise<unknown>) => await start(),
-  }),
-}));
-
 describe("repository workspace result ownership", () => {
   const { fixture, readArtifact } = useRepositoryWorkspaceResultFixture();
   type Fixture = Awaited<ReturnType<typeof fixture>>;

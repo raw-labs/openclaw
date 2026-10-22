@@ -56,6 +56,7 @@ import {
 } from "./session-create-initial-turn.js";
 import {
   normalizeSessionProjectGitUrl,
+  resolveSessionCreateRepositorySource,
   prepareSessionRepositoryWorkspace,
   resolveSessionRepositoryCreation,
   validateSessionProjectPreparation,
@@ -111,6 +112,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return;
     }
     const p = structuredClone(params);
+    const repositorySelection = resolveSessionCreateRepositorySource(p, context.repositorySources);
+    if (!repositorySelection.ok) {
+      respond(false, undefined, repositorySelection.error);
+      return;
+    }
     const requiredWorker = prepareRequiredWorkerSessionCreate(p, context.getRuntimeConfig());
     if (requiredWorker.error) {
       respond(false, undefined, requiredWorker.error);
@@ -191,6 +197,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const deviceFolderAuthority: { assertCurrent?: () => void } = {};
     const commitGuard = () => {
       assertSessionCreateCurrent();
+      repositorySelection.value?.assertCurrent();
       if (agentCreated) {
         toolRequester?.assertCurrent?.();
       }
@@ -517,6 +524,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       projectId: requestedProjectId,
       deviceFolder,
       pendingProjectGitUrl: normalizeSessionProjectGitUrl(requestedProjectGitUrl),
+      repositorySourceId: repositorySelection.value?.id,
       incognito: p.incognito,
       ...(client?.connect ? { requestingOperatorScopes: clientScopes } : {}),
       ...(requestingOperatorProfileId ? { requestingOperatorProfileId } : {}),

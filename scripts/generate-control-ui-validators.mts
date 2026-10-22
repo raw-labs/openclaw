@@ -6,6 +6,7 @@ import { format } from "oxfmt";
 import { IsLiteralString, ObjectOptions, Type, type TSchema } from "typebox";
 import * as Compiler from "typebox/schema";
 import { AgentRuntimeRestrictionErrorDetailsSchema } from "../packages/gateway-protocol/src/agent-runtime-restriction-error-details.js";
+import { ControlUiRepositorySearchResultSchema } from "../packages/gateway-protocol/src/plugin-control-ui-repositories.js";
 import {
   SessionApprovalEventSchema,
   SessionApprovalReplaySchema,
@@ -68,6 +69,12 @@ const validators: Array<[name: string, schema: TSchema, type: string, group: Gro
     BoardSnapshotSchema,
     'import("' + schemaRoot + 'board.js").BoardSnapshot',
     "board",
+  ],
+  [
+    "ControlUiRepositorySearchResult",
+    ControlUiRepositorySearchResultSchema,
+    'import("../../../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySearchResult',
+    "session-input",
   ],
   [
     "SessionParticipantIdentity",

@@ -1754,6 +1754,10 @@
     "./plugin-sdk/repository-session-read": {
       "default": "./dist/plugin-sdk/repository-session-read.js"
     },
+    "./plugin-sdk/repository-sources": {
+      "types": "./dist/plugin-sdk/repository-sources.d.ts",
+      "default": "./dist/plugin-sdk/repository-sources.js"
+    },
     "./cli-entry": "./openclaw.mjs"
   },
   "scripts": {

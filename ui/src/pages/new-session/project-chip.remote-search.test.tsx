@@ -43,12 +43,6 @@ function mountSearch() {
     client: context.gateway.snapshot.client,
     connectionEpoch: 1,
   });
-  Object.assign(context.gateway.snapshot, {
-    hello: {
-      ...context.gateway.snapshot.hello,
-      features: { methods: ["projects.searchRemote"] },
-    },
-  });
   vi.spyOn(browser, "projects", "get").mockReturnValue(projects);
   vi.spyOn(browser, "popoverOpen").mockReturnValue(true);
   vi.spyOn(place, "folder", "get").mockReturnValue("");
@@ -122,14 +116,18 @@ describe("remote project search slot", () => {
     current.resolve(result("current"));
     await waitForSolid(() =>
       expect(
-        view.container.querySelector('[data-value="remote-project:example/current"]'),
+        view.container.querySelector(
+          '[data-value="remote-project:fixture/repos:https://github.com/example/current.git"]',
+        ),
       ).not.toBeNull(),
     );
 
     request.mockRejectedValueOnce(new Error("Remote search unavailable"));
     typeQuery("failed");
     expect(
-      view.container.querySelector('[data-value="remote-project:example/current"]'),
+      view.container.querySelector(
+        '[data-value="remote-project:fixture/repos:https://github.com/example/current.git"]',
+      ),
     ).toBeNull();
     await vi.advanceTimersByTimeAsync(PICKER_INPUT_DEBOUNCE_MS);
     await waitForSolid(() =>
@@ -145,7 +143,9 @@ describe("remote project search slot", () => {
     recovered.resolve(result("recovered"));
     await waitForSolid(() =>
       expect(
-        view.container.querySelector('[data-value="remote-project:example/recovered"]'),
+        view.container.querySelector(
+          '[data-value="remote-project:fixture/repos:https://github.com/example/recovered.git"]',
+        ),
       ).not.toBeNull(),
     );
     expect(view.container.querySelector('input[type="search"]')).toBe(input);
@@ -162,7 +162,17 @@ describe("remote project search slot", () => {
       const { browser, context, gateway, request, changed, view, input, typeQuery } = mountSearch();
       const previous = createDeferred<ProjectsSearchRemoteResult>();
       const current = createDeferred<ProjectsSearchRemoteResult>();
-      request.mockReturnValueOnce(previous.promise).mockReturnValueOnce(current.promise);
+      const defaultRequest = request.getMockImplementation()!;
+      let searchCount = 0;
+      request.mockImplementation((method, params) => {
+        if (method === "projects.list") {
+          return Promise.resolve({ projects: [] });
+        }
+        if (method === "fixture.repositories.search") {
+          return searchCount++ === 0 ? previous.promise : current.promise;
+        }
+        return defaultRequest(method, params);
+      });
       typeQuery("scope");
       await vi.advanceTimersByTimeAsync(PICKER_INPUT_DEBOUNCE_MS);
       await waitForSolid(() => expect(view.queryByRole("status")).not.toBeNull());
@@ -177,17 +187,22 @@ describe("remote project search slot", () => {
       }
       browser.synchronize();
       changed();
+      await vi.advanceTimersByTimeAsync(PICKER_INPUT_DEBOUNCE_MS);
       current.resolve(result("current"));
       await waitForSolid(() =>
         expect(
-          view.container.querySelector('[data-value="remote-project:example/current"]'),
+          view.container.querySelector(
+            '[data-value="remote-project:fixture/repos:https://github.com/example/current.git"]',
+          ),
         ).not.toBeNull(),
       );
       previous.resolve(result("stale"));
       await vi.advanceTimersByTimeAsync(0);
       flush();
       expect(
-        view.container.querySelector('[data-value="remote-project:example/stale"]'),
+        view.container.querySelector(
+          '[data-value="remote-project:fixture/repos:https://github.com/example/stale.git"]',
+        ),
       ).toBeNull();
       expect(view.container.querySelector('input[type="search"]')).toBe(input);
       expect(input.value).toBe("scope");
@@ -195,7 +210,9 @@ describe("remote project search slot", () => {
       changed();
       await waitForSolid(() =>
         expect(
-          view.container.querySelector('[data-value="remote-project:example/current"]'),
+          view.container.querySelector(
+            '[data-value="remote-project:fixture/repos:https://github.com/example/current.git"]',
+          ),
         ).toBeNull(),
       );
       expect(input.value).toBe("scope");
