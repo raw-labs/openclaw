@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { MarkdownRenderOptions } from "./markdown-render-options.ts";
+import {
+  githubReferenceOptions,
+  type GitHubReferenceOptions as MarkdownRenderOptions,
+} from "../test-helpers/github-text-references.ts";
 import { htmlFragment } from "./markdown.test-support.ts";
 import { toSanitizedMarkdownHtml, toStreamingMarkdownParts } from "./markdown.ts";
 
@@ -20,12 +23,12 @@ describe("github item references", () => {
     ],
   };
   function render(source: string, options: MarkdownRenderOptions = { githubRepo }) {
-    return htmlFragment(toSanitizedMarkdownHtml(source, options));
+    return htmlFragment(toSanitizedMarkdownHtml(source, githubReferenceOptions(options)));
   }
   function renderBoth(source: string, options: MarkdownRenderOptions = { githubRepo }) {
     return [
       render(source, options),
-      htmlFragment(toStreamingMarkdownParts(source, options).join("")),
+      htmlFragment(toStreamingMarkdownParts(source, githubReferenceOptions(options)).join("")),
     ];
   }
   function expectItem(fragment: HTMLElement, number: string, kind: string) {
@@ -333,7 +336,9 @@ describe("github item references", () => {
   it("encodes repository path segments in streaming references", () => {
     const source = "PR **#141270**";
     const options = { githubRepo: { owner: "some owner", repo: "repo/name" } };
-    const fragment = htmlFragment(toStreamingMarkdownParts(source, options).join(""));
+    const fragment = htmlFragment(
+      toStreamingMarkdownParts(source, githubReferenceOptions(options)).join(""),
+    );
     expect(fragment.querySelector("a")?.getAttribute("href")).toBe(
       "https://github.com/some%20owner/repo%2Fname/pull/141270",
     );

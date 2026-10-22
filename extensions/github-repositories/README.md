@@ -99,3 +99,20 @@ not remove the independently composed read views or native publication controls.
 Publication, CI request/write custody, and mobile Root/Back remain native. The
 remaining store transfer is deferred to UI-F, with all native consumers moved
 atomically; this action introduces no second browser runtime or configuration.
+
+### Observed text references
+
+The browser activation registers GitHub shorthand through the host's
+`registerTextReferenceProvider` contract and existing `link-reader` capability.
+Transcript, streaming Markdown, and file detail consumers transform prose only
+while this plugin's `github` reader is admitted. Reader withdrawal, exclusion,
+replacement, and consumer disposal stop transformation and release observers.
+
+`browser/text-reference-api.ts` exposes the provider and pure immutable snapshots.
+The provider borrows the same native `sessionPullRequests.read/observe` port and
+projects current aliases through scoped host requests and events. Pending or
+failed alias reads do not guess a checkout; connection read-scope changes reject
+late results. Code, authored links, ambiguous aliases, and unknown repositories
+stay intact. Native Markdown sanitization, publication, CI custody, mobile
+Root/Back, and the one existing PR store remain unchanged. See the
+[text-reference contract](https://docs.openclaw.ai/plugins/feature-plugins#observed-text-references).

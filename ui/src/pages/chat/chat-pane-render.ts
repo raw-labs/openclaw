@@ -14,7 +14,6 @@ import {
   resolveChatPaneObserverRunId,
 } from "../../lib/observer-digest.ts";
 import { hasSessionPresenceViewers } from "../../lib/presence-users.ts";
-import { projectsForGateway } from "../../lib/projects.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
 import { GitHubPublicationOwner } from "../../lib/sessions/github-publication-owner.ts";
 import { scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
@@ -266,7 +265,6 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
             navigateToModelProvider(this.context, currentAgentId, provider),
           onModelAccounts: () => this.context.navigate("profile"),
         });
-    const projectCatalog = projectsForGateway(this.context.gateway).snapshot;
     const publicationScope = this.captureConnectionScope();
     const readPublicationRow = () => {
       const row = selectedChatSessionRow(state);
@@ -563,11 +561,6 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       pullRequestsStatus: this.sessionPullRequestsStatus,
       onDismissPullRequest: this.dismissSessionPullRequest,
       onDismissPullRequestsBranch: this.dismissSessionPullRequestsBranch,
-      // Until catalog success, a lowercase name may be a hidden/ambiguous alias.
-      // Do not mint a checkout link that can prefetch the wrong repository.
-      githubRepo: projectCatalog.result ? this.githubRepo : null,
-      githubRepositories: projectCatalog.repositories,
-
       onOpenSessionDiff: sessionWorkspace.onOpenDiff,
       githubPublication: this.publication.binding?.view(),
       onOpenWorkspaceFile: (target) => void openSessionWorkspaceFile(state, target),

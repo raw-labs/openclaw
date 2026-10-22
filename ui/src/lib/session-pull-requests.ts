@@ -1,9 +1,11 @@
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
-import { primarySessionPullRequest } from "../../../extensions/github-repositories/read-facts-api.ts";
+import {
+  primarySessionPullRequest,
+  sessionGitHubRepository,
+} from "../../../extensions/github-repositories/read-facts-api.ts";
 import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type {
   ControlUiSessionPullRequest,
-  ControlUiSessionPullRequests,
   ControlUiSessionPullRequestSnapshot,
   ControlUiSessionPullRequestsChanged,
 } from "../../../src/gateway/control-ui-contract.js";
@@ -18,13 +20,6 @@ import { canCallGatewayMethod } from "./gateway-methods.ts";
 import { createGatewaySetSyncLifecycle } from "./gateway-set-sync-lifecycle.ts";
 import { readSessionChangedEvent } from "./sessions/reconcile.ts";
 import { uiSessionEventMatches } from "./sessions/session-key.ts";
-
-export function sessionGitHubRepository(
-  snapshot: ControlUiSessionPullRequests | undefined,
-): { owner: string; repo: string } | null {
-  const repository = snapshot?.repository ?? snapshot?.branch ?? snapshot?.pullRequests[0];
-  return repository ? { owner: repository.owner, repo: repository.repo } : null;
-}
 
 export function summarizeSessionPullRequests(
   pullRequests: readonly ControlUiSessionPullRequest[],

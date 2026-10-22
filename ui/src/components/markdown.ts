@@ -14,7 +14,6 @@ import {
   renderMarkdownCodeBlock,
 } from "./markdown-code-blocks.ts";
 import { isHostLocalMarkdownFileHref } from "./markdown-file-links.ts";
-import { markdownGitHubAliasSignature } from "./markdown-github-repositories.ts";
 import {
   prepareMarkdownHumanMentions,
   restoreMarkdownHumanMentions,
@@ -24,6 +23,7 @@ import { createMarkdownParser } from "./markdown-parser.ts";
 import { stripProgressCardRawContentBlocks } from "./markdown-raw-content.ts";
 import {
   MARKDOWN_PARSE_LIMIT,
+  markdownTextReferenceSignature,
   normalizeMarkdownRenderOptions,
   type MarkdownRenderEnv,
   type MarkdownRenderOptions,
@@ -653,7 +653,7 @@ export function toSanitizedMarkdownHtml(
 }
 
 function markdownRenderKey(options: MarkdownRenderEnv): string {
-  return `${i18n.getLocale()}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${JSON.stringify(options.githubRepo ? [options.githubRepo.owner, options.githubRepo.repo] : null)}\0${markdownGitHubAliasSignature(options.githubRepositories, options.githubRepo)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
+  return `${i18n.getLocale()}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${markdownTextReferenceSignature(options.textReferences)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
 }
 
 function toPlainTextElement(value: string, options: MarkdownRenderEnv): HTMLDivElement {

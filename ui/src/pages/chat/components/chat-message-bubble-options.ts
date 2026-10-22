@@ -49,8 +49,7 @@ export type MessageRenderOptions = {
   allowExternalEmbedUrls?: boolean;
   fetchLinkFavicon?: LinkFaviconFetcher;
   pluginToolIcons?: PluginToolIcons;
-  githubRepo?: MarkdownRenderOptions["githubRepo"];
-  githubRepositories?: MarkdownRenderOptions["githubRepositories"];
+  textReferences?: MarkdownRenderOptions["textReferences"];
   onOpenWorkspaceFile?: (target: { path: string; line?: number | null }) => void;
   onPermissionRetry?: (message: string) => void;
 };

@@ -1,5 +1,6 @@
 import { defineControlUiPlugin } from "openclaw/plugin-sdk/control-ui";
 import { registerOpenPullRequestAction } from "./session-open-pull-request.ts";
+import { createGitHubTextReferenceProvider } from "./text-reference-api.ts";
 
 export { createGitHubIdentity } from "./github-identity.ts";
 export type { GitHubIdentity } from "./github-identity.ts";
@@ -14,5 +15,14 @@ export { english as settingsEnglish } from "./settings-english.ts";
 
 export default defineControlUiPlugin({
   id: "github-repositories",
-  activate: registerOpenPullRequestAction,
+  activate(host) {
+    const stopAction = registerOpenPullRequestAction(host);
+    const stopReferences = host.ui.registerTextReferenceProvider(
+      createGitHubTextReferenceProvider(host),
+    );
+    return () => {
+      stopReferences();
+      stopAction();
+    };
+  },
 });

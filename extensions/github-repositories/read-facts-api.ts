@@ -2,6 +2,7 @@
 export {
   orderSessionPullRequests,
   primarySessionPullRequest,
+  sessionGitHubRepository,
   sessionPullRequestStateIcons,
 } from "./browser/session-pull-request-presentation.ts";
 export { projectSidebarBadge } from "./browser/sidebar-badge-presentation.ts";

@@ -18,13 +18,13 @@ import {
   parseMarkdownFileLinkTarget,
   splitMarkdownFileLineSuffix,
 } from "./markdown-file-links.ts";
-import { installMarkdownGitHubRefs } from "./markdown-github-refs.ts";
 import { installMarkdownHexColors } from "./markdown-hex-colors.ts";
 import { installMarkdownHumanMentions } from "./markdown-human-mentions.ts";
 import { hasMarkdownLinkBoundaries } from "./markdown-link-boundary.ts";
 import type { MarkdownRenderEnv } from "./markdown-render-options.ts";
 import { installMarkdownSessionLinks } from "./markdown-session-links.ts";
 import { installMarkdownTables } from "./markdown-tables.ts";
+import { installMarkdownTextReferences } from "./markdown-text-references.ts";
 import {
   markdownInlineChildren,
   replaceMarkdownTextMatches,
@@ -504,7 +504,7 @@ export function createMarkdownParser(): MarkdownItParser {
     }
   });
 
-  installMarkdownGitHubRefs(markdownParser);
+  installMarkdownTextReferences(markdownParser);
 
   markdownParser.core.ruler.after("inline", "task-lists", (state) => {
     for (const [index, inline] of state.tokens.entries()) {

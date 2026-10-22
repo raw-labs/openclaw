@@ -15,6 +15,8 @@ import { TEST_LINK_READER } from "../test-helpers/link-reader.ts";
 import { waitForWatchedSessionKey } from "./chat-github-publication.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 import {
+  GITHUB_REFERENCE_PLUGIN,
+  GITHUB_REFERENCE_READER,
   expectModifiedNavigation,
   pullPreviewResponse,
   PULL_HREF,
@@ -67,6 +69,22 @@ function installPreview(page: Page, options: Parameters<typeof installMockGatewa
     controlUiLinkReaders: [TEST_LINK_READER],
     featureMethods: [...defaultControlUiFeatureMethods, "forge.preview", "forge.detail"],
     ...options,
+  });
+}
+function installReferencePreview(page: Page, options: Parameters<typeof installMockGateway>[1]) {
+  return installMockGateway(page, {
+    ...options,
+    methodResponses: { "projects.list": { projects: [] }, ...options.methodResponses },
+    nativePlugins: [GITHUB_REFERENCE_PLUGIN],
+    controlUiLinkReaders: [GITHUB_REFERENCE_READER],
+    featureMethods: [
+      ...(options.featureMethods ?? defaultControlUiFeatureMethods),
+      "projects.list",
+      "github.preview",
+      "github.detail",
+      "plugins.controlUi.list",
+      "plugins.controlUi.report",
+    ],
   });
 }
 function referencePreview(url: string, subtitle: string, title: string) {
@@ -269,13 +287,13 @@ suite.define(() => {
       const repository = { owner: "openclaw", repo: "openclaw" };
       const namedRepository = { owner: "openclaw", repo: "clawsweeper" };
       const projectName = late ? "clawsweeper" : "ClawSweeper";
-      const gateway = await installPreview(page, {
+      const gateway = await installReferencePreview(page, {
         featureMethods: [
           ...defaultControlUiFeatureMethods,
           SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
           "projects.list",
-          "forge.preview",
-          "forge.detail",
+          "github.preview",
+          "github.detail",
         ],
         deferredMethods: late ? ["projects.list"] : [],
         historyMessages: [
@@ -301,7 +319,7 @@ suite.define(() => {
               source: "registered",
             })),
           },
-          "forge.preview": {
+          "github.preview": {
             cases: [repository, namedRepository].flatMap((repo) =>
               [1558, 1576].map((number) =>
                 referencePreview(
@@ -360,7 +378,7 @@ suite.define(() => {
             : "Synthetic OpenClaw pull request",
         );
       }
-      const requests = (await gateway.getRequests("forge.preview")).map(({ params }) => {
+      const requests = (await gateway.getRequests("github.preview")).map(({ params }) => {
         if (!isRecord(params)) {
           throw new Error("Expected GitHub preview parameters");
         }
@@ -384,12 +402,12 @@ suite.define(() => {
     const repository = { owner: "synthetic", repo: "formatting-demo" };
     const href = "https://github.com/synthetic/formatting-demo/pull/1576";
     const otherHref = "https://github.com/synthetic/other-project/pull/1576#issuecomment-1";
-    const gateway = await installPreview(page, {
+    const gateway = await installReferencePreview(page, {
       featureMethods: [
         ...defaultControlUiFeatureMethods,
         SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-        "forge.preview",
-        "forge.detail",
+        "github.preview",
+        "github.detail",
       ],
       historyMessages: [
         assistantMessage(
@@ -404,7 +422,7 @@ suite.define(() => {
       ],
       methodResponses: {
         [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]: { subscribed: true },
-        "forge.preview": {
+        "github.preview": {
           cases: [
             referencePreview(
               href,
@@ -442,7 +460,7 @@ suite.define(() => {
     await other.focus();
     await expectText(card, "Separate repository example");
     await expectAttr(part(card, "title"), "href", otherHref);
-    const requests = await gateway.getRequests("forge.preview");
+    const requests = await gateway.getRequests("github.preview");
     expect(requests.map((request) => request.params)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ url: href }),

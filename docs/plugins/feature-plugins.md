@@ -509,6 +509,35 @@ Publication, CI request/write custody, and mobile Root/Back remain native. The
 remaining store transfer is deferred to UI-F, with all native consumers moved
 atomically; this action introduces no second browser runtime or configuration.
 
+### Observed text references
+
+Register `host.ui.registerTextReferenceProvider({ id, readerId, snapshot, observe })`
+under the existing `link-reader` capability. The native transcript and Markdown
+file detail view admit a provider only while that same plugin's matching reader
+is admitted. Removing reader metadata, disabling the plugin, replacing its asset
+revision, or closing the consumer releases observations and stops transformation.
+
+A snapshot captures immutable facts and resolves prose spans using UTF-16 offsets;
+code and existing links are excluded. Publish a new snapshot object when facts
+change, even if its `key` stays unchanged. The native renderer rejects invalid or
+overlapping spans, admits only URLs matched by the provider's reader, and retains
+its existing Markdown safe-link policy. Both HTML and settled-transcript caches
+include snapshot identity.
+
+GitHub's provider owns shorthand grammar and project aliases. It borrows the
+existing `sessionPullRequests.read/observe` port for current repository facts and
+uses scoped `host.request("projects.list", {})`, `onEvent`, and `subscribe` for
+aliases. The opaque `connection.readScopeKey` invalidates late results when the
+current principal, connection scope, permissions, or advertised methods change;
+it is presentation metadata, never authority. Pending or failed alias reads leave
+unqualified references as prose rather than choosing an old or ambiguous project.
+Explicit canonical coordinates remain self-contained. The generic native project
+catalog still serves New Session; it no longer loads aliases for chat.
+
+Publication, CI custody, mobile Root/Back, and the single native PR read store
+retain their existing owners. Text references add no PR cache or application
+context to the plugin.
+
 ### Bundle boundaries
 
 The build emits a JavaScript entry, optional CSS, and JavaScript chunks for lazy

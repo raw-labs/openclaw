@@ -9,6 +9,7 @@ import type {
   ControlUiPanel,
   ControlUiReplacement,
   ControlUiSurface,
+  ControlUiTextReferenceProvider,
   ControlUiWidget,
 } from "../../../src/plugin-sdk/control-ui.js";
 
@@ -26,6 +27,7 @@ export type ControlUiContributions = {
   panels: ControlUiPanel;
   actions: ControlUiAction;
   accessories: ControlUiAccessory;
+  textReferences: ControlUiTextReferenceProvider;
   widgets: ControlUiWidget;
   replacements: ControlUiReplacement;
 };
