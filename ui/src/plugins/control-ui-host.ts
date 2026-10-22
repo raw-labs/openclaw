@@ -14,8 +14,9 @@ import {
   type PluginPanelToggleDetail,
 } from "../components/panel-toggle-contract.ts";
 import { rememberSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
-import { i18n } from "../i18n/index.ts";
+import { i18n, t } from "../i18n/index.ts";
 import { redactToolDetail } from "../lib/browser-redact.ts";
+import { openExternalUrlSafe } from "../lib/open-external-url.ts";
 import { openPreferredApplicationSession } from "../lib/sessions/route-navigation.ts";
 import {
   normalizeSessionKeyForUiComparison,
@@ -23,6 +24,7 @@ import {
 } from "../lib/sessions/session-key.ts";
 import { createControlUiComponents } from "./control-ui-components.ts";
 import type { ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
+import { createControlUiSessionPullRequestReads } from "./control-ui-session-pull-requests.ts";
 
 export function createControlUiPluginHost(
   getContext: () => ApplicationContext,
@@ -100,6 +102,17 @@ export function createControlUiPluginHost(
       return i18n.getLocale();
     },
     redact: redactToolDetail,
+    sessionPullRequests: createControlUiSessionPullRequestReads({
+      current,
+      isCurrent: () => runtime.isCurrent(owner),
+      retain,
+    }),
+    presentation: {
+      translate(key, params) {
+        current();
+        return t(key, params);
+      },
+    },
     components: createControlUiComponents({
       current,
       signal: owner.abort.signal,
@@ -278,6 +291,10 @@ export function createControlUiPluginHost(
         }
       : undefined,
     navigation: {
+      openExternal(url) {
+        current();
+        openExternalUrlSafe(url);
+      },
       openPage(target, options) {
         const location = pageLocation(target, options);
         const context = current();

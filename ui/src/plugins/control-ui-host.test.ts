@@ -12,7 +12,16 @@ import type { ApplicationContext } from "../app/context.ts";
 import { PLUGIN_PANEL_TOGGLE_EVENT } from "../components/panel-toggle-contract.ts";
 import { takeSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
 import { i18n } from "../i18n/index.ts";
+import { registerSessionOrganizationEnglish } from "../i18n/locales/en-session-organization.ts";
 import { createAgentCapability } from "../lib/agents/index.ts";
+import {
+  createGatewayHarness as createPullRequestGateway,
+  flushSync,
+} from "../lib/session-pull-requests.test-support.ts";
+import {
+  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+  sessionPullRequestsForGateway,
+} from "../lib/session-pull-requests.ts";
 import {
   createGatewayHarness,
   createTestSessionCapability,
@@ -663,4 +672,83 @@ it("adapts dock operations, publishes snapshots, and retires activation and view
   second.dispose();
   expect(dock.openSessionKey).toBeNull();
   expect(() => close()).toThrow("activation has ended");
+});
+
+it("shares native PR read interest and retires scoped read/translation/navigation handles", async () => {
+  const harness = createPullRequestGateway();
+  // SAFETY: this host flow reads gateway plus the shared subscription-only services.
+  const context = { ...subscriptions, gateway: harness.gateway } as unknown as ApplicationContext;
+  const activation = createHost(context);
+  const { view, host } = scopedHost(activation.host);
+  const reads = expectDefined(host.sessionPullRequests, "PR reads");
+  const native = sessionPullRequestsForGateway(harness.gateway);
+  const pane = {};
+  const key = "agent:writer:global";
+  const target = { sessionKey: "global", agentId: "writer" };
+  native.watch(pane, [key], { foreground: true });
+  const changed = vi.fn();
+  const stop = reads.observe(target, changed);
+  await flushSync();
+  expect(harness.request).toHaveBeenCalledExactlyOnceWith(
+    SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+    { sessionKeys: [key] },
+    { timeoutMs: 30_000, signal: expect.any(AbortSignal) },
+  );
+  harness.emit({
+    sessions: {
+      [key]: {
+        pullRequests: [{ number: 421, state: "open" }],
+        status: "ready",
+        rateLimited: false,
+      },
+    },
+  });
+  expect(reads.read(target)).toBe(native.get(key));
+  expect(reads.read(target)?.pullRequests[0]?.number).toBe(421);
+  const read = reads.read;
+  const observe = reads.observe;
+  const translate = expectDefined(host.presentation, "presentation").translate;
+  const open = host.navigation.openExternal;
+  const popup = vi.spyOn(window, "open").mockReturnValue(null);
+  open("javascript:alert(1)");
+  expect(popup).not.toHaveBeenCalled();
+  open("https://example.test/pr");
+  expect(popup).toHaveBeenCalledExactlyOnceWith(
+    "https://example.test/pr",
+    "_blank",
+    "noopener,noreferrer",
+  );
+  registerSessionOrganizationEnglish();
+  expect(translate("sessionsView.openPullRequest")).toBe("Open PR");
+  view.abort();
+  stop();
+  const delivered = changed.mock.calls.length;
+  harness.emit({
+    sessions: { [key]: { pullRequests: [{ number: 422 }], status: "ready", rateLimited: false } },
+  });
+  expect(changed).toHaveBeenCalledTimes(delivered);
+  expect(native.get(key)?.pullRequests[0]?.number).toBe(422);
+  await flushSync();
+  expect(harness.request).toHaveBeenCalledTimes(1);
+  for (const operation of [
+    () => read(target),
+    () => observe(target, changed),
+    () => translate("sessionsView.openPullRequest"),
+    () => open("https://example.test/stale"),
+  ]) {
+    expect(operation).toThrow("view has ended");
+  }
+  native.unwatch(pane);
+  expect(native.get(key)).toBeUndefined();
+  const baseRead = expectDefined(activation.host.sessionPullRequests, "PR reads").read;
+  const baseTranslate = expectDefined(activation.host.presentation, "presentation").translate;
+  const baseOpen = activation.host.navigation.openExternal;
+  activation.dispose();
+  for (const operation of [
+    () => baseRead(target),
+    () => baseTranslate("sessionsView.openPullRequest"),
+    () => baseOpen("https://example.test/stale"),
+  ]) {
+    expect(operation).toThrow("activation has ended");
+  }
 });
