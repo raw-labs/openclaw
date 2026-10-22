@@ -342,7 +342,7 @@ export class VisitorAccessService {
             : `retry after ${new Date(retryAtMs).toISOString()}`;
         const hint = credentialConfigured
           ? ""
-          : " Configure gateway.controlUi.github.token to increase the GitHub API quota.";
+          : " Configure plugins.entries.github-repositories.config.service.token to increase the GitHub API quota.";
         throw new VisitorAccessError(
           `GitHub rate limit reached while resolving ${input.github}; ${retry}.${hint}`,
         );

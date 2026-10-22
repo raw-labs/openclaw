@@ -82,7 +82,20 @@ async function fixture(
       },
       entries: {
         other: {},
-        release: { tools: { github: { ...identity, allowInSandbox: options.allowInSandbox } } },
+        release: {
+          tools: {},
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            agents: {
+              release: { ...identity, allowInSandbox: options.allowInSandbox },
+            },
+          },
+        },
       },
     },
   };

@@ -139,7 +139,18 @@ describe.skipIf(process.platform === "win32")("local GitHub credential launch bo
 
   it("keeps prepared, requested and PTY snapshot environments secretless", async () => {
     const prepared = prepareGitHubToolEnvironment({
-      config: { tools: { github: { profileId: "ghp_11111111111111111111111111111111" } } },
+      config: {
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId: "ghp_11111111111111111111111111111111" },
+              },
+            },
+          },
+        },
+      },
       agentId: "main",
       env: { OPENCLAW_STATE_DIR: root },
     });

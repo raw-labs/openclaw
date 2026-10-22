@@ -107,3 +107,22 @@ export function setRegisteredHealthChecks(
     registerHealthCheck({ ...check, description: check.id, detect: async () => [] });
   }
 }
+
+export function createRepairableDoctorHealthFlowContext({
+  shouldRepair = false,
+  ...overrides
+}: Parameters<typeof createDoctorHealthFlowContext>[0] & { shouldRepair?: boolean } = {}) {
+  return createDoctorHealthFlowContext({
+    configPath: "/tmp/fake-openclaw.json",
+    prompter: createDoctorPrompterFixture(shouldRepair),
+    ...overrides,
+  });
+}
+
+export function getDoctorHealthContribution(id: string) {
+  const contribution = resolveDoctorHealthContributions().find((entry) => entry.id === id);
+  if (!contribution) {
+    throw new Error(`expected doctor contribution ${id}`);
+  }
+  return contribution;
+}

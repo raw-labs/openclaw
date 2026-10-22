@@ -35,7 +35,6 @@ describe("Gateway operation policy reload", () => {
     "gateway.controlUi.environment.label",
     "gateway.controlUi.communityInvite",
     "gateway.controlUi.newSessionModelDefaults",
-    "gateway.controlUi.github.token",
     "gateway.controlUi.sessionObserver",
     "gateway.controlUi.embedSandbox",
     "gateway.controlUi.allowExternalEmbedUrls",
@@ -86,6 +85,16 @@ describe("Gateway operation policy reload", () => {
       restartChannelAccounts: new Map(),
     });
     expect(resolveConfigReloadMetadata(path).kind).toBe("hot");
+  });
+
+  it("reloads canonical GitHub configuration through the existing plugin owner", () => {
+    const path = "plugins.entries.github-repositories.config.service.token";
+    expect(buildGatewayReloadPlan([path])).toMatchObject({
+      restartGateway: false,
+      hotReasons: [path],
+      reloadPlugins: true,
+      disposeMcpRuntimes: true,
+    });
   });
 
   const policyConfig: OpenClawConfig = { tools: { gatewayPolicy: { allow: ["read"] } } };

@@ -464,7 +464,18 @@ describe("Gateway GitHub publication boundaries", () => {
       headCommit: attempt === "fresh" ? null : NEW_HEAD,
     });
     if (fault === "credential") {
-      const config = { tools: { github: { profileId: "ghp_11111111111111111111111111111111" } } };
+      const config = {
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId: "ghp_11111111111111111111111111111111" },
+              },
+            },
+          },
+        },
+      };
       mocks.getConfigSnapshot.mockReturnValue({ config, sourceConfig: config });
       const { prepareGitHubPublicationIdentity } = await vi.importActual<
         typeof import("../../extensions/github-repositories/tool-identity-api.js")

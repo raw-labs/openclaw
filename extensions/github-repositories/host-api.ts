@@ -1,6 +1,7 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { readGitHubConfig } from "./config-api.js";
 
-export const GITHUB_PLUGIN_ID = "github-repositories";
+export { GITHUB_PLUGIN_ID } from "./config-api.js";
 export const GITHUB_PUBLIC_HOST = "github.com";
 const GITHUB_PUBLIC_API_BASE_URL = "https://api.github.com";
 
@@ -22,15 +23,15 @@ export function withGitHubToken(env: NodeJS.ProcessEnv, token: string): NodeJS.P
 }
 
 export function resolveConfiguredGitHubHost(config?: OpenClawConfig | null): string {
-  const host = config?.gateway?.github?.host?.trim().toLowerCase() || GITHUB_PUBLIC_HOST;
+  const host = readGitHubConfig(config).host?.trim().toLowerCase() || GITHUB_PUBLIC_HOST;
   if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/u.test(host) || host.includes("..")) {
-    throw new Error("gateway.github.host must be a hostname");
+    throw new Error("plugins.entries.github-repositories.config.host must be a hostname");
   }
   return host;
 }
 
 export function resolveConfiguredGitHubApiBaseUrl(config?: OpenClawConfig | null): string {
-  const raw = config?.gateway?.github?.apiBaseUrl?.trim() || GITHUB_PUBLIC_API_BASE_URL;
+  const raw = readGitHubConfig(config).apiBaseUrl?.trim() || GITHUB_PUBLIC_API_BASE_URL;
   const parsed = new URL(raw);
   if (
     parsed.protocol !== "https:" ||
@@ -40,7 +41,17 @@ export function resolveConfiguredGitHubApiBaseUrl(config?: OpenClawConfig | null
     parsed.hash ||
     !["/", "", "/api/v3", "/api/v3/"].includes(parsed.pathname)
   ) {
-    throw new Error("gateway.github.apiBaseUrl must be an HTTPS GitHub API base URL");
+    throw new Error(
+      "plugins.entries.github-repositories.config.apiBaseUrl must be an HTTPS GitHub API base URL",
+    );
+  }
+  const host = resolveConfiguredGitHubHost(config);
+  const cloudApi = parsed.hostname === `api.${host}` && parsed.pathname === "/";
+  const serverApi = parsed.hostname === host && ["/api/v3", "/api/v3/"].includes(parsed.pathname);
+  if (!cloudApi && !serverApi) {
+    throw new Error(
+      "plugins.entries.github-repositories.config.apiBaseUrl must match the configured GitHub host",
+    );
   }
   return parsed.origin + (parsed.pathname.startsWith("/api/v3") ? "/api/v3" : "");
 }

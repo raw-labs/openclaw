@@ -15,9 +15,11 @@ import { resolveDoctorContributionHealthChecks } from "./doctor-health-contribut
 import {
   createDoctorConfigFixture,
   createDoctorHealthFlowContext,
+  createRepairableDoctorHealthFlowContext as doctorContext,
   createDoctorLintContext,
   createDoctorPrompterFixture,
   createGatewayWriterFixture,
+  getDoctorHealthContribution as getContribution,
   resolveDoctorHealthContributions,
   runDoctorHealthContributionList,
   setRegisteredHealthChecks,
@@ -225,7 +227,8 @@ vi.mock("../commands/doctor/shared/plugin-runtime-symlinks.js", () => ({
     mocks.collectStalePluginRuntimeSymlinkHealthFindings,
 }));
 
-vi.mock("./bundled-health-checks.js", () => ({
+vi.mock("./bundled-health-checks.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./bundled-health-checks.js")>()),
   registerBundledHealthChecks: mocks.registerBundledHealthChecks,
   collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),
 }));
@@ -671,14 +674,6 @@ function repairResult(overrides: Record<string, unknown>) {
   };
 }
 
-function getContribution(id: string) {
-  const contribution = resolveDoctorHealthContributions().find((entry) => entry.id === id);
-  if (!contribution) {
-    throw new Error(`expected doctor contribution ${id}`);
-  }
-  return contribution;
-}
-
 async function getCheck(id: string) {
   const check = (await resolveDoctorContributionHealthChecks()).find((entry) => entry.id === id);
   if (!check) {
@@ -688,17 +683,6 @@ async function getCheck(id: string) {
 }
 
 type DoctorContext = Parameters<ReturnType<typeof getContribution>["run"]>[0];
-
-function doctorContext({
-  shouldRepair = false,
-  ...overrides
-}: Parameters<typeof createDoctorHealthFlowContext>[0] & { shouldRepair?: boolean } = {}) {
-  return createDoctorHealthFlowContext({
-    configPath: "/tmp/fake-openclaw.json",
-    prompter: createDoctorPrompterFixture(shouldRepair),
-    ...overrides,
-  });
-}
 
 function structuredContribution(id: string) {
   return createDoctorHealthContribution(`doctor:${id}`, id, {
@@ -1422,7 +1406,10 @@ describe("doctor health contributions", () => {
     const contribution = getContribution("doctor:github-projects");
     const ctx = doctorContext({ env: {}, configPath: "/tmp/openclaw.json" });
     await contribution.run(ctx);
-    expectNote("gateway.controlUi.github.host matching gateway.github.host", "GitHub projects");
+    expectNote(
+      "plugins.entries.github-repositories.config.service.host matching plugins.entries.github-repositories.config.host",
+      "GitHub projects",
+    );
     mocks.note.mockClear();
     await contribution.run({ ...ctx, env: { GH_TOKEN: "configured" } });
     expect(mocks.note).not.toHaveBeenCalled();
@@ -1430,9 +1417,16 @@ describe("doctor health contributions", () => {
       ...ctx,
       cfg: {
         gateway: {
-          controlUi: {
-            github: {
-              token: { source: "store", provider: "default", id: "CONTROL_UI_GITHUB" },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: {
+                  token: { source: "store", provider: "default", id: "CONTROL_UI_GITHUB" },
+                },
+              },
             },
           },
         },

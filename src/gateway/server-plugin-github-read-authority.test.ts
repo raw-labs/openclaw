@@ -41,7 +41,18 @@ afterEach(async () => {
 function fixture(method: "preview" | "detail") {
   const cfg = {
     agents: { entries: { main: {} } },
-    gateway: { controlUi: { github: { token: "synthetic-preview-credential" } } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: "synthetic-preview-credential" },
+          },
+        },
+      },
+    },
   };
   setRuntimeConfigSnapshot(cfg);
   const { registry, config } = createPluginRegistryFixture();

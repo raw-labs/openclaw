@@ -2,12 +2,13 @@ import { constants as fsConstants } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import type { GitHubToolIdentityConfig } from "../../extensions/github-repositories/config-api.js";
 import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { SecretInput } from "../config/types.secrets.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { resolveCommandEnv } from "../process/exec-spawn.js";
 import { commandResult } from "./github-identity.test-support.js";
 
@@ -31,7 +32,20 @@ import {
 } from "../../extensions/github-repositories/tool-identity-api.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
-const previewConfig = (token: SecretInput) => ({ gateway: { controlUi: { github: { token } } } });
+const previewConfig = (token: SecretInput) => ({
+  gateway: {
+    controlUi: {},
+  },
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          service: { token },
+        },
+      },
+    },
+  },
+});
 
 async function writeProfile(profileDir: string, token: string) {
   await fs.mkdir(profileDir, { recursive: true, mode: 0o700 });
@@ -52,7 +66,25 @@ describe("GitHub tool identity", () => {
   const profilePath = (id = profileId, scope: "system" | "agent" = "system") =>
     resolveManagedGitHubProfileDir({ agentId: "main", scope, profileId: id, env });
   const agentConfig = (github: GitHubToolIdentityConfig, agentDir = root): OpenClawConfig => ({
-    agents: { entries: { main: { agentDir, tools: { github } } } },
+    agents: {
+      entries: {
+        main: {
+          agentDir,
+          tools: {},
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            agents: {
+              main: github,
+            },
+          },
+        },
+      },
+    },
   });
   const statusFor = (config: OpenClawConfig, selectedScope: "system" | "agent" = "system") =>
     resolveGitHubToolIdentityStatus({ config, agentId: "main", selectedScope, env });
@@ -91,13 +123,22 @@ describe("GitHub tool identity", () => {
       gitAuthor: { email: "agent@example.test" },
     };
     const config = {
-      tools: {
-        github: {
-          profileId: "ghp_11111111111111111111111111111111",
-          gitAuthor: { name: "System" },
+      tools: {},
+      ...agentConfig(override),
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(agentConfig(override)),
+              agents: { main: override },
+              system: {
+                profileId: "ghp_11111111111111111111111111111111",
+                gitAuthor: { name: "System" },
+              },
+            },
+          },
         },
       },
-      ...agentConfig(override),
     };
 
     expect(prepareGitHubToolEnvironment({ config: {}, agentId: "main" })).toMatchObject({
@@ -173,8 +214,19 @@ describe("GitHub tool identity", () => {
       );
     });
     const config = {
-      tools: { github: { profileId: systemProfileId, kind: "oauth" as const } },
+      tools: {},
       ...agentConfig({ profileId: agentProfileId, kind: "oauth" }),
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(agentConfig({ profileId: agentProfileId, kind: "oauth" })),
+              agents: { main: { profileId: agentProfileId, kind: "oauth" } },
+              system: { profileId: systemProfileId, kind: "oauth" as const },
+            },
+          },
+        },
+      },
     };
 
     const systemSelected = await statusFor(config);
@@ -231,7 +283,18 @@ describe("GitHub tool identity", () => {
         },
       });
 
-      const status = await statusFor({ tools: { github: { profileId, kind: "oauth" } } });
+      const status = await statusFor({
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId, kind: "oauth" },
+              },
+            },
+          },
+        },
+      });
 
       expect(status.effective).toMatchObject({
         credentialKind: "managed-oauth",
@@ -335,12 +398,42 @@ describe("GitHub tool identity", () => {
     });
     const preparing = prepareGitHubPublicationIdentity({
       config: {
-        tools: { github: { profileId, kind: "oauth" } },
+        tools: {},
         ...previewConfig("resolved-preview-token"),
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                ...readGitHubConfig(previewConfig("resolved-preview-token")),
+                service: { token: "resolved-preview-token" },
+                system: { profileId, kind: "oauth" },
+              },
+            },
+          },
+        },
       },
       sourceConfig: {
-        tools: { github: { profileId } },
+        tools: {},
         ...previewConfig({ source: "env", provider: "default", id: "PREVIEW_SERVICE_TOKEN" }),
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                ...readGitHubConfig(
+                  previewConfig({
+                    source: "env",
+                    provider: "default",
+                    id: "PREVIEW_SERVICE_TOKEN",
+                  }),
+                ),
+                service: {
+                  token: { source: "env", provider: "default", id: "PREVIEW_SERVICE_TOKEN" },
+                },
+                system: { profileId },
+              },
+            },
+          },
+        },
       },
       agentId: "main",
       env,
@@ -376,7 +469,18 @@ describe("GitHub tool identity", () => {
     expect(childEnv.PREVIEW_SERVICE_TOKEN).toBeUndefined();
     const matches = (id: string) =>
       matchesPreparedGitHubPublicationIdentity({
-        config: { tools: { github: { profileId: id } } },
+        config: {
+          tools: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  system: { profileId: id },
+                },
+              },
+            },
+          },
+        },
         agentId: "main",
         identity,
       });

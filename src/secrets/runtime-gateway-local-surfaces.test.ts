@@ -1,5 +1,6 @@
 /** Tests local gateway credential surfaces and their active/inactive SecretRef states. */
 import { describe, expect, it } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { asConfig, setupSecretsRuntimeSnapshotTestHooks } from "./runtime.test-support.ts";
 
 const { prepareSecretsRuntimeSnapshot } = setupSecretsRuntimeSnapshotTestHooks();
@@ -42,23 +43,57 @@ describe("secrets runtime gateway local surfaces", () => {
     };
     const github = { profileId: "ghp_" + "a".repeat(32), kind: "app-installation", app };
     const snapshot = await prepare(
-      { tools: { github }, agents: { entries: { main: { tools: { github } } } } },
+      {
+        tools: {},
+        agents: {
+          entries: {
+            main: {
+              tools: {},
+            },
+          },
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: github,
+                agents: {
+                  main: github,
+                },
+              },
+            },
+          },
+        },
+      },
       { GITHUB_APP_KEY: "synthetic-app-key" },
     );
     const resolved = { kind: "app-installation", app: { privateKey: "synthetic-app-key" } };
-    expect(snapshot.config.tools?.github).toMatchObject(resolved);
-    expect(snapshot.config.agents?.entries?.main?.tools?.github).toMatchObject(resolved);
+    expect(readGitHubConfig(snapshot.config).system).toMatchObject(resolved);
+    expect(readGitHubConfig(snapshot.config).agents?.["main"]).toMatchObject(resolved);
     expect(app.privateKey).toEqual(envRef("GITHUB_APP_KEY"));
   });
 
   it("resolves the Control UI GitHub preview credential independently", async () => {
     const snapshot = await prepare(
-      { gateway: { controlUi: { github: { token: envRef("CONTROL_UI_GITHUB_TOKEN") } } } },
+      {
+        gateway: {
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: envRef("CONTROL_UI_GITHUB_TOKEN") },
+              },
+            },
+          },
+        },
+      },
       { CONTROL_UI_GITHUB_TOKEN: "resolved-preview-token" },
     );
-    expect(snapshot.config.gateway?.controlUi?.github?.token).toBe("resolved-preview-token");
+    expect(readGitHubConfig(snapshot.config).service?.token).toBe("resolved-preview-token");
     expect(snapshot.warnings.map((warning) => warning.path)).not.toContain(
-      "gateway.controlUi.github.token",
+      "plugins.entries.github-repositories.config.service.token",
     );
   });
 

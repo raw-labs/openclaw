@@ -2,10 +2,11 @@ import path from "node:path";
 import { assertDirectoryIdentitySync, readDirectoryIdentity } from "@openclaw/fs-safe/advanced";
 import { FsSafeError } from "@openclaw/fs-safe/errors";
 import { root as fsRoot, type Root } from "@openclaw/fs-safe/root";
-import { listAgentIds, resolveAgentConfig } from "openclaw/plugin-sdk/agent-scope-runtime";
+import { listAgentIds } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
 import { listGitHubOAuthRecords } from "openclaw/plugin-sdk/repository-identity-host";
+import { readGitHubConfig, readGitHubAgentIdentity } from "./config-api.js";
 import { isManagedGitHubProfileId } from "./profile-id-api.js";
 import {
   resolveManagedGitHubAgentKey,
@@ -120,11 +121,13 @@ export async function cleanupRetiredManagedGitHubProfiles(params: {
     env: params.env,
   });
   const systemProfiles = new Set(
-    params.config.tools?.github?.profileId ? [params.config.tools.github.profileId] : [],
+    readGitHubConfig(params.config).system?.profileId
+      ? [readGitHubConfig(params.config).system!.profileId]
+      : [],
   );
   const agentProfiles = new Map<string, Set<string>>(
     listAgentIds(params.config).map((agentId) => {
-      const profileId = resolveAgentConfig(params.config, agentId)?.tools?.github?.profileId;
+      const profileId = readGitHubAgentIdentity(params.config, agentId)?.profileId;
       return [resolveManagedGitHubAgentKey(agentId), new Set(profileId ? [profileId] : [])];
     }),
   );

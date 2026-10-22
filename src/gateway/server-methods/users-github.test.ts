@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 // Install synthetic OAuth and subprocess transport before RPC modules load.
 // oxfmt-ignore
 import { createGitHubTestClient, network, resetPersonalGitHubNetwork, tokens } from "./users-github.test-support.js";
@@ -136,7 +137,10 @@ async function pendingRefresh() {
 
 beforeEach(async () => {
   state = await createOpenClawTestState({ scenario: "minimal", applyEnv: true });
-  config = { agents: { entries: { main: { workspace: state.workspaceDir } } } };
+  config = {
+    agents: { entries: { main: { workspace: state.workspaceDir } } },
+    plugins: { entries: { "github-repositories": { config: {} } } },
+  };
   setRuntimeConfigSnapshot(config);
   clients = new Set();
   alice = user("alice@example.test");
@@ -211,18 +215,11 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
   it.each(["users.github.status", "tools.github.status"])(
     "%s reports execution authentication instead of a resolved preview credential",
     async (method) => {
-      const sourceConfig: OpenClawConfig = {
-        ...config,
-        gateway: {
-          controlUi: {
-            github: { token: { source: "env", provider: "default", id: "GH_TOKEN" } },
-          },
-        },
+      const sourceConfig = structuredClone(config);
+      readGitHubConfig(sourceConfig).service = {
+        token: { source: "env", provider: "default", id: "GH_TOKEN" },
       };
-      config = {
-        ...config,
-        gateway: { controlUi: { github: { token: "synthetic-preview" } } },
-      };
+      readGitHubConfig(config).service = { token: "synthetic-preview" };
       setRuntimeConfigSnapshot(config, sourceConfig);
       const snapshot = vi
         .spyOn(secretsRuntime, "getActiveSecretsRuntimeConfigSnapshot")
@@ -269,15 +266,15 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const profileId = "ghp_12121212121212121212121212121212";
       config.agents = {
         entries: {
-          alpha: {
-            workspace: state.path("alpha-workspace"),
-            tools: { github: { profileId: "ghp_34343434343434343434343434343434" } },
-          },
+          alpha: { workspace: state.path("alpha-workspace") },
           beta: { workspace: state.path("beta-workspace") },
         },
       };
+      readGitHubConfig(config).agents = {
+        alpha: { profileId: "ghp_34343434343434343434343434343434" },
+      };
       if (systemKind === "managed") {
-        config.tools = { github: { profileId } };
+        readGitHubConfig(config).system = { profileId };
         await writeManagedGitHubProfileFiles(
           resolveManagedGitHubProfileDir({ scope: "system", agentId: "", profileId }),
           { login: "system-bot", token: "synthetic-native" },
@@ -475,7 +472,9 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       config = JSON.parse(await fs.readFile(state.configPath, "utf8")) as OpenClawConfig;
       setRuntimeConfigSnapshot(config);
       const identity =
-        scope === "system" ? config.tools?.github : config.agents?.entries?.main?.tools?.github;
+        scope === "system"
+          ? readGitHubConfig(config).system
+          : readGitHubConfig(config).agents?.["main"];
       if (!identity) {
         throw new Error("Expected configured shared GitHub identity");
       }
@@ -511,7 +510,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       system: { source: "system-detected", account: { login: "system-bot" } },
     });
     expect(getUserProfileListItem(owner())).toEqual(before);
-    expect(config.tools?.github).toBeUndefined();
+    expect(readGitHubConfig(config).system).toBeUndefined();
     expect(prepareGitHubToolEnvironment({ config, agentId: "main" }).localIdentityEnv).toEqual({});
     expect(await rpc(alice, "users.self")).toHaveBeenCalledWith(true, { profile: before });
     for (const [method, missingScope] of [

@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 // Keep external GitHub I/O synthetic while exercising registered admission and current profile state.
 // oxfmt-ignore
 import { commandResult, githubPublicationTestMocks, installGitHubPublicationTestHarness, createTestGitHubPublicationCoordinator, SESSION_ID, SESSION_KEY } from "./github-publication.test-support.js";
@@ -49,7 +50,23 @@ async function fixture(
     inspectPullRequest: coordinator.provider.inspectPullRequest,
   });
   const host = options.host ?? "github.com";
-  const config = { ...f.config, gateway: { ...f.config.gateway, github: { host } } };
+  const config = {
+    ...f.config,
+    gateway: {
+      ...f.config.gateway,
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...readGitHubConfig(f.config),
+            host,
+            apiBaseUrl: host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+          },
+        },
+      },
+    },
+  };
   setRuntimeConfigSnapshot(config);
   if (options.linked !== false) {
     if (host === "github.com") {
@@ -381,7 +398,20 @@ describe("own PR inspection through the admitted agent tool and Gateway", () => 
     ).rejects.toThrow("configured GitHub host");
     setRuntimeConfigSnapshot({
       ...f.config,
-      gateway: { ...f.config.gateway, github: { host: "other.example.test" } },
+      gateway: {
+        ...f.config.gateway,
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(f.config),
+              host: "other.example.test",
+              apiBaseUrl: "https://other.example.test/api/v3",
+            },
+          },
+        },
+      },
     });
     await expect(
       f.invoke({ pullRequestUrl: "https://other.example.test/example/repository/pull/7" }),

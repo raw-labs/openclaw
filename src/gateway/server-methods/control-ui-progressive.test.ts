@@ -21,7 +21,18 @@ describe("progressive controlUi.githubDetail", () => {
   it("forwards overview requests through the identity adapter without reading optional endpoints", async () => {
     const cfg: OpenClawConfig = {
       agents: { entries: { main: {} } },
-      gateway: { controlUi: { github: { token: "progressive-service-token" } } },
+      gateway: {
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              service: { token: "progressive-service-token" },
+            },
+          },
+        },
+      },
     };
     setRuntimeConfigSnapshot(cfg);
     const head = "a".repeat(40);

@@ -39,7 +39,24 @@ it.for(["unchanged", "removed", "rotated"] as const)(
         vi.spyOn(Date, "now").mockImplementation(() => now);
         const profileId = `ghp_${"9".repeat(32)}`;
         const cfg: OpenClawConfig = {
-          agents: { entries: { main: { tools: { github: { profileId } } } } },
+          agents: {
+            entries: {
+              main: {
+                tools: {},
+              },
+            },
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  agents: {
+                    main: { profileId },
+                  },
+                },
+              },
+            },
+          },
         };
         setRuntimeConfigSnapshot(cfg);
         const profileDir = githubIdentity.resolveManagedGitHubProfileDir({

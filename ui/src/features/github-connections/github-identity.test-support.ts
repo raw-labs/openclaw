@@ -4,9 +4,9 @@ import {
   type GitHubIdentity,
   settingsEnglish as english,
 } from "../../../../extensions/github-repositories/browser/index.tsx";
+import { readGitHubConfig } from "../../../../extensions/github-repositories/config-api.js";
 import { showConfirmDialog } from "../../components/confirm-dialog.ts";
 import { t } from "../../i18n/index.ts";
-import { resolveAgentConfig } from "../../lib/agents/display.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { registerControlUiEnglish } from "../../plugins/control-ui-english.ts";
 import { trackSolidRoot } from "../../test-helpers/solid-cleanup.ts";
@@ -37,8 +37,7 @@ export function createGitHubIdentityForTest(
       ) {
         const target = params.target;
         const config = target?.kind === "shared" ? target.config : null;
-        const resolved =
-          target?.kind === "shared" ? resolveAgentConfig(config, target.agentId) : null;
+        const selected = readGitHubConfig(config);
         identity.sync({
           ...params,
           target:
@@ -47,8 +46,8 @@ export function createGitHubIdentityForTest(
                   ...target,
                   config: target.config
                     ? {
-                        system: resolved?.globalTools?.github,
-                        agent: resolved?.entry?.tools?.github,
+                        system: selected.system,
+                        agent: selected.agents?.[target.agentId],
                       }
                     : null,
                 }

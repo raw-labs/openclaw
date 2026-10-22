@@ -214,9 +214,9 @@ it("dispatches an admitted request before its caller can retire", async () => {
 it("shows configured credential recovery instructions but hides unknown errors", () => {
   const unavailable = new SecretSurfaceUnavailableError({
     ownerKind: "capability",
-    ownerId: "control-ui-github",
+    ownerId: "plugins.entries.github-repositories.config.service.token",
     state: "unavailable",
-    paths: ["gateway.controlUi.github.token"],
+    paths: ["plugins.entries.github-repositories.config.service.token"],
     refKeys: [],
     reason: "secret-store-diagnostic",
   });

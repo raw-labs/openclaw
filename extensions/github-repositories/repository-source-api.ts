@@ -1,6 +1,7 @@
 import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { RepositorySource } from "openclaw/plugin-sdk/repository-sources";
+import { readGitHubConfig } from "./config-api.js";
 import { resolveConfiguredGitHubHost } from "./host-api.js";
 import { materializeProjectClone, refreshProjectClone } from "./project-clone-api.js";
 import { parseProjectGitUrl } from "./project-url-api.js";
@@ -24,7 +25,7 @@ export function createGitHubRepositorySource(
       input.assertCurrent();
       const configuredToken = githubApiToken(process.env, config);
       const identity =
-        !configuredToken && config.gateway?.projects?.nativeGitHubSearch === true
+        !configuredToken && readGitHubConfig(config).repositorySearch?.useNativeCredentials === true
           ? await prepareGitHubReadIdentity({
               agentId: input.agentId,
               config,

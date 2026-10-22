@@ -33,14 +33,24 @@ it("keeps public sign-in, durable roles and privileged dispatch independent of c
     using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const cfg: OpenClawConfig = {
       gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-        controlUi: { github: { host: "ghe.example.test", token: "synthetic-enterprise-token" } },
+        controlUi: {},
         auth: { mode: "token", token: "synthetic-gateway-token", allowTailscale: true },
         roles: {
           default: "guest",
           definitions: {
             guest: { sessions: { others: "none" }, agents: [], scopes: [] },
             maintainer: { sessions: { others: "view" }, agents: "*", scopes: ["operator.admin"] },
+          },
+        },
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+              service: { host: "ghe.example.test", token: "synthetic-enterprise-token" },
+            },
           },
         },
       },

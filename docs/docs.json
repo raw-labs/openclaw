@@ -1862,6 +1862,8 @@
                       "plugins/beam",
                       "plugins/cloudflare",
                       "plugins/geolocation",
+                      "plugins/github",
+                      "plugins/github-configuration",
                       "plugins/logbook",
                       "plugins/mcp-relay",
                       "plugins/oc-path",

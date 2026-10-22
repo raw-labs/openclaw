@@ -26,7 +26,7 @@ export function buildGitHubExecLaunchArgv(
     },
   });
   const host = resolveConfiguredGitHubHost({
-    gateway: { github: { host: options?.githubHost } },
+    plugins: { entries: { "github-repositories": { config: { host: options?.githubHost } } } },
   });
   const launcher = [process.execPath, ...resolveRuntimeWorkerArgv(workerUrl), profileDir, host];
   // GH_HOST is a default, not an authentication boundary. Do not expose a public

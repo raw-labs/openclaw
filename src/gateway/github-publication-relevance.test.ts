@@ -78,9 +78,17 @@ it.each(["github.com", "ghe.example.test"])(
     vi.stubEnv("GITHUB_TOKEN", "");
     setRuntimeConfigSnapshot({
       gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-        controlUi: {
-          github: { host: "ghe.example.test", token: "synthetic-enterprise-history-token" },
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+              service: { host: "ghe.example.test", token: "synthetic-enterprise-history-token" },
+            },
+          },
         },
       },
     });

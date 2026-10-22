@@ -353,6 +353,7 @@ export function buildPluginManifestRecord(params: {
     backupResources: params.manifest.backupResources,
     doctorContract: params.manifest.doctorContract,
     doctorHealthChecks: params.manifest.doctorHealthChecks,
+    securityAuditConfig: params.manifest.securityAuditConfig,
     sessionRouteStateOwners: params.manifest.sessionRouteStateOwners,
     name: normalizeOptionalString(params.manifest.name) ?? params.candidate.packageName,
     description:

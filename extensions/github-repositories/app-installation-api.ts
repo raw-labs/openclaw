@@ -100,6 +100,7 @@ function jwt(appId: number, key: string): string {
 /** Each execution retains its own bounded installation token and revocation owner. */
 export async function prepareGitHubAppInstallation(params: {
   selection: GitHubAppSelection;
+  privateKeyPath: string;
   /** A caller-admitted subset; the original selection still owns display metadata and currency. */
   repositories?: GitHubAppSelection["app"]["repositories"];
   host: string;
@@ -157,6 +158,7 @@ export async function prepareGitHubAppInstallation(params: {
 
 async function issueGitHubAppInstallation(params: {
   selection: GitHubAppSelection;
+  privateKeyPath: string;
   repositories?: GitHubAppSelection["app"]["repositories"];
   host: string;
   apiBaseUrl: string;
@@ -175,7 +177,7 @@ async function issueGitHubAppInstallation(params: {
   };
   const key = normalizeResolvedSecretInputString({
     value: selection.app.privateKey,
-    path: "tools.github.app.privateKey",
+    path: params.privateKeyPath,
   });
   if (!key) {
     throw new GitHubIdentityError("unavailable");

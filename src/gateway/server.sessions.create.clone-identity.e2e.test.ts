@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
@@ -62,8 +63,23 @@ test.each(
     await writeManagedGitHubProfileFiles(profileDir, { login: "fixture", token: TOKEN });
     const selected = {
       ...getRuntimeConfig(),
-      gateway: { projects: { nativeGitHubSearch: true } },
-      tools: { github: { profileId } },
+      gateway: {
+        projects: {},
+      },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(getRuntimeConfig()),
+              system: { profileId },
+              repositorySearch: {
+                useNativeCredentials: true,
+              },
+            },
+          },
+        },
+      },
     };
     setRuntimeConfigSnapshot(selected);
     const runCommand = processExec.runCommandWithTimeout;
@@ -134,7 +150,18 @@ test.each(
     const revoke = async () => {
       reachedBoundary = true;
       if (identity === "retired") {
-        setRuntimeConfigSnapshot({ ...selected, tools: {} });
+        setRuntimeConfigSnapshot({
+          ...selected,
+          plugins: {
+            ...selected.plugins,
+            entries: {
+              ...selected.plugins.entries,
+              "github-repositories": {
+                config: { ...readGitHubConfig(selected), system: undefined },
+              },
+            },
+          },
+        });
       } else if (identity === "rotated") {
         await writeManagedGitHubProfileFiles(profileDir, {
           login: "fixture",

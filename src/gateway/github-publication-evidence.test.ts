@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 // Install publication I/O fixtures before the registered action owner.
 // oxfmt-ignore
 import { createPublicationActionFixture as fixture } from "./github-publication-actions.test-support.js";
@@ -94,7 +95,17 @@ async function evidenceFixture(imported = false) {
     account: { accountId: 42, login: "roboclaw-bot", avatarUrl: null },
     env: { GH_TOKEN: "synthetic-evidence-token" },
   });
-  const config = { ...f.config, tools: { github: { profileId } } };
+  const config = {
+    ...f.config,
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: { ...readGitHubConfig(f.config), system: { profileId } },
+        },
+      },
+    },
+  };
   setRuntimeConfigSnapshot(config);
   const actualIdentity = await vi.importActual<
     typeof import("../../extensions/github-repositories/tool-identity-api.js")
@@ -208,7 +219,7 @@ async function evidenceFixture(imported = false) {
       const next = await updateGitHubToolIdentityConfig({
         scope: "system",
         agentId: "main",
-        expectedIdentity: config.tools.github,
+        expectedIdentity: readGitHubConfig(config).system,
       });
       setRuntimeConfigSnapshot(next);
     },

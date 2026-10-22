@@ -113,7 +113,7 @@ export async function runGitHubProjectHealth(ctx: DoctorHealthFlowContext): Prom
     await import("../../extensions/github-repositories/public-api.js");
   if (!hasConfiguredGitHubApiCredential(ctx.env ?? process.env, ctx.cfg)) {
     note(
-      "Set gateway.controlUi.github.token with gateway.controlUi.github.host matching gateway.github.host for private project access. Public github.com can also use GH_TOKEN/GITHUB_TOKEN; otherwise search is public-only.",
+      "Set plugins.entries.github-repositories.config.service.token with plugins.entries.github-repositories.config.service.host matching plugins.entries.github-repositories.config.host for private project access. Public github.com can also use GH_TOKEN/GITHUB_TOKEN; otherwise search is public-only.",
       "GitHub projects",
     );
   }

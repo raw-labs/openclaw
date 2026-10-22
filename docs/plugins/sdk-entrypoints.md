@@ -424,3 +424,13 @@ their existing current-selection and caller authority checks.
 ### Managed repository accounts
 
 The private bundled seams `repository-session-host`, `repository-identity-host`, and `repository-oauth-host` bind account maintenance to the current Gateway lifetime. They expose current configuration, authenticated personal-caller preparation, existing OAuth-record operations, and personal-account lease/commit operations. Database admission, invalidation, and exact refresh settlement remain host-owned; plugins receive no database paths or raw Gateway context.
+
+### Agent-scoped configuration edits
+
+Use `mutateAgentScopedPluginConfig` from `openclaw/plugin-sdk/config-mutation`
+when setup changes one plugin block and may create or target an agent. The host
+retains lifecycle validation, includes, backed-up retries and agent existence;
+the callback receives only that plugin's current configuration. Compare the
+selected identity before returning the replacement. Declare agent-keyed maps in
+[manifest configuration contracts](/plugins/manifest/config-and-secrets#agent-owned-config-maps)
+so deleting an agent removes its plugin selection even while the plugin is disabled.

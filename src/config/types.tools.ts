@@ -114,8 +114,6 @@ export type ExecToolConfig = Omit<NonNullable<SchemaToolsConfig["exec"]>, "safeB
   safeBinProfiles?: Record<string, SafeBinProfileFixture>;
 };
 
-export type GitHubToolIdentityConfig = NonNullable<SchemaToolsConfig["github"]>;
-
 export type AgentToolsConfig = Omit<
   NonNullable<z.input<typeof AgentEntrySchema>["tools"]>,
   "toolsBySender" | "exec" | "elevated"

@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import * as pluginLoader from "../plugins/loader.js";
 import { createPluginMetadataSnapshotFixture } from "../plugins/plugin-metadata.test-support.js";
@@ -29,7 +30,17 @@ it.each(["in-process", "bound"] as const)(
           ...fixture.cfg,
           gateway: {
             ...fixture.cfg.gateway,
-            controlUi: { github: { token: "synthetic-github-lookup-token" } },
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...readGitHubConfig(fixture.cfg),
+                  service: { token: "synthetic-github-lookup-token" },
+                },
+              },
+            },
           },
         };
         setRuntimeConfigSnapshot(cfg);

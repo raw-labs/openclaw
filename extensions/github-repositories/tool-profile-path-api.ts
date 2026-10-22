@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
+import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import { isManagedGitHubProfileId } from "./profile-id-api.js";
 

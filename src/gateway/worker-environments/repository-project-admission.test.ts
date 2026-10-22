@@ -375,8 +375,16 @@ describe("repository project admission", () => {
 
   it("prepares an authenticated pack for an internal enterprise repository", async () => {
     setRuntimeConfigSnapshot({
-      gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     });
     observedRepositoryUrl = "https://ghe.example.test/acme/project.git";

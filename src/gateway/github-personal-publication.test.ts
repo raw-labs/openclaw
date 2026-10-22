@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 // Register the shared Git transport before any publication or run-lease consumer.
 // oxfmt-ignore
 import {
@@ -384,8 +385,17 @@ describe("personal publication authority and recovery", () => {
     action = await preparePersonalPublicationFixtureV2({ client, context });
     setRuntimeConfigSnapshot({
       ...getRuntimeConfigSnapshot(),
-      gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(getRuntimeConfigSnapshot()),
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     });
     const db = openOpenClawStateDatabase().db;

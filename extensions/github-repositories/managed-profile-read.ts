@@ -1,8 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readSecretFile } from "@openclaw/fs-safe/secret";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
+import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { parseDocument } from "yaml";
 import { GITHUB_PUBLIC_HOST as GITHUB_HOST } from "./host-api.js";
 import {

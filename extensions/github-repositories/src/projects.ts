@@ -11,6 +11,7 @@ import {
   errorShape,
   type GatewayRequestHandlers,
 } from "openclaw/plugin-sdk/gateway-runtime";
+import { readGitHubConfig } from "../config-api.js";
 import { resolveConfiguredGitHubApiBaseUrl, resolveConfiguredGitHubHost } from "../host-api.js";
 import { materializeProjectClone } from "../project-clone-api.js";
 import { ProjectCloneError } from "../project-clone-runtime-api.js";
@@ -91,7 +92,7 @@ export const repositoryProjectHandlers: GatewayRequestHandlers = {
       };
       assertCurrent();
       const nativeToken =
-        cfg.gateway?.projects?.nativeGitHubSearch === true
+        readGitHubConfig(cfg).repositorySearch?.useNativeCredentials === true
           ? await readCachedNativeGitHubToken(process.env)
           : undefined;
       assertCurrent();
@@ -115,7 +116,7 @@ export const repositoryProjectHandlers: GatewayRequestHandlers = {
         signal,
         host,
         apiBaseUrl,
-        ...(cfg.gateway?.projects?.nativeGitHubSearch === true
+        ...(readGitHubConfig(cfg).repositorySearch?.useNativeCredentials === true
           ? {
               token: nativeToken ?? "",
             }

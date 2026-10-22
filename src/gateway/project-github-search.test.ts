@@ -164,7 +164,17 @@ describe("project GitHub search", () => {
   it("separates native search results when the selected Enterprise host changes", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => page());
     const config = (host: string) => ({
-      gateway: { github: { host, apiBaseUrl: `https://${host}/api/v3` } },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host,
+              apiBaseUrl: `https://${host}/api/v3`,
+            },
+          },
+        },
+      },
     });
     setRuntimeConfigSnapshot(config("a.ghe.example.test"));
     await searchRemoteProjects("same-query", { token: "native-token", fetchImpl });

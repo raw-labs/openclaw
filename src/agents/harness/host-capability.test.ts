@@ -450,13 +450,20 @@ describe("agent harness host capability", () => {
     async ({ managed, source }) => {
       const { attempt } = await admittedAttempt(`run-${source}-${managed ? "managed" : "native"}`, {
         config: {
-          ...(managed
-            ? { tools: { github: { profileId: "ghp_66666666666666666666666666666666" } } }
-            : {}),
           gateway: {
-            controlUi: {
-              github: {
-                token: { source, provider: "default", id: "PREVIEW_SERVICE_TOKEN" },
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...(managed
+                    ? { system: { profileId: "ghp_66666666666666666666666666666666" } }
+                    : {}),
+                  service: {
+                    token: { source, provider: "default", id: "PREVIEW_SERVICE_TOKEN" },
+                  },
+                },
               },
             },
           },

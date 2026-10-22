@@ -1,5 +1,7 @@
 import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { readGitHubConfig } from "./config-api.js";
+import { GitHubPluginConfigSchema } from "./config-schema-api.js";
 import { githubExecutionEnvironment } from "./execution-environment-api.js";
 import { repositoryGatewayMethods } from "./gateway-methods-api.js";
 import { registerGitHubReader } from "./reader/index.js";
@@ -7,10 +9,13 @@ export default definePluginEntry({
   id: "github-repositories",
   name: "GitHub",
   description: "GitHub accounts, Settings, and execution identity",
+  configSchema: { parse: (value: unknown) => GitHubPluginConfigSchema.parse(value) },
   register(api) {
     if (api.registrationMode === "cli-metadata") {
       return;
     }
+    const config = readGitHubConfig(api.config);
+    GitHubPluginConfigSchema.parse({ host: config.host, apiBaseUrl: config.apiBaseUrl });
     api.registerExecutionEnvironment(githubExecutionEnvironment);
     registerGitHubReader(api);
     for (const row of repositoryGatewayMethods) {

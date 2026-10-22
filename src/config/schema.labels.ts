@@ -5,7 +5,6 @@ import { AGENT_MODEL_FIELD_LABELS } from "./schema.labels.agent-models.js";
 import { APPROVAL_FIELD_LABELS } from "./schema.labels.approvals.js";
 import { BROWSER_FIELD_LABELS } from "./schema.labels.browser.js";
 import { ENVIRONMENT_FIELD_LABELS } from "./schema.labels.environment.js";
-import { GITHUB_TOOL_FIELD_LABELS } from "./schema.labels.github.js";
 import { MESSAGE_FIELD_LABELS } from "./schema.labels.messages.js";
 import { SESSION_FIELD_LABELS } from "./schema.labels.session.js";
 import { WORKSPACE_FIELD_LABELS } from "./schema.labels.workspace.js";
@@ -118,7 +117,6 @@ export const FIELD_LABELS: Record<string, string> = {
   "tools.deny": "Tool Denylist",
   "tools.web": "Web Tools",
   "tools.exec": "Exec Tool",
-  ...GITHUB_TOOL_FIELD_LABELS,
   "tools.media.image.enabled": "Enable Image Understanding",
   "tools.media.image.preferredModel": "Preferred Image Understanding Model",
   "tools.media.image.maxBytes": "Image Understanding Max Bytes",
@@ -701,4 +699,3 @@ export const FIELD_LABELS: Record<string, string> = {
   "plugins.entries.*.env": "Plugin Environment Variables",
   "plugins.entries.*.config": "Plugin Config",
 };
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */

@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { GitHubIdentityFacts } from "@openclaw/gateway-protocol";
+import { assertSecretOwnerAvailable } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
+import { formatConcreteConfigPath } from "openclaw/plugin-sdk/config-contracts";
 import {
   prepareGitHubAppInstallation,
   readGitHubAppInstallationMetadata,
@@ -25,9 +27,19 @@ export async function prepareAppGitHubIdentity(
   if (!params.allowAppInstallation) {
     throw new GitHubIdentityError("unavailable");
   }
+  const privateKeyPath = formatConcreteConfigPath([
+    "plugins",
+    "entries",
+    "github-repositories",
+    "config",
+    ...(source === "agent-override" ? ["agents", params.agentId] : ["system"]),
+    "app",
+    "privateKey",
+  ]);
   const snapshot = structuredClone(selection);
   const assertCurrent = () => {
     params.assertCurrent?.();
+    assertSecretOwnerAvailable("capability", privateKeyPath);
     if (
       resolveGitHubHost() !== host ||
       resolveGitHubApiBaseUrl() !== apiBaseUrl ||
@@ -63,6 +75,7 @@ export async function prepareAppGitHubIdentity(
   }
   const issued = await prepareGitHubAppInstallation({
     selection,
+    privateKeyPath,
     repositories: requestedSelection.app.repositories,
     host,
     apiBaseUrl,

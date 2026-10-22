@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import {
   prepareGitHubReadIdentity,
   resolveConfiguredGitHubToolIdentity,
@@ -32,7 +33,7 @@ export async function prepareGatewayProjectGitHubIdentity(params: {
       scope: "system",
     });
   const appRead = selected?.kind === "app-installation" && params.factoryCredential !== undefined;
-  if (!appRead && params.config.gateway?.projects?.nativeGitHubSearch !== true) {
+  if (!appRead && readGitHubConfig(params.config).repositorySearch?.useNativeCredentials !== true) {
     return undefined;
   }
   const prepare = (

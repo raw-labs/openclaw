@@ -1,11 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import { sha256Hex } from "openclaw/plugin-sdk/node-crypto-runtime";
 import {
   hasErrnoCode,
   resolveExecutablePath,
@@ -14,6 +12,7 @@ import {
   runCommandBuffered,
   withGitProcessOperation,
 } from "openclaw/plugin-sdk/process-runtime";
+import { isRecord, readNonBlankString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { GitHubCredentialReader } from "./credential-reader-api.js";
 import { resolveGitHubHost } from "./host-runtime-api.js";
 

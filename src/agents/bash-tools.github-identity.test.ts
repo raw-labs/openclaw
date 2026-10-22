@@ -4,9 +4,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { GitHubToolIdentityConfig } from "../../extensions/github-repositories/config-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
 import { captureEnv, deleteTestEnvValue, setTestEnvValue } from "../test-utils/env.js";
 import { createOpenClawCodingTools } from "./agent-tools.js";
@@ -58,7 +58,18 @@ function appIdentity(digit: number, source: "env" | "store", id: string): GitHub
     },
   };
 }
-const githubConfig = (github: GitHubToolIdentityConfig): OpenClawConfig => ({ tools: { github } });
+const githubConfig = (github: GitHubToolIdentityConfig): OpenClawConfig => ({
+  tools: {},
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          system: github,
+        },
+      },
+    },
+  },
+});
 afterEach(() => {
   snapshot.restore();
   vi.unstubAllEnvs();
@@ -67,7 +78,18 @@ afterEach(() => {
 
 async function previewEnvironment(source: "env" | "store", id: string) {
   const sourceConfig: OpenClawConfig = {
-    gateway: { controlUi: { github: { token: { source, provider: "default", id } } } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: { source, provider: "default", id } },
+          },
+        },
+      },
+    },
   };
   const secretsSnapshot = await activateExecutionSecretSnapshot(
     sourceConfig,
@@ -130,8 +152,17 @@ describe("exec GitHub identity", () => {
     vi.stubEnv("GH_CONFIG_DIR", path.join(root, "independent-gh"));
     storeMocks.readSecretStoreExecEnvironment.mockResolvedValue({ env: {} });
     const config: OpenClawConfig = {
-      tools: { github: appIdentity(3, "env", "FACTORY_APP_PEM") },
-      plugins: { entries: { "github-repositories": { enabled: false } } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            enabled: false,
+            config: {
+              system: appIdentity(3, "env", "FACTORY_APP_PEM"),
+            },
+          },
+        },
+      },
     };
     const { clearSecretsRuntimeSnapshot } = await import("../secrets/runtime.js");
     clearSecretsRuntimeSnapshot();
@@ -183,9 +214,18 @@ describe("exec GitHub identity", () => {
       clearSecretsRuntimeSnapshot();
       const config: OpenClawConfig = {
         gateway: {
-          controlUi: { github: { token: { source, provider: "default", id: "GH_TOKEN" } } },
+          controlUi: {},
         },
-        plugins: { entries: { "github-repositories": { enabled: false } } },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              enabled: false,
+              config: {
+                service: { token: { source, provider: "default", id: "GH_TOKEN" } },
+              },
+            },
+          },
+        },
       };
       const prepared = resolveExecPreparedRunEnvironment({ config, agentId: "main" });
       const script = path.join(root, "credential-projection.cjs");
@@ -227,13 +267,32 @@ describe("exec GitHub identity", () => {
     const config: OpenClawConfig = {
       tools: {
         exec: { host: "gateway", mode: "full" },
-        github: appIdentity(3, "env", "FACTORY_APP_PEM"),
       },
       agents: {
         entries: {
-          worker: { tools: { github: { kind: "oauth", profileId: profileId(1) } } },
-          policy: { tools: { github: { profileId: profileId(2) } } },
-          signer: { tools: { github: appIdentity(4, "store", "SIBLING_APP_PEM") } },
+          worker: {
+            tools: {},
+          },
+          policy: {
+            tools: {},
+          },
+          signer: {
+            tools: {},
+          },
+        },
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: appIdentity(3, "env", "FACTORY_APP_PEM"),
+              agents: {
+                worker: { kind: "oauth", profileId: profileId(1) },
+                policy: { profileId: profileId(2) },
+                signer: appIdentity(4, "store", "SIBLING_APP_PEM"),
+              },
+            },
+          },
         },
       },
     };

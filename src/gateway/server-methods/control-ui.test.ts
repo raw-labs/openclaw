@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 import * as checkDetails from "../../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
 import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
@@ -25,7 +26,18 @@ import type { GatewayClient, GatewayRequestHandlerOptions, RespondFn } from "./t
 
 const requestOptions = createControlUiRequestOptions(() => ({
   agents: { entries: { main: {} } },
-  gateway: { controlUi: { github: { token: "preview-service-token" } } },
+  gateway: {
+    controlUi: {},
+  },
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          service: { token: "preview-service-token" },
+        },
+      },
+    },
+  },
 }));
 
 type RequestExtras = Parameters<typeof requestOptions>[2] &
@@ -69,7 +81,21 @@ function githubTarget(number: number, repo = "openclaw", owner = "openclaw") {
 }
 
 function configuredGitHub(token: string): OpenClawConfig {
-  return { agents: { entries: { main: {} } }, gateway: { controlUi: { github: { token } } } };
+  return {
+    agents: { entries: { main: {} } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token },
+          },
+        },
+      },
+    },
+  };
 }
 
 const json = (value: unknown) => new Response(JSON.stringify(value));
@@ -189,12 +215,9 @@ describe("controlUi.githubPreview", () => {
             mode === "managed" ? "old-preview-service-token" : "configured-reader-token",
           );
     if (mode === "managed") {
-      cfg.agents = {
-        entries: {
-          main: {},
-          alternate: { tools: { github: { profileId: identity.selection.profileId } } },
-        },
-      };
+      cfg.agents = { entries: { main: {}, alternate: {} } };
+      const plugin = cfg.plugins!.entries!["github-repositories"]!.config!;
+      plugin.agents = { alternate: { profileId: identity.selection.profileId } };
     }
     if (mode !== "anonymous") {
       setRuntimeConfigSnapshot(cfg);
@@ -273,9 +296,17 @@ describe("controlUi.githubPreview", () => {
       const cfg: OpenClawConfig = {
         agents: { entries: { main: {} } },
         gateway: {
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: {
-            github: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+              },
+            },
           },
         },
       };
@@ -321,10 +352,10 @@ describe("controlUi.githubPreview", () => {
     setActiveDegradedSecretOwners([
       {
         ownerKind: "capability",
-        ownerId: "control-ui-github",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
         state: "unavailable",
         degradationState: "cold",
-        paths: ["gateway.controlUi.github.token"],
+        paths: ["plugins.entries.github-repositories.config.service.token"],
         refKeys: ["store:default:PREVIEW_TOKEN"],
         reason: "secret reference was not found",
       },
@@ -337,7 +368,7 @@ describe("controlUi.githubPreview", () => {
     expectError(respond, {
       code: "UNAVAILABLE",
       message:
-        "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.",
+        "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.",
       retryable: false,
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -360,12 +391,18 @@ describe("controlUi.githubPreview", () => {
         runtime(() => cfg),
       );
       await started.promise;
-      const tools = { github: { profileId: `ghp_${"c".repeat(32)}` } };
-      if (selection === "agent") {
-        cfg = { agents: { entries: { main: { tools } } } };
-      } else if (selection === "system") {
-        cfg = { ...cfg, tools };
-      }
+      const replacement = { profileId: `ghp_${"c".repeat(32)}` };
+      cfg = {
+        ...cfg,
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config:
+                selection === "agent" ? { agents: { main: replacement } } : { system: replacement },
+            },
+          },
+        },
+      };
       pending.resolve(preview);
       await request;
 
@@ -445,13 +482,13 @@ describe("controlUi.githubPreview", () => {
       false,
       new SecretSurfaceUnavailableError({
         ownerKind: "capability",
-        ownerId: "control-ui-github",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
         state: "unavailable",
-        paths: ["gateway.controlUi.github.token"],
+        paths: ["plugins.entries.github-repositories.config.service.token"],
         refKeys: [],
         reason: "secret reference was not found",
       }),
-      "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.",
+      "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.",
       false,
     ],
   ] as const)(
@@ -475,7 +512,17 @@ describe("controlUi.githubPreview", () => {
         managed
           ? runtime(() => ({
               ...configuredGitHub("existing-preview-service-token"),
-              tools: { github: { profileId: `ghp_${"b".repeat(32)}` } },
+              tools: {},
+              plugins: {
+                entries: {
+                  "github-repositories": {
+                    config: {
+                      ...readGitHubConfig(configuredGitHub("existing-preview-service-token")),
+                      system: { profileId: `ghp_${"b".repeat(32)}` },
+                    },
+                  },
+                },
+              },
             }))
           : {},
       );

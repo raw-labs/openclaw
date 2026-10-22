@@ -17,6 +17,7 @@ Use `configContracts` for manifest-owned config behavior that generic core helpe
 ```json
 {
   "configContracts": {
+    "agentConfigMaps": ["agents"],
     "compatibilityMigrationPaths": ["legacyProvider"],
     "compatibilityRuntimePaths": ["legacyProvider.webhook"],
     "dangerousFlags": [
@@ -54,6 +55,20 @@ Each `dangerousFlags` entry supports:
 | -------- | -------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | `path`   | Yes      | `string`                              | Dot-separated config path relative to `plugins.entries.<id>.config`. Supports `*` wildcards for map/array segments. |
 | `equals` | Yes      | `string \| number \| boolean \| null` | Exact literal that marks this config value as dangerous.                                                            |
+
+### Agent-owned config maps
+
+`agentConfigMaps` declares literal dot-separated object paths relative to
+`plugins.entries.<id>.config`. Each map is keyed by agent id. When an agent is
+deleted, the existing agent config mutation removes that id from declared maps
+before committing config. This also applies to disabled plugins. Recreating the
+agent does not restore its old plugin identity or permissions. Other fields and
+undeclared maps remain unchanged.
+
+Paths cannot contain wildcards, array indices, or prototype-bearing keys. The
+host uses manifest metadata without importing plugin execution code. This
+contract removes configuration only; a plugin's existing lifetime and storage
+owners still settle work and clean up their retained resources.
 
 ### secretInputs paths
 

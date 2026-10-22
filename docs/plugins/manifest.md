@@ -507,3 +507,13 @@ See [Configuration reference](/gateway/configuration-reference#plugins) for the 
     The `backupResources` surface declared here.
   </Card>
 </CardGroup>
+
+## Config-only security audit
+
+A manifest can declare `securityAuditConfig: true` when the plugin exports
+`collectConfigSecurityAuditFindings` from its lightweight `security-audit-api.js`
+artifact. The host loads this artifact only for an admitted bundled or verified
+official owner. Plain configuration audit does not load the runtime entrypoint.
+The collector reads authored configuration facts; it does not resolve credentials,
+probe files, or contact the provider. Runtime collectors keep their existing
+separate lifecycle.

@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { StatementSync } from "node:sqlite";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 import * as projectGitHubSearch from "../../../extensions/github-repositories/project-search-api.js";
 import * as githubReadIdentity from "../../../extensions/github-repositories/read-identity-api.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
@@ -60,8 +61,20 @@ function mockGitHubFetch() {
 function nativeSearchConfig(host: string) {
   return {
     gateway: {
-      github: { host, apiBaseUrl: `https://${host}/api/v3` },
-      projects: { nativeGitHubSearch: true },
+      projects: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host,
+            apiBaseUrl: `https://${host}/api/v3`,
+            repositorySearch: {
+              useNativeCredentials: true,
+            },
+          },
+        },
+      },
     },
   };
 }
@@ -144,8 +157,17 @@ test("projects.searchRemote sends only the selected host's service credential", 
   const github = { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" };
   const boundConfig = {
     gateway: {
-      github,
-      controlUi: { github: { host: "ghe.example.test", token: "enterprise-service-token" } },
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...github,
+            service: { host: "ghe.example.test", token: "enterprise-service-token" },
+          },
+        },
+      },
     },
   };
   setRuntimeConfigSnapshot(boundConfig);
@@ -161,7 +183,19 @@ test("projects.searchRemote sends only the selected host's service credential", 
 
   fetchImpl.mockClear();
   const mismatchedConfig = {
-    gateway: { github, controlUi: { github: { token: "public-service-token" } } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...github,
+            service: { token: "public-service-token" },
+          },
+        },
+      },
+    },
   };
   setRuntimeConfigSnapshot(mismatchedConfig);
   expect(
@@ -176,10 +210,25 @@ test("projects.searchRemote sends only the selected host's service credential", 
 test("projects.searchRemote binds native tokens to the host through final fetch", async () => {
   const cfg = {
     ...nativeSearchConfig("a.ghe.example.test"),
-    tools: { github: { profileId: "ghp_11111111111111111111111111111111" } },
+    tools: {},
     agents: {
       entries: {
-        main: { tools: { github: { profileId: "ghp_22222222222222222222222222222222" } } },
+        main: {
+          tools: {},
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...readGitHubConfig(nativeSearchConfig("a.ghe.example.test")),
+            system: { profileId: "ghp_11111111111111111111111111111111" },
+            agents: {
+              main: { profileId: "ghp_22222222222222222222222222222222" },
+            },
+          },
+        },
       },
     },
   };
@@ -201,8 +250,16 @@ test("projects.searchRemote binds native tokens to the host through final fetch"
   fetchImpl.mockClear();
   native.mockImplementation(async () => {
     setRuntimeConfigSnapshot({
-      gateway: {
-        github: { host: "b.ghe.example.test", apiBaseUrl: "https://b.ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "b.ghe.example.test",
+              apiBaseUrl: "https://b.ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     });
     return "host-a-token";
@@ -267,9 +324,22 @@ test("registered anonymous native search does not borrow the service credential"
     .mockResolvedValue(undefined);
   const cfg = {
     gateway: {
-      github: { host: "tenant.ghe.com", apiBaseUrl: "https://api.tenant.ghe.com" },
-      controlUi: { github: { host: "tenant.ghe.com", token: "synthetic-service-token" } },
-      projects: { nativeGitHubSearch: true },
+      controlUi: {},
+      projects: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host: "tenant.ghe.com",
+            apiBaseUrl: "https://api.tenant.ghe.com",
+            service: { host: "tenant.ghe.com", token: "synthetic-service-token" },
+            repositorySearch: {
+              useNativeCredentials: true,
+            },
+          },
+        },
+      },
     },
   };
   const fetchImpl = mockGitHubFetch();
@@ -327,7 +397,6 @@ test("checkout options preserve permitted Current access without exposing paths"
 test("projects.list exposes a normalized configured default repository", async () => {
   const config = {
     gateway: {
-      github: { host: "ghe.example.test" },
       projects: {
         defaultRepository: {
           url: "https://ghe.example.test/Acme/Private-Repo.git",
@@ -336,6 +405,15 @@ test("projects.list exposes a normalized configured default repository", async (
       },
     },
     cloudWorkers: { projectProfiles: { "ghe.example.test/acme/private-repo": "example-azure" } },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host: "ghe.example.test",
+          },
+        },
+      },
+    },
   };
 
   expect(await listProjects(config)).toMatchObject({
@@ -362,15 +440,34 @@ test("projects.list exposes a normalized configured default repository", async (
 test("projects.list refuses a default repository from a replaced config during registry lookup", async () => {
   const original = {
     gateway: {
-      github: { host: "ghe.example.test" },
       projects: { defaultRepository: { url: "https://ghe.example.test/acme/private-repo.git" } },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host: "ghe.example.test",
+          },
+        },
+      },
     },
   };
   let current: OpenClawConfig = original;
   using _ = vi
     .spyOn(await import("../../projects/project-registry.js"), "listProjectRegistry")
     .mockImplementation(async () => {
-      current = { gateway: { github: { host: "github.com" } } };
+      current = {
+        gateway: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "github.com",
+              },
+            },
+          },
+        },
+      };
       return [];
     });
   expect(await listProjects(original, { getConfig: () => current })).toMatchObject({

@@ -147,7 +147,21 @@ it.each([
 ] as const)("reconciles GitHub reconnect authority: %s", async (access, scopes) => {
   const sharedIdentity = { ...system, account: { login: "admin-only-account" } };
   const request = statusRequest(sharedIdentity);
-  const config = { tools: { github: { gitAuthor: { name: "Configured author" } } } };
+  const config = {
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: {
+              profileId: "ghp_" + "a".repeat(32),
+              gitAuthor: { name: "Configured author" },
+            },
+          },
+        },
+      },
+    },
+  };
   const harness = mount(["operator.admin"], "profile-a", request, config);
   const { text, waitText, query, button, openPat } = harness;
   await waitText(["@admin-only-account"]);
@@ -360,4 +374,33 @@ it("closes setup and resets its purpose when the same Gateway snapshot changes p
   button("Manage connections").click();
   await waitForFast(() => expect(purpose()).toBe("personal"));
   expect(query(".settings-secret input")).toBeNull();
+});
+
+it("keeps unavailable canonical settings distinct from a loaded empty selection", async () => {
+  const config = {
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId: "ghp_" + "a".repeat(32), gitAuthor: { name: "Canonical author" } },
+          },
+        },
+      },
+    },
+  };
+  const harness = mount(["operator.admin"], "profile-a", statusRequest(), config);
+  await harness.waitText(["@system-account"]);
+  harness.openPat();
+  const author = () => harness.query<HTMLInputElement>('input[aria-label="Author Name"]');
+  expect(author()?.value).toBe("Canonical author");
+  // A disconnected config read is not an authoritative identity deletion.
+  harness.context.runtimeConfig.state.configForm = null;
+  harness.emit({ phase: "reconnecting" });
+  expect(author()).toMatchObject({ value: "Canonical author", disabled: true });
+  // A successful empty load clears the old clean draft through the actual Settings slot.
+  harness.context.runtimeConfig.state.configForm = {};
+  harness.emit({ phase: "connected" });
+  await harness.waitText(["@system-account"]);
+  harness.openPat();
+  expect(author()?.value).toBe("");
 });

@@ -184,4 +184,4 @@ export { resolveDefaultModelForAgent } from "../agents/model-selection-config.js
 export { resolveThinkingDefault } from "../agents/model-thinking-default.js";
 
 export { resolveMutableAgentEntry } from "../agents/agent-scope.js";
-export { applyAgentConfig } from "../commands/agents.config.js";
+export { applyAgentConfig } from "../commands/agents.config-edit.js";

@@ -28,9 +28,15 @@ vi.mock("../../../extensions/github-repositories/tool-identity-api.js", () => ({
   resolveManagedGitHubProfileDir: github.profileDir,
   resolveGitHubToolIdentityStatus: github.status,
 }));
-vi.mock("../../../extensions/github-repositories/tool-identity-config-api.js", () => ({
-  updateGitHubToolIdentityConfig: github.updateConfig,
-}));
+vi.mock(
+  "../../../extensions/github-repositories/tool-identity-config-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../extensions/github-repositories/tool-identity-config-api.js")
+    >()),
+    updateGitHubToolIdentityConfig: github.updateConfig,
+  }),
+);
 vi.mock("../../secrets/store/secret-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../secrets/store/secret-store.js")>()),
   consumeGitHubSetupHandoff: secrets.consumeHandoff,

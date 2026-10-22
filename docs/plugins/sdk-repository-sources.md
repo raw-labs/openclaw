@@ -71,8 +71,8 @@ credentials. Those retain the current native publication availability and
 `worker-github-binding.ts` owners, including turn-grant refresh and revocation.
 No additional publication provider or credential delivery owner is installed.
 
-For GitHub, current configuration remains at `gateway.github`,
-`gateway.controlUi.github`, `gateway.projects`, `tools.github`, and agent
-`tools.github` overrides. Reader-only disable does not disable repository sources;
+For GitHub, [canonical plugin configuration](/plugins/github-configuration)
+selects endpoints, shared and agent identities, and the repository-search native
+credential opt-in. Reader-only disable does not disable repository sources;
 normal plugin disable/deny removes new source admission without erasing accounts
 or accepted checkpoints.
