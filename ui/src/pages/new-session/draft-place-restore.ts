@@ -1,4 +1,4 @@
-import { parseProjectGitUrl } from "../../../../src/projects/project-git-url.ts";
+import { parseProjectGitUrl } from "../../../../extensions/github-repositories/project-url-api.ts";
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import type { DraftPlaceBrowser } from "./draft-place-browser.ts";
 import type { DraftRepositoryStateOwner } from "./draft-repository-state.ts";

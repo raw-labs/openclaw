@@ -5,6 +5,13 @@ import {
   extractErrorCode,
 } from "@openclaw/normalization-core/error-coercion";
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
+import {
+  cloneProjectCheckout,
+  ensureProjectCheckoutCommit,
+  ProjectCloneError,
+  refreshProjectCheckout,
+} from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import { parseProjectGitUrl } from "../../extensions/github-repositories/project-url-api.js";
 import { slugifyWorktreeTitle } from "../agents/worktrees/name.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveStateDir } from "../config/paths.js";
@@ -15,13 +22,6 @@ import type { OpenClawStateDatabaseOptions } from "../state/openclaw-state-db.js
 import { withOpenClawStateLease } from "../state/openclaw-state-lease.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { resolveProjectDirectory, withProjectCheckoutLifecycle } from "./project-checkout.js";
-import {
-  cloneProjectCheckout,
-  ensureProjectCheckoutCommit,
-  ProjectCloneError,
-  refreshProjectCheckout,
-} from "./project-clone-runtime.js";
-import { parseProjectGitUrl } from "./project-git-url.js";
 import {
   prepareProjectRegistration,
   registerPreparedProjectRegistry,

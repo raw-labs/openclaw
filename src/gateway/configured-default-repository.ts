@@ -1,8 +1,8 @@
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
+import { parseProjectGitUrl } from "../../extensions/github-repositories/project-url-api.js";
 import { normalizeCloudRepo } from "../config/cloud-worker-project-profiles.js";
 import { getRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { parseProjectGitUrl } from "../projects/project-git-url.js";
 
 /** Operator repository selection shared by the picker and prepared pool. */
 export function configuredDefaultRepository(

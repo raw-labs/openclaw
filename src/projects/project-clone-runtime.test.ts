@@ -3,6 +3,12 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { afterEach, expect, it, vi } from "vitest";
+import {
+  cloneProjectCheckout,
+  ProjectCloneError,
+  readProjectCheckoutRemoteHead,
+  refreshProjectCheckout,
+} from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   CommandProcessCleanupError,
@@ -10,12 +16,6 @@ import {
   recordCommandProcessFailure,
 } from "../process/exec-result.js";
 import * as processExec from "../process/exec.js";
-import {
-  cloneProjectCheckout,
-  ProjectCloneError,
-  readProjectCheckoutRemoteHead,
-  refreshProjectCheckout,
-} from "./project-clone-runtime.js";
 
 const dirs = useAutoCleanupTempDirTracker(afterEach);
 afterEach(() => {

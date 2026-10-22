@@ -1,5 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { parseProjectGitUrl } from "../../projects/project-git-url.js";
+import { parseProjectGitUrl } from "../../../extensions/github-repositories/project-url-api.js";
 import {
   RepositoryWorkerProjectSchema,
   type RepositoryWorkerProjectSnapshot,

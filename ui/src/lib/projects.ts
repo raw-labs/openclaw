@@ -1,5 +1,5 @@
+import { parseProjectGitUrl } from "../../../extensions/github-repositories/project-url-api.ts";
 import type { ProjectsListResult } from "../../../packages/gateway-protocol/src/index.js";
-import { parseProjectGitUrl } from "../../../src/projects/project-git-url.ts";
 import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
 import type { MarkdownGitHubRepositoryAliases } from "../components/markdown-github-repositories.ts";

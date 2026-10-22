@@ -1,5 +1,9 @@
 import os from "node:os";
 import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
+import {
+  readProjectCheckoutRemoteHead,
+  ProjectCloneError,
+} from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { captureSessionEntrySourceAssertion } from "../config/sessions/session-entry-source-authority.js";
 import {
@@ -9,10 +13,6 @@ import {
 } from "../config/sessions/session-source-authority.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
-import {
-  readProjectCheckoutRemoteHead,
-  ProjectCloneError,
-} from "../projects/project-clone-runtime.js";
 import { materializeProjectClone } from "../projects/project-clone.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
