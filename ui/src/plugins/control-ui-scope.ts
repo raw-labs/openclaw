@@ -129,6 +129,10 @@ export function scopeControlUiHost(
       return keep(host.subscribe(bindCallback(listener)));
     },
     sessions: services(host.sessions, { observe: 1 }),
+    sessionPullRequests: host.sessionPullRequests
+      ? services(host.sessionPullRequests, { observe: 1 })
+      : undefined,
+    presentation: host.presentation ? services(host.presentation) : undefined,
     agents: services(host.agents),
     navigation: services(host.navigation),
     dock: host.dock ? services(host.dock) : undefined,

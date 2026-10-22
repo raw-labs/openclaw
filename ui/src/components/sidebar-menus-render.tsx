@@ -8,23 +8,16 @@ import { registerAgentCreationEnglish } from "../i18n/locales/en-agent-creation.
 import { openEditor } from "../lib/editor-links.ts";
 import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../lib/gateway-methods.ts";
 import type { IdentityAvatars } from "../lib/identity-avatar-loader.ts";
-import { openExternalUrlSafe } from "../lib/open-external-url.ts";
 import { projectGateway, projectOverlays } from "../lib/reactive/application.ts";
 import { projectAgents } from "../lib/reactive/domain-capabilities.ts";
 import { t } from "../lib/reactive/i18n.ts";
 import { projectOwner } from "../lib/reactive/projection.ts";
 import { projectTheme } from "../lib/reactive/theme.ts";
-import {
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionPullRequestsForGateway,
-} from "../lib/session-pull-requests.ts";
 import { categoryClearReturnsToGroups } from "../lib/sessions/grouping.ts";
 import {
   canArchiveSessionRow,
   canDeleteSessionRows,
   resolveUiConfiguredMainKey,
-  parseAgentSessionKey,
-  scopedSessionArtifactKey,
 } from "../lib/sessions/session-key.ts";
 import {
   canCopySessionMarkdown,
@@ -32,10 +25,8 @@ import {
   runSessionNavigationAction,
 } from "../lib/sessions/session-menu-navigation.ts";
 import { showToast } from "../lib/toast.ts";
-import {
-  pluginSessionMenuActions,
-  runControlUiPluginAction,
-} from "../plugins/control-ui-actions.ts";
+import { createSessionMenuActionsProjection } from "../plugins/control-ui-action-observation.solid.ts";
+import { runControlUiPluginAction } from "../plugins/control-ui-actions.ts";
 import { renderSidebarAgentMenu as SidebarAgentMenu } from "./app-sidebar-agent-menu.tsx";
 import { renderSidebarIdentityMenu as SidebarIdentityMenu } from "./app-sidebar-identity-menu.tsx";
 import { SidebarDropdown, renderSidebarMenuAction } from "./app-sidebar-nav-menus.tsx";
@@ -140,8 +131,6 @@ export function createSessionMenuWork(
   host: SidebarMenusOwner,
   setWork: (work: SessionMenuWork | null) => void,
 ) {
-  const sessionMenuWorkOwner = {};
-  let sessionMenuWorkStore: ReturnType<typeof sessionPullRequestsForGateway> | null = null;
   let stopSessionMenuGateway: (() => void) | undefined;
   let sessionMenuWorkVersion = 0;
 
@@ -149,8 +138,6 @@ export function createSessionMenuWork(
     sessionMenuWorkVersion += 1;
     stopSessionMenuGateway?.();
     stopSessionMenuGateway = undefined;
-    sessionMenuWorkStore?.unwatch(sessionMenuWorkOwner);
-    sessionMenuWorkStore = null;
   }
 
   function loadSessionMenuWork(session: SidebarRecentSession) {
@@ -161,7 +148,6 @@ export function createSessionMenuWork(
     setWork(
       session.worktreeId
         ? {
-            pullRequestUrl: null,
             worktreePath: null,
           }
         : null,
@@ -179,21 +165,8 @@ export function createSessionMenuWork(
     if (!client) {
       return;
     }
-    const { selectedAgentId } = host.getSessionNavigationState();
-    const store = (sessionMenuWorkStore = sessionPullRequestsForGateway(context.gateway));
-    const pullRequestKey = scopedSessionArtifactKey(
-      session.key,
-      parseAgentSessionKey(session.key)?.agentId ?? selectedAgentId,
-    );
     void fetchSessionMenuWork({
       client,
-      loadPullRequests: canCallGatewayMethod(
-        context.gateway.snapshot,
-        SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-        "operator.read",
-      )
-        ? () => store.load(sessionMenuWorkOwner, pullRequestKey)
-        : undefined,
       worktreeId: session.worktreeId,
       execNode: session.execNode,
     }).then((work) => {
@@ -468,6 +441,10 @@ export function renderSidebarSessionMenuForMenus(
       ? selection()
       : null,
   );
+  const pluginActions = createSessionMenuActionsProjection(() => ({
+    runtime: !batchRows() ? context()?.plugins : undefined,
+    session: !batchRows() ? currentPluginSession() : undefined,
+  }));
   const rows = createMemo(() => batchRows() ?? [session()]);
   const archiveAllowed = createMemo(() =>
     rows().every((row) => canArchiveSessionRow(row, mainKey())),
@@ -563,11 +540,7 @@ export function renderSidebarSessionMenuForMenus(
       groups={host.knownSessionGroups()}
       currentOwner={session().owner?.actor ?? null}
       work={batchRows() ? null : menus.sessionMenuWork}
-      pluginActions={
-        !batchRows() && context()?.plugins && currentPluginSession()
-          ? pluginSessionMenuActions(context()!.plugins, currentPluginSession()!)
-          : []
-      }
+      pluginActions={pluginActions()}
       onClose={() => {
         if (menus.sessionMenu === menu) {
           menus.closeSessionMenu();
@@ -582,9 +555,6 @@ export function renderSidebarSessionMenuForMenus(
           return;
         }
         switch (action.kind) {
-          case "open-pr":
-            openExternalUrlSafe(action.url);
-            break;
           case "open-in":
             openEditor(action.editor, action.path);
             break;

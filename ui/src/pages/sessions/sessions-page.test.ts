@@ -772,25 +772,23 @@ describe("sessions page plugin actions", () => {
     const context = createContext(createGateway().gateway, managed.sessions);
     const page = await createRenderedPage(context, sessionsResult(rows, 1), "all");
     const menu = await openRowMenu(page, rows[0]!);
-    expect(menu.querySelector('[value="open-pr"]')).toBeNull();
+    expect(menu.work?.worktreePath ?? null).toBeNull();
     expect(await openRowMenu(page, rows[1]!)).toBe(menu);
 
-    earlier.resolve({ pullRequestUrl: "https://example.test/earlier", worktreePath: null });
+    earlier.resolve({ worktreePath: "/work/earlier" });
     await earlier.promise;
     await page.updateComplete;
-    expect(menu.querySelector('[value="open-pr"]')).toBeNull();
+    expect(menu.work?.worktreePath ?? null).toBeNull();
 
-    current.resolve({ pullRequestUrl: "https://example.test/current", worktreePath: null });
-    await waitForFast(() => expect(menu.work?.pullRequestUrl).toBe("https://example.test/current"));
+    current.resolve({ worktreePath: "/work/current" });
+    await waitForFast(() => expect(menu.work?.worktreePath).toBe("/work/current"));
     expect(page.querySelector("openclaw-session-menu")).toBe(menu);
-    expect(menu.querySelector('[value="open-pr"]')).not.toBeNull();
+    expect(menu.work?.worktreePath).toBe("/work/current");
 
     expect(await openRowMenu(page, rows[0]!)).toBe(menu);
-    expect(menu.querySelector('[value="open-pr"]')).toBeNull();
-    reopened.resolve({ pullRequestUrl: "https://example.test/reopened", worktreePath: null });
-    await waitForFast(() =>
-      expect(menu.work?.pullRequestUrl).toBe("https://example.test/reopened"),
-    );
+    expect(menu.work?.worktreePath ?? null).toBeNull();
+    reopened.resolve({ worktreePath: "/work/reopened" });
+    await waitForFast(() => expect(menu.work?.worktreePath).toBe("/work/reopened"));
     expect(page.querySelector("openclaw-session-menu")).toBe(menu);
     expect(load).toHaveBeenCalledTimes(3);
   });

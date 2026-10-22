@@ -489,9 +489,25 @@ keyboard traversal, and canonical English also retain their existing owners.
 This is a library boundary, not another plugin activation path. Read views retain
 native admission and remain available when the GitHub plugin is disabled; Settings
 and account/execution contributions keep their own plugin-admission contract.
-The temporary native composition adapter ends when publication and the final native
-menu reader transfer the same read store and remaining consumers atomically. No
+The temporary native composition adapter ends when publication and the remaining native
+readers transfer the same read store and remaining consumers atomically. No
 second subscription store or configuration fallback is introduced.
+
+### Observed Open PR action
+
+The GitHub browser activation registers the session **Open PR** action in sidebar
+and Sessions menus, with the native PR icon, `g` shortcut, and new-tab metadata.
+The host's `sessionPullRequests.read/observe` port borrows the same native
+connection store; displaying a menu adds one scoped interest to its existing
+replace-set union. Closing the menu or withdrawing the activation releases it.
+The action resolves the current primary PR again at dispatch, not a cached URL.
+Native translation and safe external navigation retain their current owners.
+
+Disabling or excluding the GitHub plugin removes this registered action. It does
+not remove the independently composed read views or native publication controls.
+Publication, CI request/write custody, and mobile Root/Back remain native. The
+remaining store transfer is deferred to UI-F, with all native consumers moved
+atomically; this action introduces no second browser runtime or configuration.
 
 ### Bundle boundaries
 

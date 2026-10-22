@@ -1,4 +1,5 @@
 import { defineControlUiPlugin } from "openclaw/plugin-sdk/control-ui";
+import { registerOpenPullRequestAction } from "./session-open-pull-request.ts";
 
 export { createGitHubIdentity } from "./github-identity.ts";
 export type { GitHubIdentity } from "./github-identity.ts";
@@ -11,4 +12,7 @@ export type { SettingsSource } from "./github-connections.tsx";
 export { pluginId, settingsViews } from "./settings-views.tsx";
 export { english as settingsEnglish } from "./settings-english.ts";
 
-export default defineControlUiPlugin({ id: "github-repositories", activate() {} });
+export default defineControlUiPlugin({
+  id: "github-repositories",
+  activate: registerOpenPullRequestAction,
+});

@@ -11,6 +11,11 @@ import {
   GATEWAY_STORE_TEST_HELLO,
   stubGatewayStoreTestGlobals,
 } from "../app/gateway-store.test-support.ts";
+import {
+  observeSessionMenuActions,
+  pluginSessionMenuActions,
+  runControlUiPluginAction,
+} from "./control-ui-actions.ts";
 import { controlUiPluginAssetUrls } from "./control-ui-assets.ts";
 import type { ControlUiPluginDistribution } from "./control-ui-distribution.ts";
 import { createControlUiPluginHost } from "./control-ui-host.ts";
@@ -692,3 +697,105 @@ it.each(["plugins.changed", "plugins.controlUi.changed"] as const)(
     }
   },
 );
+
+it("bounds action observations and effect authority to live registrations", async () => {
+  let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
+  const context = connectedContext(
+    {
+      gatewayUrl: localGateway(),
+      request: async (method) =>
+        method === "plugins.controlUi.list" ? catalog(descriptors) : { ok: true },
+    },
+    configForRuntime(),
+  );
+  let available = false;
+  let announce = () => {};
+  let interests = 0;
+  let withdraw = () => {};
+  let withdrawDuringResolve = false;
+  let withdrawDuringObserve = false;
+  const run = vi.fn();
+  vi.mocked(controlUiLoader.initializeControlUiPlugin).mockImplementation(
+    async (getContext, runtime, owner) => {
+      const host = createControlUiPluginHost(getContext, runtime, owner);
+      withdraw = host.ui.registerAction({
+        id: "review",
+        label: "Review",
+        placement: "session",
+        resolve() {
+          if (withdrawDuringResolve) {
+            withdraw();
+          }
+          return { hidden: !available };
+        },
+        observe(_target, changed) {
+          announce = changed;
+          interests++;
+          if (withdrawDuringObserve) {
+            withdraw();
+          }
+          return () => {
+            interests--;
+          };
+        },
+        run,
+      });
+      return Object.assign(owner, { host });
+    },
+  );
+  const runtime = runtimeFor(context);
+  runtime.start();
+  await runtime.refresh();
+  const session = { key: "agent:main:review", agentId: "main", kind: "direct", updatedAt: 1 };
+  const notified = vi.fn();
+  const close = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(1);
+  expect(pluginSessionMenuActions(runtime, session)).toEqual([]);
+  const invoke = () =>
+    runControlUiPluginAction({
+      runtime,
+      id: "review/review",
+      placement: "session",
+      sessionKey: session.key,
+      session,
+      signal: new AbortController().signal,
+    });
+  await expect(invoke()).rejects.toThrow("currently unavailable");
+  expect(run).not.toHaveBeenCalled();
+  available = true;
+  announce();
+  expect(notified).toHaveBeenCalledOnce();
+  expect(pluginSessionMenuActions(runtime, session)).toMatchObject([{ label: "Review" }]);
+  await invoke();
+  expect(run).toHaveBeenCalledOnce();
+  const retiredCallback = announce;
+  close();
+  expect(interests).toBe(0);
+  const notifications = notified.mock.calls.length;
+  retiredCallback();
+  expect(notified).toHaveBeenCalledTimes(notifications);
+  const closeAgain = observeSessionMenuActions(runtime, session, notified);
+  withdrawDuringResolve = true;
+  await expect(invoke()).rejects.toThrow();
+  expect(run).toHaveBeenCalledOnce();
+  expect(interests).toBe(0);
+  closeAgain();
+  withdrawDuringResolve = false;
+  descriptors = [pluginDescriptor("two", `${assetPath("two")}index.js`)];
+  await runtime.refresh();
+  withdrawDuringObserve = true;
+  const synchronous = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(0);
+  synchronous();
+  expect(interests).toBe(0);
+  withdrawDuringObserve = false;
+  descriptors = [pluginDescriptor("three", `${assetPath("three")}index.js`)];
+  await runtime.refresh();
+  const replacement = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(1);
+  descriptors = [];
+  await runtime.refresh();
+  expect(interests).toBe(0);
+  expect(pluginSessionMenuActions(runtime, session)).toEqual([]);
+  replacement();
+});

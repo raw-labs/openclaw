@@ -5,7 +5,9 @@ import type {
   SessionRow,
   SessionsListParams,
 } from "@openclaw/gateway-protocol";
+import type { ControlUiSessionPullRequestSnapshot } from "../gateway/control-ui-contract.js";
 import type { ControlUiComponents } from "./control-ui-components.js";
+import type { ControlUiPresentationHost } from "./control-ui-presentation.js";
 export { createSessionHeaderLink } from "./control-ui-session-link.js";
 export type {
   ControlUiAgentPickerProps,
@@ -67,6 +69,13 @@ export type ControlUiSessionListSubscription = {
   /** Fetch again; rejects on failure or when this query's lifetime has ended. */
   refresh: () => Promise<void>;
   dispose: ControlUiDisposer;
+};
+
+/** Borrowed presentation facts from the host's existing connection-scoped read owner. */
+export type ControlUiSessionPullRequestReads = {
+  readonly apiVersion: 1;
+  read: (target: BoardGetParams) => ControlUiSessionPullRequestSnapshot | undefined;
+  observe: (target: BoardGetParams, changed: () => void) => ControlUiDisposer;
 };
 
 export type ControlUiAgent = Readonly<AgentSummary>;
@@ -170,6 +179,14 @@ export type ControlUiAction = {
   id: string;
   label: string;
   placement: "composer" | "header" | "session";
+  icon?: string;
+  shortcut?: string;
+  opensExternal?: boolean;
+  /** Display-scoped interest; cleanup ends delivery and releases read interest. */
+  observe?: (
+    context: BoardGetParams & { session?: ControlUiSession; signal: AbortSignal },
+    changed: () => void,
+  ) => ControlUiDisposer;
   resolve?: (context: BoardGetParams & { session?: ControlUiSession }) => {
     label?: string;
     disabled?: boolean;
@@ -220,6 +237,8 @@ export type ControlUiHost = {
   redact: (text: string) => string;
   readonly connection: ControlUiConnection;
   readonly components: ControlUiComponents;
+  readonly sessionPullRequests?: ControlUiSessionPullRequestReads;
+  readonly presentation?: Pick<ControlUiPresentationHost, "translate">;
   /**
    * Native modules share the operator's authenticated Gateway authority.
    * The Gateway enforces connection scopes, not a per-plugin RPC allowlist.
@@ -281,6 +300,8 @@ export type ControlUiHost = {
     readonly openSessionKey: string | null;
   };
   navigation: {
+    /** Open an allowed external URL in an isolated new tab. */
+    openExternal: (url: string) => void;
     openPage: (target: ControlUiPageTarget, options?: ControlUiPageNavigationOptions) => void;
     pageHref: (
       target: ControlUiPageTarget,

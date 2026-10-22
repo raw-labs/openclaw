@@ -48,6 +48,7 @@
     "onStartup": true
   },
   "uiCapabilities": [
+    "action",
     "link-reader"
   ],
   "contracts": {
