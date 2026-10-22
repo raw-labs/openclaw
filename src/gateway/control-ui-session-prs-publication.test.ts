@@ -6,6 +6,7 @@ import {
   readKnownSessionBranchMergedHeads,
 } from "../../extensions/github-repositories/control-ui-session-prs-api.js";
 import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
+import { isGitHubPublicationSuperseded } from "../../extensions/github-repositories/publication-relevance-api.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../state/openclaw-agent-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
@@ -18,7 +19,6 @@ import {
   routedFetch,
   testGitContext,
 } from "./control-ui-session-prs.test-support.js";
-import { isGitHubPublicationSuperseded } from "./github-publication-relevance.js";
 import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
 const { prepareRead, load } = createSessionPullRequestsFixture();
@@ -202,8 +202,8 @@ it("reconciles a fourth merged PR without expanding or poisoning displayed PRs",
   const snapshot = {
     repository: "openclaw/openclaw",
     branch: testGitContext.branch,
-    source_head_commit: head,
-    workspace_tree: tree,
+    sourceHeadCommit: head,
+    workspaceTree: tree,
   };
   expect(
     await isGitHubPublicationSuperseded(snapshot, candidates.pullRequests, {
@@ -212,7 +212,7 @@ it("reconciles a fourth merged PR without expanding or poisoning displayed PRs",
   ).toBe(true);
   expect(
     await isGitHubPublicationSuperseded(
-      { ...snapshot, workspace_tree: "c".repeat(40) },
+      { ...snapshot, workspaceTree: "c".repeat(40) },
       candidates.pullRequests,
       { assertCurrent: current },
     ),

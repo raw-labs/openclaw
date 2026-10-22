@@ -29,11 +29,11 @@ import type {
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import type { DB as StateDatabase } from "../state/openclaw-state-db.generated.js";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db.js";
-import { deferSharedGitHubPublicationChanged } from "./github-publication-events.js";
+import { deferSharedGitHubPublicationChanged } from "./repository-publication-events.js";
 import {
   checkSharedWorktreeReceipt,
   matchesGitHubPublicationIdentityRow,
-} from "./github-publication-receipt.js";
+} from "./repository-publication-receipt.js";
 import type { WorkerSessionTurnClaim } from "./worker-environments/placement-record.js";
 
 type GitHubPublicationDatabase = Pick<

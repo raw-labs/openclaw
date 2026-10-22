@@ -4,20 +4,22 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { getOrCreatePromise } from "../shared/lazy-promise.js";
 import type { GitHubPublicationRow as PublicationRow } from "../state/github-publication-read.types.js";
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
-import { GitHubPublicationAuthorityLostError } from "./github-publication-execution-identity.js";
-import type { executeGitHubPublication } from "./github-publication-executor.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
-import { projectGitHubPublicationResult as publicationResult } from "./github-publication-receipt.js";
-import { readGitHubPublicationRequestInWorker } from "./github-publication-recovery.js";
-import type { reconcileGitHubPublication } from "./github-publication-recovery.js";
 import { restoreGitHubPublicationRequester } from "./github-publication-requester.js";
 import {
   claimGitHubPublicationExecutionAsync,
   createGitHubPublicationExecutionStoreAsync,
   deferGitHubPublicationRequestsAsync,
 } from "./github-publication-store-async.js";
-import type { assertGitHubPublicationWorkflowChangesAllowed } from "./github-publication-workflows.js";
+import {
+  RepositoryPublicationAuthorityLostError,
+  RepositoryPublicationRequesterUnavailableError,
+} from "./repository-publication-engine-errors.js";
+import type { executeGitHubPublication } from "./repository-publication-local-execution.js";
+import type { assertPublicationChangePermission as assertGitHubPublicationWorkflowChangesAllowed } from "./repository-publication-policy.js";
+import { projectGitHubPublicationResult as publicationResult } from "./repository-publication-receipt.js";
+import type { reconcileGitHubPublication } from "./repository-publication-recovery.js";
+import { readGitHubPublicationRequestInWorker } from "./repository-publication-recovery.js";
 import type { WorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 
 // Existing native receipts keep their GitHub format; this host owner never transports credentials.
@@ -30,8 +32,15 @@ export function createRepositoryPublicationHostExecution(params: {
   assertCurrent: () => void;
   signal: AbortSignal;
   adapter: {
-    execute: typeof executeGitHubPublication;
-    reconcile: typeof reconcileGitHubPublication;
+    execute: (
+      input: Omit<
+        Parameters<typeof executeGitHubPublication<PublicationRow>>[0],
+        "provider" | "config"
+      >,
+    ) => ReturnType<typeof executeGitHubPublication<PublicationRow>>;
+    reconcile: (
+      input: Omit<Parameters<typeof reconcileGitHubPublication<PublicationRow>>[0], "provider">,
+    ) => ReturnType<typeof reconcileGitHubPublication<PublicationRow>>;
     assertWorkflowChangesAllowed: typeof assertGitHubPublicationWorkflowChangesAllowed;
   };
 }) {
@@ -78,7 +87,7 @@ export function createRepositoryPublicationHostExecution(params: {
           signal.addEventListener("abort", revokeInvocation, { once: true });
           const getRequester = () => {
             if (!requester) {
-              throw new GitHubPublicationRequesterUnavailableError();
+              throw new RepositoryPublicationRequesterUnavailableError();
             }
             return requester;
           };
@@ -95,7 +104,7 @@ export function createRepositoryPublicationHostExecution(params: {
               invocationSignal?.throwIfAborted();
               assertInvocationCurrent?.();
               if (!validateCustody() || lifecycleRevision === undefined) {
-                throw new GitHubPublicationAuthorityLostError(
+                throw new RepositoryPublicationAuthorityLostError(
                   "GitHub publication source custody changed.",
                 );
               }
@@ -110,7 +119,7 @@ export function createRepositoryPublicationHostExecution(params: {
                 invocationSignal?.throwIfAborted();
                 assertInvocationCurrent?.();
                 if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
+                  throw new RepositoryPublicationAuthorityLostError(
                     "GitHub publication source custody changed.",
                   );
                 }
@@ -131,7 +140,7 @@ export function createRepositoryPublicationHostExecution(params: {
                 params.adapter.assertWorkflowChangesAllowed(getRequester()),
               prepareAuthority: async () => {
                 if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
+                  throw new RepositoryPublicationAuthorityLostError(
                     "GitHub publication execution custody changed before requester preparation.",
                   );
                 }
@@ -145,7 +154,7 @@ export function createRepositoryPublicationHostExecution(params: {
                   );
                 });
                 if (!validateCustody()) {
-                  throw new GitHubPublicationAuthorityLostError(
+                  throw new RepositoryPublicationAuthorityLostError(
                     "GitHub publication execution custody changed during requester preparation.",
                   );
                 }
@@ -190,11 +199,11 @@ export function createRepositoryPublicationHostExecution(params: {
               },
             });
           } catch (error) {
-            if (!(error instanceof GitHubPublicationRequesterUnavailableError)) {
+            if (!(error instanceof RepositoryPublicationRequesterUnavailableError)) {
               throw error;
             }
             if (!validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
+              throw new RepositoryPublicationAuthorityLostError(
                 "GitHub publication execution custody changed before reconciliation.",
               );
             }
@@ -207,7 +216,7 @@ export function createRepositoryPublicationHostExecution(params: {
               },
             );
             if (!current || !validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
+              throw new RepositoryPublicationAuthorityLostError(
                 "GitHub publication execution custody changed during reconciliation.",
               );
             }
@@ -230,7 +239,7 @@ export function createRepositoryPublicationHostExecution(params: {
               }
             }
             if (!validateCustody()) {
-              throw new GitHubPublicationAuthorityLostError(
+              throw new RepositoryPublicationAuthorityLostError(
                 "GitHub publication execution custody changed during reconciliation.",
               );
             }

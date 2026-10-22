@@ -24,7 +24,6 @@ import {
   linkCanonicalUserProfileEmail,
   setCanonicalUserProfileRole,
 } from "../state/user-profile-writes.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import { prepareGitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import {
@@ -51,6 +50,7 @@ import {
 } from "./operator-access-policy.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./repository-publication-engine-errors.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import { createWorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 
@@ -150,7 +150,7 @@ describe("shared GitHub publication requester authority", () => {
       await expect(
         prepareGitHubPublicationRequesterV2({ client, context }, session),
         label,
-      ).rejects.toThrow(GitHubPublicationRequesterUnavailableError);
+      ).rejects.toThrow(RepositoryPublicationRequesterUnavailableError);
     }
     const source = (await captureGatewayOperatorRunAuthority({
       client: f.guestSource.client,
@@ -500,7 +500,7 @@ describe("shared GitHub publication requester authority", () => {
           vi.setSystemTime(first.expiresAt!);
         }
         expect(original.requester.assertCurrent).toThrow(
-          GitHubPublicationRequesterUnavailableError,
+          RepositoryPublicationRequesterUnavailableError,
         );
         await visitors.execute("visitor_invite", { email, days: 2 });
         const replacement = (await visitors.store.lookup(email))!;
@@ -519,7 +519,7 @@ describe("shared GitHub publication requester authority", () => {
         await setCanonicalUserProfileRole(f.guestProfile, "maintainer");
         invalidateOperatorRolePolicy(f.guestProfile);
         expect(original.requester.assertCurrent).toThrow(
-          GitHubPublicationRequesterUnavailableError,
+          RepositoryPublicationRequesterUnavailableError,
         );
         await f.placements.releaseTurn(claim);
         original.release();
@@ -563,7 +563,7 @@ describe("shared GitHub publication requester authority", () => {
         expect(accepted.status).toBe("requested");
         expect(f.readRequester(accepted.requestId)).toEqual(f.guest.snapshot);
         f.guestSource.release();
-        expect(f.guest.assertCurrent).toThrow(GitHubPublicationRequesterUnavailableError);
+        expect(f.guest.assertCurrent).toThrow(RepositoryPublicationRequesterUnavailableError);
       } else if (change === "identity merged") {
         await linkCanonicalUserProfileEmail(email, f.maintainerProfile);
       } else {

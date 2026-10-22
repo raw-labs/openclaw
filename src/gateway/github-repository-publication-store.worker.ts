@@ -18,14 +18,14 @@ import { ensureRepositoryGitHubPublicationSchema } from "../state/openclaw-state
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import type { DB } from "../state/openclaw-state-db.generated.js";
 import type { OpenClawStateDatabase } from "../state/openclaw-state-db.js";
-import { deferSharedGitHubPublicationChanged } from "./github-publication-events.js";
-import { assertReadableSharedGitHubPublication } from "./github-publication-receipt.js";
 import { listRepositoryGitHubPublicationsInDatabase } from "./github-repository-publication-read.worker.js";
 import { terminalRepositoryGitHubPublication } from "./github-repository-publication-store.js";
 import {
   checkRepositoryGitHubPublication as checked,
   repositoryGitHubPublicationDigest,
 } from "./github-repository-publication.kernel.js";
+import { deferSharedGitHubPublicationChanged } from "./repository-publication-events.js";
+import { assertReadableSharedGitHubPublication } from "./repository-publication-receipt.js";
 
 const checkpointColumns = [
   "checkpoint_ref",

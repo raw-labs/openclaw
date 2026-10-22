@@ -1,4 +1,7 @@
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
+import { readRuntimeConfig } from "../config/runtime-snapshot.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
+import type { GitHubPublicationRequesterPolicyV2 } from "./github-publication-requester.js";
 
 /** Linked identity only. The caller retains current session, role and connection authority. */
 export function captureOwnGitHubPullRequestReader(profileId: string, getHost: () => string) {
@@ -30,6 +33,25 @@ export function captureOwnGitHubPullRequestReader(profileId: string, getHost: ()
           "Your linked GitHub identity changed; retry inspection with your current account.",
         );
       }
+    },
+  };
+}
+
+/** Native requester admission selects this one linked-account reader before vendor code runs. */
+export function prepareOwnGitHubPullRequestReader(requester: GitHubPublicationRequesterPolicyV2) {
+  requester.assertCurrent();
+  const actor = requester.snapshot.actor;
+  if (actor.kind !== "operator") {
+    throw new Error("Inspecting your PR requires your verified linked GitHub account.");
+  }
+  const reader = captureOwnGitHubPullRequestReader(actor.profileId, () =>
+    resolveConfiguredGitHubHost(readRuntimeConfig()),
+  );
+  return {
+    ...reader,
+    assertCurrent() {
+      requester.assertCurrent();
+      reader.assertCurrent();
     },
   };
 }

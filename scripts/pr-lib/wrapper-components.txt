@@ -828,11 +828,11 @@ src/daemon/service-process-env.ts
 src/gateway/chat-display-projection.helpers.ts
 src/gateway/control-ui-bootstrap-contract.ts
 src/gateway/control-ui-session-diff-revision.ts
-src/gateway/control-ui-session-prs-git.runtime.ts
-src/gateway/control-ui-session-prs-landing.ts
-src/gateway/github-publication-base.ts
+extensions/github-repositories/remote-api.ts
+src/infra/repository-checkout-landing.ts
+src/gateway/repository-publication-git-config.ts
 src/gateway/github-remote.ts
-src/gateway/github-repository-publication-snapshot.ts
+src/gateway/repository-publication-snapshot.ts
 src/gateway/model-account-connect-errors.ts
 src/gateway/operator-scopes.ts
 src/gateway/security-path.ts
@@ -1496,6 +1496,7 @@ src/plugins/loader-cache-state.ts
 src/plugins/managed-npm-retention-contract.ts
 src/plugins/managed-npm-retention.ts
 src/plugins/management-lifecycle-error.ts
+src/plugins/manifest-repository-sources.ts
 src/plugins/manifest-capability-normalizers.ts
 src/plugins/manifest-command-aliases.ts
 src/plugins/manifest-config-groups.ts

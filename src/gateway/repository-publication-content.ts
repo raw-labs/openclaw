@@ -1,10 +1,14 @@
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { prepareGitCoauthorAttribution } from "../agents/git-coauthor-attribution.js";
 import { resolveControlUiPublicSessionUrl } from "../config/control-ui-link-base.js";
 import { resolveSessionPublicShare } from "../config/sessions/session-public-share.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { GitHubPublicationCreditChangedError } from "./github-publication-failure.js";
-import type { RepositoryPublicationContentFactsV1 } from "./repository-publication-content-contract.js";
+import {
+  RepositoryPublicationCreditChangedError,
+  type RepositoryPublicationContentHostV1,
+  type RepositoryPublicationContentFactsV1,
+} from "./repository-publication-content-contract.js";
 
 /** Reuse the accepted owner's retained read; formatting never selects session storage. */
 export async function prepareRepositoryPublicationContentFacts(params: {
@@ -37,7 +41,7 @@ export async function prepareRepositoryPublicationContentFacts(params: {
     assertCurrent() {
       params.assertCurrent();
       if (!prepared.isCurrent()) {
-        throw new GitHubPublicationCreditChangedError();
+        throw new RepositoryPublicationCreditChangedError();
       }
     },
     currentSessionUrl() {
@@ -48,5 +52,18 @@ export async function prepareRepositoryPublicationContentFacts(params: {
         ? sessionUrl
         : undefined;
     },
+  };
+}
+
+/** Adapt the current native receipt without moving attribution or sharing custody. */
+export function createRepositoryPublicationContentHostV1(
+  params: Omit<Parameters<typeof prepareRepositoryPublicationContentFacts>[0], "host">,
+): RepositoryPublicationContentHostV1 {
+  return {
+    prepare: () =>
+      prepareRepositoryPublicationContentFacts({
+        ...params,
+        host: resolveConfiguredGitHubHost(params.config),
+      }),
   };
 }

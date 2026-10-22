@@ -1,9 +1,14 @@
 import { readRepositoryPersistedConfig } from "openclaw/plugin-sdk/config-mutation";
 import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
-import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
+import type { RepositoryPublicationApi } from "openclaw/plugin-sdk/repository-publication-engine";
+import {
+  captureRepositoryServiceHost,
+  installRepositoryPublicationProvider,
+} from "openclaw/plugin-sdk/repository-session-host";
 import { installRepositorySource } from "openclaw/plugin-sdk/repository-sources";
 import { installRepositoryServices } from "../account-runtime-api.js";
 import { createGitHubOAuthLifecycle } from "../oauth-lifecycle-runtime-api.js";
+import { createGitHubPublicationProvider } from "../publication-provider-api.js";
 import { createGitHubRepositorySource } from "../repository-source-api.js";
 import { startGitHubSessionPresentation } from "../session-presentation-service-api.js";
 import { cleanupRetiredManagedGitHubProfiles } from "../tool-profile-cleanup-api.js";
@@ -45,9 +50,12 @@ export function createRepositoryAccountService(
       let uninstall: (() => void) | undefined = undefined;
       let presentation: ReturnType<typeof startGitHubSessionPresentation> | undefined = undefined;
       let uninstallSource: (() => void) | undefined = undefined;
+      let publication: RepositoryPublicationApi | undefined;
+      let uninstallPublication: (() => void) | undefined;
       // Failed startup retains custody before a constructor can acquire subscriptions.
       stop = async () => {
         uninstallSource?.();
+        uninstallPublication?.();
         uninstall?.();
         await Promise.all([oauth?.stop(), presentation?.stop()]);
       };
@@ -57,11 +65,26 @@ export function createRepositoryAccountService(
         getPersistedConfig: readRepositoryPersistedConfig,
         warn: (message) => service.logger.warn(message),
       });
+      const currentOauth = oauth;
+      if (host.publicationAvailable) {
+        const installed = await installRepositoryPublicationProvider(
+          createGitHubPublicationProvider({
+            signal,
+            assertCurrent,
+            getConfig: host.getConfig,
+            refreshIdentity: (agentId) => currentOauth.refreshEffectiveIdentity(agentId),
+            refreshPersonal: (owner) => currentOauth.personal.refresh(owner),
+          }),
+        );
+        uninstallPublication = installed.uninstall;
+        publication = installed.api;
+        assertCurrent();
+      }
       presentation = startGitHubSessionPresentation({
         scheduler: service.scheduler,
         getConfig: host.getConfig,
       });
-      uninstall = installRepositoryServices(host.identity, { oauth }, signal);
+      uninstall = installRepositoryServices(host.identity, { oauth, publication }, signal);
       uninstallSource = installRepositorySource(
         createGitHubRepositorySource(host.getConfig, async (agentId) => {
           assertCurrent();

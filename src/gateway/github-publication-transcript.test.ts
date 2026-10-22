@@ -2,6 +2,7 @@ import "../test-utils/prepare-compiled-subprocesses.js";
 import { DatabaseSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatGitHubPublicationTranscript } from "../../extensions/github-repositories/publication-transcript-api.js";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/index.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useSqliteWorkerFault } from "../../test/helpers/sqlite-worker-fault.js";
@@ -20,7 +21,7 @@ import {
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { reportGitHubPublicationTranscript } from "./github-publication-transcript.js";
+import { reportRepositoryPublicationTranscript } from "./repository-publication-transcript.js";
 
 const reportFault = useSqliteWorkerFault([
   {
@@ -66,10 +67,10 @@ function report(
   result: SessionGitHubPublicationResult,
   markReportedAsync: (requestId: string) => Promise<void>,
 ) {
-  return reportGitHubPublicationTranscript(
+  return reportRepositoryPublicationTranscript(
     () => import("./session-utils.js"),
-    { markReportedAsync },
-    { ...identity, result },
+    markReportedAsync,
+    { ...identity, requestId: result.requestId, ...formatGitHubPublicationTranscript(result) },
   );
 }
 
@@ -159,16 +160,16 @@ describe("GitHub publication transcript reporting", () => {
       const markReportedAsync = vi.fn().mockResolvedValue(undefined);
       const sql = observeHostDataSql();
       try {
-        await reportGitHubPublicationTranscript(
-          loadRuntime,
-          { markReportedAsync },
-          { ...session, result },
-        );
-        await reportGitHubPublicationTranscript(
-          loadRuntime,
-          { markReportedAsync },
-          { ...session, result },
-        );
+        await reportRepositoryPublicationTranscript(loadRuntime, markReportedAsync, {
+          ...session,
+          requestId: result.requestId,
+          ...formatGitHubPublicationTranscript(result),
+        });
+        await reportRepositoryPublicationTranscript(loadRuntime, markReportedAsync, {
+          ...session,
+          requestId: result.requestId,
+          ...formatGitHubPublicationTranscript(result),
+        });
         const events = await loadTranscriptEvents({
           ...session,
           storePath: location.path,

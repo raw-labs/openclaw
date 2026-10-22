@@ -6,7 +6,6 @@ import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { readGitHubPublicationSessionLifecycle } from "../state/github-publication-session-lifecycles.worker.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
 import { readGitHubPublicationRequest } from "./github-publication-store.worker.js";
 import {
   BRANCH,
@@ -17,7 +16,7 @@ import {
   commands,
   createRealPublicationWorkspace,
   createTestGitHubPublicationCoordinator,
-  createTestGitHubPublicationRuntime as createGitHubPublicationRuntime,
+  createTestGitHubPublicationRuntime as createRepositoryPublicationRuntime,
   githubPublicationTestMocks,
   installGitHubPublicationTestHarness,
   persistClaimPublicationWorkspace,
@@ -27,6 +26,7 @@ import {
   root,
   seedLocalPublication,
 } from "./github-publication.test-support.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./repository-publication-engine-errors.js";
 import {
   REQUEST,
   seedActivePlacement,
@@ -292,7 +292,7 @@ describe("Gateway GitHub publication boundaries", () => {
         ...sessionRequest(`shared-authority-after-${boundary}`),
         assertCurrent: () => {
           if (!current) {
-            throw new GitHubPublicationRequesterUnavailableError();
+            throw new RepositoryPublicationRequesterUnavailableError();
           }
         },
       });
@@ -630,7 +630,7 @@ describe("Gateway GitHub publication boundaries", () => {
   it("defers snapshot preparation failures without blocking workspace acceptance", async () => {
     const { database, placements, claim: claimTurn } = await cloudFixture();
     const claim = await claimTurn("run-snapshot-failure", "claim-snapshot-failure");
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements,
       loadSessionRuntime: async () => {
         throw new Error("not used");

@@ -13,7 +13,6 @@ import {
   withStateMigrationBackupForTest,
 } from "../state/openclaw-state-schema.test-support.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
-import { digestGitHubPublicationRequest } from "./github-publication-receipt.js";
 import {
   createGitHubPublicationRequesterFixture,
   createRequesterPublicationFixture,
@@ -21,6 +20,7 @@ import {
   holdWorkerTurn,
 } from "./github-publication-requester.test-support.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication.kernel.js";
+import { digestGitHubPublicationRequest } from "./repository-publication-receipt.js";
 
 const mocks = githubPublicationTestMocks();
 const checkpoint = vi.hoisted(() => vi.fn());

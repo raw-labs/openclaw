@@ -1,7 +1,6 @@
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginGatewayAccessAuthority } from "../plugins/gateway-access-policy.types.js";
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
 import {
   decodeGitHubPublicationRequester,
@@ -11,8 +10,8 @@ import type { GitHubPublicationSourceSelector } from "../state/github-publicatio
 import { UserProfileMutationUnsettledError } from "../state/user-profile-events.js";
 import { prepareUserProfileIdentity } from "../state/user-profile-list.js";
 import type { UserProfileAccessFacts } from "../state/user-profiles.types.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
+import { registerGitHubPublicationRequesterV2 } from "./github-publication-requester-capability.js";
 import {
   prepareGitHubPublicationSource,
   type GitHubPublicationSourceCapability,
@@ -26,6 +25,7 @@ import {
   resolveOperatorRolePolicyForAssignment,
 } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./repository-publication-engine-errors.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import { prepareSessionCreatorProfile } from "./session-creator.js";
@@ -49,7 +49,7 @@ function assertPublicationIncognitoAccess(
     scopes: [...scopes],
   });
   if (authorizeIncognitoSessionTarget({ client, sessionKey, target: null })) {
-    throw new GitHubPublicationRequesterUnavailableError();
+    throw new RepositoryPublicationRequesterUnavailableError();
   }
 }
 
@@ -91,17 +91,6 @@ export type GitHubPublicationRequesterPolicyV2 = GitHubPublicationRequesterPolic
   }>;
 export type GitHubPublicationRequesterV2 = GitHubPublicationRequesterPolicyV2 &
   Pick<GitHubPublicationRequester, "assertInvocationCurrent">;
-const workerRequesters = resolveGlobalSingleton(
-  Symbol.for("openclaw.githubPublicationWorkerRequesters"),
-  () => new WeakSet<GitHubPublicationRequesterPolicy>(),
-);
-
-/** Classify before invoking any released assertion; a failed worker command never selects legacy. */
-export function isGitHubPublicationRequesterV2(
-  requester: GitHubPublicationRequesterPolicy,
-): requester is GitHubPublicationRequesterPolicyV2 {
-  return workerRequesters.has(requester);
-}
 
 function prepareRequesterPolicy(
   snapshot: GitHubPublicationRequesterSnapshot,
@@ -121,7 +110,7 @@ function prepareRequesterPolicy(
     }
     try {
       if (!identity) {
-        throw new GitHubPublicationRequesterUnavailableError();
+        throw new RepositoryPublicationRequesterUnavailableError();
       }
       return identity.readCurrentFacts(snapshot.grant?.aliasBindingIds);
     } catch (error) {
@@ -131,7 +120,7 @@ function prepareRequesterPolicy(
           { cause: error },
         );
       }
-      throw new GitHubPublicationRequesterUnavailableError();
+      throw new RepositoryPublicationRequesterUnavailableError();
     }
   };
   const assertRole = (profile: UserProfileAccessFacts | undefined, config: OpenClawConfig) => {
@@ -157,7 +146,7 @@ function prepareRequesterPolicy(
         }) ||
           (role.accessPolicyPlugin && role.accessPolicyPlugin !== snapshot.grant?.pluginId)))
     ) {
-      throw new GitHubPublicationRequesterUnavailableError();
+      throw new RepositoryPublicationRequesterUnavailableError();
     }
     return role;
   };
@@ -190,7 +179,7 @@ function prepareRequesterPolicy(
           current.aliases,
         )(facts.target.entry.createdActor)
       ) {
-        throw new GitHubPublicationRequesterUnavailableError();
+        throw new RepositoryPublicationRequesterUnavailableError();
       }
       if (
         authorizePreparedSessionMutation({ cfg: config, client, ...session }, facts, {
@@ -200,7 +189,7 @@ function prepareRequesterPolicy(
           authorizesAgentRun: false,
         })
       ) {
-        throw new GitHubPublicationRequesterUnavailableError();
+        throw new RepositoryPublicationRequesterUnavailableError();
       }
     }
     return current?.profile;
@@ -214,7 +203,7 @@ function prepareRequesterPolicy(
         onPolicy?.(authority);
       } catch (error) {
         if (error instanceof GatewayOperatorAccessDeniedError) {
-          throw new GitHubPublicationRequesterUnavailableError();
+          throw new RepositoryPublicationRequesterUnavailableError();
         }
         throw error;
       }
@@ -237,7 +226,7 @@ export async function prepareGitHubPublicationRequesterV2(
   let sessionFacts: PreparedPublicationSession | undefined;
   const lifetime = new AbortController();
   const release = () => {
-    lifetime.abort(new GitHubPublicationRequesterUnavailableError());
+    lifetime.abort(new RepositoryPublicationRequesterUnavailableError());
     sessionFacts?.release();
     identity?.release();
     source?.release();
@@ -254,7 +243,7 @@ export async function prepareGitHubPublicationRequesterV2(
       options.client?.connect.role !== "operator" ||
       (source && source.authority.gatewayAccessGrant === undefined)
     ) {
-      throw new GitHubPublicationRequesterUnavailableError();
+      throw new RepositoryPublicationRequesterUnavailableError();
     }
     let grant: GitHubPublicationRequesterSnapshot["grant"] = null;
     if (source) {
@@ -305,12 +294,12 @@ export async function prepareGitHubPublicationRequesterV2(
       try {
         signal.throwIfAborted();
         if (options.hasCurrentClientAuthority?.() === false) {
-          throw new GitHubPublicationRequesterUnavailableError();
+          throw new RepositoryPublicationRequesterUnavailableError();
         }
         options.sessionMutationAuthorization?.assertCurrent();
         source?.authority.assertCurrent();
       } catch {
-        throw new GitHubPublicationRequesterUnavailableError();
+        throw new RepositoryPublicationRequesterUnavailableError();
       }
     };
     const requester: GitHubPublicationRequesterV2 = Object.freeze({
@@ -326,7 +315,7 @@ export async function prepareGitHubPublicationRequesterV2(
       async prepareSource(selector: GitHubPublicationSourceSelector) {
         requester.assertCurrent();
         if (selector.agentId !== session.agentId || selector.sessionKey !== session.sessionKey) {
-          throw new GitHubPublicationRequesterUnavailableError();
+          throw new RepositoryPublicationRequesterUnavailableError();
         }
         sessionFacts ??= await preparePublicationSession(
           session,
@@ -357,7 +346,7 @@ export async function prepareGitHubPublicationRequesterV2(
         });
       },
     });
-    workerRequesters.add(requester);
+    registerGitHubPublicationRequesterV2(requester);
     requester.assertCurrent();
     return { requester, release };
   } catch (error) {
@@ -374,7 +363,7 @@ export async function restoreGitHubPublicationRequester(
 ): Promise<GitHubPublicationRequesterPolicyV2 & { release: () => void }> {
   const snapshot = decodeGitHubPublicationRequester(json);
   if (!snapshot) {
-    throw new GitHubPublicationRequesterUnavailableError();
+    throw new RepositoryPublicationRequesterUnavailableError();
   }
   let identity: PreparedProfileIdentity | undefined;
   let sessionFacts: PreparedPublicationSession | undefined;
@@ -396,7 +385,7 @@ export async function restoreGitHubPublicationRequester(
     }
   }
   const release = () => {
-    lifetime.abort(new GitHubPublicationRequesterUnavailableError());
+    lifetime.abort(new RepositoryPublicationRequesterUnavailableError());
     sessionFacts?.release();
     identity?.release();
   };
@@ -423,7 +412,7 @@ export async function restoreGitHubPublicationRequester(
       async prepareSource(selector: GitHubPublicationSourceSelector) {
         requester.assertCurrent();
         if (selector.agentId !== session.agentId || selector.sessionKey !== session.sessionKey) {
-          throw new GitHubPublicationRequesterUnavailableError();
+          throw new RepositoryPublicationRequesterUnavailableError();
         }
         sessionFacts ??= await preparePublicationSession(session, getCommittedRuntimeConfig());
         requester.assertCurrent();
@@ -453,7 +442,7 @@ export async function restoreGitHubPublicationRequester(
       },
       release,
     });
-    workerRequesters.add(requester);
+    registerGitHubPublicationRequesterV2(requester);
     requester.assertCurrent();
     return requester;
   } catch (error) {

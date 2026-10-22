@@ -29,6 +29,8 @@ import { getHealthCache } from "./server/health-state.js";
 import { invalidateGatewayPolicyClient } from "./server/ws-policy-close.js";
 import { resolveSessionRequestTargets } from "./session-request-targets.js";
 import { bindSessionRowProjection } from "./session-row-projection-access.js";
+import { bindWorkspacePublicationHost } from "./workspace-publication-binding.js";
+import type { WorkspacePublicationHost } from "./workspace-publication-provider.js";
 
 type GatewayCoreRuntime = Awaited<ReturnType<typeof startGatewayCoreRuntime>>;
 
@@ -101,6 +103,7 @@ type GatewayRequestContextRuntime = Pick<
     | "getAttachedGatewayMethodRegistry"
   > & {
     repositorySources?: import("./repository-sources.js").RepositorySources;
+    workspacePublicationHost?: WorkspacePublicationHost;
     sessionObserver: NonNullable<GatewayRequestContext["sessionObserver"]>;
     sessionActivitySummaries?: GatewayRequestContext["sessionActivitySummaries"];
     channelAdmissionAudit?: GatewayRequestContext["channelAdmissionAudit"];
@@ -534,9 +537,9 @@ export function createGatewayRequestContext(
     ...(runtime.workerPlacementControlAvailable
       ? { workerPlacementDispatchService: runtime.workerPlacementControlAvailable }
       : {}),
-    ...(runtime.githubPublicationService
-      ? { githubPublicationService: runtime.githubPublicationService }
-      : {}),
+    get githubPublicationService() {
+      return runtime.workspacePublicationHost?.coordinator ?? runtime.githubPublicationService;
+    },
     repositorySources: runtime.repositorySources,
     terminalSessions: runtime.terminalSessions,
     agentRunSeq: runtime.agentRunSeq,
@@ -578,5 +581,8 @@ export function createGatewayRequestContext(
     broadcastVoiceWakeRoutingChanged: runtime.broadcastVoiceWakeRoutingChanged,
     unavailableGatewayMethods: runtime.unavailableGatewayMethods,
   };
+  if (runtime.workspacePublicationHost) {
+    bindWorkspacePublicationHost(context, runtime.workspacePublicationHost);
+  }
   return bindSessionRowProjection(context, runtime.getSessionRowProjection);
 }

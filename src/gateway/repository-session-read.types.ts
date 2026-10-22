@@ -67,7 +67,7 @@ export type PreparedRepositorySessionRead = RepositorySessionObservation & {
   readonly viewerProfileId?: string;
   readonly ownGitHubIdentity?: string;
   readonly inspectBoundPullRequest?: () => ReturnType<
-    typeof import("./github-publication-inspect.js").readOwnGitHubPullRequest
+    typeof import("../../extensions/github-repositories/publication-inspect-api.js").readOwnGitHubPullRequest
   >;
   readonly taskAudienceKey?: string;
   readonly includesTaskPublications: boolean;

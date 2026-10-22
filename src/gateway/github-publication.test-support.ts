@@ -5,6 +5,8 @@ import path from "node:path";
 import { StatementSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeEach, expect, onTestFinished, vi } from "vitest";
+import { currentGitHubPublicationConfig } from "../../extensions/github-repositories/publication-availability-api.js";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
@@ -35,14 +37,15 @@ import {
   openOpenClawStateDatabase,
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { currentGitHubPublicationConfig } from "./github-publication-availability.js";
+import { createPublicationCommandFixture } from "./github-publication-command.test-support.js";
 import {
   prepareGitHubPublicationRequesterV2,
   type GitHubPublicationRequesterV2,
 } from "./github-publication-requester.js";
-import { createGitHubPublicationRuntime as createRuntime } from "./github-publication-runtime.js";
-import { createGitHubPublicationCoordinator as createCoordinator } from "./github-publication.js";
+import { createGitHubPublicationCoordinator as createCoordinator } from "./repository-publication-engine.js";
+import { createRepositoryPublicationRuntime as createRuntime } from "./repository-publication-service.js";
 import { REQUEST } from "./worker-environments/placement-dispatch-test-fixtures.js";
 import {
   createWorkerSessionPlacementStore,
@@ -161,6 +164,11 @@ vi.mock("../process/exec.js", async (importOriginal) => ({
   runCommandBuffered: mocks.runCommand,
 }));
 
+vi.mock("openclaw/plugin-sdk/process-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/process-runtime")>()),
+  runCommandBuffered: mocks.runCommand,
+}));
+
 vi.mock("../secrets/runtime-state.js", () => ({
   getActiveSecretsRuntimeConfigSnapshot: mocks.getConfigSnapshot,
 }));
@@ -236,15 +244,41 @@ function withSystemRequesterFixture(coordinator: ReturnType<typeof createCoordin
   });
 }
 
-type PublicationFixtureOptions<T> = Omit<T, "getCommittedRuntimeConfig"> & {
+type PublicationFixtureOptions<T> = Omit<
+  T,
+  "getCommittedRuntimeConfig" | "provider" | "formatReport" | "context" | "signal"
+> & {
   getCommittedRuntimeConfig?: () => OpenClawConfig;
 };
+
+export function createTestPublicationProvider(
+  getConfig = currentGitHubPublicationConfig,
+  controller = new AbortController(),
+) {
+  onTestFinished(() => controller.abort());
+  return createGitHubPublicationProvider({
+    signal: controller.signal,
+    assertCurrent: () => controller.signal.throwIfAborted(),
+    getConfig,
+    refreshIdentity: mocks.refreshIdentity,
+    refreshPersonal: mocks.refreshIdentity,
+  });
+}
 
 export function createTestGitHubPublicationRuntime({
   getCommittedRuntimeConfig = currentGitHubPublicationConfig,
   ...params
 }: PublicationFixtureOptions<Parameters<typeof createRuntime>[0]>) {
-  const runtime = createRuntime({ ...params, getCommittedRuntimeConfig });
+  const controller = new AbortController();
+  const provider = createTestPublicationProvider(getCommittedRuntimeConfig, controller);
+  const runtime = createRuntime({
+    ...params,
+    getCommittedRuntimeConfig,
+    provider,
+    formatReport: provider.formatReport,
+    context: captureOpenClawStateWorkerContext(),
+    signal: controller.signal,
+  });
   onTestFinished(() => runtime.close());
   return { ...runtime, coordinator: withSystemRequesterFixture(runtime.coordinator) };
 }
@@ -257,7 +291,13 @@ export function createTestGitHubPublicationCoordinator(
     placements: createWorkerSessionPlacementStore({ database: openOpenClawStateDatabase() }),
   },
 ) {
-  return withSystemRequesterFixture(createCoordinator({ ...params, getCommittedRuntimeConfig }));
+  const provider = createTestPublicationProvider(getCommittedRuntimeConfig);
+  return Object.assign(
+    withSystemRequesterFixture(
+      createCoordinator({ ...params, getCommittedRuntimeConfig, provider }),
+    ),
+    { provider },
+  );
 }
 
 export const SESSION_KEY = "agent:main:dashboard:publication";
@@ -436,7 +476,13 @@ export async function withPublicationWorktreeSqlBoundary<T>(
 
 export let root: string;
 export let commands: string[][];
-export let commandCalls: Array<{ argv: string[]; input?: string }>;
+export let commandCalls: Array<{
+  argv: string[];
+  input?: string;
+  hooksPath?: string;
+  authorizationTarget?: string;
+  credentialHelperDisabled?: boolean;
+}>;
 let sessionCreation: ReturnType<typeof buildSessionCreationStamp> | undefined;
 let realWorktree = false;
 
@@ -581,11 +627,12 @@ export function installGitHubPublicationTestHarness(
     mocks.matchesIdentity.mockReturnValue(true);
     mocks.prepareIdentity.mockResolvedValue({
       source: "system-configured",
+      host: "github.com",
       profileId: "ghp_11111111111111111111111111111111",
       account: { accountId: 42, login: "roboclaw-bot", avatarUrl: null },
       env: {
         GH_CONFIG_DIR: "/private/github-profile",
-        GH_TOKEN: undefined,
+        GH_TOKEN: "synthetic-publication-credential",
         GITHUB_TOKEN: undefined,
       },
     });
@@ -628,76 +675,19 @@ export function installGitHubPublicationTestHarness(
       [`git rev-parse ${BASE_HEAD}^{tree}`]: ["e".repeat(40) + "\n"],
       "git rev-parse --verify --end-of-options origin/main^{commit}": [`${BASE_HEAD}\n`],
     };
-    let remotePublished = false;
-    mocks.runCommand.mockImplementation(async (argv: string[], options?: { input?: string }) => {
-      commands.push(argv);
-      commandCalls.push({ argv, input: options?.input });
-      const command = argv.join(" ");
-      if (replies[command]) {
-        return commandResult(...replies[command]);
-      }
-
-      if (
-        command.startsWith(
-          "gh api --hostname github.com repos/openclaw/openclaw --jq {fork, default_branch, parent:",
-        )
-      ) {
-        return commandResult('{"fork":false,"default_branch":"main"}\n');
-      }
-      const baseRefPrefix = "gh api --hostname github.com repos/openclaw/openclaw/git/ref/heads/";
-      if (command.startsWith(baseRefPrefix)) {
-        const branch = command.slice(baseRefPrefix.length).split(" --jq", 1)[0];
-        return commandResult(JSON.stringify({ ref: `refs/heads/${branch}`, sha: BASE_HEAD }));
-      }
-
-      if (argv.includes("--includes") && argv.includes("--get-regexp")) {
-        return commandResult("", 1);
-      }
-      if (command.startsWith("git ls-tree -r -z --full-tree ")) {
-        return commandResult();
-      }
-      if (argv.includes("rev-parse") && argv.includes("--git-path") && argv.at(-1) === "index") {
-        return commandResult(syntheticIndex);
-      }
-
-      if (
-        argv[0] === "git" &&
-        argv[1] === "config" &&
-        (argv.includes("--global") || argv.includes("--system")) &&
-        argv.includes("core.attributesFile")
-      ) {
-        return commandResult("", 1);
-      }
-      if (command.endsWith("write-tree")) {
-        return commandResult(`${WORKSPACE_TREE}\n`);
-      }
-
-      if (command.startsWith("git commit-tree ")) {
-        return commandResult(`${NEW_HEAD}\n`);
-      }
-
-      if (
-        command.startsWith(
-          "git -c credential.helper= -c credential.helper=!gh auth git-credential ls-remote",
-        )
-      ) {
-        return commandResult(remotePublished ? `${NEW_HEAD}\trefs/heads/${BRANCH}\n` : "");
-      }
-      if (argv.includes("push")) {
-        remotePublished = true;
-        return commandResult();
-      }
-      if (command.includes(" repos/openclaw/openclaw/pulls ") && command.includes("state=all")) {
-        return commandResult("[]\n");
-      }
-      if (
-        command ===
-        "gh api --hostname github.com --method POST repos/openclaw/openclaw/pulls --input -"
-      ) {
-        return commandResult('{"html_url":"https://github.com/openclaw/openclaw/pull/125200"}\n');
-      }
-      return commandResult();
-    });
+    mocks.runCommand.mockImplementation(
+      createPublicationCommandFixture({
+        commands,
+        commandCalls,
+        replies,
+        syntheticIndex,
+        branch: BRANCH,
+        newHead: NEW_HEAD,
+        baseHead: BASE_HEAD,
+        workspaceTree: WORKSPACE_TREE,
+        result: commandResult,
+      }),
+    );
     // Source-policy selection reads canonical session custody, including the
     // creation-time sandbox required by authenticated requester fixtures.
     setRuntimeConfigSnapshot({
@@ -726,6 +716,7 @@ export function installGitHubPublicationTestHarness(
 export async function createRealPublicationWorkspace(
   interruptAt?: "push" | "observe" | "index" | "create",
   sessionKey = SESSION_KEY,
+  options: { linkedWorktree?: boolean } = {},
 ) {
   const { createRealPublicationWorkspace: createWorkspace } =
     await import("./github-publication-git.test-support.js");
@@ -737,5 +728,6 @@ export async function createRealPublicationWorkspace(
     mocks,
     commandResult,
     interruptAt,
+    linkedWorktree: options.linkedWorktree,
   });
 }

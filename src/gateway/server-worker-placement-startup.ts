@@ -1,4 +1,3 @@
-import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import type { SessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { installSessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { getRuntimeConfig } from "../config/config.js";
@@ -13,7 +12,6 @@ import { onSessionIdentityMutation } from "../sessions/session-lifecycle-events.
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
-import { createGitHubPublicationRuntime } from "./github-publication-runtime.js";
 import type { NodeWorkerSupervisorTransport } from "./node-registry-private.js";
 import { measureGatewayCloseStep, measureGatewayRestartTrace } from "./restart-trace.js";
 import { emitSessionsChanged } from "./server-methods/session-change-event.js";
@@ -68,6 +66,9 @@ import { createWorkerPlacementRedispatch } from "./worker-environments/worker-pl
 import type { WorkerTurnPartialIdentity } from "./worker-environments/worker-turn-failure.js";
 import { createWorkerSessionTurnPlacementProvider } from "./worker-environments/worker-turn-launcher.js";
 import { createWorkerWorkspaceOperationCoordinator } from "./worker-environments/workspace-operation-coordinator.js";
+import type { WorkspacePublicationHost } from "./workspace-publication-provider.js";
+
+export { loadWorkerPlacementSessionRuntimeModule } from "./server-worker-placement-session-target.js";
 
 const loadRequiredWorkerPreparation = createLazyRuntimeModule(
   () => import("./server-worker-required-profile.js"),
@@ -78,7 +79,7 @@ const WORKER_PLACEMENT_RECONCILE_INTERVAL_MS = 60_000;
 type WorkerPlacementSidecar = { stop: () => Promise<void> };
 
 export type GatewayWorkerPlacementRuntimeParams = {
-  githubPublicationRuntime?: ReturnType<typeof createGitHubPublicationRuntime>;
+  workspacePublicationHost?: WorkspacePublicationHost;
   scheduler: GatewayScheduler;
   placements: WorkerSessionPlacementStore;
   initialPlacements: readonly WorkerSessionPlacementRecord[];
@@ -95,17 +96,6 @@ export type GatewayWorkerPlacementRuntimeParams = {
   warn: (message: string) => void;
 };
 
-export function createGatewayGitHubPublicationRuntime(params: {
-  placements: WorkerSessionPlacementStore;
-  getCommittedRuntimeConfig: () => OpenClawConfig;
-  warn: (message: string) => void;
-}) {
-  return createGitHubPublicationRuntime({
-    ...params,
-    loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
-  });
-}
-
 export type GatewayWorkerPlacementRuntime = ReturnType<typeof createGatewayWorkerPlacementRuntime>;
 
 export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlacementRuntimeParams) {
@@ -121,14 +111,23 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
     isStopping: () => stopped,
   });
   const workspaceOperations = createWorkerWorkspaceOperationCoordinator();
-  const {
-    ready: githubPublicationReady,
-    close: closeGitHubPublication,
-    coordinator: githubPublication,
-    prepareAcceptedWorkspacePublication,
-    publishAcceptedWorkspace,
-    reconcilePublications,
-  } = params.githubPublicationRuntime ?? createGatewayGitHubPublicationRuntime(params);
+  const githubPublicationReady = params.workspacePublicationHost?.ready ?? Promise.resolve();
+  const closeGitHubPublication = async () => {
+    await params.workspacePublicationHost?.close();
+  };
+  const prepareAcceptedWorkspacePublication = async (
+    claim: Parameters<WorkspacePublicationHost["prepareAcceptedWorkspacePublication"]>[0],
+  ) => {
+    await params.workspacePublicationHost?.prepareAcceptedWorkspacePublication(claim);
+  };
+  const publishAcceptedWorkspace = async (
+    claim: Parameters<WorkspacePublicationHost["publishAcceptedWorkspace"]>[0],
+  ) => {
+    await params.workspacePublicationHost?.publishAcceptedWorkspace(claim);
+  };
+  const reconcilePublications = async (stopping?: () => boolean) => {
+    await params.workspacePublicationHost?.reconcilePublications(stopping);
+  };
   const withPreparedRecovery = createWorkerWorkspaceRecoveryPreparer({
     loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
     getConfig: getRuntimeConfig,
@@ -292,19 +291,7 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
       workspaceOperations,
       prepareAcceptedWorkspacePublication,
       publishAcceptedWorkspace,
-      resolveGitAuthor: (agentId) =>
-        (
-          resolveConfiguredGitHubToolIdentity({
-            config: getRuntimeConfig(),
-            agentId,
-            scope: "agent",
-          }) ??
-          resolveConfiguredGitHubToolIdentity({
-            config: getRuntimeConfig(),
-            agentId,
-            scope: "system",
-          })
-        )?.gitAuthor,
+      resolveGitAuthor: (agentId) => params.workspacePublicationHost?.resolveGitAuthor(agentId),
     }),
     createGatewayWorkerDispatchAdmission(),
     createWorkerPlacementInitialRecovery({
@@ -385,6 +372,7 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
     workspaceOperations,
     prepareAcceptedWorkspacePublication,
     publishAcceptedWorkspace,
+    readWorkerPublicationFact: params.workspacePublicationHost?.readWorkerPublicationFact,
     persistAbandonedPartial: params.persistAbandonedPartial,
   });
   const startRuntime = async (hooks: {
@@ -698,7 +686,6 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
       },
     },
     placements: params.placements,
-    githubPublication,
     repositoryWorkspaceMutationService: createRepositoryWorkspaceMutationService({
       placements: params.placements,
       environments: params.environments,

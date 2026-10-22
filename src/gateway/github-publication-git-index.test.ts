@@ -14,10 +14,10 @@ import {
 } from "./github-publication-git-index.js";
 import {
   assertSafeGitPublicationWorkspace,
-  captureGitHubPublicationWorkspaceSnapshot,
-  githubPublicationPushArgs,
-  githubPublicationUpdateRefArgs,
-} from "./github-publication-git-transport.js";
+  capturePublicationWorkspaceSnapshot,
+  publicationPushArgs,
+  publicationUpdateRefArgs,
+} from "./repository-publication-git.js";
 
 let testState: OpenClawTestState;
 let f: Awaited<ReturnType<typeof createFixture>>;
@@ -172,9 +172,7 @@ describe("GitHub publication index update", () => {
         await f.git("push", remote, `${f.previousHead}:refs/heads/publication`);
       }
       const expectedHead = change === "reset" ? observedHead : "";
-      const push = githubPublicationPushArgs(remote, candidate, "publication", expectedHead).slice(
-        1,
-      );
+      const push = publicationPushArgs(remote, candidate, "publication", expectedHead).slice(1);
       await expect(git(f.cwd, push)).rejects.toThrow();
       expect(await git(remote, ["rev-parse", "refs/heads/publication"])).toBe(f.previousHead);
       if (expectedHead) {
@@ -221,7 +219,7 @@ describe("GitHub publication index update", () => {
       f.update({
         env: hookEnv,
         updateRef: async () => {
-          await run(githubPublicationUpdateRefArgs("main", f.headCommit, f.previousHead));
+          await run(publicationUpdateRefArgs("main", f.headCommit, f.previousHead));
           throw new Error("response lost");
         },
       }),
@@ -236,7 +234,7 @@ describe("GitHub publication index update", () => {
         await git(f.cwd, argv.slice(1), options?.input, options?.env ?? hookEnv),
     });
     await expect(fs.access(marker)).rejects.toThrow();
-    await run(githubPublicationPushArgs(remote, f.headCommit, "publication", ""));
+    await run(publicationPushArgs(remote, f.headCommit, "publication", ""));
 
     expect(await git(remote, ["rev-parse", "refs/heads/publication"])).toBe(f.headCommit);
     await expect(fs.access(marker)).rejects.toThrow();
@@ -247,7 +245,7 @@ describe("GitHub publication index update", () => {
     await fs.mkdir(path.dirname(globalAttributes), { recursive: true });
     await fs.writeFile(globalAttributes, "*.secret filter=redact\n");
 
-    await rejects(captureGitHubPublicationWorkspaceSnapshot(f), "unsupported Git clean filter");
+    await rejects(capturePublicationWorkspaceSnapshot(f), "unsupported Git clean filter");
   });
 
   it("settles the accepted branch and index after publication authority ends", async () => {

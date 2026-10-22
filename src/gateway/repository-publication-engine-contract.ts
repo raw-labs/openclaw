@@ -1,0 +1,266 @@
+import type {
+  SessionGitHubPullRequestInspectResult,
+  SessionGitHubPublicationResult,
+} from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
+import type { GitHubPublicationRequesterV2 } from "./github-publication-requester.js";
+import type { RepositoryPublicationContentHostV1 } from "./repository-publication-content-contract.js";
+import type { RepositoryPublicationGitTransfer } from "./repository-publication-git-transfer.js";
+import type { RepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
+import type { RepositoryWorkerIdentityTransfer } from "./repository-worker-identity-transfer.js";
+
+/** Recorded provenance in the existing native publication receipt backend; never authority. */
+export type RepositoryPublisherReference = string;
+export type RepositoryPublicationAuthor = { name: string; email: string };
+export type RepositoryPublicationPublisher = {
+  reference: RepositoryPublisherReference;
+  author: RepositoryPublicationAuthor;
+  assertCurrent(this: void): void;
+  /** The account owner refreshes its own credentials, preserving the accepted selection. */
+  refresh(this: void): Promise<void>;
+  /** Credentials are consumed only by this one-use host-bound Git operation. */
+  authorizeGit(this: void, transfer: RepositoryPublicationGitTransfer): Promise<void>;
+};
+export type RepositoryPublicationTarget = {
+  pullRequest?: SessionGitHubPullRequestBinding;
+  pushRepository: string;
+  repository: string;
+  branch: string;
+  baseBranch: string;
+  remoteUrl: string;
+  baseRemoteUrl: string;
+};
+export type RepositoryPublicationRequestFacts = {
+  requestId: string;
+  createdAtMs: number;
+  session: RepositoryPublicationSession;
+  title?: string;
+  body?: string;
+  draft: boolean;
+  publisher: RepositoryPublisherReference;
+};
+/** Immutable normalized objects; the host keeps checkpoint locations and custody private. */
+export type RepositoryPublicationSnapshot = {
+  version: 1;
+  baseCommit: string;
+  baseTree: string;
+  workspaceTree: string;
+  entries: readonly {
+    path: string;
+    mode: "100644" | "100755" | "120000" | "160000";
+    sha: string | null;
+  }[];
+  readBlob(this: void, sha: string): Promise<Buffer>;
+};
+export type RepositoryPublicationContent = {
+  title: string;
+  commitMessage: string;
+  trailers: readonly string[];
+  assertCurrent(this: void): void;
+  pullRequestBody(this: void): string;
+};
+export type RepositoryPublicationRemoteFacts = {
+  target: RepositoryPublicationTarget;
+  request: RepositoryPublicationRequestFacts;
+  publisher: RepositoryPublicationPublisher;
+  headCommit: string;
+  workspaceTree: string;
+  parentCommit: string;
+};
+export type RepositoryPublicationFailure = Pick<
+  Extract<SessionGitHubPublicationResult, { status: "failed" }>,
+  "code" | "nextAction"
+>;
+
+export type RepositoryPublicationPersonalAction = {
+  owner: string;
+  assertCurrent(this: void): void;
+};
+export type RepositoryPublicationOwnPullRequestReader = ReturnType<
+  typeof import("./github-publication-inspect-reader.js").captureOwnGitHubPullRequestReader
+>;
+
+export type RepositoryPublicationPersonalSessionAction = RepositoryPublicationPersonalAction &
+  RepositoryPublicationSession &
+  Pick<GitHubPublicationRequesterV2, "version" | "signal" | "prepareSource"> & {
+    lifecycleRevision: string | null;
+  };
+export type RepositoryPublicationPersonalBinding = {
+  reference: RepositoryPublisherReference;
+  generation: string;
+  assertCurrent(this: void): void;
+  prepare(this: void, assertWorkspace: () => void): Promise<RepositoryPublicationPublisher>;
+};
+
+export type RepositoryPublicationObjectPlan = {
+  request: RepositoryPublicationRequestFacts;
+  target: RepositoryPublicationTarget;
+  publisher: RepositoryPublicationPublisher;
+  snapshot: RepositoryPublicationSnapshot;
+  previousHeadCommit: string | null;
+  headCommit: string | null;
+  contentHost: RepositoryPublicationContentHostV1;
+  assertCurrent(this: void): void;
+  assertWorkflowChangesAllowed(this: void): void;
+  prepareCommit(this: void, headCommit: string): Promise<void>;
+  effects: {
+    record(
+      this: void,
+      kind: "push" | "pull_request",
+      observed?: { headCommit?: string; url?: string },
+    ): Promise<void>;
+  };
+};
+
+export type RepositoryWorkerIdentity = {
+  readonly signal: AbortSignal;
+  assertCurrent(this: void): void;
+  refresh(this: void, assertCurrent: () => void): Promise<"ready" | "retired">;
+  subscribe(this: void, listener: (change: "changed" | "retired") => void): () => void;
+  deliver(this: void, transfer: RepositoryWorkerIdentityTransfer): Promise<void>;
+};
+
+/** Vendor policy and remote transport. No stores, rows, placement owners, or session projections. */
+export type RepositoryPublicationProvider = {
+  id: string;
+  assertCurrent(this: void): void;
+  formatReport(
+    this: void,
+    result: SessionGitHubPublicationResult,
+  ): { text: string; responseId: string };
+  resolveGitAuthor?(this: void, agentId: string): { name?: string; email?: string } | undefined;
+  prepareWorkerIdentity?(
+    this: void,
+    input: { agentId: string; originUrl: string; assertCurrent(this: void): void },
+  ): Promise<RepositoryWorkerIdentity | undefined>;
+  subscribeWorkerIdentityChanges?(this: void, listener: () => void): () => void;
+  preparePublisher(
+    this: void,
+    agentId: string,
+    expected?: RepositoryPublisherReference,
+  ): Promise<RepositoryPublicationPublisher>;
+  bindPersonal(
+    this: void,
+    input: {
+      action: Pick<
+        RepositoryPublicationPersonalSessionAction,
+        "owner" | "agentId" | "assertCurrent"
+      >;
+      selected: { generation: string; account: { accountId: number; login: string } };
+      preparation?: { idempotencyKey: string; hasRequest: () => boolean };
+    },
+  ): Promise<RepositoryPublicationPersonalBinding>;
+  readPersonalSelection(
+    this: void,
+    action: RepositoryPublicationPersonalAction,
+  ): Promise<{ generation: string | null; reference: RepositoryPublisherReference | null }>;
+  inspectPullRequest(
+    this: void,
+    input: {
+      pullRequestUrl: string;
+      agentId: string;
+      reader: RepositoryPublicationOwnPullRequestReader;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<{
+    result: SessionGitHubPullRequestInspectResult;
+    assertCurrent(this: void): void;
+    assertSource(this: void, originUrl: string): void;
+    verifyWriteAccess(this: void): Promise<void>;
+  }>;
+  prepareBoundPublication(
+    this: void,
+    input: {
+      pullRequest: SessionGitHubPullRequestBinding;
+      expectedHead: string;
+      journaledHead: string | null;
+      sourceHead: string | null;
+      agentId: string;
+      reader: RepositoryPublicationOwnPullRequestReader;
+      publisher: RepositoryPublicationPublisher;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<{
+    observedPublication: boolean;
+    assertCurrent(this: void): void;
+    refresh(this: void): Promise<boolean>;
+  }>;
+  prepareTarget(
+    this: void,
+    input: {
+      repositoryOnly?: boolean;
+      pullRequest?: SessionGitHubPullRequestBinding;
+      originUrl: string;
+      branch: string;
+      baseRef: string;
+      publisher: RepositoryPublicationPublisher;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<RepositoryPublicationTarget>;
+  readBase(
+    this: void,
+    input: {
+      target: RepositoryPublicationTarget;
+      publisher: RepositoryPublicationPublisher;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<string>;
+  observeBranch(
+    this: void,
+    input: {
+      target: RepositoryPublicationTarget;
+      publisher: RepositoryPublicationPublisher;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<string | null>;
+  findPullRequest(
+    this: void,
+    input: RepositoryPublicationRemoteFacts & {
+      assertCurrent(this: void): void;
+      recordObserved(this: void, url: string): Promise<void>;
+    },
+  ): Promise<string | undefined>;
+  createPullRequest(
+    this: void,
+    input: RepositoryPublicationRemoteFacts & {
+      content: RepositoryPublicationContent;
+      assertCurrent(this: void): void;
+    },
+  ): Promise<string | undefined>;
+  reconcile(
+    this: void,
+    input: RepositoryPublicationRemoteFacts & {
+      knownPullRequestUrls: readonly string[];
+      pushOnly?: "observed" | "dispatched";
+      assertCurrent(this: void): void;
+      recordObserved(this: void, url: string): Promise<void>;
+      recordPushObserved?(this: void, headCommit: string): Promise<void>;
+    },
+  ): Promise<string | undefined>;
+  formatContent(
+    this: void,
+    input: {
+      request: RepositoryPublicationRequestFacts;
+      target: RepositoryPublicationTarget;
+      publisher: RepositoryPublicationPublisher;
+      host: RepositoryPublicationContentHostV1;
+      description: string;
+    },
+  ): Promise<RepositoryPublicationContent>;
+  prepareChangeGuard(
+    this: void,
+    input: {
+      assertPermission(this: void): void;
+      readTree(
+        this: void,
+        role: "before" | "accepted" | "ancestor" | "target",
+      ): Promise<Buffer | undefined>;
+    },
+  ): Promise<() => void>;
+  executeRepository(
+    this: void,
+    input: RepositoryPublicationObjectPlan,
+  ): Promise<{ url: string; headCommit: string }>;
+  resolveFailure(this: void, error: unknown): RepositoryPublicationFailure;
+  isDefinitiveFailure(this: void, error: unknown): boolean;
+};

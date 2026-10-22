@@ -2,11 +2,13 @@ import {
   getGatewayServiceLifetime,
   type GatewayRequestContext,
 } from "openclaw/plugin-sdk/gateway-runtime";
+import type { RepositoryPublicationApi } from "openclaw/plugin-sdk/repository-publication-engine";
 import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
 import type { createGitHubOAuthLifecycleV1 } from "./oauth-lifecycle-api.js";
 
 export type RepositoryServices = {
   oauth: ReturnType<typeof createGitHubOAuthLifecycleV1>;
+  publication?: RepositoryPublicationApi;
 };
 type OwnedServices = { services: RepositoryServices; signal: AbortSignal };
 const services = new WeakMap<AbortSignal, OwnedServices>();

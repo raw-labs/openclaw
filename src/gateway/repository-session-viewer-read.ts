@@ -242,7 +242,7 @@ export function createRepositoryViewerRead(params: {
               },
               async inspectBoundPullRequest() {
                 const { readOwnGitHubPullRequest } =
-                  await import("./github-publication-inspect.js");
+                  await import("../../extensions/github-repositories/publication-inspect-api.js");
                 return await readOwnGitHubPullRequest({
                   pullRequestUrl: binding.url,
                   agentId: target.session.agentId,

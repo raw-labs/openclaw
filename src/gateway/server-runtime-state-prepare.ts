@@ -48,6 +48,7 @@ import { resolveHookClientIpConfig } from "./server/hook-client-ip-config.js";
 import { createPresencePublisher } from "./server/presence-events.js";
 import { createReadinessChecker, createStartupChecker } from "./server/readiness.js";
 import { resolveSharedGatewaySessionGeneration } from "./server/ws-shared-generation.js";
+import { createWorkspacePublicationHost } from "./workspace-publication-provider.js";
 
 type GatewayBootstrap = Awaited<ReturnType<typeof prepareGatewayServerBootstrap>>;
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
@@ -183,12 +184,15 @@ export async function prepareGatewayKernelState(params: {
     }
     return (context.getCommittedRuntimeConfig ?? context.getRuntimeConfig)();
   };
-  const githubPublicationRuntime =
+  const workspacePublicationHost =
     workerEnvironmentStartup && workerPlacementModule
-      ? workerPlacementModule.createGatewayGitHubPublicationRuntime({
+      ? createWorkspacePublicationHost({
           placements: workerEnvironmentStartup.placementStore,
           getCommittedRuntimeConfig,
+          scheduler,
           warn: (message) => log.warn(message),
+          loadSessionRuntime: workerPlacementModule.loadWorkerPlacementSessionRuntimeModule,
+          managedByPlacement: Boolean(workerEnvironmentService && nodeWorkerGatewayNamespace),
         })
       : undefined;
   const workerPlacement =
@@ -247,7 +251,7 @@ export async function prepareGatewayKernelState(params: {
             revokeSessionAuthority: (request) => workerDispatchAuthority.revoke(request),
             info: (message) => log.info(message),
             warn: (message) => log.warn(message),
-            ...(githubPublicationRuntime ? { githubPublicationRuntime } : {}),
+            ...(workspacePublicationHost ? { workspacePublicationHost } : {}),
           }),
         )
       : undefined;
@@ -565,8 +569,7 @@ export async function prepareGatewayKernelState(params: {
     bindWorkerNodeDesktopControl,
     workerDispatchAuthority,
     workerPlacementRuntime,
-    githubPublicationRuntime,
-    githubPublicationService: githubPublicationRuntime?.coordinator,
+    workspacePublicationHost,
     repositorySources,
     workerPlacementControlAvailable,
     desktopSessionRegistry,

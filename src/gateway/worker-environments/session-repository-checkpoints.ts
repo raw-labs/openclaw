@@ -10,7 +10,7 @@ import {
   type SessionRepositoryWorkspaceStore,
 } from "../../state/session-repository-workspaces.js";
 import type { SessionRepositoryWorkspaceRecord } from "../../state/session-repository-workspaces.types.js";
-import { readGitHubRepositoryPublicationMetadata } from "../github-repository-publication-snapshot.js";
+import { readRepositoryPublicationMetadata } from "../repository-publication-snapshot.js";
 import { boundedWorkerError } from "./worker-error.js";
 import { parseWorkspaceManifestPair } from "./workspace-manifest-worker.js";
 import {
@@ -133,10 +133,7 @@ async function publicationBinding(root: string, currentManifestRef: string) {
   ) {
     throw new Error("Repository publication checkpoint binding changed");
   }
-  const { snapshot } = await readGitHubRepositoryPublicationMetadata(
-    root,
-    binding.publicationDigest,
-  );
+  const { snapshot } = await readRepositoryPublicationMetadata(root, binding.publicationDigest);
   return { publicationDigest: binding.publicationDigest, snapshot };
 }
 
@@ -296,7 +293,7 @@ export async function stageSessionRepositoryCheckpoint(
         }
         const { publicationStagingRoot, publicationDigest, currentManifestRef } = params;
         assertRevision();
-        const { raw: metadata, snapshot } = await readGitHubRepositoryPublicationMetadata(
+        const { raw: metadata, snapshot } = await readRepositoryPublicationMetadata(
           publicationStagingRoot,
           publicationDigest,
         );

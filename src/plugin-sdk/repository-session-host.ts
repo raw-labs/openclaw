@@ -1,11 +1,13 @@
-/** Gateway lifetime and authenticated personal-caller operations for managed repository accounts. */
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+/** Gateway lifetime and authenticated personal-caller operations for managed repository accounts. */
+import { readWorkspacePublicationHost } from "../gateway/workspace-publication-binding.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
 export function captureRepositoryServiceHost():
   | {
       identity: AbortSignal;
       getConfig: () => OpenClawConfig;
+      publicationAvailable: boolean;
       assertCurrent: () => void;
     }
   | undefined {
@@ -27,6 +29,7 @@ export function captureRepositoryServiceHost():
   return {
     identity,
     getConfig: context.getRuntimeConfig,
+    publicationAvailable: Boolean(readWorkspacePublicationHost(context)),
     assertCurrent,
   };
 }
@@ -42,4 +45,16 @@ export async function prepareGatewayPersonalCallerV2(
   const { preparePersonalGitHubActionV2 } =
     await import("../gateway/server-methods/github-personal-authorization.js");
   return preparePersonalGitHubActionV2(...args);
+}
+
+/** Publication installation loads instance machinery only for an admitted service start. */
+export async function installRepositoryPublicationProvider(
+  ...args: Parameters<
+    typeof import("./repository-publication-install.js").installRepositoryPublicationProvider
+  >
+): ReturnType<
+  typeof import("./repository-publication-install.js").installRepositoryPublicationProvider
+> {
+  const runtime = await import("./repository-publication-install.js");
+  return await runtime.installRepositoryPublicationProvider(...args);
 }

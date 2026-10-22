@@ -17,3 +17,5 @@ export {
   cancelUserGitHubAuthorizationSync,
   disconnectUserGitHubConnectionSync,
 } from "../state/user-github-connections.js";
+
+export { UserGitHubConnectionAuthorityChangedError } from "../state/user-github-connections.js";

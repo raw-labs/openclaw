@@ -16,7 +16,7 @@ import { resolveApprovalRequestChannelAccountId } from "../infra/approval-reques
 import * as checkoutDiff from "../sessions/session-diff.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { prepareGitHubPublicationSession } from "./github-publication-availability.js";
+import { prepareRepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 import { loadSessionDiff } from "./server-methods/sessions-diff.js";
 import { withSessionFileRoot } from "./server-methods/sessions-files.js";
 
@@ -132,7 +132,7 @@ it("checks current metadata at the effect without sending memory predicates to S
     expect(() => prepared.assertCurrent()).not.toThrow();
     await patch({ spawnedCwd: "/synthetic/replacement" });
     expect(() => prepared.assertCurrent()).toThrow("Workspace authority changed");
-    using publicationSession = await prepareGitHubPublicationSession(sessionKey);
+    using publicationSession = await prepareRepositoryPublicationSession(sessionKey);
     expect(publicationSession.readCurrent().entry?.spawnedCwd).toBe("/synthetic/replacement");
   });
 });

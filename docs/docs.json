@@ -1877,6 +1877,7 @@
                 "pages": [
                   "plugins/building-plugins",
                   "plugins/feature-plugins",
+                  "plugins/github-publication",
                   "plugins/tool-plugins",
                   "plugins/sdk-channel-plugins",
                   {

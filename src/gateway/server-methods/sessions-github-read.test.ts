@@ -6,6 +6,8 @@ import {
   verifyGitHubCredential,
 } from "../../../extensions/github-repositories/oauth-api.js";
 import { personalGitHubStatusAsync as personalGitHubStatus } from "../../../extensions/github-repositories/personal-status-api.js";
+import * as publicationAvailability from "../../../extensions/github-repositories/publication-availability-api.js";
+import * as relevance from "../../../extensions/github-repositories/publication-relevance-api.js";
 import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
@@ -19,8 +21,6 @@ import * as stateWriter from "../../state/openclaw-state-worker-owner.js";
 import type { UserGitHubConnection } from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
-import * as publicationAvailability from "../github-publication-availability.js";
-import * as relevance from "../github-publication-relevance.js";
 import {
   mockPublicationIdentity,
   publisher,

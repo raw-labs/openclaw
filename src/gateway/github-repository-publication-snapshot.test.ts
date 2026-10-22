@@ -5,13 +5,13 @@ import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { applyNodeRepositoryCheckpoint } from "../node-host/node-worker-repository-transfers.js";
-import { captureGitHubPublicationWorkspaceSnapshot } from "./github-publication-git-transport.js";
-import { prepareRepositoryPublicationRestore } from "./github-repository-publication-restore.js";
+import { capturePublicationWorkspaceSnapshot } from "./repository-publication-git.js";
+import { prepareRepositoryPublicationRestore } from "./repository-publication-restore.js";
 import {
-  REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS,
-  readGitHubRepositoryPublicationBlob,
-  readGitHubRepositoryPublicationMetadata,
-} from "./github-repository-publication-snapshot.js";
+  REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS,
+  readRepositoryPublicationBlob,
+  readRepositoryPublicationMetadata,
+} from "./repository-publication-snapshot.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 
 const temporary = useAutoCleanupTempDirTracker(afterEach);
@@ -56,11 +56,11 @@ async function fixture(linked: false | "linked" | "linked-config" = false) {
   const capture = (baseCommit = base) =>
     execFileSync(
       process.execPath,
-      ["-e", REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS, cwd, baseCommit, output],
+      ["-e", REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS, cwd, baseCommit, output],
       { env, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
     ).trim();
-  const metadata = (digest: string) => readGitHubRepositoryPublicationMetadata(output, digest);
-  const blob = (sha: string) => readGitHubRepositoryPublicationBlob(output, sha);
+  const metadata = (digest: string) => readRepositoryPublicationMetadata(output, digest);
+  const blob = (sha: string) => readRepositoryPublicationBlob(output, sha);
   return { cwd, root, git, base, output, capture, env, file, write, metadata, blob };
 }
 
@@ -68,7 +68,7 @@ type Fixture = Awaited<ReturnType<typeof fixture>>;
 const indexPath = (f: Fixture) => path.resolve(f.cwd, f.git("rev-parse", "--git-path", "index"));
 const remoteSnapshot = async (f: Fixture, base = f.base) =>
   (await f.metadata(f.capture(base))).snapshot;
-const local = (f: Fixture) => captureGitHubPublicationWorkspaceSnapshot({ cwd: f.cwd });
+const local = (f: Fixture) => capturePublicationWorkspaceSnapshot({ cwd: f.cwd });
 const state = async (f: Fixture, names: string[] = []) => [
   f.git("rev-parse", "HEAD"),
   ...(await Promise.all([
@@ -306,7 +306,7 @@ it("rejects substituted checkpoint bytes and paths outside the normalized payloa
   await fs.writeFile(path.join(f.output, "snapshot.json"), unsafe);
   await expect(f.metadata(digest)).rejects.toThrow("digest");
   await expect(
-    readGitHubRepositoryPublicationMetadata(
+    readRepositoryPublicationMetadata(
       f.output,
       "sha256:" + createHash("sha256").update(unsafe).digest("hex"),
     ),

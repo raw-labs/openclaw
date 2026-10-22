@@ -1,7 +1,7 @@
 # GitHub Settings and repository artifacts
 
 This plugin owns Profile → GitHub connections and the GitHub identity view in
-Agent → Tools. The plugin owns the existing `users.github.*` connection and `tools.github.*` account Gateway methods, device authorization, and OAuth refresh scheduling. Its managed service starts once per Gateway and drains accepted token rotations when stopped. Record persistence and publication retain their native owners. The same service installs the declared repository source for local and worker callers. The package also owns the prepared execution identity provider; core retains process and sandbox custody.
+Agent → Tools. The plugin owns the existing `users.github.*` connection and `tools.github.*` account Gateway methods, device authorization, and OAuth refresh scheduling. Its managed service starts once per Gateway and drains accepted token rotations when stopped. Record persistence and accepted-publication custody retain their native owners. The same service installs GitHub publication policy/transport and the declared repository source for local and worker callers. The package also owns the prepared execution identity provider; core retains process and sandbox custody.
 
 The package also owns the shallow host, managed-account, and OAuth protocol artifacts used by
 native core callers. Those artifacts do not load the plugin runtime.
@@ -14,7 +14,7 @@ readers and writers make their final cutover together.
 
 Settings contributions follow the normal admitted plugin catalog. Disabling or
 denying this plugin removes its contributed views, account RPCs, and execution
-identity provider; new repository-source admission stops; native publication methods remain at this stage. Packaged Memory/channel setup views retain their separate
+identity provider; new repository-source admission stops, while publication effects require the current managed service. Packaged Memory/channel setup views retain their separate
 availability contract, including disabled-plugin setup.
 
 `oauth-api.ts` owns the remote GitHub protocol and verification cache.
@@ -43,11 +43,23 @@ native GitHub configuration keys remain canonical until their atomic cutover.
 
 The shallow project URL and Git clone/fetch artifacts own GitHub remote normalization and network command policy. Their current local and worker callers use the same implementation. The native managed-checkout owner retains project registration, leases, and uncertain-write cleanup. The managed account service now installs the declared source used by New Session, local preparation, worker checkout, and Gateway restoration. The source owns search and URL/account admission; native custody retains state, captured environment, registration, leases, and uncertain-write cleanup. SDK callers cannot select configuration, database paths, or environment. Host-created transport options carry the captured environment one way to the exact Git operation. See [Repository sources](https://docs.openclaw.ai/plugins/sdk-repository-sources).
 
-GitHub publication body, credit layout and transcript text are shallow library
-artifacts. Core prepares contributor and current-sharing facts through the
-accepted session owner and still accepts, stores and deduplicates transcript
-reports. These formatters do not register a publication provider or change its
-activation, credentials, configuration, transaction or recovery ownership.
+## Managed publication
+
+The account service installs `publication-provider-api.ts` under its actual plugin
+instance, scheduler, and Gateway lifetime. GitHub identity, targets, inspection,
+preflight, remote Git/object operations, workflow policy, and formatting belong to
+the plugin. Native tool/RPC callers retain requester and session authority; native
+engines retain checkpoints, accepted receipts, uncertain-write reconciliation, and
+transcript acceptance. Worker credential delivery retains its native turn and
+workspace owner, separately from source checkout identity.
+
+Publication content reuses current native credit/sharing facts and the existing
+formatters. Withdrawal fences new effects and captured APIs without deleting
+accepted native work or redirecting it to another account. Native runtime close
+joins whole admitted operations before closing receipt custody. Current root
+configuration keys are unchanged. See the
+[publication lifecycle](https://docs.openclaw.ai/plugins/github-publication) for
+source ownership and recovery boundaries.
 
 ## Public GitHub reader
 

@@ -15,6 +15,7 @@ export async function createRealPublicationWorkspace(params: {
   branch: string;
   sessionKey: string;
   realWorktree: boolean;
+  linkedWorktree?: boolean;
   mocks: ReturnType<typeof githubPublicationTestMocks>;
   commandResult: typeof publicationCommandResult;
   interruptAt?: "push" | "observe" | "index" | "create";
@@ -70,7 +71,18 @@ export async function createRealPublicationWorkspace(params: {
   await git("add", "artifact.txt");
   await git("commit", "-m", "base");
   const baseHead = await git("rev-parse", "HEAD");
-  await git("checkout", "-b", branch);
+  if (params.linkedWorktree) {
+    const primary = path.join(root, "primary-repository");
+    await fs.rename(cwd, primary);
+    const result = await local(["git", "-C", primary, "worktree", "add", "-b", branch, cwd], {
+      cwd: root,
+    });
+    if (result.code !== 0) {
+      throw new Error(result.stderr.toString("utf8"));
+    }
+  } else {
+    await git("checkout", "-b", branch);
+  }
   await fs.writeFile(path.join(cwd, "artifact.txt"), "staged\n");
   await git("add", "artifact.txt");
   await fs.writeFile(path.join(cwd, "artifact.txt"), "accepted\n");
@@ -118,6 +130,12 @@ export async function createRealPublicationWorkspace(params: {
   }
   mocks.runCommand.mockImplementation(async (argv: string[], options?: CommandOptions) => {
     if (argv[0] === "gh") {
+      if (argv.some((arg) => arg.startsWith("repos/openclaw/openclaw/git/matching-refs/heads/"))) {
+        interrupt("observe", "synthetic remote observation unavailable", Boolean(remoteHead));
+        return json(
+          remoteHead ? [{ ref: `refs/heads/${branch}`, object: { sha: remoteHead } }] : [],
+        );
+      }
       const commitPath = "repos/openclaw/openclaw/git/commits/";
       const commit = argv.find((arg) => arg.startsWith(commitPath))?.slice(commitPath.length);
       if (commit) {

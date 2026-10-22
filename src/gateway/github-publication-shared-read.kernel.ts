@@ -12,12 +12,12 @@ import type {
 } from "../state/github-publication-read.types.js";
 import { tableExists } from "../state/openclaw-state-db-schema-helpers.js";
 import type { DB } from "../state/openclaw-state-db.generated.js";
+import { githubPublicationDatabase } from "./github-publication-store.worker.js";
+import { checkRepositoryGitHubPublication as checked } from "./github-repository-publication.kernel.js";
 import {
   assertReadableSharedGitHubPublication,
   checkSharedWorktreeReceipt,
-} from "./github-publication-receipt.js";
-import { githubPublicationDatabase } from "./github-publication-store.worker.js";
-import { checkRepositoryGitHubPublication as checked } from "./github-repository-publication.kernel.js";
+} from "./repository-publication-receipt.js";
 
 const table = "github_repository_publication_requests";
 const repositoryQuery = (db: EngineConnection) => getNodeSqliteKysely<Pick<DB, typeof table>>(db);

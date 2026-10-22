@@ -1,0 +1,228 @@
+import type { SessionGitHubStatusResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import type { GitHubPublicationSessionLifecycle } from "../state/github-publication-read.types.js";
+import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
+import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.js";
+import { readRepositoryGitHubPublicationAsync } from "./github-publication-store-async.js";
+import { terminalRepositoryGitHubPublication } from "./github-repository-publication-store.js";
+import type { RepositoryGitHubPublicationStatusRow } from "./github-repository-publication.kernel.js";
+import type {
+  RepositoryPublicationProvider,
+  RepositoryPublicationPersonalAction as PersonalGitHubAction,
+} from "./repository-publication-engine-contract.js";
+import { decodeNativePublisher } from "./repository-publication-native-publisher.js";
+import {
+  prepareReceiptOwner,
+  resolveReceiptOwner,
+} from "./repository-publication-object-workspace.js";
+import { projectGitHubPublicationResult } from "./repository-publication-receipt.js";
+import type { RepositoryPublicationSession as SessionIdentity } from "./repository-publication-workspace-authority.js";
+
+export type PreparedRepositoryPublicationStatus = { release: () => void };
+const statusPreparations = new WeakMap<
+  PreparedRepositoryPublicationStatus,
+  {
+    requestId: string;
+    workspaceId: string;
+    repository: Awaited<ReturnType<typeof prepareReceiptOwner>>;
+    isCurrent: () => boolean;
+  }
+>();
+
+type PersonalPublicationReceipt =
+  | { kind: "worktree"; row: PersonalGitHubPublicationRow }
+  | {
+      kind: "repository";
+      row: RepositoryGitHubPublicationStatusRow;
+      prepared: PreparedRepositoryPublicationStatus | undefined;
+    };
+
+function isPendingPersonalPublication(receipt: PersonalPublicationReceipt, executing: boolean) {
+  const { row } = receipt;
+  return receipt.kind === "repository"
+    ? !terminalRepositoryGitHubPublication(row) && !executing
+    : row.status === "needs_confirmation" ||
+        ((row.status === "requested" || row.status === "publishing") && !executing);
+}
+
+export async function preparePersonalRepositoryPublicationStatus(requestId: string) {
+  const row = await readRepositoryGitHubPublicationAsync(requestId);
+  if (!row || row.owner_profile_id === null || terminalRepositoryGitHubPublication(row)) {
+    return undefined;
+  }
+  const repository = await prepareReceiptOwner(row);
+  let active = true;
+  const handle = {
+    release: () => {
+      if (active) {
+        active = false;
+        repository.release();
+      }
+    },
+  };
+  statusPreparations.set(handle, {
+    requestId: row.request_id,
+    workspaceId: row.workspace_id,
+    repository,
+    isCurrent: () => active,
+  });
+  return handle;
+}
+
+/** Source owners supply liveness; personal status never grants execution authority. */
+function presentPersonalGitHubPublicationStatus(
+  receipt: PersonalPublicationReceipt,
+  action: PersonalGitHubAction,
+  session: SessionIdentity & { archivedAt?: number | null },
+  executing: boolean,
+  connection: {
+    generation: string | null;
+    account: { accountId: number; login: string } | null;
+  } | null,
+  lifecycle: GitHubPublicationSessionLifecycle | null,
+): SessionGitHubStatusResult {
+  const { row } = receipt;
+  const pending = isPendingPersonalPublication(receipt, executing);
+  let repositoryOwner: ReturnType<typeof resolveReceiptOwner>;
+  if (receipt.kind === "repository") {
+    if (
+      row.owner_profile_id !== action.owner ||
+      row.session_key !== session.sessionKey ||
+      row.agent_id !== session.agentId
+    ) {
+      throw new Error("My GitHub publication was not found for this profile and session.");
+    }
+    if (pending) {
+      const handle = receipt.prepared;
+      const prepared = handle && statusPreparations.get(handle);
+      if (
+        !prepared ||
+        !prepared.isCurrent() ||
+        prepared.requestId !== row.request_id ||
+        prepared.workspaceId !== receipt.row.workspace_id
+      ) {
+        throw new Error("My GitHub publication source changed; refresh its status.");
+      }
+      repositoryOwner = resolveReceiptOwner(receipt.row, prepared.repository);
+    }
+  }
+  const sessionChanged =
+    row.session_id !== session.sessionId ||
+    (receipt.kind === "repository"
+      ? receipt.row.session_lifecycle_revision !== (session.lifecycleRevision ?? null) ||
+        !repositoryOwner
+      : session.archivedAt != null ||
+        !lifecycle ||
+        lifecycle.lifecycle_revision !== (session.lifecycleRevision ?? null));
+  const code = !pending
+    ? null
+    : sessionChanged
+      ? "session_changed"
+      : connection?.generation !== row.connection_generation ||
+          connection.account?.accountId !== row.identity_account_id ||
+          connection.account.login.toLowerCase() !== row.identity_login.toLowerCase()
+        ? "identity_changed"
+        : null;
+  if (code) {
+    return {
+      result: projectGitHubPublicationResult({
+        ...row,
+        status: "failed",
+        error_code: code,
+        next_action:
+          receipt.kind === "repository"
+            ? "Review the original account and any recorded GitHub effects, then create a new publication for the current session."
+            : code === "session_changed"
+              ? "This request belongs to an earlier session incarnation. Review any recorded GitHub effects and create a new publication for the current session."
+              : "The original My GitHub selection changed or is unavailable. Review any recorded GitHub effects, reconnect if needed, and create a new publication.",
+      }),
+      confirmation: null,
+    };
+  }
+  const result = projectGitHubPublicationResult(
+    pending ? { ...row, status: "needs_confirmation" } : row,
+  );
+  if (
+    !pending ||
+    (receipt.kind === "repository" &&
+      (!row.connection_generation ||
+        !row.push_repository ||
+        !row.repository ||
+        !row.base_branch ||
+        !row.source_head_commit ||
+        !row.source_index_tree ||
+        !row.workspace_tree))
+  ) {
+    return { result, confirmation: null };
+  }
+  // Worktree fields are non-null; repository fields passed the guard above.
+  return {
+    result,
+    confirmation: {
+      requestDigest: row.request_digest,
+      generation: row.connection_generation!,
+      account: { accountId: row.identity_account_id, login: row.identity_login },
+      pushRepository: row.push_repository!,
+      repository: row.repository!,
+      branch: row.branch,
+      baseBranch: row.base_branch!,
+      sourceHeadCommit: row.source_head_commit!,
+      sourceIndexTree: row.source_index_tree!,
+      workspaceTree: row.workspace_tree!,
+    },
+  };
+}
+
+export async function presentPersonalGitHubPublicationStatusAsync(
+  receipt: PersonalPublicationReceipt,
+  action: PersonalGitHubAction,
+  session: SessionIdentity & { archivedAt?: number | null },
+  executing: boolean,
+  provider: RepositoryPublicationProvider,
+): Promise<SessionGitHubStatusResult> {
+  const pending = isPendingPersonalPublication(receipt, executing);
+  const [connection, lifecycle] = await Promise.all([
+    pending
+      ? provider.readPersonalSelection(action).then((value) => ({
+          generation: value.generation,
+          account: value.reference ? decodeNativePublisher(value.reference).account : null,
+        }))
+      : null,
+    pending && receipt.kind === "worktree"
+      ? readGitHubPublicationSessionLifecycleInWorker({
+          publicationKind: "personal",
+          requestId: receipt.row.request_id,
+        })
+      : null,
+  ]);
+  action.assertCurrent();
+  return presentPersonalGitHubPublicationStatus(
+    receipt,
+    action,
+    session,
+    executing,
+    connection,
+    lifecycle ?? null,
+  );
+}
+
+export function createRepositoryPersonalPublicationStatus(
+  instanceId: string,
+  active: ReadonlyMap<string, string>,
+  provider: RepositoryPublicationProvider,
+) {
+  return (
+    row: RepositoryGitHubPublicationStatusRow,
+    action: PersonalGitHubAction,
+    session: SessionIdentity,
+    prepared: PreparedRepositoryPublicationStatus | undefined,
+  ) =>
+    presentPersonalGitHubPublicationStatusAsync(
+      { kind: "repository", row, prepared },
+      action,
+      session,
+      row.execution_id !== null &&
+        row.gateway_instance_id === instanceId &&
+        active.get(row.request_id) === row.execution_id,
+      provider,
+    );
+}

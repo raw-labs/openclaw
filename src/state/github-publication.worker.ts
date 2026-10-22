@@ -1,7 +1,5 @@
 import * as personal from "../gateway/github-personal-publication-store.worker.js";
 import { selectGitHubPublicationDeferralsInDatabase } from "../gateway/github-publication-defer.worker.js";
-import { captureGitHubPublicationChanges } from "../gateway/github-publication-events.js";
-import { githubPublicationEffectFacts } from "../gateway/github-publication-execution-effects.js";
 import {
   claimGitHubPublicationExecutionInDatabase,
   bindAcceptedGitHubPublicationClaimSnapshotInDatabase,
@@ -10,6 +8,8 @@ import {
   deferGitHubPublicationRequestsInDatabase,
 } from "../gateway/github-publication-store.worker.js";
 import * as repository from "../gateway/github-repository-publication-store.worker.js";
+import { githubPublicationEffectFacts } from "../gateway/repository-publication-effects.js";
+import { captureGitHubPublicationChanges } from "../gateway/repository-publication-events.js";
 import { sqlPublicationAnchor } from "../infra/sql-connection.js";
 import { deferSqliteWorkerCommitReceipt } from "../infra/sqlite-worker-operation-admission.js";
 import { captureGitHubPublicationWorkerReceipt } from "./github-publication-receipts.js";

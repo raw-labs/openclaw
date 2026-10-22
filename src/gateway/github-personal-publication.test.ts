@@ -48,7 +48,6 @@ import {
   expectPersonalPublicationReplay,
 } from "./github-personal-publication.test-support.js";
 import { requirePersonalGitHubPublicationConfirmationAsync } from "./github-publication-store-async.js";
-import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
 import {
   REQUEST,
@@ -201,15 +200,8 @@ describe("personal publication authority and recovery", () => {
           },
         };
       }
-      const respond = vi.fn();
-      await handleGatewayRequest({
-        req: { type: "req", id: "publish", method: "sessions.github.publish", params: request() },
-        client,
-        context: { ...context, githubPublicationService: coordinator },
-        respond,
-        isWebchatConnect: () => false,
-      });
-      expect(respond.mock.calls[0]?.[0]).toBe(false);
+      const response = await rpc("sessions.github.publish", request());
+      expect(response[0]).toBe(false);
       expect(tableExists(openOpenClawStateDatabase().db, table)).toBe(false);
       expect(commands).toEqual([]);
     },
@@ -567,8 +559,12 @@ describe("personal publication authority and recovery", () => {
       const prepared = await preparePersonalPublicationFixtureV2({ client, context });
       action = prepared;
       const fallback = mocks.runCommand.getMockImplementation()!;
+      let branchObserved = false;
       mocks.runCommand.mockImplementation(async (argv: string[], options?: { input?: string }) => {
-        if (argv.includes("ls-remote")) {
+        if (
+          argv.some((arg) => arg.startsWith("repos/openclaw/openclaw/git/matching-refs/heads/"))
+        ) {
+          branchObserved = true;
           if (race === "socket") {
             runtime.live = false;
           }
@@ -599,6 +595,7 @@ describe("personal publication authority and recovery", () => {
         return await fallback(argv, options);
       });
       const result = await coordinator.requestPersonalForSessionV2(request(), prepared);
+      expect(branchObserved).toBe(true);
       expect(result).toMatchObject({
         status: "failed",
         publisher: { source: "personal", ...account },
@@ -932,9 +929,12 @@ describe("personal publication authority and recovery", () => {
       await rpc("sessions.github.publish", request());
       const pending = (await rpc("sessions.github.options"))[1].pendingPersonal;
       const local = mocks.runCommand.getMockImplementation()!;
+      let faultInjected = false;
       mocks.runCommand.mockImplementation(
         async (argv: string[], options?: { env?: NodeJS.ProcessEnv }) => {
-          if (argv.includes("state=all")) {
+          const remoteObservation = argv.some((arg) => arg.includes("matching-refs/heads"));
+          if (remoteObservation) {
+            faultInjected = true;
             if (observation === "malformed") {
               return commandResult("[{}");
             }
@@ -945,7 +945,7 @@ describe("personal publication authority and recovery", () => {
           return (observation === "snapshot" &&
             argv.includes("write-tree") &&
             options?.env?.GIT_INDEX_FILE) ||
-            (observation === "remote" && argv.includes("state=all"))
+            (observation === "remote" && remoteObservation)
             ? commandResult("", 1)
             : await local(argv, options);
         },
@@ -961,6 +961,9 @@ describe("personal publication authority and recovery", () => {
           status: "needs_confirmation",
           effect: pending.result.effect,
         });
+      }
+      if (observation !== "snapshot") {
+        expect(faultInjected).toBe(true);
       }
       expect(await status(pending.result.requestId)).toEqual(pending);
       expect(workspace.effects).toEqual(["push"]);
