@@ -353,6 +353,7 @@ export function buildPluginManifestRecord(params: {
     backupResources: params.manifest.backupResources,
     doctorContract: params.manifest.doctorContract,
     doctorHealthChecks: params.manifest.doctorHealthChecks,
+    securityAuditConfig: params.manifest.securityAuditConfig,
     sessionRouteStateOwners: params.manifest.sessionRouteStateOwners,
     name: normalizeOptionalString(params.manifest.name) ?? params.candidate.packageName,
     description:
@@ -412,6 +413,7 @@ export function buildPluginManifestRecord(params: {
     qaRunners: params.manifest.qaRunners,
     dashboard: params.manifest.dashboard,
     controlUi: params.manifest.controlUi,
+    repositorySources: params.manifest.repositorySources,
     uiCapabilities: params.manifest.uiCapabilities,
     themes: params.manifest.themes,
     themeDefinitions: loadManifestThemeDefinitions({

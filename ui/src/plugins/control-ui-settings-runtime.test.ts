@@ -1,8 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
+import type { PluginsControlUiCatalog } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import type {
   ControlUiSettingsView,
   ControlUiChannelSettingsView,
 } from "../../../src/plugin-sdk/control-ui.js";
+import { createApplicationConfigCapability } from "../app/config.ts";
+import type { ApplicationContext } from "../app/context.ts";
 import type { ControlUiPluginDistribution } from "./control-ui-distribution.ts";
 import { loadControlUiPluginAssets } from "./control-ui-loader.ts";
 import { ControlUiPluginRuntime } from "./control-ui-runtime.ts";
@@ -134,4 +137,88 @@ it("rejects module channel identity drift even when section and panel match", as
   const f = fixture([view]);
   f.module.settingsViews = [{ ...view, placement: { ...view.placement, channelId: "foreign" } }];
   await expect(f.load()).rejects.toThrow("Invalid or duplicate");
+});
+
+it("loads every admitted settings contribution and revokes disabled owners before another mount", async () => {
+  const first = { id: "first", section: "profile", panel: "connections" } as const;
+  const second = { id: "second", section: "profile", panel: "connections" } as const;
+  const views = [first, second].map((viewPlacement) => ({
+    placement: viewPlacement,
+    mount: vi.fn(),
+  }));
+  const activate = vi.fn();
+  let plugins: PluginsControlUiCatalog["plugins"] = ["one", "two"].map((pluginId) => ({
+    pluginId,
+    name: pluginId,
+    revision: "revision",
+    entryUrl: `/__openclaw__/plugins/control-ui/${pluginId}/revision/index.js`,
+    styles: [],
+    settingsViews: pluginId === "one" ? [first, second] : [first],
+  }));
+  const client = {
+    gatewayUrl: location.origin.replace(/^http/u, "ws"),
+    request: vi.fn(async () => ({
+      plugins,
+      diagnostics: [],
+      revision: "catalog",
+    })),
+  };
+  const configuration = createApplicationConfigCapability({ resourceBasePath: "" });
+  const context = {
+    resourceBasePath: "",
+    config: {
+      ...configuration,
+      refresh: async () => ({ pluginAssetsRequireAuth: false, pluginFrameGrants: [] }),
+    },
+    gateway: {
+      snapshot: {
+        phase: "connected",
+        client,
+        hello: { features: { methods: ["plugins.controlUi.list"] } },
+      },
+      subscribe: () => () => {},
+      subscribeEvents: () => () => {},
+    },
+  } as unknown as ApplicationContext;
+  vi.mocked(loadControlUiPluginAssets).mockImplementation(async (pluginId) => ({
+    pluginId,
+    settingsViews: pluginId === "one" ? views : [views[0]!],
+    default: { id: pluginId, activate },
+  }));
+  const runtime = new ControlUiPluginRuntime(() => context);
+  try {
+    runtime.start();
+    await runtime.refresh();
+    expect(
+      runtime.settingsContributions.map(
+        (entry) => `${entry.pluginId}/${"id" in entry.placement ? entry.placement.id : ""}`,
+      ),
+    ).toEqual(["one/first", "one/second", "two/first"]);
+    const loaded = await runtime.loadSettingsView(second, new AbortController().signal, "one");
+    expect(loaded.view).toBe(views[1]);
+    const other = await runtime.loadSettingsView(first, new AbortController().signal, "two");
+    expect(other.signal.aborted).toBe(false);
+    plugins = plugins.filter((plugin) => plugin.pluginId === "two");
+    await runtime.refresh();
+    expect(loaded.signal.aborted).toBe(true);
+    expect(other.signal.aborted).toBe(false);
+    const loads = vi.mocked(loadControlUiPluginAssets).mock.calls.length;
+    await expect(
+      runtime.loadSettingsView(second, new AbortController().signal, "one"),
+    ).rejects.toThrow();
+    expect(vi.mocked(loadControlUiPluginAssets).mock.calls).toHaveLength(loads);
+    expect(runtime.settingsContributions).toHaveLength(1);
+  } finally {
+    runtime.dispose();
+  }
+});
+
+it("rejects duplicate renderer A and missing renderer B even when counts match", async () => {
+  const overview = memoryView("overview");
+  const memories = memoryView("memories");
+  const f = fixture([overview, memories]);
+  f.module.settingsViews = [overview, overview];
+  await expect(f.load(overview)).rejects.toThrow("Invalid or duplicate Settings presentation");
+  expect(f.style.media).toBe("not all");
+  expect(f.stop).toHaveBeenCalledOnce();
 });

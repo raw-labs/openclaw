@@ -1,10 +1,14 @@
 import { expect, it, vi } from "vitest";
 import type {
   ControlUiSettingsContext,
+  ControlUiSettingsContextV2,
+  ControlUiContributionSettingsSnapshot,
   ControlUiSettingsSnapshot,
 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import type { ApplicationContext } from "../app/context.ts";
+import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
+import { ControlUiSettingsPresentation } from "./control-ui-settings-view.solid.tsx";
 import { mountSettingsPresentation } from "./control-ui-settings.test-support.tsx";
 
 type Hello = { auth: { scopes: string[]; recoveryScope: string } };
@@ -176,4 +180,84 @@ it.each([
   expect(f.viewDisposers[0]).toHaveBeenCalledTimes(1);
   await expect(old.request("memory.search")).rejects.toThrow();
   await waitForSolid(() => expect(f.contexts).toHaveLength(2));
+});
+
+it("keeps contributed Profile Settings through agent selection and retires account-bound requests", async () => {
+  const contexts: ControlUiSettingsContextV2[] = [];
+  const listeners = new Set<() => void>();
+  const dispose = vi.fn();
+  const request = vi.fn(async () => "current");
+  const placement = { section: "profile", panel: "connections", id: "fixture" } as const;
+  let snapshot: ControlUiContributionSettingsSnapshot = {
+    agentId: "main",
+    agentsLoading: false,
+    agentsError: null,
+    connected: true,
+    connectionEpoch: 1,
+    routeIntent: "fixture",
+    locale: "en",
+    configAvailable: false,
+    profile: { id: "first" },
+    canRead: true,
+    canAdmin: false,
+  };
+  const gateway = {
+    snapshot: {
+      phase: "connected",
+      selfUser: { id: "first" },
+      hello: { auth: { scopes: ["operator.read"], recoveryScope: "first" } },
+      client: { request, recoveryScopeReady: true, offlineRecoveryRetired: false },
+    },
+  };
+  // SAFETY: this presentation uses only Gateway identity and the admitted fixture renderer.
+  const application = {
+    gateway,
+    plugins: {
+      reportError: vi.fn(),
+      async loadSettingsView(_placement: unknown, signal: AbortSignal) {
+        return {
+          signal,
+          dispose() {},
+          view: {
+            placement,
+            mount(_container: HTMLElement, context: ControlUiSettingsContextV2) {
+              contexts.push(context);
+              return { update() {}, dispose };
+            },
+          },
+        };
+      },
+    },
+  } as unknown as ApplicationContext;
+  const mounted = mountSolid(() => (
+    <ControlUiSettingsPresentation
+      application={application}
+      placement={placement}
+      pluginId="fixture"
+      readSnapshot={() => snapshot}
+      subscribe={(listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }}
+      navigate={() => {}}
+      refreshAgents={() => {}}
+    />
+  ));
+  await waitForSolid(() => expect(contexts).toHaveLength(1));
+  const original = contexts[0]!;
+  expect(original.apiVersion).toBe(2);
+  snapshot = { ...snapshot, agentId: "writer" };
+  listeners.forEach((listener) => listener());
+  expect(original.signal.aborted).toBe(false);
+  const pending = original.request("fixture.status");
+  gateway.snapshot.selfUser = { id: "second" };
+  gateway.snapshot.hello.auth.recoveryScope = "second";
+  snapshot = { ...snapshot, profile: { id: "second" } };
+  listeners.forEach((listener) => listener());
+  expect(original.signal.aborted).toBe(true);
+  await expect(pending).rejects.toThrow();
+  expect(() => original.readConfig(["plugins"])).toThrow();
+  await waitForSolid(() => expect(contexts).toHaveLength(2));
+  expect(dispose).toHaveBeenCalledOnce();
+  mounted.unmount();
 });

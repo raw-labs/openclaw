@@ -73,6 +73,9 @@ export function createPluginGatewayMethodDescriptor(
     name: string;
     handler: GatewayMethodHandler;
     scope?: OperatorScope;
+    startup?: GatewayMethodStartupAvailability;
+    controlPlaneWrite?: boolean;
+    since?: string;
     profileAccess?: GatewayMethodProfileAccess;
     sessionAccess?: GatewayMethodSessionAccess;
   } & Partial<GatewayReadSharing>,
@@ -82,6 +85,9 @@ export function createPluginGatewayMethodDescriptor(
     name: params.name,
     handler: params.handler,
     owner: { kind: "plugin", pluginId: params.pluginId },
+    ...(params.startup ? { startup: params.startup } : {}),
+    ...(params.controlPlaneWrite ? { controlPlaneWrite: true } : {}),
+    ...(params.since ? { since: params.since } : {}),
     profileAccess: params.profileAccess ?? "required",
     ...(params.sessionAccess ? { sessionAccess: params.sessionAccess } : {}),
     ...(params.shareKey

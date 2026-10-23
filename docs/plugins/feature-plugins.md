@@ -451,6 +451,67 @@ The dev server serves the validated generated JavaScript and CSS without runtime
 plugin activation. Restart the dev server after editing plugin presentation
 sources to rebuild their immutable generation.
 
+### Contributed Profile and Agent Settings
+
+A native plugin can declare additional views in the existing Profile connections
+or Agent tools slots. Give every contribution a plugin-local `id`:
+
+```json
+{
+  "section": "profile",
+  "panel": "connections",
+  "id": "account",
+  "requiredMethods": ["example.account.status"],
+  "search": { "label": "Example account", "hash": "#example-account", "aliases": "connection" }
+}
+```
+
+For Agent tools, use `section: "agents"` and `panel: "tools"`. Export matching
+`ControlUiContributedSettingsView` entries from the browser module's `settingsViews`.
+These views require current catalog admission; disabling their plugin or replacing
+its revision retires mounted views and their assets. Memory/channel setup retains
+its existing packaged-presentation behavior. All views must match their declared
+owner and placements; duplicate or missing renderers are rejected.
+
+Contributed views receive `ControlUiSettingsContextV2`, without a Memory engine.
+Snapshots include authenticated profile, permissions, selected agent, locale,
+connection epoch, and config availability. Profile views do not remount just because
+the selected Settings agent changes. Client, identity, permissions, route, or method
+catalog replacement retires authority; a same-client reconnect preserves drafts but
+rejects earlier replies. `request` accepts a cancellation signal.
+
+Use `readConfig` and `readAgentConfig` to read the existing config owner, and
+`runConfigMutation` to delegate serialization and refresh to that same owner. The
+host does not create a second config cache or grant new backend write permissions.
+Accepted configuration work can settle and clean up after its view closes; new
+view callbacks cannot dispatch after retirement. Shared controls include secret
+inputs, segmented choices, icons, confirmation, copying, locale formatting and
+bounded navigation. Contributions do not replace native account or Agent tools
+views.
+
+### Scoped requests, presentation, and observed actions
+
+`host.requests` adapts the existing Gateway transport. Capture a request handle
+for work that must reject after its connection, authenticated handshake, or plugin
+lifetime changes. `createSetSync` delegates subscription batching, acknowledgements
+and retries to the native lifecycle; detach it when its observation ends. Scope
+and method checks are presentation facts, never a substitute for Gateway
+authorization at dispatch.
+
+The optional `host.presentation` capability mounts existing native controls:
+menus, icons, activity pills, lazy/error states, tooltips, clipped text and marquees.
+It also supplies locale, safe-URL, clipboard and notification services. The optional
+`host.native` capability supplies native diff and disclosure-overlay primitives.
+Dispose mounted handles when their container ends; activation/view retirement also
+revokes retained handles. `host.navigation.openExternal` opens only allowed URLs
+in an isolated new tab.
+
+Session actions can provide `observe(target, changed)`. Visible native session
+menus own that interest and call its disposer on close, withdrawal, or plugin
+retirement. Notify when the action's `resolve` result changes. Optional `icon`,
+`shortcut`, and `opensExternal` metadata use the existing menu presentation;
+execution still checks current registration and action availability.
+
 ### Bundle boundaries
 
 The build emits a JavaScript entry, optional CSS, and JavaScript chunks for lazy

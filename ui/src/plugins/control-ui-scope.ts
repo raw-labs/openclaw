@@ -61,10 +61,11 @@ export function scopeControlUiHost(
     source: T,
     callbackArguments: Readonly<Partial<Record<PropertyKey, number>>> = {},
     disposeHandle?: () => void,
+    cleanupKey = "dispose",
   ): T =>
     new Proxy(source, {
       get(target, property, receiver) {
-        if (property === "dispose" && disposeHandle) {
+        if (property === cleanupKey && disposeHandle) {
           return disposeHandle;
         }
         check();
@@ -102,6 +103,46 @@ export function scopeControlUiHost(
         };
       },
     });
+  const requests = services(host.requests, { subscribe: 0, subscribeEvents: 0 });
+  const scopedRequests: ControlUiHost["requests"] = new Proxy(requests, {
+    get(target, property, receiver) {
+      if (property === "capture") {
+        return () => {
+          check();
+          const captured = host.requests.capture();
+          return (
+            captured && {
+              isCurrent: () => active() && captured.isCurrent(),
+              request: async <T>(
+                method: string,
+                params?: unknown,
+                options?: { signal?: AbortSignal; timeoutMs?: number },
+              ) => {
+                check();
+                const result = await captured.request<T>(method, params, options);
+                check();
+                return result;
+              },
+            }
+          );
+        };
+      }
+      if (property === "createSetSync") {
+        return (options: Parameters<ControlUiHost["requests"]["createSetSync"]>[0]) => {
+          check();
+          const lifecycle = host.requests.createSetSync({
+            sync: bindCallback(options.sync),
+            onAttach: options.onAttach && bindCallback(options.onAttach),
+            onDetach: options.onDetach && bindCallback(options.onDetach),
+            onSnapshot: options.onSnapshot && bindCallback(options.onSnapshot),
+            onEvent: options.onEvent && bindCallback(options.onEvent),
+          });
+          return services(lifecycle, {}, keep(lifecycle.detach), "detach");
+        };
+      }
+      return Reflect.get(target, property, receiver);
+    },
+  });
   return {
     ...host,
     signal,
@@ -129,6 +170,9 @@ export function scopeControlUiHost(
       return keep(host.subscribe(bindCallback(listener)));
     },
     sessions: services(host.sessions, { observe: 1 }),
+    requests: scopedRequests,
+    native: host.native ? services(host.native) : undefined,
+    presentation: host.presentation ? services(host.presentation) : undefined,
     agents: services(host.agents),
     navigation: services(host.navigation),
     dock: host.dock ? services(host.dock) : undefined,

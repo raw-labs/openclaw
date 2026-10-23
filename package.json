@@ -1726,6 +1726,10 @@
     "./plugin-sdk/llm": {
       "default": "./dist/plugin-sdk/llm.js"
     },
+    "./plugin-sdk/execution-environment": {
+      "types": "./dist/plugin-sdk/execution-environment.d.ts",
+      "default": "./dist/plugin-sdk/execution-environment.js"
+    },
     "./cli-entry": "./openclaw.mjs"
   },
   "scripts": {

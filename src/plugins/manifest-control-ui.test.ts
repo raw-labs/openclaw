@@ -161,3 +161,26 @@ it.each([true, false])("gates generated browser paths on the build: %s", (build)
       : { ok: true, manifest: { controlUi } },
   );
 });
+
+it("admits multiple contributed Settings views and rejects duplicate identities", () => {
+  const settingsViews = ["account", "service"].map((id) => ({
+    id,
+    section: "profile",
+    panel: "connections",
+    requiredMethods: ["fixture.status"],
+    search: { label: id, hash: `#${id}`, aliases: "fixture account" },
+  }));
+  const controlUi = { entry: "dist/control-ui/index.js", settingsViews };
+  expect(loadPluginManifest(fixture(controlUi).dir)).toMatchObject({
+    ok: true,
+    manifest: { controlUi },
+  });
+  expect(
+    loadPluginManifest(
+      fixture({
+        ...controlUi,
+        settingsViews: [settingsViews[0], settingsViews[0]],
+      }).dir,
+    ),
+  ).toMatchObject({ ok: false });
+});

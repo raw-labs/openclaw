@@ -1,22 +1,55 @@
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { onSettled } from "solid-js";
 import type {
   ControlUiSettingsContext,
+  ControlUiSettingsContextV2,
   ControlUiSettingsView,
   ControlUiSettingsSnapshot,
+  ControlUiContributionSettingsSnapshot,
+  ControlUiContributedSettingsView,
 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import type { ApplicationContext } from "../app/context.ts";
 import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { hasOperatorReadAccess } from "../app/operator-access.ts";
-import { formatUiError } from "../lib/format-error.ts";
-import { formatRelativeTimestamp } from "../lib/format.ts";
+import { showConfirmDialog } from "../components/confirm-dialog.ts";
+import { handleCopyButton } from "../components/copy-button-state.ts";
+import {
+  resolveAgentConfigEntryTarget,
+  currentConfigObject,
+} from "../lib/config/config-state-model.ts";
+import { formatUiExternalText, formatUiError } from "../lib/format-error.ts";
+import { formatDateTimeMs, formatRelativeTimestamp } from "../lib/format.ts";
+import { t } from "../lib/reactive/i18n.ts";
 import { listen } from "../lib/reactive/listener.ts";
+import { registerControlUiEnglish } from "./control-ui-english.ts";
 import { createControlUiSettingsComponents } from "./control-ui-settings-components.solid.tsx";
+
+function isMemoryView(
+  view:
+    | ControlUiSettingsView
+    | ControlUiContributedSettingsView
+    | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView,
+): view is ControlUiSettingsView {
+  return view.placement.section === "memory";
+}
+function isContributedView(
+  view:
+    | ControlUiSettingsView
+    | ControlUiContributedSettingsView
+    | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView,
+): view is ControlUiContributedSettingsView {
+  return view.placement.section === "profile" || view.placement.section === "agents";
+}
 
 /**
  * Facts that end a mounted view. Connection state and the transport epoch reach the
  * view through update(), so a same-client reconnect keeps its presentation and drafts.
  */
-function viewLifetime(application: ApplicationContext, snapshot: ControlUiSettingsSnapshot) {
+function viewLifetime(
+  application: ApplicationContext,
+  snapshot: ControlUiSettingsSnapshot | ControlUiContributionSettingsSnapshot,
+  placement: ControlUiSettingsView["placement"] | ControlUiContributedSettingsView["placement"],
+) {
   const gateway = application.gateway.snapshot;
   return {
     client: gateway.client,
@@ -24,9 +57,12 @@ function viewLifetime(application: ApplicationContext, snapshot: ControlUiSettin
       gatewayPresentationScope(application.gateway).key,
       // A transport drop retains hello; a connect rejection clears it.
       gateway.hello ? hasOperatorReadAccess(gateway.hello.auth ?? null) : null,
-      snapshot.agentId,
-      snapshot.engine.kind,
-      snapshot.engine.id,
+      placement.section === "profile" ? undefined : snapshot.agentId,
+      gatewayPresentationScope(application.gateway).displayUser?.id,
+      "canRead" in snapshot ? snapshot.canRead : undefined,
+      "canAdmin" in snapshot ? snapshot.canAdmin : undefined,
+      "engine" in snapshot ? snapshot.engine.kind : undefined,
+      "engine" in snapshot ? snapshot.engine.id : undefined,
       snapshot.advertisedMethods,
       snapshot.routeIntent,
     ]),
@@ -39,11 +75,13 @@ function sameLifetime(a: ReturnType<typeof viewLifetime>, b: ReturnType<typeof v
 
 export function ControlUiSettingsPresentation(props: {
   application: ApplicationContext;
-  placement: ControlUiSettingsView["placement"];
-  readSnapshot: () => ControlUiSettingsSnapshot;
+  placement: ControlUiSettingsView["placement"] | ControlUiContributedSettingsView["placement"];
+  pluginId?: string;
+  readSnapshot: () => ControlUiSettingsSnapshot | ControlUiContributionSettingsSnapshot;
   subscribe: (listener: () => void) => () => void;
   navigate: ControlUiSettingsContext["navigate"];
   refreshAgents: () => void;
+  navigateTo?: ControlUiSettingsContext["navigateTo"];
 }) {
   let container: HTMLDivElement | undefined;
   let active = true;
@@ -51,7 +89,9 @@ export function ControlUiSettingsPresentation(props: {
     | {
         abort: AbortController;
         identity: ReturnType<typeof viewLifetime>;
-        update?: (snapshot: ControlUiSettingsSnapshot) => void;
+        update?: (
+          snapshot: ControlUiSettingsSnapshot | ControlUiContributionSettingsSnapshot,
+        ) => void;
         dispose?: () => void;
       }
     | undefined;
@@ -76,7 +116,7 @@ export function ControlUiSettingsPresentation(props: {
       return;
     }
     const snapshot = props.readSnapshot();
-    const identity = viewLifetime(props.application, snapshot);
+    const identity = viewLifetime(props.application, snapshot, props.placement);
     if (owner && sameLifetime(owner.identity, identity)) {
       try {
         owner.update?.(snapshot);
@@ -94,21 +134,41 @@ export function ControlUiSettingsPresentation(props: {
       if (
         !active ||
         owner !== next ||
-        !sameLifetime(identity, viewLifetime(props.application, props.readSnapshot()))
+        !sameLifetime(
+          identity,
+          viewLifetime(props.application, props.readSnapshot(), props.placement),
+        )
       ) {
         throw new Error("This Settings presentation has ended.");
       }
     };
     void props.application.plugins
-      .loadSettingsView(props.placement, next.abort.signal)
+      .loadSettingsView(props.placement, next.abort.signal, props.pluginId)
       .then((loaded) => {
         lifetime = loaded.signal;
         current();
-        const context: ControlUiSettingsContext = {
-          props: props.readSnapshot(),
+        const context: Omit<ControlUiSettingsContextV2, "props"> = {
+          apiVersion: 2 as const,
+          readAgentConfig(agentId) {
+            current();
+            return (
+              resolveAgentConfigEntryTarget(
+                currentConfigObject(props.application.runtimeConfig.state),
+                agentId,
+              )?.entry ?? null
+            );
+          },
+          readConfig(path: readonly string[]) {
+            current();
+            let value: unknown = currentConfigObject(props.application.runtimeConfig.state);
+            for (const key of path) {
+              value = isRecord(value) ? value[key] : undefined;
+            }
+            return value;
+          },
           signal: lifetime,
           components: createControlUiSettingsComponents(lifetime),
-          async request<T>(method: string, params?: unknown) {
+          async request<T>(method: string, params?: unknown, options?: { signal?: AbortSignal }) {
             current();
             const gateway = props.application.gateway.snapshot;
             const epoch = props.readSnapshot().connectionEpoch;
@@ -119,7 +179,17 @@ export function ControlUiSettingsPresentation(props: {
             ) {
               throw new Error("The Gateway is offline or operator access is unavailable.");
             }
-            const result = await gateway.client.request<T>(method, params);
+            const signal =
+              "id" in props.placement
+                ? options?.signal
+                  ? AbortSignal.any([lifetime, options.signal])
+                  : lifetime
+                : options?.signal;
+            const result = await gateway.client.request<T>(
+              method,
+              params,
+              signal ? { signal } : undefined,
+            );
             current();
             // The view survives reconnects; replies from an earlier transport epoch do not.
             if (props.readSnapshot().connectionEpoch !== epoch) {
@@ -127,7 +197,73 @@ export function ControlUiSettingsPresentation(props: {
             }
             return result;
           },
-          navigate(destination) {
+          registerEnglish(catalog: Parameters<ControlUiSettingsContextV2["registerEnglish"]>[0]) {
+            current();
+            registerControlUiEnglish(catalog);
+          },
+          copyButton(
+            event: Event,
+            text: string,
+            label: string,
+            targets: { label?: HTMLElement; feedback?: HTMLElement },
+          ) {
+            current();
+            return handleCopyButton(event, text, label, targets);
+          },
+          async runConfigMutation(task, options) {
+            current();
+            return props.application.runtimeConfig.runExternalMutation(
+              async (client) => {
+                current();
+                let operationOpen = true;
+                try {
+                  // Accepted configuration work owns settlement and staged cleanup,
+                  // even when its presentation ends while an RPC is in flight.
+                  return await task({
+                    request(method, params, requestOptions) {
+                      const gateway = props.application.gateway.snapshot;
+                      if (
+                        !operationOpen ||
+                        gateway.client !== client ||
+                        gateway.phase !== "connected"
+                      ) {
+                        throw new Error("This Settings configuration operation has ended.");
+                      }
+                      return client.request(method, params, requestOptions);
+                    },
+                  });
+                } finally {
+                  operationOpen = false;
+                }
+              },
+              {
+                ...options,
+                canDispatch: () => {
+                  current();
+                  return options?.canDispatch?.() !== false;
+                },
+              },
+            );
+          },
+          ensureConfig() {
+            current();
+            // The existing config owner settles this read; it publishes no view-owned result.
+            return props.application.runtimeConfig.ensureLoaded();
+          },
+          async confirm(options: Parameters<ControlUiSettingsContextV2["confirm"]>[0]) {
+            current();
+            const result = await showConfirmDialog({ ...options, signal: lifetime });
+            current();
+            return result;
+          },
+          translate: t,
+          formatExternalText: formatUiExternalText,
+          formatDateTime: formatDateTimeMs,
+          navigateTo(destination: Parameters<ControlUiSettingsContextV2["navigateTo"]>[0]) {
+            current();
+            props.navigateTo?.(destination);
+          },
+          navigate(destination: Parameters<ControlUiSettingsContext["navigate"]>[0]) {
             current();
             props.navigate(destination);
           },
@@ -135,16 +271,37 @@ export function ControlUiSettingsPresentation(props: {
             current();
             props.refreshAgents();
           },
-          formatRelativeTimestamp(timestamp) {
+          formatRelativeTimestamp(timestamp: number) {
             current();
             return formatRelativeTimestamp(timestamp);
           },
-          formatError(error) {
+          formatError(error: unknown) {
             current();
             return formatUiError(error);
           },
         };
-        const mounted = loaded.view.mount(container!, context);
+        const initial = props.readSnapshot();
+        const view = loaded.view;
+        let mounted: { dispose(): void };
+        if (isMemoryView(view) && "engine" in initial) {
+          const memory = view.mount(container!, { ...context, props: initial });
+          mounted = memory;
+          next.update = (updated) => {
+            if ("engine" in updated) {
+              memory.update(updated);
+            }
+          };
+        } else if (isContributedView(view) && !("engine" in initial)) {
+          const contributed = view.mount(container!, { ...context, props: initial });
+          mounted = contributed;
+          next.update = (updated) => {
+            if (!("engine" in updated)) {
+              contributed.update(updated);
+            }
+          };
+        } else {
+          throw new Error("Settings presentation received facts for another placement.");
+        }
         // The runtime owns assets through abort; this owner disposes only the mounted view.
         next.dispose = () => mounted.dispose();
         if (lifetime.aborted || owner !== next) {
@@ -162,8 +319,7 @@ export function ControlUiSettingsPresentation(props: {
           },
           { once: true },
         );
-        next.update = mounted.update;
-        mounted.update(props.readSnapshot());
+        next.update?.(props.readSnapshot());
       })
       .catch((error: unknown) => {
         if (owner === next && !next.abort.signal.aborted) {

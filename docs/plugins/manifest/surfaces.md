@@ -504,6 +504,18 @@ browser application's trust; it is distinct from the scoped dashboard widget
 bindings below. See [Feature plugins](/plugins/feature-plugins) for authoring,
 replacements, reload, and activation receipts.
 
+`controlUi.settingsViews` accepts up to 32 unique placements: Memory overview or
+Memories, an owned channel detail, Profile connections (`section: "profile"`,
+`panel: "connections"`, `id`), or Agent tools (`section: "agents"`,
+`panel: "tools"`, `id`). Contribution IDs are plugin-local identifiers of up to
+128 letters, digits, periods, underscores, or hyphens, beginning with a letter or
+digit. Optional `requiredMethods` lists up to 16 advertised Gateway methods.
+Optional `search` supplies `label`, `hash`, and `aliases` for Settings search.
+Profile/Agent placements require admission in the active plugin catalog; their
+module exports must match the declared owner and placements exactly. See
+[contributed Settings](/plugins/feature-plugins#contributed-profile-and-agent-settings)
+for the V2 context and lifetime contract.
+
 ## dashboard reference
 
 `dashboard` lets an enabled plugin expose existing Gateway RPCs to granted dashboard widgets without adding plugin policy to core. Data bindings must name a method the same plugin registers with `operator.read`; action verbs must name a method it registers with `operator.write`. A mismatch rejects the plugin during registration.

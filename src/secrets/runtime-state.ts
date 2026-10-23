@@ -48,7 +48,14 @@ import {
   type DegradedSecretOwner,
   type SecretOwnerRefState,
 } from "./runtime-degraded-state.js";
-import type { SecretResolverWarning } from "./runtime-shared.js";
+import type {
+  SecretResolverWarning,
+  SecretExecutionEnvironmentExclusions,
+} from "./runtime-shared.js";
+import {
+  cloneSecretsRuntimeRefreshContext,
+  cloneSecretsRuntimeSnapshot,
+} from "./runtime-snapshot-clone.js";
 import {
   hasSameSecretProviderDefinition,
   isSecretsRuntimeDisplayChange,
@@ -70,6 +77,7 @@ export type PreparedSecretsRuntimeSnapshot = {
   degradedOwners?: DegradedSecretOwner[];
   secretOwners?: SecretOwnerRefState[];
   webTools: RuntimeWebToolsMetadata;
+  executionEnvironmentExclusions?: SecretExecutionEnvironmentExclusions;
 };
 
 /** Context needed to refresh active secrets runtime snapshots without losing plugin origin data. */
@@ -114,40 +122,6 @@ type StoreMutationLineage = {
   mainProfileSetToken?: RuntimeAuthProfileStoreMutationToken;
   token: RuntimeAuthProfileStoreMutationToken;
 };
-
-/**
- * Clones refresh context while preserving callback identity and isolating mutable maps/config.
- */
-function cloneSecretsRuntimeRefreshContext(
-  context: SecretsRuntimeRefreshContext,
-): SecretsRuntimeRefreshContext {
-  return {
-    env: { ...context.env },
-    explicitAgentDirs: context.explicitAgentDirs ? [...context.explicitAgentDirs] : null,
-    includeConfigRefs: context.includeConfigRefs ?? true,
-    includeAuthStoreRefs: context.includeAuthStoreRefs,
-    loadablePluginOrigins: new Map(context.loadablePluginOrigins),
-    ...(context.manifestRegistry ? { manifestRegistry: context.manifestRegistry } : {}),
-    ...(context.loadAuthStore ? { loadAuthStore: context.loadAuthStore } : {}),
-  };
-}
-
-function cloneSnapshot(
-  snapshot: PreparedSecretsRuntimeSnapshot,
-  authStores: PreparedSecretsRuntimeSnapshot["authStores"],
-): PreparedSecretsRuntimeSnapshot {
-  return {
-    sourceConfig: cloneConfigWithResolutionFacts(snapshot.sourceConfig),
-    config: cloneConfigWithResolutionFacts(snapshot.config),
-    authStores,
-    authStoreCredentialsRevision: snapshot.authStoreCredentialsRevision,
-    authStoreSnapshotsRevision: snapshot.authStoreSnapshotsRevision,
-    warnings: snapshot.warnings.map((warning) => ({ ...warning })),
-    degradedOwners: structuredClone(snapshot.degradedOwners ?? []),
-    secretOwners: structuredClone(snapshot.secretOwners ?? []),
-    webTools: structuredClone(snapshot.webTools),
-  };
-}
 
 function mergeLiveAuthStoreBookkeeping(
   authStores: PreparedSecretsRuntimeSnapshot["authStores"],
@@ -808,7 +782,7 @@ export function activateSecretsRuntimeSnapshotState(params: {
       entry.store.profiles,
     );
   }
-  const next = cloneSnapshot(params.snapshot, authStores);
+  const next = cloneSecretsRuntimeSnapshot(params.snapshot, authStores);
   if (params.mergeLiveAuthBookkeeping !== false) {
     next.authStores = mergeLiveAuthStoreBookkeeping(
       next.authStores,
@@ -979,7 +953,10 @@ export function getActiveSecretsRuntimeSnapshotState(): PreparedSecretsRuntimeSn
   if (!activeSnapshot) {
     return null;
   }
-  const snapshot = cloneSnapshot(activeSnapshot, listOwnedRuntimeAuthProfileStoreSnapshots());
+  const snapshot = cloneSecretsRuntimeSnapshot(
+    activeSnapshot,
+    listOwnedRuntimeAuthProfileStoreSnapshots(),
+  );
   snapshot.authStoreCredentialsRevision = getRuntimeAuthProfileStoreCredentialsRevision();
   snapshot.authStoreSnapshotsRevision = getRuntimeAuthProfileStoreSnapshotsRevision();
   if (activeRefreshContext) {
@@ -1125,7 +1102,10 @@ export function restoreSecretsRuntimeSourceSnapshotIfLineageCurrent(params: {
 // Return the active references and keep full snapshot clone isolation on
 // getActiveSecretsRuntimeSnapshot() for callers that need mutable data.
 export function getActiveSecretsRuntimeConfigSnapshot():
-  | (Pick<PreparedSecretsRuntimeSnapshot, "config" | "sourceConfig"> & {
+  | (Pick<
+      PreparedSecretsRuntimeSnapshot,
+      "config" | "sourceConfig" | "executionEnvironmentExclusions"
+    > & {
       configRefsPrepared: boolean;
     })
   | null {
@@ -1135,6 +1115,9 @@ export function getActiveSecretsRuntimeConfigSnapshot():
   return {
     config: activeSnapshot.config,
     sourceConfig: activeSnapshot.sourceConfig,
+    ...(activeSnapshot.executionEnvironmentExclusions
+      ? { executionEnvironmentExclusions: activeSnapshot.executionEnvironmentExclusions }
+      : {}),
     // Auth-only snapshots carry config bytes, but never classified their SecretRef owners.
     configRefsPrepared: activeRefreshContext?.includeConfigRefs === true,
   };

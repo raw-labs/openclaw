@@ -351,6 +351,7 @@ export type PluginRecord = {
   contracts?: PluginManifestContracts;
   dashboard?: PluginManifestDashboard;
   controlUi?: PluginManifestControlUi;
+  repositorySources?: import("./manifest-types.js").PluginManifest["repositorySources"];
   uiCapabilities?: PluginManifestRecord["uiCapabilities"];
   mcpServers?: Record<string, PluginManifestMcpServer>;
   memorySlotSelected?: boolean;
@@ -418,6 +419,11 @@ export type PluginRegistry = {
   nodeHostCommands: PluginNodeHostCommandRegistration[];
   nodeInvokePolicies: PluginNodeInvokePolicyRegistration[];
   gatewayAccessPolicies: Array<PluginRegistrationOwner & { policy: PluginGatewayAccessPolicy }>;
+  executionEnvironments: Array<
+    PluginRegistrationOwner & {
+      provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1;
+    }
+  >;
   securityAuditCollectors: Array<
     PluginRegistrationOwner & { collector: OpenClawPluginSecurityAuditCollector }
   >;
