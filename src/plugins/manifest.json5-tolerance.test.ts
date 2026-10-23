@@ -49,6 +49,26 @@ const decision = (id: string, name: string, fields: Record<string, unknown> = {}
 const cli = { id: "anthropic", providers: ["anthropic"], cliBackends: ["claude-cli"] };
 
 describe("loadPluginManifest JSON5 tolerance", () => {
+  it("preserves authored secret exclusions without enabling unrecognized execution behavior", () => {
+    const manifest = parseManifest({
+      configContracts: {
+        secretInputs: {
+          paths: [
+            { path: "service.token", executionEnvironment: "exclude" },
+            { path: "ordinary.token" },
+            { path: "unsupported.token", executionEnvironment: "inject" },
+          ],
+        },
+      },
+    });
+
+    expect(manifest.configContracts?.secretInputs?.paths).toEqual([
+      { path: "service.token", executionEnvironment: "exclude" },
+      { path: "ordinary.token" },
+      { path: "unsupported.token" },
+    ]);
+  });
+
   it("normalizes static doctor session route-state owners", () => {
     const manifest = parseManifest({
       sessionRouteStateOwners: [

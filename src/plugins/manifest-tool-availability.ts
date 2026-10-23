@@ -9,6 +9,7 @@ import type {
   PluginManifestCapabilityProviderAuthSignal,
   PluginManifestCapabilityProviderConfigSignal,
 } from "./manifest.js";
+import type { PluginToolAllowlist } from "./tool-grant-allowlist.js";
 
 function readPath(root: unknown, path: string | undefined): unknown {
   if (!path?.trim()) {
@@ -190,4 +191,18 @@ export function hasManifestToolAvailability(params: {
           )),
     );
   });
+}
+
+export function manifestToolAllowed(
+  allowlist: PluginToolAllowlist,
+  plugin: PluginManifestRecord | undefined,
+  pluginId: string,
+  name: string,
+): boolean {
+  return (
+    allowlist.allowsTool(pluginId, name) ||
+    Boolean(
+      plugin?.toolMetadata?.[name]?.policyGroups?.some((group) => allowlist.allowsToolName(group)),
+    )
+  );
 }

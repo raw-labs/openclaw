@@ -35,6 +35,8 @@ export const PROFILE_SETTINGS_TARGET_IDS = {
 export type SettingsSearchTarget = {
   readonly routeId: RouteId;
   readonly labelKey: string;
+  readonly label?: string;
+  readonly pathname?: string;
   readonly hash: string;
   readonly searchKeys: readonly string[];
   readonly nativeSearchKeys?: Readonly<
@@ -42,6 +44,7 @@ export type SettingsSearchTarget = {
   >;
   readonly search?: string;
   readonly aliases?: string;
+  readonly requiresMethods?: readonly string[];
   readonly requiresIdentity?: true;
   readonly requiresMultipleProfiles?: true;
   readonly requiresNativeDeviceSettings?: true;

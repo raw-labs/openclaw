@@ -273,6 +273,9 @@ export type OpenClawPluginApi = {
     handler: GatewayRequestHandler,
     opts?: {
       scope?: OperatorScope;
+      startup?: "available" | "unavailable-until-sidecars";
+      controlPlaneWrite?: boolean;
+      since?: string;
       profileAccess?: "independent" | "required";
       /** Require a top-level sessionKey (and optional agentId) naming an existing session. */
       sessionAccess?: import("../gateway/methods/descriptor.js").GatewayMethodSessionAccess;
@@ -304,6 +307,10 @@ export type OpenClawPluginApi = {
   registerReload: (registration: OpenClawPluginReloadRegistration) => void;
   registerNodeHostCommand: (command: OpenClawPluginNodeHostCommand) => void;
   registerNodeInvokePolicy: (policy: OpenClawPluginNodeInvokePolicy) => void;
+  /** Prepare nonsecret process facts and scoped local launch adapters for this plugin. */
+  registerExecutionEnvironment: (
+    provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1,
+  ) => void;
   registerSecurityAuditCollector: (collector: OpenClawPluginSecurityAuditCollector) => void;
   registerService: {
     (service: OpenClawPluginService): void;

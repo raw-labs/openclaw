@@ -3,9 +3,11 @@
  * Confirms plugin group expansion and unknown allowlist reporting.
  */
 import { describe, expect, it } from "vitest";
+import { filterToolsByPolicy } from "./tool-policy-match.js";
 import {
   analyzeAllowlistByToolType,
   buildPluginToolGroups,
+  expandPolicyWithPluginGroups,
   type PluginToolGroups,
 } from "./tool-policy.js";
 
@@ -16,6 +18,37 @@ const pluginGroups: PluginToolGroups = {
 const coreTools = new Set(["read", "write", "exec", "session_status"]);
 
 describe("analyzeAllowlistByToolType", () => {
+  it.each(["group:sessions", "group:openclaw"])(
+    "preserves plugin and core grants and denials for %s",
+    (group) => {
+      const tools = [{ name: "repository_publish" }, { name: "session_status" }, { name: "read" }];
+      const groups = buildPluginToolGroups({
+        tools,
+        toolMeta: (tool) =>
+          tool.name === "repository_publish"
+            ? { pluginId: "repository", policyGroups: [group] }
+            : undefined,
+      });
+      expect(
+        filterToolsByPolicy(tools, expandPolicyWithPluginGroups({ allow: [group] }, groups)).map(
+          (tool) => tool.name,
+        ),
+      ).toEqual(["repository_publish", "session_status"]);
+      expect(
+        filterToolsByPolicy(
+          tools,
+          expandPolicyWithPluginGroups({ allow: ["*"], deny: [group] }, groups),
+        ).map((tool) => tool.name),
+      ).toEqual(["read"]);
+      expect(
+        filterToolsByPolicy(
+          tools,
+          expandPolicyWithPluginGroups({ allow: [group], deny: ["repository_publish"] }, groups),
+        ).map((tool) => tool.name),
+      ).toEqual(["session_status"]);
+    },
+  );
+
   it("preserves allowlist when it only targets plugin groups", () => {
     const input = { allow: ["group:plugins"] };
     const policy = analyzeAllowlistByToolType(input, pluginGroups, coreTools);

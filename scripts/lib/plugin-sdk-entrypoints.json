@@ -380,5 +380,6 @@
   "web-media",
   "agent-core",
   "agent-sessions",
-  "llm"
+  "llm",
+  "execution-environment"
 ]

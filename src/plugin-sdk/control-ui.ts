@@ -1,4 +1,5 @@
 /** Browser-only contract for trusted native Control UI plugins. No host implementation imports. */
+
 import type {
   AgentSummary,
   BoardGetParams,
@@ -6,6 +7,14 @@ import type {
   SessionsListParams,
 } from "@openclaw/gateway-protocol";
 import type { ControlUiComponents } from "./control-ui-components.js";
+import type { ControlUiPresentationHost } from "./control-ui-presentation.js";
+import type { ControlUiRequests } from "./control-ui-requests.js";
+export type {
+  ControlUiRequests,
+  ControlUiCapturedRequest,
+  ControlUiSetSync,
+  ControlUiSetSyncOptions,
+} from "./control-ui-requests.js";
 export { createSessionHeaderLink } from "./control-ui-session-link.js";
 export type {
   ControlUiAgentPickerProps,
@@ -20,6 +29,8 @@ export type ControlUiDisposer = () => void;
 
 export type ControlUiConnection = {
   connected: boolean;
+  /** Opaque invalidation identity for authorized read projections, never authority. */
+  readonly readScopeKey?: string;
   canRead: boolean;
   canWrite: boolean;
   canGrant: boolean;
@@ -170,6 +181,14 @@ export type ControlUiAction = {
   id: string;
   label: string;
   placement: "composer" | "header" | "session";
+  icon?: string;
+  shortcut?: string;
+  opensExternal?: boolean;
+  /** Display-scoped interest; cleanup ends delivery and releases read interest. */
+  observe?: (
+    context: BoardGetParams & { session?: ControlUiSession; signal: AbortSignal },
+    changed: () => void,
+  ) => ControlUiDisposer;
   resolve?: (context: BoardGetParams & { session?: ControlUiSession }) => {
     label?: string;
     disabled?: boolean;
@@ -220,6 +239,9 @@ export type ControlUiHost = {
   redact: (text: string) => string;
   readonly connection: ControlUiConnection;
   readonly components: ControlUiComponents;
+  readonly requests: ControlUiRequests;
+  readonly native?: import("./control-ui-native.js").ControlUiNativeHost;
+  readonly presentation?: ControlUiPresentationHost;
   /**
    * Native modules share the operator's authenticated Gateway authority.
    * The Gateway enforces connection scopes, not a per-plugin RPC allowlist.
@@ -234,6 +256,24 @@ export type ControlUiHost = {
   onEvent: (event: string, listener: (payload: unknown) => void) => ControlUiDisposer;
   subscribe: (listener: () => void) => ControlUiDisposer;
   sessions: {
+    methodAccess?: (
+      row: ControlUiSession,
+      request: {
+        method: string;
+        requiredScope?:
+          | "operator.admin"
+          | "operator.read"
+          | "operator.write"
+          | "operator.sessions.read"
+          | "operator.sessions.write"
+          | "operator.approvals"
+          | "operator.pairing";
+        sessionScope?: boolean;
+      },
+    ) => boolean;
+    artifactKey: (target: BoardGetParams) => string;
+    agentId: (key: string) => string | undefined;
+    matches: (target: BoardGetParams, eventKey: string, eventAgentId?: string | null) => boolean;
     /** The current application roster may be filtered and paginated. */
     readonly rows: readonly ControlUiSession[];
     readonly selectedKey: string;
@@ -281,6 +321,8 @@ export type ControlUiHost = {
     readonly openSessionKey: string | null;
   };
   navigation: {
+    /** Open an allowed external URL in an isolated new tab. */
+    openExternal: (url: string) => void;
     openPage: (target: ControlUiPageTarget, options?: ControlUiPageNavigationOptions) => void;
     pageHref: (
       target: ControlUiPageTarget,
@@ -322,6 +364,11 @@ export type { DoctorMemoryStatusPayload } from "../../packages/gateway-protocol/
 export type {
   ControlUiSettingsPlacement,
   ControlUiSettingsSnapshot,
+  ControlUiContributionSettingsSnapshot,
+  ControlUiContributedSettingsView,
+  ControlUiSettingsContextV2,
+  ControlUiSettingsClient,
+  ControlUiSettingsConfigMutation,
   ControlUiSettingsComponents,
   ControlUiSettingsContext,
   ControlUiSettingsView,
@@ -329,3 +376,16 @@ export type {
   ControlUiChannelSettingsContext,
   ControlUiChannelSettingsView,
 } from "./control-ui-settings.js";
+
+export type { ControlUiNativeHost } from "./control-ui-native.js";
+export type {
+  ControlUiPresentationHost,
+  ControlUiIconProps,
+  ControlUiMarqueeOptions,
+  ControlUiMenuControls,
+  ControlUiMenuHandle,
+  ControlUiMenuEntry,
+  ControlUiMenuItemAttributes,
+  ControlUiMenuProps,
+  ControlUiActivityPillView,
+} from "./control-ui-presentation.js";

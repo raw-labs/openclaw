@@ -115,3 +115,35 @@ At startup/reload, OpenClaw resolves that provider by loading current plugin man
 `source` accepts a single value, `"exec"`. `command` must be `${node}`, and `args[0]` must be a `./` plugin-root-relative resolver script. OpenClaw materializes it at startup/reload to the current Node executable and the absolute in-plugin script path. Node options such as `--require`, `--import`, `--loader`, `--env-file`, `--eval`, and `--print` are not part of the manifest preset contract. Operators who need non-Node commands can configure standalone manual exec providers directly.
 
 OpenClaw derives `trustedDirs` for manifest presets from the plugin root and, for `${node}` presets, the current Node executable directory. Manifest-authored `trustedDirs` are ignored. Other exec provider options such as `timeoutMs`, `noOutputTimeoutMs`, `maxOutputBytes`, `jsonOnly`, `env`, and `passEnv` pass through to the normal SecretRef exec provider config.
+
+### Child-execution exclusions
+
+A `configContracts.secretInputs.paths` entry can set `executionEnvironment: "exclude"`
+to declare that its environment or store name must not reach agent execution.
+Secret preparation records these names without resolving dormant credentials,
+including when the declaring plugin is disabled. File and exec references do not
+name inherited environment/store entries. Ordinary SecretRef resolution and owner
+admission remain unchanged. Prepared snapshots expose the exclusions for execution
+adapters; this metadata does not itself authorize a child process, filter its
+environment, or inject credentials.
+
+### Agent config maps and config-only audit
+
+`configContracts.agentConfigMaps` declares plugin-config-relative object paths
+whose map keys are agent ids. The native agent deletion owner removes the deleted
+agent from those maps, including while the plugin is disabled. Paths must be
+literal object paths, not wildcards, array indices or prototype-bearing keys.
+No bundled plugin uses this declaration in the interface-only experiment.
+
+`securityAuditConfig: true` declares a lightweight `security-audit-api.js`
+artifact exporting `collectConfigSecurityAuditFindings(context)`. Plain security
+audit may load this artifact for active bundled or verified official plugins
+without activating their runtime entrypoint. Existing runtime collectors remain
+separate. Native GitHub audit policy is unchanged; this experiment adds no
+production collector.
+
+The `config-mutation` SDK entrypoint also exposes
+`mutateAgentScopedPluginConfig`: the caller changes only its named plugin block
+through the existing include-aware retrying config writer. Optional agent
+lifecycle binding prevents a stale setup operation from writing after the agent
+has changed. Existing native GitHub settings continue using their native writer.

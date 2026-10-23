@@ -664,3 +664,43 @@ it("adapts dock operations, publishes snapshots, and retires activation and view
   expect(dock.openSessionKey).toBeNull();
   expect(() => close()).toThrow("activation has ended");
 });
+
+it("retires captured requests and native controls with their view and activation", async () => {
+  const response = createDeferred<{ ok: boolean }>();
+  const request = vi.fn(() => response.promise);
+  const client = createTestGatewayClient(request);
+  const { gateway } = createGatewayHarness(client);
+  // SAFETY: this host flow only consumes the real Gateway harness and shared subscription services.
+  const context = { ...subscriptions, gateway } as unknown as ApplicationContext;
+  const activation = createHost(context);
+  const { view, host } = scopedHost(activation.host);
+  const captured = host.requests.capture();
+  expect(captured?.isCurrent()).toBe(true);
+  const pending = captured!.request("fixture.read", {});
+  const container = document.createElement("div");
+  const icon = expectDefined(host.presentation, "presentation").mountIcon(container, {
+    name: "plug",
+  });
+  expect(container.childNodes.length).toBeGreaterThan(0);
+  const popup = vi.spyOn(window, "open").mockReturnValue(null);
+  host.navigation.openExternal("javascript:alert(1)");
+  expect(popup).not.toHaveBeenCalled();
+  host.navigation.openExternal("https://example.test/item");
+  expect(popup).toHaveBeenCalledExactlyOnceWith(
+    "https://example.test/item",
+    "_blank",
+    "noopener,noreferrer",
+  );
+  view.abort();
+  response.resolve({ ok: true });
+  await expect(pending).rejects.toThrow("view has ended");
+  expect(captured?.isCurrent()).toBe(false);
+  expect(container.childNodes).toHaveLength(0);
+  expect(() => icon.update({ name: "plug" })).toThrow("view has ended");
+  expect(() => host.navigation.openExternal("https://example.test/stale")).toThrow(
+    "view has ended",
+  );
+  const baseCapture = activation.host.requests.capture;
+  activation.dispose();
+  expect(() => baseCapture()).toThrow("activation has ended");
+});

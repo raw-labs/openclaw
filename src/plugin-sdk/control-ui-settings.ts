@@ -20,12 +20,71 @@ export type ControlUiSettingsSnapshot = {
   readonly locale: string;
 };
 
+/** General contribution facts do not require a Memory engine. */
+export type ControlUiContributionSettingsSnapshot = Omit<ControlUiSettingsSnapshot, "engine"> & {
+  /** Hello authorization can settle before the authenticated profile lookup. */
+  readonly permissionsReady?: boolean;
+  readonly profile?: { readonly id: string } | null;
+  readonly canRead?: boolean;
+  readonly canAdmin?: boolean;
+  readonly agents?: readonly { id: string; name?: string; identity?: { name?: string } }[];
+  readonly configAvailable: boolean;
+};
+
+export type ControlUiSettingsClient = {
+  request: <T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<T>;
+};
+export type ControlUiSettingsConfigMutation = <T>(
+  task: (client: ControlUiSettingsClient) => Promise<T>,
+  options?: {
+    canDispatch?: () => boolean;
+    dispatchError?: string;
+    shouldRefresh?: (value: T) => boolean;
+  },
+) => Promise<
+  | { ok: true; value: T; refresh: { ok: true } | { ok: false; error: string } }
+  | {
+      ok: false;
+      reason: "conflict" | "error" | "rejected" | "suspended" | "unavailable";
+      error: string;
+    }
+>;
+
 type Content = string | HTMLElement;
-type SectionProps = { title: string; content: HTMLElement };
-type RowProps = { title: string; description?: Content; control?: Content };
+type SectionProps = {
+  title: Content;
+  description?: Content;
+  actions?: Content;
+  danger?: boolean;
+  content: HTMLElement;
+};
+type RowProps = { title: Content; description?: Content; control?: Content };
 type StatusProps = { kind: "ok" | "warn" | "danger" | "accent" | "muted"; label: string };
 type ValueProps = { value: string | number; mono?: boolean };
 type NavProps = { title: string; onClick: () => void };
+type SecretInputProps = {
+  ariaLabel: string;
+  value: string;
+  placeholder?: string;
+  visible: boolean;
+  disabled?: boolean;
+  showLabel: string;
+  hideLabel: string;
+  toggleLabel: string;
+  onInput: (value: string) => void;
+  onToggle: () => void;
+};
+type SegmentedProps = {
+  value: string;
+  options: readonly { value: string; label: string }[];
+  disabled?: boolean;
+  ariaLabel?: string;
+  onChange: (value: string) => void;
+};
 type PetProps = {
   seed: string;
   sleeping?: boolean;
@@ -47,20 +106,78 @@ export type ControlUiSettingsComponents = {
   ) => ControlUiComponentHandle<StatusProps>;
   mountValue: (container: HTMLElement, props: ValueProps) => ControlUiComponentHandle<ValueProps>;
   mountNavigation: (container: HTMLElement, props: NavProps) => ControlUiComponentHandle<NavProps>;
+  mountSecretInput?: (
+    container: HTMLElement,
+    props: SecretInputProps,
+  ) => ControlUiComponentHandle<SecretInputProps>;
+  mountSegmented?: (
+    container: HTMLElement,
+    props: SegmentedProps,
+  ) => ControlUiComponentHandle<SegmentedProps>;
+  mountIcon?: (
+    container: HTMLElement,
+    props: { name: "copy" },
+  ) => ControlUiComponentHandle<{ name: "copy" }>;
   mountLobster: (container: HTMLElement, props: PetProps) => ControlUiComponentHandle<PetProps>;
 };
 
 export type ControlUiSettingsContext = {
+  readonly apiVersion?: 2;
   readonly signal: AbortSignal;
   readonly props: ControlUiSettingsSnapshot;
   readonly components: ControlUiSettingsComponents;
   /** Existing authenticated operator RPC authority, bound to this Settings lifetime. */
-  request: <T = unknown>(method: string, params?: unknown) => Promise<T>;
+  request: <T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<T>;
   navigate: (destination: "overview" | "memories" | "dreams" | "settings") => void;
+  registerEnglish?: (catalog: Record<string, Record<string, string>>) => void;
+  copyButton?: (
+    event: Event,
+    text: string,
+    idleLabel: string,
+    targets: { label?: HTMLElement; feedback?: HTMLElement },
+  ) => Promise<boolean>;
+  navigateTo?: (destination: { page: "profile" | "agent-tools"; hash?: string }) => void;
+  /** The config owner serializes and refreshes an external config mutation. */
+  runConfigMutation?: ControlUiSettingsConfigMutation;
+  ensureConfig?: () => Promise<void>;
+  confirm?: (options: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
+  translate?: (key: string, params?: Record<string, string>) => string;
+  formatExternalText?: (value: string | null | undefined, fallback?: string) => string;
+  formatDateTime?: (timestamp: number, options?: Intl.DateTimeFormatOptions) => string;
   refreshAgents: () => void;
   formatRelativeTimestamp: (timestamp: number) => string;
   formatError: (error: unknown) => string;
 };
+
+/** Scoped Settings mutation/presentation services supplied by the current host. */
+export type ControlUiSettingsContextV2 = Omit<ControlUiSettingsContext, "props"> & {
+  readonly props: ControlUiContributionSettingsSnapshot;
+  readonly apiVersion: 2;
+  /** Read the existing config owner; no independent config cache or write path. */
+  readConfig: (path: readonly string[]) => unknown;
+  readAgentConfig: (agentId: string) => { tools?: unknown } | null;
+  readonly components: ControlUiSettingsComponents &
+    Required<
+      Pick<ControlUiSettingsComponents, "mountSecretInput" | "mountSegmented" | "mountIcon">
+    >;
+} & Required<
+    Pick<
+      ControlUiSettingsContext,
+      | "runConfigMutation"
+      | "ensureConfig"
+      | "confirm"
+      | "translate"
+      | "formatExternalText"
+      | "formatDateTime"
+      | "copyButton"
+      | "navigateTo"
+      | "registerEnglish"
+    >
+  >;
 
 export type ControlUiSettingsView = {
   readonly placement: Extract<ControlUiSettingsPlacement, { section: "memory" }>;
@@ -69,6 +186,17 @@ export type ControlUiSettingsView = {
     context: ControlUiSettingsContext,
   ) => {
     update: (props: ControlUiSettingsSnapshot) => void;
+    dispose: () => void;
+  };
+};
+
+export type ControlUiContributedSettingsView = {
+  readonly placement: Extract<ControlUiSettingsPlacement, { section: "profile" | "agents" }>;
+  mount: (
+    container: HTMLElement,
+    context: ControlUiSettingsContextV2,
+  ) => {
+    update: (props: ControlUiContributionSettingsSnapshot) => void;
     dispose: () => void;
   };
 };

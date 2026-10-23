@@ -32,6 +32,10 @@ without adding imports from Gateway internals.
   [Provider Plugins](/plugins/sdk-provider-plugins) for step-by-step guides.
 </Tip>
 
+The experimental `execution-environment` entrypoint exposes registration types,
+not an active execution integration. See
+[Execution environment registration](/plugins/sdk-execution-environments).
+
 ## Where each section moved
 
 Every section of the single-page version now lives on this page or on one of

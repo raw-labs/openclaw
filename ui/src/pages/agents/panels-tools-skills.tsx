@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import { For, Show, createMemo, onSettled } from "solid-js";
 import {
   createRuntimeToolMatcher,
@@ -119,6 +120,7 @@ export function AgentTools(
     Pick<AgentsPageView, "readData"> & {
       agentId: string;
       configForm: Record<string, unknown> | null;
+      renderSettings?: () => JSX.Element;
     },
 ) {
   const toolTargets = new Map<
@@ -448,6 +450,7 @@ export function AgentTools(
         identity={params.githubIdentity}
         onOpenConnections={params.onOpenGitHubConnections}
       />
+      {params.renderSettings?.()}
       <SettingsSection title={t("agentTools.catalogTitle")}>
         {catalogLoading() ? (
           <SettingsLoadingSkeleton label={t("agentTools.loadingCatalog")} />
