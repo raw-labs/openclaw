@@ -14,7 +14,6 @@ import {
   renderMarkdownCodeBlock,
 } from "./markdown-code-blocks.ts";
 import { isHostLocalMarkdownFileHref } from "./markdown-file-links.ts";
-import { markdownGitHubAliasSignature } from "./markdown-github-repositories.ts";
 import {
   prepareMarkdownHumanMentions,
   restoreMarkdownHumanMentions,
@@ -24,6 +23,7 @@ import { createMarkdownParser } from "./markdown-parser.ts";
 import { stripProgressCardRawContentBlocks } from "./markdown-raw-content.ts";
 import {
   MARKDOWN_PARSE_LIMIT,
+  markdownRenderKey,
   normalizeMarkdownRenderOptions,
   type MarkdownRenderEnv,
   type MarkdownRenderOptions,
@@ -634,7 +634,7 @@ export function toSanitizedMarkdownHtml(
   if (renderInput.length > MARKDOWN_CACHE_MAX_CHARS) {
     return renderSanitizedMarkdown(renderInput, renderOptions);
   }
-  const cacheKey = `${markdownRenderKey(renderOptions)}\0${renderInput}`;
+  const cacheKey = `${markdownRenderKey(renderOptions, i18n.getLocale())}\0${renderInput}`;
   let cached = markdownCache.get(cacheKey);
   // Only highlightable code changes when the optional highlighter loads.
   if (
@@ -650,10 +650,6 @@ export function toSanitizedMarkdownHtml(
   markdownCache.set(cacheKey, cached);
   pruneMapToMaxSize(markdownCache, MARKDOWN_CACHE_LIMIT);
   return cached.html;
-}
-
-function markdownRenderKey(options: MarkdownRenderEnv): string {
-  return `${i18n.getLocale()}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${JSON.stringify(options.githubRepo ? [options.githubRepo.owner, options.githubRepo.repo] : null)}\0${markdownGitHubAliasSignature(options.githubRepositories, options.githubRepo)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
 }
 
 function toPlainTextElement(value: string, options: MarkdownRenderEnv): HTMLDivElement {
@@ -704,7 +700,7 @@ export function toStreamingMarkdownParts(
   let streamingTail = input.slice(boundary);
   const state = streamingMarkdownState(streamKey);
   const previous = state?.rendered;
-  const renderKey = markdownRenderKey(renderOptions);
+  const renderKey = markdownRenderKey(renderOptions, i18n.getLocale());
   const append = previous && stableMarkdown.startsWith(previous.markdown);
   // Literal code cannot acquire HTML ownership after its block is complete.
   const hasHtml = append

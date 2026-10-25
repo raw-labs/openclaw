@@ -704,3 +704,157 @@ it("retires captured requests and native controls with their view and activation
   activation.dispose();
   expect(() => baseCapture()).toThrow("activation has ended");
 });
+
+it("rejects captured summary sinks after a replacement read epoch or reconnect", () => {
+  const request = vi.fn(async () => sessionsResult([], 1));
+  const client = createTestGatewayClient(request);
+  const h = createGatewayHarness(client);
+  const sessions = createTestSessionCapability(h.gateway);
+  const activation = createHost({
+    ...subscriptions,
+    gateway: h.gateway,
+    sessions,
+  } as unknown as ApplicationContext);
+  const target = { sessionKey: "agent:main:summary" };
+  const older = activation.host.sessions.captureSummary(target);
+  const replacement = activation.host.sessions.captureSummary(target);
+  replacement.publish({ numbers: [422], state: "open" });
+  older.publish({ numbers: [421], state: "closed" });
+  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({ numbers: [422], state: "open" });
+  h.publish(false, client);
+  h.publish(true, client);
+  const current = activation.host.sessions.captureSummary(target);
+  current.publish({ numbers: [423], state: "draft" });
+  replacement.publish(undefined);
+  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({
+    numbers: [423],
+    state: "draft",
+  });
+  onTestFinished(() => sessions.dispose());
+});
+
+it("retires plugin operation effects with their activation while preserving pane-independent custody", async () => {
+  const response = createDeferred<{ ok: boolean }>();
+  const request = vi.fn(() => response.promise);
+  const h = createGatewayHarness(createTestGatewayClient(request));
+  const sessions = createTestSessionCapability(h.gateway);
+  const activation = createHost({
+    ...subscriptions,
+    gateway: h.gateway,
+    sessions,
+  } as unknown as ApplicationContext);
+  const target = {
+    key: "agent:main:operation",
+    sessionId: "operation",
+    kind: "direct" as const,
+    updatedAt: 1,
+  };
+  class Operation {
+    private bindings = 0;
+    constructor(
+      private readonly owner: import("../../../src/plugin-sdk/control-ui-session-operation.js").ControlUiSessionOperationOwner,
+    ) {}
+    get hasBindings() {
+      return this.bindings > 0;
+    }
+    bind() {
+      this.bindings++;
+      return {
+        run: async () => {
+          this.owner.reserve();
+          return this.owner.client.request("fixture.write");
+        },
+        detach: () => {
+          this.bindings--;
+          this.owner.unbound();
+        },
+      };
+    }
+    reset() {}
+    invalidate() {}
+  }
+  const factory = {
+    id: "fixture-operation",
+    requiredMethods: [],
+    create: (
+      owner: import("../../../src/plugin-sdk/control-ui-session-operation.js").ControlUiSessionOperationOwner,
+    ) => new Operation(owner),
+    isOperation: (value: unknown): value is Operation => value instanceof Operation,
+    capacityError: () => new Error("capacity"),
+  };
+  const { host, view } = scopedHost(activation.host);
+  const binding = host.sessions.attachOperation!(target, factory)!;
+  const pending = binding.run();
+  expect(request).toHaveBeenCalledWith("fixture.write", undefined);
+  view.abort();
+  const replacement = activation.host.sessions.attachOperation!(target, factory)!;
+  expect(replacement.matches(target)).toBe(true);
+  activation.dispose();
+  expect(replacement.matches(target)).toBe(false);
+  response.resolve({ ok: true });
+  await expect(pending).rejects.toThrow("session operation has ended");
+  await expect(replacement.run()).rejects.toThrow("session operation has ended");
+  replacement.detach();
+});
+
+it("cannot rearm set-sync retries or deliver retained retry callbacks after activation retirement", async () => {
+  vi.useFakeTimers();
+  try {
+    const h = createGatewayHarness(createTestGatewayClient(vi.fn(async () => ({}))));
+    const activation = createHost({
+      ...subscriptions,
+      gateway: h.gateway,
+    } as unknown as ApplicationContext);
+    const retry = vi.fn();
+    const lifecycle = activation.host.requests.createSetSync({ sync: vi.fn() });
+    lifecycle.scheduleRetry(retry);
+    activation.dispose();
+    await vi.runAllTimersAsync();
+    expect(retry).not.toHaveBeenCalled();
+    expect(() => lifecycle.scheduleRetry(retry)).toThrow("activation has ended");
+    lifecycle.sync();
+    lifecycle.schedule();
+    lifecycle.detach();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each(["global", "main", "agent:writer:work"])(
+  "keeps the native roster summary target for %s artifact identities",
+  async (rawKey) => {
+    const request = vi.fn(async () =>
+      sessionsResult(
+        [
+          {
+            key: rawKey,
+            agentId: "writer",
+            kind: rawKey === "global" ? "global" : "direct",
+            updatedAt: 1,
+          },
+        ],
+        1,
+      ),
+    );
+    const h = createGatewayHarness(createTestGatewayClient(request), undefined, {
+      initial: { assistantAgentId: "writer", sessionKey: rawKey },
+    });
+    const sessions = createTestSessionCapability(h.gateway, "writer");
+    await sessions.refresh();
+    const activation = createHost({
+      ...subscriptions,
+      gateway: h.gateway,
+      sessions,
+    } as unknown as ApplicationContext);
+    const artifact = activation.host.sessions.artifactKey({
+      sessionKey: rawKey,
+      agentId: "writer",
+    });
+    const sink = activation.host.sessions.captureSummary({ sessionKey: artifact });
+    sink.publish({ numbers: [422], state: "open" });
+    expect(sessions.pullRequestSummary(rawKey)).toEqual({ numbers: [422], state: "open" });
+    if (artifact !== rawKey) {
+      expect(sessions.pullRequestSummary(artifact)).toBeUndefined();
+    }
+  },
+);

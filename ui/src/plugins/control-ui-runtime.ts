@@ -8,15 +8,15 @@ import type {
 } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import { CONTROL_UI_PLUGIN_AUTH_GRANT_TTL_MS } from "../../../src/gateway/control-ui-plugin-frame-contract.js";
 import type {
-  ControlUiSettingsPlacement,
+  AnyControlUiSettingsPlacement as ControlUiSettingsPlacement,
   ControlUiChannelSettingsView,
   ControlUiSettingsView,
   ControlUiContributedSettingsView,
 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import type {
   ControlUiDisposer,
-  ControlUiHost,
-  ControlUiReplacement,
+  ControlUiHostV2 as ControlUiHost,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurface,
 } from "../../../src/plugin-sdk/control-ui.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
@@ -60,6 +60,7 @@ const UI_CAPABILITY_BY_CONTRIBUTION = {
   panels: "panel",
   actions: "action",
   accessories: "accessory",
+  textReferences: "link-reader",
   widgets: "widget",
   replacements: "replacement",
 } as const satisfies Record<
@@ -454,6 +455,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
         actions: new Map(),
         replacements: new Map(),
         accessories: new Map(),
+        textReferences: new Map(),
         widgets: new Map(),
       },
       selections: new Map<ControlUiSurface, string | null>(),

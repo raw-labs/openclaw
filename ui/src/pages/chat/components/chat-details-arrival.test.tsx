@@ -3,7 +3,7 @@ import { createComponent, createSignal } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { flush } from "../../../test-helpers/solid-settle.ts";
-import { ChatDetailsDesktopComposition } from "./chat-details-session.tsx";
+import { ChatDetailsDesktopComposition } from "./chat-details-desktop-composition.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
 
 function mountDetails() {

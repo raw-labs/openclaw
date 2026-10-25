@@ -356,6 +356,12 @@ function createSessionProgressHovercard(
           }
         : undefined,
       pullRequests,
+      session: { sessionKey, agentId: session.agentId },
+      onContentChange: (phase) => {
+        if (phase === "after" && hovercard.card) {
+          commit(hovercard.card);
+        }
+      },
       progressCard: lastProgressCard,
     };
     const commit = (card: HTMLDivElement) => {

@@ -448,6 +448,44 @@ describe("project registry persistence", () => {
     },
   );
 
+  it("keeps generic source transport inside the existing managed clone and registry owner", async () => {
+    const { source } = await cloneFixture();
+    const url = "https://git.example/team/project.git";
+    const transport = {
+      resolveUrl: (candidate: string) =>
+        candidate === url ? { url, name: "source-project" } : null,
+      invalidUrlMessage: "Select this source's repository URL",
+      clone: (
+        input: Parameters<typeof cloneProjectCheckout>[0],
+        selected: Parameters<typeof cloneProjectCheckout>[1],
+      ) => cloneProjectCheckout({ ...input, url: source }, selected),
+      ensureCommit: (
+        input: Parameters<typeof ensureProjectCheckoutCommit>[0],
+        selected: Parameters<typeof ensureProjectCheckoutCommit>[1],
+      ) => ensureProjectCheckoutCommit({ ...input, url: source }, selected),
+      refresh: (
+        input: Parameters<typeof refreshProjectCheckout>[0],
+        selected: Parameters<typeof refreshProjectCheckout>[1],
+      ) => refreshProjectCheckout({ ...input, url: source }, selected),
+    };
+    const selected = { ...options, env: { ...process.env, OPENCLAW_STATE_DIR: root } };
+    const project = await materializeProjectClone({ cfg: {}, gitUrl: url }, selected, transport);
+
+    expect(project).toMatchObject({ originUrl: url, source: "cloned" });
+    expect(
+      (await listProjectRegistry({}, selected)).find((candidate) => candidate.id === project.id),
+    ).toEqual(project);
+    expect(await gitText(project.repoRoot, "rev-parse", "HEAD")).toBe(
+      await gitText(source, "rev-parse", "HEAD"),
+    );
+    expect(await materializeProjectClone({ cfg: {}, gitUrl: url }, selected, transport)).toEqual(
+      project,
+    );
+    await expect(materializeProjectClone({ cfg: {}, gitUrl: url }, selected)).rejects.toThrow(
+      "GitHub",
+    );
+  });
+
   it.each(["existing clone", "registration"] as const)(
     "serializes %s with checkout deletion",
     async (operation) => {

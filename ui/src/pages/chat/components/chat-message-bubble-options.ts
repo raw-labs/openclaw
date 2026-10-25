@@ -49,6 +49,7 @@ export type MessageRenderOptions = {
   allowExternalEmbedUrls?: boolean;
   fetchLinkFavicon?: LinkFaviconFetcher;
   pluginToolIcons?: PluginToolIcons;
+  textReferences?: MarkdownRenderOptions["textReferences"];
   githubRepo?: MarkdownRenderOptions["githubRepo"];
   githubRepositories?: MarkdownRenderOptions["githubRepositories"];
   onOpenWorkspaceFile?: (target: { path: string; line?: number | null }) => void;

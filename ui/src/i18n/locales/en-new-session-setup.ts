@@ -189,6 +189,9 @@ const enNewSessionSetup = {
     projectsAdminHint: "Admins can register projects from Browse folders",
     projectSearchPlaceholder: "Search projects or paste a Git URL",
     githubProjects: "GitHub",
+    remoteCredentialHint: "Connect {source} in Settings to search repositories.",
+    repositorySourceUnavailable:
+      "This repository source is no longer available. Choose another repository.",
     githubTokenHint:
       "No Control UI GitHub credential or shared Gateway environment token is configured; public GitHub results only.",
     cloneProject: "Clone",

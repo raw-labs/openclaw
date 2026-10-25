@@ -1,11 +1,15 @@
 import type { JSX } from "@solidjs/web";
 import { Errored, For, Loading, Show, createMemo, createSignal, onSettled } from "solid-js";
-import type { ControlUiAction } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiAction,
+  ControlUiAccessoryProps,
+  ControlUiSessionHeaderFacts,
+} from "../../../src/plugin-sdk/control-ui.js";
 import { iconData, type IconName } from "../components/icon-data.ts";
 import type { SidebarMenus } from "../components/sidebar-menus.tsx";
 import { Icon } from "../components/solid/icon.tsx";
 import { shouldHandleNavigationClick } from "../lib/navigation-click.ts";
-import { useApplication } from "../lib/reactive/context.ts";
+import { useOptionalApplication } from "../lib/reactive/context.ts";
 import { projectSource } from "../lib/reactive/projection.ts";
 import { findUiSessionRow } from "../lib/sessions/route-navigation.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
@@ -15,7 +19,33 @@ import { observeSolidBridgeProperties } from "./control-ui-properties.ts";
 import { PluginContribution } from "./control-ui-view.solid.tsx";
 
 type ContributionsProps = {
-  kind: "navigation" | "session-header" | "composer" | "header";
+  facts: ControlUiSessionHeaderFacts | undefined;
+  artifact: unknown;
+  worktreeId: string | undefined;
+  onContentChange: ControlUiAccessoryProps["onContentChange"];
+  onPresenceChange: ControlUiAccessoryProps["onPresenceChange"];
+  registerControls: ControlUiAccessoryProps["registerControls"];
+  detailsPage: { pluginId: string; id: string } | undefined;
+  onOpenDetailsPage:
+    | ((pluginId: string, page: { id: string; title: string }, source?: HTMLElement) => void)
+    | undefined;
+  onDetailsBack: (() => void) | undefined;
+  compact: boolean;
+  dismissed: boolean;
+  onOpenSessionDiff: (() => void) | undefined;
+  kind:
+    | "navigation"
+    | "session-header"
+    | "session-context"
+    | "session-row"
+    | "session-hovercard"
+    | "session-activity"
+    | "session-summary"
+    | "session-mobile-root"
+    | "session-mobile-page"
+    | "session-mobile-activity"
+    | "composer"
+    | "header";
   sessionKey: string;
   agentId: string | undefined;
   navigationKey: string;
@@ -26,9 +56,16 @@ type ContributionsProps = {
 export type ContributionsElement = SolidBridgeElement<ContributionsProps>;
 
 function PluginContributionsContent(props: ContributionsProps, host: ContributionsElement) {
-  const context = useApplication();
+  const context = useOptionalApplication();
   const [actionRead, setActionRead] = createSignal<{ promise: Promise<void> } | null>(null);
+  const presenceByRegistration = new Map<AbortSignal, boolean>();
+  let reportedPresence: boolean | undefined;
   let lifetime = new AbortController();
+  let accessoryLifetime = new AbortController();
+  const accessorySignal = () => {
+    void [props.sessionKey, props.agentId];
+    return accessoryLifetime.signal;
+  };
   const actionLifetimes = new Map<
     AbortSignal,
     { entry: ControlUiRegistration<ControlUiAction>; abort: AbortController }
@@ -62,7 +99,11 @@ function PluginContributionsContent(props: ContributionsProps, host: Contributio
       }
     }
   };
-  observeSolidBridgeProperties(host, ["sessionKey", "agentId", "presented"], () => {
+  observeSolidBridgeProperties(host, ["sessionKey", "agentId", "presented"], (key) => {
+    if (key !== "presented") {
+      accessoryLifetime.abort();
+      accessoryLifetime = new AbortController();
+    }
     lifetime.abort();
     actionLifetimes.clear();
     lifetime = new AbortController();
@@ -77,6 +118,7 @@ function PluginContributionsContent(props: ContributionsProps, host: Contributio
           const changed = () => {
             retireHiddenActions();
             notify();
+            publishPresence();
           };
           const sources = [
             current?.plugins,
@@ -92,7 +134,64 @@ function PluginContributionsContent(props: ContributionsProps, host: Contributio
   );
   onSettled(() => () => {
     lifetime.abort();
+    accessoryLifetime.abort();
     actionLifetimes.clear();
+  });
+  function currentAccessories(kind = host.kind, detailsPage = host.detailsPage) {
+    return (
+      context?.plugins
+        .registrations("accessories")
+        .filter(
+          (entry) =>
+            entry.value.placement === kind &&
+            !entry.signal.aborted &&
+            (kind !== "session-mobile-page" || entry.pluginId === detailsPage?.pluginId),
+        ) ?? []
+    );
+  }
+  const accessories = createMemo(() => {
+    source().read();
+    return currentAccessories(props.kind, props.detailsPage);
+  });
+  const reportPresence = (signal: AbortSignal, present: boolean) => {
+    if (
+      signal.aborted ||
+      !currentAccessories().some((entry) => entry.signal === signal) ||
+      presenceByRegistration.get(signal) === present
+    ) {
+      return;
+    }
+    presenceByRegistration.set(signal, present);
+    publishPresence();
+  };
+  observeSolidBridgeProperties(
+    host,
+    ["sessionKey", "agentId", "kind", "onPresenceChange"],
+    (key) => {
+      if (key !== "onPresenceChange") {
+        presenceByRegistration.clear();
+        reportedPresence = undefined;
+      }
+    },
+    publishPresence,
+  );
+  function publishPresence() {
+    const entries = currentAccessories();
+    const current = new Set(entries.map((entry) => entry.signal));
+    for (const signal of presenceByRegistration.keys()) {
+      if (!current.has(signal)) {
+        presenceByRegistration.delete(signal);
+      }
+    }
+    const present = entries.some((entry) => presenceByRegistration.get(entry.signal) ?? true);
+    if (reportedPresence !== present) {
+      reportedPresence = present;
+      host.onPresenceChange?.(present);
+    }
+  }
+  onSettled(() => () => {
+    presenceByRegistration.clear();
+    props.onPresenceChange?.(false);
   });
   const navigation = createMemo(() => {
     const runtime = source().read();
@@ -199,7 +298,17 @@ function PluginContributionsContent(props: ContributionsProps, host: Contributio
       when={props.kind === "navigation"}
       fallback={
         <Show
-          when={props.kind === "session-header"}
+          when={
+            props.kind === "session-header" ||
+            props.kind === "session-context" ||
+            props.kind === "session-row" ||
+            props.kind === "session-hovercard" ||
+            props.kind === "session-activity" ||
+            props.kind === "session-summary" ||
+            props.kind === "session-mobile-root" ||
+            props.kind === "session-mobile-page" ||
+            props.kind === "session-mobile-activity"
+          }
           fallback={
             <>
               <For each={actionRead() ? [actionRead()!] : []}>
@@ -263,18 +372,34 @@ function PluginContributionsContent(props: ContributionsProps, host: Contributio
             </>
           }
         >
-          <For
-            each={source()
-              .read()
-              ?.registrations("accessories")
-              .filter((entry) => entry.value.placement === "session-header")}
-            keyed={(entry) => entry.signal}
-          >
+          <For each={accessories()} keyed={(entry) => entry.signal}>
             {(entry) => (
               <PluginContribution
                 kind="accessories"
+                signal={accessorySignal()}
                 contributionKey={entry().key}
-                props={{ sessionKey: props.sessionKey, agentId: props.agentId }}
+                props={{
+                  sessionKey: props.sessionKey,
+                  agentId: props.agentId,
+                  facts: props.facts,
+                  artifact: props.artifact,
+                  worktreeId: props.worktreeId,
+                  onContentChange: props.onContentChange,
+                  onPresenceChange: (present: boolean) => reportPresence(entry().signal, present),
+                  registerControls: props.registerControls,
+                  detailsPage: props.detailsPage?.id,
+                  onOpenDetailsPage: props.onOpenDetailsPage
+                    ? (page: { id: string; title: string }, trigger?: HTMLElement) => {
+                        if (host.isConnected && host.presented && !entry().signal.aborted) {
+                          props.onOpenDetailsPage?.(entry().pluginId, page, trigger);
+                        }
+                      }
+                    : undefined,
+                  onDetailsBack: props.onDetailsBack,
+                  compact: props.compact,
+                  dismissed: props.dismissed,
+                  onOpenSessionDiff: props.onOpenSessionDiff,
+                }}
                 presented={props.presented}
               />
             )}
@@ -338,17 +463,33 @@ function ActionCompletion(props: { promise: Promise<void> }) {
   return <>{completion()}</>;
 }
 
-defineSolidBridge<ContributionsProps>("openclaw-plugin-contributions", PluginContributionsContent, {
-  properties: {
-    kind: { default: "navigation", attribute: false },
-    sessionKey: { default: "", attribute: false },
-    agentId: { default: undefined, attribute: false },
-    navigationKey: { default: "", attribute: false },
-    navigationChildren: { default: true, type: Boolean },
-    navigationMenus: { default: undefined, attribute: false },
-    presented: { default: true, type: Boolean },
+export const PluginContributions = defineSolidBridge<ContributionsProps>(
+  "openclaw-plugin-contributions",
+  PluginContributionsContent,
+  {
+    properties: {
+      facts: { default: undefined, attribute: false },
+      artifact: { default: undefined, attribute: false },
+      worktreeId: { default: undefined, attribute: false },
+      onContentChange: { default: undefined, attribute: false },
+      onPresenceChange: { default: undefined, attribute: false },
+      registerControls: { default: undefined, attribute: false },
+      detailsPage: { default: undefined, attribute: false },
+      onOpenDetailsPage: { default: undefined, attribute: false },
+      onDetailsBack: { default: undefined, attribute: false },
+      compact: { default: false, attribute: false },
+      dismissed: { default: false, attribute: false },
+      onOpenSessionDiff: { default: undefined, attribute: false },
+      kind: { default: "navigation", attribute: false },
+      sessionKey: { default: "", attribute: false },
+      agentId: { default: undefined, attribute: false },
+      navigationKey: { default: "", attribute: false },
+      navigationChildren: { default: true, type: Boolean },
+      navigationMenus: { default: undefined, attribute: false },
+      presented: { default: true, type: Boolean },
+    },
   },
-});
+);
 
 declare global {
   interface HTMLElementTagNameMap {

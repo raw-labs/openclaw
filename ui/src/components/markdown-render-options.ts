@@ -1,4 +1,6 @@
 import type { HumanMention } from "@openclaw/gateway-protocol";
+import type { ControlUiTextReferenceSnapshot } from "../../../src/plugin-sdk/control-ui.js";
+import { markdownGitHubAliasSignature } from "./markdown-github-repositories.ts";
 import type {
   MarkdownGitHubRepository,
   MarkdownGitHubRepositoryAliases,
@@ -14,6 +16,7 @@ export type MarkdownRenderOptions = {
   codeBlockChrome?: "copy" | "none";
   codeBlockInteraction?: "interactive" | "static";
   fileLinks?: boolean;
+  textReferences?: readonly ControlUiTextReferenceSnapshot[];
   githubRepo?: MarkdownGitHubRepository | null;
   githubRepositories?: readonly MarkdownGitHubRepositoryAliases[];
   humanMentions?: readonly HumanMention[];
@@ -44,6 +47,7 @@ export function normalizeMarkdownRenderOptions(
     codeBlockChrome: options.codeBlockChrome ?? "copy",
     codeBlockInteraction: options.codeBlockInteraction ?? "static",
     fileLinks: options.fileLinks ?? false,
+    textReferences: options.textReferences ?? [],
     githubRepo: options.githubRepo ?? null,
     humanMentions: options.humanMentions ?? [],
     githubRepositories: options.githubRepositories ?? [],
@@ -55,4 +59,37 @@ export function normalizeMarkdownRenderOptions(
     sessionLinks: options.sessionLinks ?? false,
     tableInteractions: options.tableInteractions ?? "none",
   };
+}
+
+// Immutable resolver snapshots must not share cached output when their declared keys coincide.
+const textReferenceIdentities = new WeakMap<ControlUiTextReferenceSnapshot, number>();
+let nextTextReferenceIdentity = 0;
+export function markdownTextReferenceSignature(
+  snapshots: readonly ControlUiTextReferenceSnapshot[] = [],
+): string {
+  return JSON.stringify(
+    snapshots.map((snapshot) => {
+      let identity = textReferenceIdentities.get(snapshot);
+      if (identity === undefined) {
+        identity = ++nextTextReferenceIdentity;
+        textReferenceIdentities.set(snapshot, identity);
+      }
+      return [snapshot.key, identity];
+    }),
+  );
+}
+
+export function markdownRenderKey(options: MarkdownRenderEnv, locale: string): string {
+  return `${locale}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${markdownReferenceSignature(options)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
+}
+
+export function markdownReferenceSignature(
+  options: Pick<MarkdownRenderOptions, "textReferences" | "githubRepo" | "githubRepositories">,
+): string {
+  return JSON.stringify([
+    options.githubRepo?.owner,
+    options.githubRepo?.repo,
+    markdownGitHubAliasSignature(options.githubRepositories, options.githubRepo),
+    markdownTextReferenceSignature(options.textReferences),
+  ]);
 }

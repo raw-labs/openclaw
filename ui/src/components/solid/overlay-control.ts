@@ -6,7 +6,7 @@ import type { Overlay } from "../overlay-lifecycle.ts";
 type OverlayControlProps = {
   open?: boolean;
   disabled?: boolean;
-  onOpenChange?(open: boolean): void;
+  onOpenChange?: (open: boolean) => void;
   onBeforeShow?(event: Event): void;
   onBeforeHide?(event: Event): void;
 };
@@ -39,17 +39,19 @@ export function useOverlayControl(
   };
   onCleanup(clearBody);
   let mounted = false;
+  let onOpenChange: OverlayControlProps["onOpenChange"];
   const syncOpen = (open: boolean) => {
     if (open === overlay.open) {
       return;
     }
     if (!overlay.request(open)) {
-      props.onOpenChange?.(overlay.open);
+      onOpenChange?.(overlay.open);
     }
   };
   createEffect(
-    () => (props.disabled ? false : props.open),
-    (open) => {
+    () => [props.disabled ? false : props.open, props.onOpenChange] as const,
+    ([open, notify]) => {
+      onOpenChange = notify;
       if (mounted && open !== undefined) {
         syncOpen(open);
       }
@@ -61,7 +63,7 @@ export function useOverlayControl(
     // Deliver each accepted transition to policy callbacks before publishing onOpenChange.
     const stopOpen = overlay.subscribe((open) => {
       onOpen?.(open);
-      props.onOpenChange?.(open);
+      onOpenChange?.(open);
     });
     const show = (event: Event) => {
       if (event.target === overlay.surface) {

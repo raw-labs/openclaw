@@ -55,7 +55,13 @@ export type WorkerProviderIntentPreparationOptions = {
   projectCommit?: string;
   /** Refill only: the retained source already admitted an empty committed workspace. */
   emptyWorkspace?: true;
-  repository?: { agentId: string; url: string; ref?: string; baseCommit?: string };
+  repository?: {
+    agentId: string;
+    url: string;
+    ref?: string;
+    baseCommit?: string;
+    repositorySourceId?: string;
+  };
   projectRepository?: RepositoryWorkerProjectSnapshot;
   runSetupScript?: boolean;
   signal?: AbortSignal;

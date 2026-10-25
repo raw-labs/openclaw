@@ -1730,6 +1730,10 @@
       "types": "./dist/plugin-sdk/execution-environment.d.ts",
       "default": "./dist/plugin-sdk/execution-environment.js"
     },
+    "./plugin-sdk/repository-sources": {
+      "types": "./dist/plugin-sdk/repository-sources.d.ts",
+      "default": "./dist/plugin-sdk/repository-sources.js"
+    },
     "./cli-entry": "./openclaw.mjs"
   },
   "scripts": {

@@ -5,16 +5,28 @@ import type {
   BoardGetParams,
   SessionRow,
   SessionsListParams,
+  SessionCatalogPullRequestSummary,
 } from "@openclaw/gateway-protocol";
 import type { ControlUiComponents } from "./control-ui-components.js";
 import type { ControlUiPresentationHost } from "./control-ui-presentation.js";
 import type { ControlUiRequests } from "./control-ui-requests.js";
+import type {
+  ControlUiSessionOperationBinding,
+  ControlUiSessionOperationFactory,
+} from "./control-ui-session-operation.js";
+
 export type {
   ControlUiRequests,
   ControlUiCapturedRequest,
   ControlUiSetSync,
   ControlUiSetSyncOptions,
 } from "./control-ui-requests.js";
+export type {
+  ControlUiSessionOperationOwner,
+  ControlUiSessionOperation,
+  ControlUiSessionOperationFactory,
+  ControlUiSessionOperationBinding,
+} from "./control-ui-session-operation.js";
 export { createSessionHeaderLink } from "./control-ui-session-link.js";
 export type {
   ControlUiAgentPickerProps,
@@ -203,10 +215,83 @@ export type ControlUiAction = {
   ) => void | Promise<void>;
 };
 
+/** Offsets address UTF-16 code units in one prose run, excluding code and existing links. */
+export type ControlUiTextReference = Readonly<{
+  start: number;
+  end: number;
+  url: string;
+  label?: string;
+}>;
+export type ControlUiTextReferenceInput = {
+  text: string;
+  links: readonly string[];
+};
+/** Capture immutable facts; publish a new object when resolution changes, even if key is unchanged. */
+export type ControlUiTextReferenceSnapshot = Readonly<{
+  /** Deterministic identity of the immutable facts captured by resolve. */
+  key: string;
+  resolve: (input: ControlUiTextReferenceInput) => readonly ControlUiTextReference[];
+}>;
+export type ControlUiTextReferenceProvider = {
+  id: string;
+  /** Presentation requires an admitted link reader owned by this same plugin. */
+  readerId: string;
+  snapshot: (context: BoardGetParams) => ControlUiTextReferenceSnapshot;
+  observe?: (
+    context: BoardGetParams & { signal: AbortSignal },
+    changed: () => void,
+  ) => ControlUiDisposer;
+};
+
+export type ControlUiSessionHeaderFacts = {
+  /** Recheck pane-held authority before acting, including deferred projections. */
+  readCurrent?: () => ControlUiSessionHeaderFacts | undefined;
+  session?: ControlUiSession;
+  participationBlocked: boolean;
+  hasActiveRun: boolean;
+  workspaceReady: boolean;
+  workspaceConflict: boolean;
+};
+export type ControlUiAccessoryProps = BoardGetParams & {
+  /** Existing physical checkout identity; absent for catalog-only session facts. */
+  worktreeId?: string;
+  facts?: ControlUiSessionHeaderFacts;
+  /** Opaque facts produced and recognized by the contributing plugin. */
+  artifact?: unknown;
+  /** Report logical content presence; the containing slot stays mounted to receive future facts. */
+  onPresenceChange?: (present: boolean) => void;
+  /** Bracket asynchronous child rendering so the host preserves focus and overlay geometry. */
+  onContentChange?: (phase: "before" | "after") => void;
+  compact?: boolean;
+  dismissed?: boolean;
+  onOpenSessionDiff?: () => void;
+  /** Opaque contributed page within the native mobile Details history. */
+  detailsPage?: string;
+  /** Navigation only; the host retains Root, Back, focus and presentation ownership. */
+  onOpenDetailsPage?: (page: { id: string; title: string }, source?: HTMLElement) => void;
+  onDetailsBack?: () => void;
+  /** Contribute controls to the containing surface's existing keyboard traversal. */
+  registerControls?: (read: () => readonly HTMLElement[]) => ControlUiDisposer;
+};
 export type ControlUiAccessory = {
   id: string;
   placement: "session-header";
   mount: ControlUiView<BoardGetParams>;
+};
+
+export type ControlUiSessionAccessory = {
+  id: string;
+  placement:
+    | "session-header"
+    | "session-context"
+    | "session-row"
+    | "session-hovercard"
+    | "session-activity"
+    | "session-summary"
+    | "session-mobile-root"
+    | "session-mobile-page"
+    | "session-mobile-activity";
+  mount: ControlUiViewV2<ControlUiAccessoryProps>;
 };
 
 export type ControlUiWidget = {
@@ -239,9 +324,6 @@ export type ControlUiHost = {
   redact: (text: string) => string;
   readonly connection: ControlUiConnection;
   readonly components: ControlUiComponents;
-  readonly requests: ControlUiRequests;
-  readonly native?: import("./control-ui-native.js").ControlUiNativeHost;
-  readonly presentation?: ControlUiPresentationHost;
   /**
    * Native modules share the operator's authenticated Gateway authority.
    * The Gateway enforces connection scopes, not a per-plugin RPC allowlist.
@@ -256,24 +338,6 @@ export type ControlUiHost = {
   onEvent: (event: string, listener: (payload: unknown) => void) => ControlUiDisposer;
   subscribe: (listener: () => void) => ControlUiDisposer;
   sessions: {
-    methodAccess?: (
-      row: ControlUiSession,
-      request: {
-        method: string;
-        requiredScope?:
-          | "operator.admin"
-          | "operator.read"
-          | "operator.write"
-          | "operator.sessions.read"
-          | "operator.sessions.write"
-          | "operator.approvals"
-          | "operator.pairing";
-        sessionScope?: boolean;
-      },
-    ) => boolean;
-    artifactKey: (target: BoardGetParams) => string;
-    agentId: (key: string) => string | undefined;
-    matches: (target: BoardGetParams, eventKey: string, eventAgentId?: string | null) => boolean;
     /** The current application roster may be filtered and paginated. */
     readonly rows: readonly ControlUiSession[];
     readonly selectedKey: string;
@@ -321,8 +385,6 @@ export type ControlUiHost = {
     readonly openSessionKey: string | null;
   };
   navigation: {
-    /** Open an allowed external URL in an isolated new tab. */
-    openExternal: (url: string) => void;
     openPage: (target: ControlUiPageTarget, options?: ControlUiPageNavigationOptions) => void;
     pageHref: (
       target: ControlUiPageTarget,
@@ -352,17 +414,109 @@ export type ControlUiHost = {
   };
 };
 
+export type ControlUiPageV2 = Omit<ControlUiPage, "mount"> & { mount: ControlUiViewV2 };
+export type ControlUiPanelV2 = Omit<ControlUiPanel, "mount"> & {
+  mount: ControlUiViewV2<BoardGetParams>;
+};
+export type ControlUiWidgetV2 = Omit<ControlUiWidget, "mount"> & {
+  mount: ControlUiViewV2<Parameters<ControlUiWidget["mount"]>[1]["props"]>;
+};
+export type ControlUiReplacementV2<S extends ControlUiSurface = ControlUiSurface> = {
+  [Surface in S]: Omit<ControlUiReplacement<Surface>, "mount"> & {
+    mount: ControlUiViewV2<ControlUiSurfaceProps[Surface]>;
+  };
+}[S];
+
+/** Opt-in host capabilities; legacy plugins retain apiVersion 1 and their original source contract. */
+export type ControlUiHostV2 = Omit<ControlUiHost, "sessions" | "navigation" | "ui"> & {
+  readonly capabilitiesVersion: 2;
+  readonly requests: ControlUiRequests;
+  readonly native?: import("./control-ui-native.js").ControlUiNativeHost;
+  readonly presentation?: ControlUiPresentationHost;
+  sessions: ControlUiHost["sessions"] & {
+    methodAccess: (
+      row: ControlUiSession,
+      request: {
+        method: string;
+        requiredScope?:
+          | "operator.admin"
+          | "operator.read"
+          | "operator.write"
+          | "operator.sessions.read"
+          | "operator.sessions.write"
+          | "operator.approvals"
+          | "operator.pairing";
+        sessionScope?: boolean;
+      },
+    ) => boolean;
+    attachOperation: <TBinding extends object>(
+      row: ControlUiSession,
+      factory: ControlUiSessionOperationFactory<TBinding>,
+    ) => ControlUiSessionOperationBinding<TBinding> | null;
+    artifactKey: (target: BoardGetParams) => string;
+    agentId: (key: string) => string | undefined;
+    matches: (target: BoardGetParams, eventKey: string, eventAgentId?: string | null) => boolean;
+    /** Capture the existing roster writer's read epoch; retired sinks cannot publish. */
+    captureSummary: (target: BoardGetParams) => {
+      read: () => SessionCatalogPullRequestSummary | undefined;
+      publish: (summary: SessionCatalogPullRequestSummary | undefined) => void;
+    };
+  };
+  navigation: ControlUiHost["navigation"] & {
+    openExternal: (url: string) => void;
+  };
+  ui: Omit<
+    ControlUiHost["ui"],
+    | "registerPage"
+    | "registerPanel"
+    | "registerWidget"
+    | "registerReplacement"
+    | "registerAccessory"
+  > & {
+    registerPage: (page: ControlUiPageV2) => ControlUiDisposer;
+    registerPanel: (panel: ControlUiPanelV2) => ControlUiDisposer;
+    registerWidget: (widget: ControlUiWidgetV2) => ControlUiDisposer;
+    registerReplacement: (replacement: ControlUiReplacementV2) => ControlUiDisposer;
+    registerAccessory: (
+      accessory: ControlUiAccessory | ControlUiSessionAccessory,
+    ) => ControlUiDisposer;
+    registerTextReferenceProvider: (provider: ControlUiTextReferenceProvider) => ControlUiDisposer;
+  };
+};
+export type ControlUiViewContextV2<T = Readonly<Record<string, string>>> = Omit<
+  ControlUiViewContext<T>,
+  "host"
+> & { readonly host: ControlUiHostV2 };
+export type ControlUiViewV2<T = Readonly<Record<string, string>>> = (
+  container: HTMLElement,
+  context: ControlUiViewContextV2<T>,
+) => ReturnType<ControlUiView<T>>;
+
 export type ControlUiPlugin = {
   id: string;
+  apiVersion?: 1;
   activate: (host: ControlUiHost) => void | ControlUiDisposer | Promise<void | ControlUiDisposer>;
 };
 
 export function defineControlUiPlugin(plugin: ControlUiPlugin): ControlUiPlugin {
   return plugin;
 }
+
+export type ControlUiPluginV2 = {
+  id: string;
+  apiVersion: 2;
+  activate: (host: ControlUiHostV2) => void | ControlUiDisposer | Promise<void | ControlUiDisposer>;
+};
+export function defineControlUiPluginV2(plugin: ControlUiPluginV2): ControlUiPluginV2 {
+  return plugin;
+}
+
 export type { DoctorMemoryStatusPayload } from "../../packages/gateway-protocol/src/doctor-memory.js";
 export type {
   ControlUiSettingsPlacement,
+  ControlUiContributionSettingsPlacement,
+  AnyControlUiSettingsPlacement,
+  ControlUiSettingsComponentsV2,
   ControlUiSettingsSnapshot,
   ControlUiContributionSettingsSnapshot,
   ControlUiContributedSettingsView,

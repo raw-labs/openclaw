@@ -5,6 +5,7 @@ import { formatDurationCompact } from "../lib/format-duration.ts";
 import { presenceMatchesProfile, projectPresencePayload } from "../lib/presence-users.ts";
 import { t } from "../lib/reactive/i18n.ts";
 import { formatSessionSnoozeWakeTime, isSessionSnoozed } from "../lib/sessions/session-snooze.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import type { CatalogBackingSessionDisplay } from "./app-sidebar-session-catalogs.ts";
 import type { SessionListHost } from "./app-sidebar-session-render-types.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
@@ -258,6 +259,14 @@ export function renderSidebarSessionIndicators(
             pullRequest={pullRequest()}
             pullRequestCount={host().sessionPullRequests.count(readSession().key)}
             hasApproval={hasApproval()}
+          />
+          <PluginContributions
+            kind="session-row"
+            sessionKey={readSession().key}
+            agentId={readSession().agentId}
+            worktreeId={readSession().worktreeId}
+            artifact={pullRequest()}
+            presented={true}
           />
           {team() ? trail() : undefined}{" "}
           <Show when={team()}>

@@ -1,6 +1,6 @@
 import type { ControlUiRepositorySource } from "../../../packages/gateway-protocol/src/plugin-control-ui-repositories.js";
 import type { PluginsControlUiCatalog } from "../../../packages/gateway-protocol/src/schema/plugins.js";
-import type { ControlUiSettingsPlacement } from "../../../src/plugin-sdk/control-ui-settings.js";
+import type { AnyControlUiSettingsPlacement as ControlUiSettingsPlacement } from "../../../src/plugin-sdk/control-ui-settings.js";
 
 export type ControlUiSettingsContribution = {
   pluginId: string;

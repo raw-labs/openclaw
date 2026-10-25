@@ -10,6 +10,7 @@ import type {
   WorktreesBranchesResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { ApplicationContext } from "../../app/context.ts";
+import { t } from "../../i18n/index.ts";
 import type { SessionCreateParams } from "../../lib/sessions/create.ts";
 import { normalizeAgentId } from "../../lib/sessions/session-key.ts";
 import type { DraftRepositoryState } from "./discovery.ts";
@@ -97,6 +98,22 @@ export class DraftRepositoryStateOwner {
     return remotePlacement || !selectedProject
       ? !this.checkoutScope
       : this.checkoutScope?.project === selectedProject && this.checkoutScope.agentId === agentId;
+  }
+
+  checkoutUnavailableReason(
+    sourceStatus: "checking" | "unavailable" | undefined,
+  ): string | undefined {
+    if (sourceStatus === "unavailable") {
+      return t("newSession.repositorySourceUnavailable");
+    }
+    const reason = sourceStatus ?? this.currentCheckoutUnavailable;
+    return reason === "checking"
+      ? t("newSession.checkingPlace")
+      : reason === "worktree"
+        ? t("newSession.checkoutRequiresWorktree")
+        : reason === "unavailable"
+          ? t("newSession.checkoutCheckUnavailable")
+          : undefined;
   }
 
   get currentCheckoutUnavailable(): "checking" | "unavailable" | "worktree" | undefined {

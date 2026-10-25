@@ -8,6 +8,7 @@ import {
   LOCAL_GIT_WORKSPACE_RESPONSES,
   ONE_PIXEL_PNG_B64,
   checkoutBaseRefInput,
+  captureProjectUiProof,
   controlUiSessionPath,
   createNewSessionPageE2eSuite,
   installMockGateway,
@@ -52,6 +53,107 @@ const remoteSearchResult = {
 };
 
 suite.define(() => {
+  it("adds plugin repository sources without replacing native search or legacy plugin activation", async () => {
+    await suite.withPage(
+      { locale: "en-US", serviceWorkers: "block", viewport },
+      async ({ page }) => {
+        const legacyPlugin = {
+          pluginId: "legacy-fixture",
+          name: "Legacy plugin fixture",
+          revision: "legacy",
+          entryUrl: "/__openclaw__/plugins/control-ui/legacy-fixture/legacy/index.js",
+          styles: [],
+        };
+        const initialCatalog = { revision: "native", plugins: [legacyPlugin], diagnostics: [] };
+        const source = {
+          pluginId: "example-scm",
+          id: "repositories",
+          label: "Example Forge",
+          searchMethod: "example.repositories.search",
+        };
+        const pluginProject = {
+          name: "plugin-project",
+          fullName: "example/plugin-project",
+          cloneUrl: "https://code.example.test/example/plugin-project.git",
+          webUrl: "https://code.example.test/example/plugin-project",
+          private: false,
+        };
+        await page.route(`**${legacyPlugin.entryUrl}`, (route) =>
+          route.fulfill({
+            contentType: "text/javascript",
+            body: `export default { id: "legacy-fixture", async activate(host) {
+            await host.request("fixture.legacyReady", { apiVersion: host.apiVersion });
+          } };`,
+          }),
+        );
+        const gateway = await installMockGateway(page, {
+          ...localRepository,
+          featureMethods: [
+            ...projectMethods,
+            "projects.searchRemote",
+            "plugins.controlUi.list",
+            "plugins.controlUi.report",
+            source.searchMethod,
+          ],
+          methodResponses: {
+            "projects.list": { projects: [] },
+            "projects.searchRemote": remoteSearchResult,
+            "plugins.controlUi.list": initialCatalog,
+            "plugins.controlUi.report": { ok: true },
+            "fixture.legacyReady": { ok: true },
+            [source.searchMethod]: { credential: "configured", projects: [pluginProject] },
+            "sessions.create": { key: "agent:main:plugin-source" },
+          },
+        });
+        await page.goto(`${suite.server.baseUrl}new`);
+        const legacy = await gateway.waitForRequest("fixture.legacyReady");
+        expect(legacy.params).toEqual({ apiVersion: 1 });
+        const trigger = page.locator("#new-session-project-trigger");
+        const picker = page.locator(".oc-popover.new-session-page__project-popover");
+        await trigger.click();
+        await picker
+          .getByRole("searchbox", { name: "Search projects or paste a Git URL" })
+          .fill("plugin");
+        const nativeResult = picker.getByRole("button", { name: /openclaw\/openclaw/u });
+        await nativeResult.waitFor();
+        expect(await gateway.getRequests(source.searchMethod)).toHaveLength(0);
+        await captureProjectUiProof(suite, page, "plugin-sources-before.png");
+        await page.keyboard.press("Escape");
+
+        await gateway.setMethodResponse("plugins.controlUi.list", {
+          ...initialCatalog,
+          revision: "plugin-source",
+          repositorySources: [source],
+        });
+        const catalogs = (await gateway.getRequests("plugins.controlUi.list")).length;
+        await gateway.emitGatewayEvent("plugins.controlUi.changed", { revision: "plugin-source" });
+        await gateway.waitForRequest("plugins.controlUi.list", { after: catalogs });
+        await trigger.click();
+        await picker
+          .getByRole("searchbox", { name: "Search projects or paste a Git URL" })
+          .fill("plugin");
+        const searched = await gateway.waitForRequest(source.searchMethod, {
+          match: { query: "plugin" },
+        });
+        expect(searched.params).toEqual({ query: "plugin" });
+        const contributedResult = picker.getByRole("button", { name: /example\/plugin-project/u });
+        await contributedResult.waitFor();
+        await nativeResult.waitFor();
+        await captureProjectUiProof(suite, page, "plugin-sources-after.png");
+        await contributedResult.click();
+        await page.locator(".new-session-page__message").fill("Inspect this repository");
+        await page.getByRole("button", { name: "Start session" }).click();
+        const created = await gateway.waitForRequest("sessions.create");
+        expect(created.params).toMatchObject({
+          repositorySource: "example-scm/repositories",
+          projectGitUrl: pluginProject.cloneUrl,
+        });
+        expect(await gateway.getRequests("projects.add")).toHaveLength(0);
+        expect(await gateway.getRequests("fixture.legacyReady")).toHaveLength(1);
+      },
+    );
+  });
+
   it.each(["saved", "explicit", "branch"] as const)(
     "preserves %s choices when discovering a default repository",
     async (source) => {

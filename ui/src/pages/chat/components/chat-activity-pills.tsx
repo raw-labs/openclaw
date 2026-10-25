@@ -1,4 +1,4 @@
-import { createMemo, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
@@ -18,6 +18,7 @@ import { fnv1aUtf16 } from "../../../lib/fnv1a.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type { ChatActivityPillsProps } from "./chat-activity-pills-types.ts";
 import { hasVisibleChatActivityPills } from "./chat-activity-pills-visibility.ts";
 import { chatPullRequestId } from "./chat-pull-requests.ts";
@@ -303,6 +304,15 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
   let strip!: HTMLDivElement;
   let row!: HTMLDivElement;
   const buttons = new Set<HTMLButtonElement>();
+  const sources = new Set<() => readonly HTMLElement[]>();
+  const [contributionPresent, setContributionPresent] = createSignal(false, { ownedWrite: true });
+  const currentButtons = () =>
+    new Set([
+      ...buttons,
+      ...[...sources]
+        .flatMap((read) => read())
+        .filter((control): control is HTMLButtonElement => control instanceof HTMLButtonElement),
+    ]);
   let resize: ResizeObserver | undefined;
   let scheduleLayout: (() => void) | undefined;
   const registerButton = (button: HTMLButtonElement) => {
@@ -328,7 +338,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
       (state) => {
         strip.toggleAttribute("data-fade-left", !state.atStart);
         strip.toggleAttribute("data-fade-right", !state.atEnd);
-        props.onLayout?.({ strip, pills: buttons });
+        props.onLayout?.({ strip, pills: currentButtons() });
       },
       true,
     );
@@ -344,7 +354,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
       resize?.disconnect();
       resize = undefined;
       scheduleLayout = undefined;
-      props.onLayout?.({ strip, pills: buttons }, true);
+      props.onLayout?.({ strip, pills: currentButtons() }, true);
       stopVisibility();
     };
   });
@@ -355,7 +365,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
       return;
     }
-    const orderedButtons = [...buttons]
+    const orderedButtons = [...currentButtons()]
       .filter((button) => button.isConnected)
       .toSorted((left, right) =>
         left === right
@@ -398,7 +408,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
         strip = element;
       }}
       class="chat-activity-pills"
-      hidden={!hasVisibleChatActivityPills(props)}
+      hidden={!hasVisibleChatActivityPills(props) && !contributionPresent()}
       data-presented={props.presented ? "true" : "false"}
       role="group"
       aria-label={t("chat.activityPills.label")}
@@ -410,6 +420,32 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
         }}
         class="chat-activity-pills__row"
       >
+        <Show when={!props.approvalPending && props.contributions}>
+          {(contributions) => (
+            <PluginContributions
+              kind="session-mobile-activity"
+              sessionKey={contributions().sessionKey}
+              agentId={contributions().agentId}
+              facts={contributions().facts}
+              presented={props.presented}
+              onOpenDetailsPage={contributions().onOpenDetailsPage}
+              onPresenceChange={setContributionPresent}
+              onContentChange={(phase) => {
+                if (phase === "after") {
+                  scheduleLayout?.();
+                }
+              }}
+              registerControls={(read) => {
+                sources.add(read);
+                scheduleLayout?.();
+                return () => {
+                  sources.delete(read);
+                  scheduleLayout?.();
+                };
+              }}
+            />
+          )}
+        </Show>
         <Show when={!props.approvalPending && working().length > 0}>
           <ActivityPill
             registerButton={registerButton}

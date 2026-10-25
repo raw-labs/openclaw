@@ -14,13 +14,17 @@ async function withPluginConfigFixture(
     pluginPath: string;
     config: OpenClawConfig;
   }) => Promise<void>,
+  options: { workspaceScoped?: boolean } = {},
 ) {
   await withTempHome(
     async (home) => {
       const stateDir = path.join(home, ".openclaw");
       const configPath = path.join(stateDir, "openclaw.json");
       const pluginPath = path.join(stateDir, "example.json5");
-      const pluginRoot = path.join(stateDir, "extensions", "config-example");
+      const workspace = path.join(home, "build-workspace");
+      const pluginRoot = options.workspaceScoped
+        ? path.join(workspace, ".openclaw", "extensions", "config-example")
+        : path.join(stateDir, "extensions", "config-example");
       await fs.mkdir(pluginRoot, { recursive: true });
       await fs.writeFile(
         path.join(pluginRoot, "openclaw.plugin.json"),
@@ -43,9 +47,12 @@ async function withPluginConfigFixture(
         'throw new Error("runtime must not load");',
       );
       const config: OpenClawConfig = {
-        agents: { entries: { build: {}, keeper: {}, other: {} }, ownership: "explicit" },
+        agents: {
+          entries: { build: { workspace }, keeper: {}, other: {} },
+          ownership: "explicit",
+        },
         plugins: {
-          load: { paths: [pluginRoot] },
+          ...(!options.workspaceScoped ? { load: { paths: [pluginRoot] } } : {}),
           entries: {
             "config-example": {
               enabled: false,
@@ -165,4 +172,31 @@ it("prunes only manifest-declared agent maps through native deletion even for a 
       agents: { Build: { selection: "one" }, build: { selection: "two" }, keeper: {} },
     });
   });
+});
+
+it("prunes agent maps declared by a plugin in the deleted agent's workspace", async () => {
+  await withPluginConfigFixture(
+    async ({ config }) => {
+      const configured: OpenClawConfig = {
+        ...config,
+        plugins: {
+          ...config.plugins,
+          entries: {
+            "config-example": {
+              enabled: false,
+              config: { accounts: { agents: { build: { selection: "remove" }, keeper: {} } } },
+            },
+          },
+        },
+      };
+
+      const result = pruneAgentConfig(configured, "build").config;
+
+      expect(result.plugins?.entries?.["config-example"]?.config).toEqual({
+        accounts: { agents: { keeper: {} } },
+      });
+      expect(result.agents?.entries?.build).toBeUndefined();
+    },
+    { workspaceScoped: true },
+  );
 });

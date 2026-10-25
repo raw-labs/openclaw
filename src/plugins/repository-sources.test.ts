@@ -1,0 +1,142 @@
+import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+import { expect, it, vi } from "vitest";
+import { createContext } from "../gateway/server-plugin-in-process-dispatch.test-support.js";
+import { createManagedProjectCheckoutV1 } from "../plugin-sdk/repository-sources.js";
+import { withTempHomeCore as withTempHome } from "../plugin-sdk/test-helpers/temp-home.js";
+import { listProjectRegistry } from "../projects/project-registry.js";
+import { createRepositorySourceFixture } from "./repository-source.test-support.js";
+import { resolvePluginRepositorySource } from "./repository-sources.js";
+import { bindGatewayContextResolver } from "./runtime/gateway-request-scope.js";
+
+const url = "https://git.example/team/project.git";
+
+it("admits only the manifest-owned source and retires retained checkout callbacks", async () => {
+  const refresh = vi.fn(async () => {});
+  const fixture = createRepositorySourceFixture({
+    id: "remote",
+    resolve: (candidate) => (candidate === url ? { url, name: "project" } : undefined),
+    async prepare({ assertCurrent }) {
+      assertCurrent();
+      return {
+        project: { id: "example-project", repoRoot: "/synthetic/project", source: "registered" },
+        assertCurrent() {},
+        refresh,
+      };
+    },
+  });
+  fixture.api.registerRepositorySource({
+    id: "undeclared",
+    resolve: () => undefined,
+    prepare: async () => {
+      throw new Error("must not run");
+    },
+  });
+  expect(fixture.registry.repositorySources).toHaveLength(1);
+  expect(fixture.registry.diagnostics).toContainEqual(
+    expect.objectContaining({ message: expect.stringContaining("declared ID") }),
+  );
+  const source = resolvePluginRepositorySource(fixture.id, url, fixture.registry);
+  const prepared = await source.prepare({ agentId: "main", assertCurrent() {} });
+  await prepared.refresh();
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(() => resolvePluginRepositorySource("other/remote", url, fixture.registry)).toThrow(
+    "unavailable",
+  );
+  expect(() =>
+    resolvePluginRepositorySource(fixture.id, "file:///private", fixture.registry),
+  ).toThrow("supported repository URL");
+  await fixture.instance.dispose();
+  expect(() => source.assertCurrent()).toThrow("reloaded or disabled");
+  await expect(prepared.refresh()).rejects.toThrow("reloaded or disabled");
+  expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+it("keeps plugin clones, registration and refresh with the managed checkout owner", async () => {
+  await withTempHome(async (home) => {
+    const git = promisify(execFile);
+    const remote = path.join(home, "source");
+    await fs.mkdir(remote);
+    await git("git", ["init", "-b", "main", remote]);
+    await git("git", [
+      "-C",
+      remote,
+      "-c",
+      "user.name=Fixture",
+      "-c",
+      "user.email=fixture@example.invalid",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "Fixture",
+    ]);
+    const commit = (await git("git", ["-C", remote, "rev-parse", "HEAD"])).stdout.trim();
+    const clone = vi.fn(
+      async (input: { target: string }, options: { assertCurrent?: () => void }) => {
+        options.assertCurrent?.();
+        await git("git", ["clone", "--no-local", remote, input.target]);
+        options.assertCurrent?.();
+      },
+    );
+    const refresh = vi.fn(
+      async (input: { target: string }, options: { assertCurrent?: () => void }) => {
+        options.assertCurrent?.();
+        await git("git", ["-C", input.target, "fetch", remote, "main"]);
+        options.assertCurrent?.();
+      },
+    );
+    const checkout = createManagedProjectCheckoutV1({
+      resolveUrl: (candidate) => (candidate === url ? { url, name: "project" } : null),
+      invalidUrlMessage: "Select the fixture source",
+      clone,
+      ensureCommit: async (input, options) => {
+        options.assertCurrent?.();
+        await git("git", ["-C", input.target, "cat-file", "-e", `${input.commit}^{commit}`]);
+        options.assertCurrent?.();
+      },
+      refresh,
+    });
+    const fixture = createRepositorySourceFixture({
+      id: "remote",
+      resolve: (candidate) => (candidate === url ? { url, name: "project" } : undefined),
+      async prepare(input) {
+        const project = await checkout.materialize(
+          { gitUrl: input.url, requiredCommit: input.requiredCommit },
+          input,
+        );
+        return {
+          project,
+          assertCurrent: input.assertCurrent,
+          refresh: () => checkout.refresh(project, input),
+        };
+      },
+    });
+    const config = { agents: { entries: { main: { workspace: path.join(home, "workspace") } } } };
+    const context = createContext([], () => config);
+    bindGatewayContextResolver(fixture.registry, () => context);
+    await fixture.run(async () => {
+      const source = resolvePluginRepositorySource(fixture.id, url);
+      const prepared = await source.prepare({
+        agentId: "main",
+        requiredCommit: commit,
+        assertCurrent() {},
+      });
+      expect(prepared.project.repoRoot).toContain(path.join(home, ".openclaw", "projects"));
+      expect(await listProjectRegistry(config)).toContainEqual(
+        expect.objectContaining({ id: prepared.project.id, originUrl: url }),
+      );
+      expect(
+        (await source.prepare({ agentId: "main", requiredCommit: commit, assertCurrent() {} }))
+          .project.id,
+      ).toBe(prepared.project.id);
+      expect(clone).toHaveBeenCalledTimes(1);
+      await prepared.refresh();
+      expect(refresh).toHaveBeenCalledTimes(1);
+      await fixture.instance.dispose();
+      await expect(prepared.refresh()).rejects.toThrow("reloaded or disabled");
+      expect(refresh).toHaveBeenCalledTimes(1);
+    });
+  });
+});

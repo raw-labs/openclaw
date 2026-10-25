@@ -6,6 +6,7 @@ import { format } from "oxfmt";
 import { IsLiteralString, ObjectOptions, Type, type TSchema } from "typebox";
 import * as Compiler from "typebox/schema";
 import { AgentRuntimeRestrictionErrorDetailsSchema } from "../packages/gateway-protocol/src/agent-runtime-restriction-error-details.js";
+import { ControlUiRepositorySearchResultSchema } from "../packages/gateway-protocol/src/plugin-control-ui-repositories.js";
 import {
   SessionApprovalEventSchema,
   SessionApprovalReplaySchema,
@@ -63,6 +64,12 @@ const additionalLintRules: Partial<Record<Group, string[]>> = {
   approvals: ["unicorn/no-useless-length-check"],
 };
 const validators: Array<[name: string, schema: TSchema, type: string, group: Group]> = [
+  [
+    "ControlUiRepositorySearchResult",
+    ControlUiRepositorySearchResultSchema,
+    'import("../../../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySearchResult',
+    "session-input",
+  ],
   [
     "BoardSnapshot",
     BoardSnapshotSchema,
@@ -129,14 +136,21 @@ const validators: Array<[name: string, schema: TSchema, type: string, group: Gro
     'import("' + schemaRoot + 'sessions-goal.js").SessionsGoalClearParams',
     "session-input",
   ],
-  ...(["worktreeSource", "deviceFolder", "repository", "fastMode", "titleSource"] as const).map(
-    (key): [string, TSchema, string, Group] => [
-      `Session${key.charAt(0).toUpperCase()}${key.slice(1)}`,
-      SessionsCreateParamsSchema.properties[key],
-      `import("${schemaRoot}sessions-create.js").SessionsCreateParams["${key}"]`,
-      "session-input",
-    ],
-  ),
+  ...(
+    [
+      "worktreeSource",
+      "deviceFolder",
+      "repository",
+      "repositorySource",
+      "fastMode",
+      "titleSource",
+    ] as const
+  ).map((key): [string, TSchema, string, Group] => [
+    `Session${key.charAt(0).toUpperCase()}${key.slice(1)}`,
+    SessionsCreateParamsSchema.properties[key],
+    `import("${schemaRoot}sessions-create.js").SessionsCreateParams["${key}"]`,
+    "session-input",
+  ]),
   [
     "SessionPermissionMode",
     SessionPermissionModeSchema,

@@ -28,10 +28,6 @@ import {
 } from "../config/sessions/session-accessor.js";
 import { runWithSessionEntryCreationPublication } from "../config/sessions/session-accessor.sqlite-entry-cache.js";
 import type { SessionEntryCreationOperation } from "../config/sessions/session-accessor.sqlite-entry-cache.types.js";
-import {
-  captureSessionActorStorageOwner,
-  withSessionActorStorage,
-} from "../config/sessions/session-actor-storage-binding.js";
 import { createSessionDiffBaselineCaptureClaim } from "../config/sessions/session-diff-baseline-capture.js";
 import { buildSessionParentLink } from "../config/sessions/session-entry-lineage.js";
 import { projectPublicSessionEntry } from "../config/sessions/session-entry-projection.js";
@@ -107,6 +103,7 @@ import {
   readRequestedSessionCreateTarget,
   readSessionCreateTarget,
   withSessionCreateAdmission,
+  withSessionCreateStorage,
   validateSessionCreateIncognitoTarget,
 } from "./session-create-target.js";
 import { resolveSessionCreateVisibility } from "./session-create-visibility.js";
@@ -137,50 +134,9 @@ import { projectSessionsPatchEntry } from "./sessions-patch.js";
 export function createGatewaySession(
   params: CreateGatewaySessionParams,
 ): Promise<CreateGatewaySessionResult> {
-  return withSessionCreateAdmission(params, createAdmittedGatewaySession);
-}
-
-async function createAdmittedGatewaySession(
-  params: CreateGatewaySessionParams,
-  agentId: string,
-): Promise<CreateGatewaySessionResult> {
-  const incognito = params.incognito === true || isIncognitoSessionKey(params.parentSessionKey);
-  const generatedKey =
-    !params.key?.trim() && incognito
-      ? buildDashboardSessionKey(agentId, { incognito: true })
-      : undefined;
-  const sessionKey =
-    generatedKey ??
-    resolveSessionCreateTargetKey({
-      cfg: params.cfg,
-      agentId,
-      requestedKey: normalizeOptionalString(params.key),
-    });
-  const assertCurrent = () => params.commitGuard?.();
-  const created = await withSessionActorStorage(
-    { sessionKey, agentId },
-    {
-      create: true,
-      lifetime: { assertCurrent, assertReadable: assertCurrent },
-      authority: { assertCurrent, authorize() {} },
-    },
-    async (memory) => {
-      try {
-        return await createGatewaySessionInScope(params, agentId, generatedKey);
-      } finally {
-        const captured = captureSessionActorStorageOwner({ sessionActor: memory });
-        // Failed creation may outlive its caller's authority; only empty state is discarded.
-        const entry = captured?.owner?.readSession(memory.actor.target.sessionKey, {
-          assertCurrent() {},
-          authorize() {},
-        })?.entry;
-        if (!entry) {
-          captured?.owner?.closeSession(memory.actor.target.sessionKey);
-        }
-      }
-    },
+  return withSessionCreateAdmission(params, (admitted, agentId) =>
+    withSessionCreateStorage(admitted, agentId, createGatewaySessionInScope),
   );
-  return created ?? createGatewaySessionInScope(params, agentId, generatedKey);
 }
 
 async function createGatewaySessionInScope(
@@ -831,6 +787,7 @@ async function createGatewaySessionInScope(
           ...projectPreparedSessionWorkspace(existingEntry, {
             projectId,
             pendingProjectGitUrl,
+            repositorySourceId: params.repositorySourceId,
             pendingWorktree,
             spawnedCwd,
             preparedLifecycle,

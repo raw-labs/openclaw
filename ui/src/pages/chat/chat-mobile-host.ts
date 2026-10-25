@@ -17,7 +17,8 @@ export type MobileDetailsRoute =
         | "outputs"
         | "automations";
     }
-  | { kind: "pull-request" | "pull-request-checks" | "pull-request-monitoring"; id: string };
+  | { kind: "pull-request" | "pull-request-checks" | "pull-request-monitoring"; id: string }
+  | { kind: "contribution"; pluginId: string; id: string };
 
 /** Controlled leaves supply content; the pane alone owns navigation and presentation. */
 export type MobileHostDestination = {

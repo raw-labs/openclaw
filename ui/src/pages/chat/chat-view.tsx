@@ -16,6 +16,7 @@ import { t } from "../../lib/reactive/i18n.ts";
 import { projectPresentation } from "../../lib/reactive/presentation.ts";
 import { orderSessionPullRequests } from "../../lib/session-pull-request-presentation.ts";
 import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
+import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
 import { PluginSurface } from "../../plugins/control-ui-view.solid.tsx";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";
 import { loadChatPendingInputs } from "./chat-pending-inputs.ts";
@@ -165,6 +166,15 @@ function ChatFooterContent(
         </div>
       </Show>
       <Show when={!input.props.detailsEnabled}>
+        <PluginContributions
+          kind="session-context"
+          sessionKey={input.props.sessionKey}
+          agentId={input.props.currentAgentId}
+          presented={input.presented}
+          facts={input.props.sessionHeaderFacts}
+          compact={false}
+          onOpenSessionDiff={input.props.onOpenSessionDiff}
+        />
         <ChatPullRequests
           pullRequests={input.activities?.pullRequests ? [] : (input.props.pullRequests ?? [])}
           gateway={input.props.pullRequestsGateway}
@@ -248,6 +258,14 @@ function ChatComposerView(input: ChatViewInput) {
               onOpen: destinations.onOpenProgress,
             }
           : undefined,
+      contributions: input.application
+        ? {
+            sessionKey: input.props.sessionKey,
+            agentId: input.props.currentAgentId,
+            facts: input.props.sessionHeaderFacts,
+            onOpenDetailsPage: destinations?.onOpenDetailsPage,
+          }
+        : undefined,
       pullRequests: destinations?.onOpenPullRequest
         ? {
             items: orderSessionPullRequests(input.props.pullRequests ?? []),

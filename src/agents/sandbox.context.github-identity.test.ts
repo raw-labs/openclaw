@@ -7,6 +7,10 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createDiagnosticLogRecordCapture } from "../logging/test-helpers/diagnostic-log-capture.js";
 import { createWarnLogCapture } from "../logging/test-helpers/warn-log-capture.js";
 import {
+  activateDisabledExecutionExclusions,
+  createExecutionEnvironmentFixture,
+} from "../plugins/execution-environment.test-support.js";
+import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
 } from "./github-tool-identity.js";
@@ -157,6 +161,55 @@ it("keeps identity absent without allowInSandbox opt-in", async () => {
   const { config } = await fixture({ allowInSandbox: undefined });
   const sandbox = await resolve(config);
   expect(sandbox?.docker.env).not.toHaveProperty("GH_CONFIG_DIR");
+  expect(sandbox?.readOnlyResourceMounts).toBeUndefined();
+});
+
+it("prepares plugin sandbox maps and mounts without opting into native GitHub identity", async () => {
+  const { config } = await fixture({ allowInSandbox: false });
+  const resource = tempDirs.make("plugin-sandbox-resource-");
+  const plugin = createExecutionEnvironmentFixture({
+    id: "sandbox",
+    prepare: () => ({
+      credentialScrubEnv: {},
+      localIdentityEnv: { LOCAL_ONLY: "host" },
+      excludedStoreNames: [],
+    }),
+    prepareSandbox: async ({ agentId, scope }) => ({
+      credentialScrubEnv: { EXAMPLE_CREDENTIAL: "" },
+      localIdentityEnv: { EXAMPLE_IDENTITY: `${agentId}:${scope}` },
+      readOnlyResourceMounts: [{ hostPath: resource, containerPath: "/openclaw/example" }],
+      inheritedEnvironmentNames: [],
+    }),
+  });
+  const sandbox = await plugin.run(() => resolve(config));
+  expect(sandbox?.docker.env).toMatchObject({
+    EXAMPLE_CREDENTIAL: "",
+    EXAMPLE_IDENTITY: "release:agent",
+  });
+  expect(sandbox?.docker.env).not.toHaveProperty("LOCAL_ONLY");
+  expect(sandbox?.docker.env).not.toHaveProperty("GH_CONFIG_DIR");
+  expect(sandbox?.readOnlyResourceMounts).toContainEqual({
+    hostPath: resource,
+    containerPath: "/openclaw/example",
+  });
+});
+
+it("scrubs disabled-owner exclusions with no execution provider before provisioning", async () => {
+  const { config } = await fixture({ allowInSandbox: false });
+  const sourceConfig = await activateDisabledExecutionExclusions(config);
+  sourceConfig.agents!.defaults!.sandbox!.docker = {
+    env: {
+      EXECUTION_EXCLUDED_VALUE: "synthetic-inherited-value",
+      EXECUTION_EXCLUDED_STORED: "synthetic-stored-value",
+      EXAMPLE_ALLOWED_VALUE: "visible",
+    },
+  };
+  const sandbox = await resolve(sourceConfig);
+  expect(sandbox?.docker.env).toMatchObject({
+    EXECUTION_EXCLUDED_VALUE: "",
+    EXECUTION_EXCLUDED_STORED: "",
+    EXAMPLE_ALLOWED_VALUE: "visible",
+  });
   expect(sandbox?.readOnlyResourceMounts).toBeUndefined();
 });
 

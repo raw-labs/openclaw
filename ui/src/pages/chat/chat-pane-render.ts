@@ -279,6 +279,14 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       );
     };
     const publicationRow = readPublicationRow();
+    const sessionHeaderFacts = this.captureSessionHeaderFacts(
+      state,
+      selectedSession,
+      readPublicationRow,
+      publicationScope,
+      sessionParticipationBlocked,
+      Boolean(workspaceConflict),
+    );
     if (
       !publicationScope ||
       !publicationRow ||
@@ -374,6 +382,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         : undefined;
     const props: ChatProps = {
       applicationContext: this.context,
+      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       onHistorySentinelRef: this.registerHistorySentinel,

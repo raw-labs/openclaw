@@ -1,4 +1,5 @@
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
+import type { PreparedSandboxExecutionEnvironment } from "../../plugins/execution-environment-types.js";
 import { resolveGlobalMap } from "../../shared/global-singleton.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
 import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
@@ -159,15 +160,25 @@ export async function createSandboxBackend(
   operatorAuthority?: AdmittedRunOperatorAuthority,
   githubIdentity?: PreparedGitHubToolEnvironment,
   guard?: WorkspaceStateGuard,
+  executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
 ): Promise<SandboxBackendHandle> {
   params.assertRuntimeCurrent?.();
   const factory = requireSandboxBackendFactory(params.cfg.backend);
   if (
-    githubIdentity &&
+    (githubIdentity ||
+      (executionEnvironment &&
+        (Object.keys(executionEnvironment.localIdentityEnv).length > 0 ||
+          executionEnvironment.readOnlyResourceMounts.length > 0 ||
+          executionEnvironment.inheritedEnvironmentNames.length > 0 ||
+          executionEnvironment.wrapLocalLaunch))) &&
     factory !== createDockerSandboxBackend &&
     factory !== createPodmanSandboxBackend
   ) {
-    throw new Error("Sandbox GitHub identity requires the built-in Docker or Podman backend.");
+    throw new Error(
+      githubIdentity
+        ? "Sandbox GitHub identity requires the built-in Docker or Podman backend."
+        : "Plugin execution environments require the built-in Docker or Podman backend.",
+    );
   }
   const reserveRuntimeId = resolveSandboxBackendRegistration(params.cfg.backend)?.reserveRuntimeId;
   const toEntry = (backend: SandboxBackendHandle): SandboxRegistryEntry => ({
@@ -185,9 +196,19 @@ export async function createSandboxBackend(
     // A plugin overriding the same backend ID retains its own lifecycle contract.
     const backend =
       factory === createDockerSandboxBackend
-        ? await createDockerSandboxBackend(params, operatorAuthority, githubIdentity)
+        ? await createDockerSandboxBackend(
+            params,
+            operatorAuthority,
+            githubIdentity,
+            executionEnvironment,
+          )
         : factory === createPodmanSandboxBackend
-          ? await createPodmanSandboxBackend(params, operatorAuthority, githubIdentity)
+          ? await createPodmanSandboxBackend(
+              params,
+              operatorAuthority,
+              githubIdentity,
+              executionEnvironment,
+            )
           : await factory(params);
     await updateRegistry(toEntry(backend), {
       ...guard,

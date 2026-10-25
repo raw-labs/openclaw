@@ -1,8 +1,6 @@
 import type { SessionCatalogPullRequestSummary } from "../../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
-import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../../src/gateway/control-ui-contract.js";
 import { registerListener } from "../../../../src/shared/listeners.js";
 import type { SessionsListResult } from "../../api/types.ts";
-import type { BootRecord } from "../../app/boot-record.ts";
 import type { ConnectionBootstrapCoordinator } from "../../app/connection-bootstrap.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
 import { type SelectedAgentSource, watchSelectedAgent } from "../agents/watch-selected-agent.ts";
@@ -28,6 +26,7 @@ import { createSessionMutations } from "./session-mutations.ts";
 import { optimisticSessionRowFields } from "./session-pending-rows.ts";
 import { createSessionPermissionProjection } from "./session-permission-projection.ts";
 import { createSessionReconciliation } from "./session-reconciliation.ts";
+import { createSessionRetainedOperations } from "./session-retained-operations.ts";
 import { sessionRetryDelayMs } from "./session-retry.ts";
 import { createSessionRosterRefresh } from "./session-roster-refresh.ts";
 import { sanitizeSessionRow } from "./session-row-reconcile.ts";
@@ -72,7 +71,7 @@ export function createSessionCapability(
   gateway: SessionGateway,
   agentSelection: SelectedAgentSource,
   cacheOptions: {
-    bootRecord?: BootRecord | null;
+    bootRecord?: Parameters<typeof createSessionBootSnapshot>[2]["bootRecord"];
     connectionBootstrap?: ConnectionBootstrapCoordinator;
   } = {},
 ): SessionCapability {
@@ -118,11 +117,12 @@ export function createSessionCapability(
     };
     await (cacheOptions.connectionBootstrap?.run(key, run, { background: true }) ?? run());
   };
-  const githubPublication = createSessionGitHubPublication({
+  const retainedOperations = createSessionRetainedOperations({
     connection,
     snapshot: () => gateway.snapshot,
     deletionState: (row) => deletions.deletionState(row.key, row.agentId, row.sessionId),
   });
+  const githubPublication = createSessionGitHubPublication(retainedOperations);
   const swarmActivity = new SwarmActivityTracker();
   const pullRequestSummaries = new Map<string, SessionCatalogPullRequestSummary>();
   const pullRequestEpochs = new Map<string, object>();
@@ -540,8 +540,7 @@ export function createSessionCapability(
   });
 
   const stopEvents = gateway.subscribeEvents((event) => {
-    if (event.event === CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT) {
-      githubPublication.observePullRequests(event.payload);
+    if (githubPublication.observeGatewayEvent(event)) {
       return;
     }
     if (event.event === "config.changed" || event.event === "chat.metadata.changed") {
@@ -642,6 +641,7 @@ export function createSessionCapability(
       return canonicalListRevision;
     },
     githubPublication,
+    retainedOperations,
     get cachedRoutingDefaults() {
       return cacheLifecycle.routingDefaults;
     },

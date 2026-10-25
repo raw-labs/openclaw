@@ -123,9 +123,10 @@ to declare that its environment or store name must not reach agent execution.
 Secret preparation records these names without resolving dormant credentials,
 including when the declaring plugin is disabled. File and exec references do not
 name inherited environment/store entries. Ordinary SecretRef resolution and owner
-admission remain unchanged. Prepared snapshots expose the exclusions for execution
-adapters; this metadata does not itself authorize a child process, filter its
-environment, or inject credentials.
+admission remain unchanged. Host exec, admitted harness execution, and sandbox
+adapters consume the prepared exclusions when projecting inherited environment
+and stored values. These declarations do not authorize execution or inject
+credentials.
 
 ### Agent config maps and config-only audit
 

@@ -342,7 +342,7 @@ export function pruneAgentConfig(
       : workspacePinnedConfig;
 
   return {
-    config: prunePluginAgentConfigMaps(transitionPinnedConfig, id),
+    config: prunePluginAgentConfigMaps(transitionPinnedConfig, id, cfg),
     removedBindings: bindings.length - filteredBindings.length,
     removedAllow: allow.length - filteredAllow.length,
     clearedOwnerRefs,

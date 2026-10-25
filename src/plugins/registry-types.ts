@@ -422,6 +422,14 @@ export type PluginRegistry = {
   executionEnvironments: Array<
     PluginRegistrationOwner & {
       provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1;
+      /** Host-created instance admission, rechecked at the final process effect. */
+      assertCurrent: () => void;
+    }
+  >;
+  repositorySources: Array<
+    PluginRegistrationOwner & {
+      provider: import("./repository-source-types.js").RepositorySourceV1;
+      assertCurrent: () => void;
     }
   >;
   securityAuditCollectors: Array<

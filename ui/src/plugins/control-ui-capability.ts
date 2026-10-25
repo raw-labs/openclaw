@@ -2,14 +2,16 @@ import type { PluginControlUiDiagnostic } from "../../../packages/gateway-protoc
 import type {
   ControlUiAction,
   ControlUiAccessory,
+  ControlUiSessionAccessory,
   ControlUiDisposer,
-  ControlUiHost,
+  ControlUiHostV2 as ControlUiHost,
   ControlUiNavigationItem,
-  ControlUiPage,
-  ControlUiPanel,
-  ControlUiReplacement,
+  ControlUiPageV2 as ControlUiPage,
+  ControlUiPanelV2 as ControlUiPanel,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurface,
-  ControlUiWidget,
+  ControlUiTextReferenceProvider,
+  ControlUiWidgetV2 as ControlUiWidget,
 } from "../../../src/plugin-sdk/control-ui.js";
 
 export type ControlUiRegistration<T> = {
@@ -25,7 +27,8 @@ export type ControlUiContributions = {
   navigation: ControlUiNavigationItem;
   panels: ControlUiPanel;
   actions: ControlUiAction;
-  accessories: ControlUiAccessory;
+  accessories: ControlUiAccessory | ControlUiSessionAccessory;
+  textReferences: ControlUiTextReferenceProvider;
   widgets: ControlUiWidget;
   replacements: ControlUiReplacement;
 };

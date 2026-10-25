@@ -81,7 +81,7 @@ export function ControlUiSettingsPresentation(props: {
   subscribe: (listener: () => void) => () => void;
   navigate: ControlUiSettingsContext["navigate"];
   refreshAgents: () => void;
-  navigateTo?: ControlUiSettingsContext["navigateTo"];
+  navigateTo?: ControlUiSettingsContextV2["navigateTo"];
 }) {
   let container: HTMLDivElement | undefined;
   let active = true;

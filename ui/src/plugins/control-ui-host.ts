@@ -1,7 +1,7 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type {
   ControlUiDisposer,
-  ControlUiHost,
+  ControlUiHostV2 as ControlUiHost,
   ControlUiPageNavigationOptions,
   ControlUiPageTarget,
 } from "../../../src/plugin-sdk/control-ui.js";
@@ -99,6 +99,7 @@ export function createControlUiPluginHost(
   let dockCloseRetained = false;
   return {
     apiVersion: 1,
+    capabilitiesVersion: 2,
     pluginId: owner.descriptor.pluginId,
     signal: owner.abort.signal,
     get basePath() {
@@ -174,6 +175,11 @@ export function createControlUiPluginHost(
     sessions: {
       methodAccess: (session, request) =>
         readSessionMethodAccess(current().gateway.snapshot, { ...request, session }).allowed,
+      attachOperation: (row, factory) =>
+        current().sessions.retainedOperations.attach(row, factory, owner.descriptor.pluginId, {
+          signal: owner.abort.signal,
+          onError: (error) => runtime.reportError(owner.descriptor.pluginId, error),
+        }),
       artifactKey: ({ sessionKey, agentId }) => scopedSessionArtifactKey(sessionKey, agentId),
       agentId: (key) => parseAgentSessionKey(key)?.agentId,
       matches: ({ sessionKey, agentId }, eventKey, eventAgentId) => {
@@ -187,6 +193,43 @@ export function createControlUiPluginHost(
           eventKey,
           eventAgentId,
         );
+      },
+      captureSummary: ({ sessionKey, agentId }) => {
+        const context = current();
+        const snapshot = context.gateway.snapshot;
+        // The store uses owner-qualified artifact keys; the native roster owns raw row keys.
+        const artifact = scopedSessionArtifactKey(sessionKey, agentId);
+        const rosterAgent = context.sessions.state.agentId;
+        const row = context.sessions.state.result?.sessions.find(
+          (candidate) =>
+            scopedSessionArtifactKey(
+              candidate.key,
+              candidate.agentId ?? rosterAgent ?? undefined,
+            ) === artifact,
+        );
+        const selected = scopedSessionArtifactKey(
+          snapshot.sessionKey,
+          snapshot.assistantAgentId ?? undefined,
+        );
+        const summaryKey = row?.key ?? (selected === artifact ? snapshot.sessionKey : sessionKey);
+        const rawOwner = !parseAgentSessionKey(summaryKey) ? rosterAgent : undefined;
+        const scope = context.sessions.captureConnectionScope();
+        const epoch = context.sessions.capturePullRequestEpoch(summaryKey);
+        const live = () =>
+          !owner.abort.signal.aborted &&
+          runtime.isCurrent(owner) &&
+          getContext().sessions === context.sessions &&
+          scope !== null &&
+          context.sessions.isConnectionScopeCurrent(scope) &&
+          (rawOwner === undefined || context.sessions.state.agentId === rawOwner);
+        return {
+          read: () => (live() ? context.sessions.pullRequestSummary(summaryKey) : undefined),
+          publish: (summary) => {
+            if (live()) {
+              context.sessions.setPullRequestSummary(summaryKey, summary, epoch);
+            }
+          },
+        };
       },
       get rows() {
         return structuredClone(current().sessions.state.result?.sessions ?? []);
@@ -392,6 +435,7 @@ export function createControlUiPluginHost(
       },
       registerAction: (value) => runtime.register(owner, "actions", value),
       registerAccessory: (value) => runtime.register(owner, "accessories", value),
+      registerTextReferenceProvider: (value) => runtime.register(owner, "textReferences", value),
       registerWidget: (value) => runtime.register(owner, "widgets", value),
       registerReplacement: (value) => runtime.register(owner, "replacements", value),
       selectReplacement(surface, id) {

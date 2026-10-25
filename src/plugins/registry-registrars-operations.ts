@@ -349,7 +349,11 @@ export function createOperationRegistrars(state: PluginRegistryState) {
     if (provider.prepareSandbox) {
       instance.admitFactory(provider.prepareSandbox, ["wrapLocalLaunch"]);
     }
-    registry.executionEnvironments.push(createRegistration(record, { provider }));
+    registry.executionEnvironments.push(
+      // This host-created callback retains instance admission at the final
+      // spawn, after argv preparation and any asynchronous approval work.
+      createRegistration(record, { provider, assertCurrent() {} }),
+    );
   };
 
   const registerSecurityAuditCollector = (

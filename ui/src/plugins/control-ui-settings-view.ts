@@ -1,6 +1,6 @@
 import { raceWithTimeout } from "@openclaw/retry";
 import type { PluginControlUiModule } from "../../../packages/gateway-protocol/src/schema/plugins.js";
-import type { ControlUiSettingsPlacement } from "../../../src/plugin-sdk/control-ui-settings.js";
+import type { AnyControlUiSettingsPlacement as ControlUiSettingsPlacement } from "../../../src/plugin-sdk/control-ui-settings.js";
 import { listen } from "../lib/reactive/listener.ts";
 import { controlUiPluginAssetUrls } from "./control-ui-assets.ts";
 import { controlUiPluginDistributions } from "./control-ui-distribution.ts";

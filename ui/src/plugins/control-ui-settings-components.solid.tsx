@@ -1,7 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { createMemo, createSignal } from "solid-js";
 import type { ControlUiComponentHandle } from "../../../src/plugin-sdk/control-ui-components.js";
-import type { ControlUiSettingsContextV2 } from "../../../src/plugin-sdk/control-ui-settings.js";
+import type { ControlUiSettingsComponentsV2 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import { LobsterSvg } from "../components/lobster-pet-artwork.tsx";
 import { lobsterPetSeed } from "../components/lobster-pet-contract.ts";
 import { createLobsterPetLook, lobsterLookStyle } from "../components/lobster-pet-identity.ts";
@@ -20,7 +20,7 @@ import { listen } from "../lib/reactive/listener.ts";
 
 export function createControlUiSettingsComponents(
   signal: AbortSignal,
-): ControlUiSettingsContextV2["components"] {
+): ControlUiSettingsComponentsV2 {
   function mount<P extends object>(
     container: HTMLElement,
     initial: P,

@@ -8,6 +8,7 @@ import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../lib/solid-bridge.ts";
 import { ContentPresentation } from "../../lib/solid/presentation.ts";
+import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
 import type { ChatMobileHost, MobileDetailsRoute } from "./chat-mobile-host.ts";
 import type { ChatMobilePeopleMentions } from "./chat-mobile-people-mentions.ts";
 import type { ChatMobilePeople } from "./chat-mobile-people.ts";
@@ -200,6 +201,50 @@ function MobileHostContent(
         host.destination === destination,
     };
   };
+  function Contributions(input: {
+    kind: "session-mobile-root" | "session-mobile-page";
+    presented: boolean;
+  }) {
+    const selected = () => {
+      const value = route();
+      return value?.kind === "contribution"
+        ? { pluginId: value.pluginId, id: value.id }
+        : undefined;
+    };
+    return (
+      <PluginContributions
+        kind={input.kind}
+        sessionKey={props.details.sessionKey}
+        agentId={props.details.currentAgentId ?? undefined}
+        facts={props.details.sessionHeaderFacts}
+        presented={input.presented}
+        detailsPage={selected()}
+        onOpenDetailsPage={(pluginId, page, source) => {
+          if (capturePresentation().current()) {
+            const owner = capturePresentation();
+            owner.host.navigate(
+              {
+                area: "details",
+                page: {
+                  key: `contribution:${pluginId}:${page.id}`,
+                  title: page.title,
+                  details: { kind: "contribution", pluginId, id: page.id },
+                },
+                backTo: owner.destination,
+              },
+              source,
+            );
+          }
+        }}
+        onDetailsBack={() => {
+          if (capturePresentation().current()) {
+            props.host.back();
+          }
+        }}
+        onOpenSessionDiff={props.details.onOpenSessionDiff}
+      />
+    );
+  }
   const requests = (origin: "root" | "pull-requests") => {
     const owner = capturePresentation();
     return {
@@ -238,6 +283,9 @@ function MobileHostContent(
     kind: "root",
     content: {
       entries: {
+        contributions: (
+          <Contributions kind="session-mobile-root" presented={props.presented && !route()} />
+        ),
         labels: {
           people: t("chat.mobileDetails.people"),
           taskProgress: t("sessionProgressCard.composerTitle"),
@@ -359,6 +407,15 @@ function MobileHostContent(
       { kind: "session-access", content: sharing },
       { kind: "outputs" },
       { kind: "context" },
+      {
+        kind: "contribution",
+        content: (
+          <Contributions
+            kind="session-mobile-page"
+            presented={props.presented && route()?.kind === "contribution"}
+          />
+        ),
+      },
       {
         kind: "automations",
         content: {

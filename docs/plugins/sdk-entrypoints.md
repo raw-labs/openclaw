@@ -32,9 +32,14 @@ without adding imports from Gateway internals.
   [Provider Plugins](/plugins/sdk-provider-plugins) for step-by-step guides.
 </Tip>
 
-The experimental `execution-environment` entrypoint exposes registration types,
-not an active execution integration. See
+The `execution-environment` entrypoint exposes optional preparation contracts
+consumed by host exec, agent harnesses, and supported sandbox backends. See
 [Execution environment registration](/plugins/sdk-execution-environments).
+
+The `repository-sources` entrypoint exposes repository preparation and bounded
+checkout contracts. Plugins declare discovery metadata and register their source;
+the existing picker, session creation, and cloud workspace owners consume it.
+See [Repository sources](/plugins/sdk-repository-sources).
 
 ## Where each section moved
 

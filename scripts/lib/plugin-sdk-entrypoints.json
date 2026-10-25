@@ -381,5 +381,6 @@
   "agent-core",
   "agent-sessions",
   "llm",
-  "execution-environment"
+  "execution-environment",
+  "repository-sources"
 ]

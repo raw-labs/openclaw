@@ -45,4 +45,14 @@ export type ChatActivityPillsProps = {
   };
   /** Supply only an eligible branch offer or retained publication owned by this session. */
   publication?: { view: GitHubPublicationView; onOpen: OpenActivity };
+  contributions?: {
+    sessionKey: string;
+    agentId?: string;
+    facts?: import("../../../../../src/plugin-sdk/control-ui.js").ControlUiSessionHeaderFacts;
+    onOpenDetailsPage?: (
+      pluginId: string,
+      page: { id: string; title: string },
+      source?: HTMLElement,
+    ) => void;
+  };
 };

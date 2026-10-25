@@ -96,7 +96,10 @@ export function createControlUiRequests(params: {
     createSetSync(options) {
       const gateway = current();
       const lifecycle = createGatewaySetSyncLifecycle(gateway, options);
-      params.retain(() => lifecycle.detach());
+      params.retain(() => {
+        lifecycle.resetRetry();
+        lifecycle.detach();
+      });
       return {
         get attached() {
           return lifecycle.attached;
@@ -105,7 +108,15 @@ export function createControlUiRequests(params: {
           return lifecycle.requestAcknowledged;
         },
         resetRetry: lifecycle.resetRetry,
-        scheduleRetry: lifecycle.scheduleRetry,
+        scheduleRetry(callback) {
+          current();
+          lifecycle.scheduleRetry(() => {
+            if (!params.signal.aborted) {
+              current();
+              callback();
+            }
+          });
+        },
         sync: lifecycle.sync,
         schedule: lifecycle.schedule,
         clearRequest: lifecycle.clearRequest,

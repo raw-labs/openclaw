@@ -47,6 +47,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "deviceFolder",
   "projectId",
   "repositoryWorkspaceId",
+  "repositorySourceId",
   "pendingProjectGitUrl",
   "pendingWorktree",
   "parentSessionKey",

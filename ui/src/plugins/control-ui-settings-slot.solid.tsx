@@ -1,6 +1,6 @@
 import { For } from "solid-js";
 import type {
-  ControlUiSettingsPlacement,
+  ControlUiContributionSettingsPlacement,
   ControlUiContributionSettingsSnapshot,
 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import { pathForAgentPanel } from "../app-route-paths.ts";
@@ -15,7 +15,7 @@ import { projectOwner } from "../lib/reactive/projection.ts";
 import type { ControlUiSettingsContribution } from "./control-ui-metadata.ts";
 import { ControlUiSettingsPresentation } from "./control-ui-settings-view.solid.tsx";
 
-type ContributedPlacement = Extract<ControlUiSettingsPlacement, { section: "profile" | "agents" }>;
+type ContributedPlacement = ControlUiContributionSettingsPlacement;
 
 /** Every admitted contribution has its own renderer and lifetime within a shared host slot. */
 export function ControlUiSettingsSlot(props: {

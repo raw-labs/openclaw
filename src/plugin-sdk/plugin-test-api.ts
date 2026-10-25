@@ -48,6 +48,7 @@ export function createTestPluginApi(api: TestPluginApiInput = {}): OpenClawPlugi
     registerNodeHostCommand() {},
     registerNodeInvokePolicy() {},
     registerExecutionEnvironment() {},
+    registerRepositorySource() {},
     registerSecurityAuditCollector() {},
     registerConfigMigration() {},
     registerMigrationProvider() {},

@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import { dynamic } from "@solidjs/web";
 import { Match, Show, Switch, createMemo, onSettled } from "solid-js";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
@@ -121,6 +122,7 @@ type ChatDetailsMobileMoveRequest = Parameters<SessionPlacementPresentation>[0];
 /** Only supplied mobile bodies belong here. Missing peer bodies stay with their owners. */
 export type ChatDetailsMobilePage =
   | { kind: "root"; content: ChatDetailsMobileRootContent }
+  | { kind: "contribution"; content: JSX.Element }
   | { kind: "machine"; content: Omit<ChatMachineProps, "session"> }
   | { kind: "move"; content: ChatDetailsMobileMoveRequest }
   | { kind: "people"; content: ChatDetailsMobilePeopleContent }
@@ -454,6 +456,9 @@ export function ChatDetailsMobileContent(props: ChatDetailsMobileContentProps) {
             onScrollPortRef={props.details.onScrollPortRef}
           />
         )}
+      </Match>
+      <Match when={props.page.kind === "contribution" && props.page}>
+        {(page) => page().content}
       </Match>
       <Match when={props.page.kind === "publication" && props.page}>
         {(page) => (

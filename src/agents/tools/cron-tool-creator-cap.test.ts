@@ -147,6 +147,30 @@ describe("cron tool creator cap", () => {
     expect(patch.payload).toMatchObject({ kind: "script", toolsAllow: ["read", "notes__read"] });
   });
 
+  it("carries plugin policy-group members into explicit automation caps", () => {
+    const creatorTools: CronCreatorToolAllowlistEntry[] = [];
+    replaceWithEffectiveCronCreatorToolAllowlist(
+      creatorTools,
+      [testTool("repository_publish"), testTool("session_status"), testTool("read")],
+      (tool) =>
+        tool.name === "repository_publish"
+          ? { pluginId: "repository", policyGroups: ["group:sessions"] }
+          : undefined,
+    );
+    const job = { payload: { ...agentPayload, toolsAllow: ["group:sessions"] } };
+
+    capCronJobToolsAllowOnCreate(job, creatorTools);
+
+    expect(job.payload.toolsAllow).toEqual(["repository_publish", "session_status"]);
+    expect(
+      readyPatch({
+        patch: { payload: { toolsAllow: ["group:sessions"] } },
+        creatorToolAllowlist: creatorTools,
+        currentJob: job,
+      }).payload,
+    ).toMatchObject({ toolsAllow: ["repository_publish", "session_status"] });
+  });
+
   it("rejects unavailable explicit updates without changing the caller's patch", () => {
     const input = {
       payload: { kind: "agentTurn", toolsAllow: ["read", "exec"] },

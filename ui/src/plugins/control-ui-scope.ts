@@ -1,4 +1,4 @@
-import type { ControlUiHost } from "../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiHostV2 as ControlUiHost } from "../../../src/plugin-sdk/control-ui.js";
 import { listen } from "../lib/reactive/listener.ts";
 
 /** A mounted view cannot retain host calls or listeners after its own lifetime ends. */
@@ -98,6 +98,20 @@ export function scopeControlUiHost(
             const dispose = result.dispose;
             const stop = keep(() => dispose.call(result));
             return services(result, {}, stop);
+          }
+          if (result && typeof result === "object" && property === "captureSummary") {
+            return services(result);
+          }
+          if (
+            result &&
+            typeof result === "object" &&
+            property === "attachOperation" &&
+            "detach" in result &&
+            typeof result.detach === "function"
+          ) {
+            const detach = result.detach;
+            const stop = keep(() => detach.call(result));
+            return services(result, {}, stop, "detach");
           }
           return checkCompletion(result);
         };
