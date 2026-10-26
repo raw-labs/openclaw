@@ -17,7 +17,12 @@ import {
   resolvePluginRuntimeModulePathWithDiagnostics,
   type PluginSdkResolutionPreference,
 } from "./sdk-alias.js";
-import { createPluginSdkAliasFixtureFactory, writePluginEntry } from "./sdk-alias.test-fixtures.js";
+import {
+  createPluginSdkAliasFixtureFactory,
+  writePluginEntry,
+  writeWorkspacePackageEntry,
+  writeWorkspacePackageExports,
+} from "./sdk-alias.test-fixtures.js";
 import {
   cleanupTrackedTempDirs,
   makeTrackedTempDir,
@@ -86,47 +91,6 @@ function writePluginSdkSubpathArtifacts(root: string, subpaths: readonly string[
       }
     }
   }
-}
-
-function writeWorkspacePackageEntry(params: {
-  root: string;
-  packageDir: string;
-  srcFile: string;
-  distFile: string;
-}) {
-  const srcFile = path.join(params.root, "packages", params.packageDir, "src", params.srcFile);
-  const distFile = path.join(params.root, "packages", params.packageDir, "dist", params.distFile);
-  mkdirSafeDir(path.dirname(srcFile));
-  mkdirSafeDir(path.dirname(distFile));
-  fs.writeFileSync(srcFile, "export {};\n", "utf-8");
-  fs.writeFileSync(distFile, "export {};\n", "utf-8");
-  return { srcFile, distFile };
-}
-
-function writeWorkspacePackageExports(
-  root: string,
-  packageDir: string,
-  subpaths: readonly string[],
-) {
-  mkdirSafeDir(path.join(root, "packages", packageDir));
-  fs.writeFileSync(
-    path.join(root, "packages", packageDir, "package.json"),
-    JSON.stringify(
-      {
-        name: `@openclaw/${packageDir}`,
-        exports: Object.fromEntries(
-          subpaths.map((subpath) => {
-            const exportKey = subpath ? `./${subpath}` : ".";
-            const distFile = `./dist/${subpath || "index"}.mjs`;
-            return [exportKey, { import: distFile, default: distFile }];
-          }),
-        ),
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
 }
 
 type WorkspaceAliasFixture = readonly [
@@ -1284,10 +1248,12 @@ describe("plugin sdk alias helpers", () => {
     ]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["@openclaw/gateway-client", "gateway-client", "index"],
+      ["@openclaw/gateway-client/browser", "gateway-client", "browser"],
       ["@openclaw/gateway-client/timeouts", "gateway-client", "timeouts"],
       ["@openclaw/gateway-client/websocket-data", "gateway-client", "websocket-data"],
       ["@openclaw/gateway-protocol", "gateway-protocol", "index"],
       ["@openclaw/gateway-protocol/schema", "gateway-protocol", "schema"],
+      ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
       ["@openclaw/gateway-protocol/frame-guards", "gateway-protocol", "frame-guards"],
       [
         "@openclaw/gateway-protocol/gateway-error-details",
@@ -1347,6 +1313,8 @@ describe("plugin sdk alias helpers", () => {
     writeWorkspacePackageExports(fixture.root, "normalization-core", ["record-coerce"]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["@openclaw/gateway-client/readiness", "gateway-client", "readiness"],
+      ["@openclaw/gateway-client/browser", "gateway-client", "browser"],
+      ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
       [
         "@openclaw/gateway-protocol/connect-error-details",
         "gateway-protocol",

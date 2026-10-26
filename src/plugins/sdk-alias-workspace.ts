@@ -8,7 +8,7 @@ import type { WorkspacePackageAliasEntry } from "./plugin-cache-sdk.js";
 // Packaged installs omit workspace manifests; preserve the exact curated subpaths
 // instead of expanding aliases from package exports.
 const WORKSPACE_PACKAGE_ALIAS_SUBPATHS = [
-  ["gateway-client", ["", "readiness", "timeouts", "websocket-data"]],
+  ["gateway-client", ["", "browser", "readiness", "timeouts", "websocket-data"]],
   [
     "gateway-protocol",
     [
@@ -19,6 +19,7 @@ const WORKSPACE_PACKAGE_ALIAS_SUBPATHS = [
       "gateway-error-details",
       "restart-unavailable",
       "schema",
+      "session-row-deltas",
       "startup-unavailable",
       "version",
     ],
