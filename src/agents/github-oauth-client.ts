@@ -1,3 +1,4 @@
+export type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { createHash } from "node:crypto";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
@@ -5,6 +6,7 @@ import { readResponseWithLimit } from "../infra/http-body.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
+import type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 import type { GitHubToolAccount } from "./github-tool-account.js";
 
@@ -54,15 +56,6 @@ type GitHubOAuthDeviceAuthorization = {
   verificationUri: typeof GITHUB_OAUTH_VERIFICATION_URL;
   expiresInSeconds: number;
   intervalSeconds: number;
-};
-
-export type GitHubOAuthTokenPair = {
-  accessToken: string;
-  tokenType: "bearer";
-  scopes: string[];
-  expiresInSeconds: number;
-  refreshToken: string;
-  refreshTokenExpiresInSeconds: number;
 };
 
 const GITHUB_OAUTH_ERROR_CODES = [

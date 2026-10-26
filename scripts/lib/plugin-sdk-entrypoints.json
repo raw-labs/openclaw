@@ -382,5 +382,13 @@
   "agent-sessions",
   "llm",
   "execution-environment",
-  "repository-sources"
+  "repository-sources",
+  "repository-identity-host",
+  "repository-oauth-host",
+  "repository-publication-content",
+  "repository-publication-engine",
+  "repository-publication-install",
+  "repository-session-host",
+  "repository-session-read",
+  "dashboard"
 ]

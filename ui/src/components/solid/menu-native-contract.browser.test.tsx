@@ -186,6 +186,26 @@ it("forwards link navigation from nested menus and closes the root", async () =>
   await phase(surface(), "hidden");
 });
 
+it("keeps a containing menu open for an independently mounted embedded menu", async () => {
+  const embedded = document.createElement("div");
+  render(
+    () => (
+      <Menu id="embedded" label="Embedded" items={[{ id: "action", label: "Embedded action" }]} />
+    ),
+    { container: embedded },
+  );
+  flush();
+  mountMenu({
+    items: [{ id: "native", label: "Native action" }, menuContent("embedded", embedded)],
+  });
+  await openMenu();
+  await openMenu("embedded");
+  expect(surface().matches(":popover-open")).toBe(true);
+  await userEvent.keyboard("{Escape}");
+  await phase(surface("embedded"), "hidden");
+  expect(surface().matches(":popover-open")).toBe(true);
+});
+
 it.each([false, true])("rolls rejected visibility back (initial=%s)", async (initial) => {
   const [open, setOpen] = createSignal(initial);
   let vetoShow = true;

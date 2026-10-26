@@ -63,7 +63,7 @@ export function insertSharedWorktreeReceipt(
       identity: {
         source: "system-configured",
         profileId: "fixture-profile",
-        account: { accountId: 42, login: "fixture-bot", avatarUrl: null },
+        account: { accountId: 42, login: "fixture-bot" },
       },
       snapshot: {
         sourceHeadCommit: OLD_HEAD,

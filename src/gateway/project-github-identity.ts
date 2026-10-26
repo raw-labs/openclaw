@@ -19,6 +19,9 @@ export async function prepareGatewayProjectGitHubIdentity(params: {
   /** Configured owner/repository to admit and issue an App token for. */
   requestedRepository?: string;
   factoryCredential?: { claim: FactoryGitHubProofClaim; assertCurrent: () => void };
+  withCredential?: <T extends { revoke?: () => Promise<void> }>(
+    run: import("./control-ui-session-pr-request-read.js").RepositoryReadCredentialPreparation<T>,
+  ) => Promise<T>;
 }) {
   const selected =
     resolveConfiguredGitHubToolIdentity({
@@ -31,7 +34,9 @@ export async function prepareGatewayProjectGitHubIdentity(params: {
       agentId: params.agentId,
       scope: "system",
     });
-  const appRead = selected?.kind === "app-installation" && params.factoryCredential !== undefined;
+  const appRead =
+    selected?.kind === "app-installation" &&
+    (params.factoryCredential !== undefined || params.withCredential !== undefined);
   if (!appRead && params.config.gateway?.projects?.nativeGitHubSearch !== true) {
     return undefined;
   }
@@ -53,6 +58,9 @@ export async function prepareGatewayProjectGitHubIdentity(params: {
       // A protected identity executable owns token refresh and revalidation.
       refresh: async () => {},
     });
+  if (appRead && params.withCredential) {
+    return await params.withCredential(prepare);
+  }
   if (!appRead) {
     return await prepare();
   }

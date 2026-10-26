@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { root as fsRoot } from "../infra/fs-safe.js";
+import { root as openFilesystemRoot } from "@openclaw/fs-safe/root";
+import { isRecord } from "../../packages/normalization-core/src/record-coerce.js";
 import { GITHUB_PUBLICATION_CONFIG_GUARD } from "./github-publication-base.js";
 import {
-  MAX_RECONCILIATION_ENTRIES,
   MAX_RECONCILIATION_FILE_BYTES,
   MAX_RECONCILIATION_TOTAL_BYTES,
+  MAX_RECONCILIATION_ENTRIES,
 } from "./worker-environments/workspace-manifest.js";
 
 export type GitHubRepositoryPublicationSnapshot = {
@@ -14,7 +14,7 @@ export type GitHubRepositoryPublicationSnapshot = {
   baseCommit: string;
   baseTree: string;
   workspaceTree: string;
-  entries: Array<{
+  entries: ReadonlyArray<{
     path: string;
     mode: "100644" | "100755" | "120000" | "160000";
     sha: string | null;
@@ -195,7 +195,7 @@ export function parseGitHubRepositoryPublicationSnapshot(
 }
 
 async function readPublicationFile(root: string, file: string) {
-  return (await fsRoot(root)).read(file, {
+  return (await openFilesystemRoot(root)).read(file, {
     maxBytes: MAX_RECONCILIATION_FILE_BYTES,
     symlinks: "reject",
     hardlinks: "reject",

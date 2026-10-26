@@ -1,3 +1,5 @@
+import { BoardGatewayUnavailableError } from "../boards/board-errors.js";
+export { BoardGatewayUnavailableError } from "../boards/board-errors.js";
 import { createHmac, randomBytes } from "node:crypto";
 import {
   capturePluginRegistryLifecycleEpoch,
@@ -41,13 +43,6 @@ export type BoardViewTicketAuthority = BoardViewTicketAuthorityInput & {
   methodRegistry?: ReturnType<NonNullable<GatewayRequestContext["getGatewayMethodRegistry"]>>;
   pluginRegistryEpoch?: PluginRegistryLifecycleEpoch;
 };
-
-export class BoardGatewayUnavailableError extends Error {
-  constructor() {
-    super("dashboard unavailable");
-    this.name = "BoardGatewayUnavailableError";
-  }
-}
 
 export type BoardViewTicketClaims = {
   sessionKey: string;

@@ -31,7 +31,7 @@ export async function prepareGatewayKernelRequestRuntime(params: {
     bindApprovalPublicationContext,
     startupTrace,
     workerPlacementRuntime,
-    githubPublicationRuntime,
+    workspacePublicationHost,
     pluginGatewayContext,
     getAttachedGatewayMethodRegistry,
     gatewayInstanceRuntimeRef,
@@ -143,8 +143,8 @@ export async function prepareGatewayKernelRequestRuntime(params: {
           flushPendingSessionsChangedEvents: shutdownRuntime.flushPendingSessionsChangedEvents,
           minimalTestGateway,
           logWarning: (message) => log.warn(message),
-          ...(!workerPlacementRuntime && githubPublicationRuntime
-            ? { reconcileGitHubPublications: githubPublicationRuntime.reconcilePublications }
+          ...(!workerPlacementRuntime && workspacePublicationHost
+            ? { reconcileGitHubPublications: workspacePublicationHost.reconcilePublications }
             : {}),
           publishSidecars: runtimeState.gatewayLifetimeSidecars.publish,
         }),

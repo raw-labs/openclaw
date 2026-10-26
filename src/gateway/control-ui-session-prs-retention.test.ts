@@ -1,10 +1,12 @@
 import { getEventListeners } from "node:events";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getRuntimeConfig } from "../config/io.js";
+import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { runGitWorkerOperation } from "../infra/git-worker.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
-import { createControlUiSessionPullRequestSubscriptions as createSubscriptions } from "./control-ui-session-pr-subscriptions.js";
 import {
+  createTestControlUiSessionPrSubscriptions as createSubscriptions,
   spyOnSessionPrLoader,
   type SessionPrLoader,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
@@ -15,7 +17,9 @@ import {
   routedFetch,
   testGitContext,
 } from "./control-ui-session-prs.test-support.js";
+import { resolveSessionStoreKey } from "./session-store-key.js";
 
+let requestedRoot: string | ((key: string) => string) | undefined;
 const fixture = createSessionPullRequestsFixture();
 const loadPrs = fixture.load;
 
@@ -37,6 +41,7 @@ function stubPulls(response: () => Response, includeRepository = false) {
 }
 
 function loadFromRoot(root: string | ((key: string) => string), signals?: Set<AbortSignal>) {
+  requestedRoot = root;
   return (params: Parameters<typeof loadPrs>[0], cacheSignal?: AbortSignal) => {
     if (cacheSignal) {
       signals?.add(cacheSignal);
@@ -77,7 +82,7 @@ function mockCheckout(
         const selected = branch(operation.input.root);
         return selected
           ? {
-              ...testGitContext,
+              originUrl: `https://github.com/${testGitContext.owner}/${testGitContext.repo}`,
               branch: selected,
               root: operation.input.root,
               defaultBranch: "main",
@@ -103,7 +108,24 @@ function subscribe(
   spyOnSessionPrLoader(load);
   const subscriptions = createSubscriptions({
     scheduler: createTestGatewayScheduler("fake-timers"),
-    prepareRead: fixture.prepareRead,
+    prepareRead: async (connId, session) => {
+      const read = await fixture.prepareRead(connId, session);
+      if (requestedRoot) {
+        const sessionKey = resolveSessionStoreKey({
+          cfg: getRuntimeConfig(),
+          sessionKey: session.sessionKey,
+          storeAgentId: "main",
+        });
+        await upsertSessionEntryCore(
+          { agentId: "main", sessionKey },
+          {
+            spawnedCwd:
+              typeof requestedRoot === "string" ? requestedRoot : requestedRoot(sessionKey),
+          },
+        );
+      }
+      return read;
+    },
     ...deps,
   });
   subscriptionsToStop.add(subscriptions);
@@ -111,6 +133,7 @@ function subscribe(
 }
 
 beforeEach(() => {
+  requestedRoot = undefined;
   vi.mocked(runGitWorkerOperation).mockReset();
   vi.useFakeTimers();
   vi.stubEnv("GH_TOKEN", "");

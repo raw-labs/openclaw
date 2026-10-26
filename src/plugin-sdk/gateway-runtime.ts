@@ -83,3 +83,7 @@ export {
 } from "../gateway/channel-status-patches.js";
 
 export { parseTimeoutMsWithFallback } from "../cli/parse-timeout.js";
+
+export { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
+
+export type { GatewayRequestContext } from "../gateway/server-methods/types.js";

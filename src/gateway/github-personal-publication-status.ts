@@ -2,8 +2,8 @@ import type { SessionGitHubStatusResult } from "../../packages/gateway-protocol/
 import type { GitHubPublicationSessionLifecycle } from "../state/github-publication-read.types.js";
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.js";
-import { personalGitHubStatusAsync, type PersonalGitHubAction } from "./github-personal-status.js";
 import type { PublicationSessionIdentity as SessionIdentity } from "./github-publication-availability.js";
+import { decodeNativePublisher } from "./github-publication-publisher-facts.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
 import { readRepositoryGitHubPublicationAsync } from "./github-publication-store-async.js";
 import { terminalRepositoryGitHubPublication } from "./github-repository-publication-store.js";
@@ -12,13 +12,21 @@ import {
   resolveReceiptOwner,
 } from "./github-repository-publication-workspace.js";
 import type { RepositoryGitHubPublicationStatusRow } from "./github-repository-publication.kernel.js";
+import type {
+  RepositoryPublicationProvider,
+  RepositoryPublicationPersonalAction as PersonalGitHubAction,
+} from "./repository-publication-contract.js";
 
-export type PreparedRepositoryPublicationStatus = {
-  requestId: string;
-  workspaceId: string;
-  repository: Awaited<ReturnType<typeof prepareReceiptOwner>>;
-  release: () => void;
-};
+export type PreparedRepositoryPublicationStatus = { release: () => void };
+const statusPreparations = new WeakMap<
+  PreparedRepositoryPublicationStatus,
+  {
+    requestId: string;
+    workspaceId: string;
+    repository: Awaited<ReturnType<typeof prepareReceiptOwner>>;
+    isCurrent: () => boolean;
+  }
+>();
 
 type PersonalPublicationReceipt =
   | { kind: "worktree"; row: PersonalGitHubPublicationRow }
@@ -42,12 +50,22 @@ export async function preparePersonalRepositoryPublicationStatus(requestId: stri
     return undefined;
   }
   const repository = await prepareReceiptOwner(row);
-  return {
+  let active = true;
+  const handle = {
+    release: () => {
+      if (active) {
+        active = false;
+        repository.release();
+      }
+    },
+  };
+  statusPreparations.set(handle, {
     requestId: row.request_id,
     workspaceId: row.workspace_id,
     repository,
-    release: repository.release,
-  };
+    isCurrent: () => active,
+  });
+  return handle;
 }
 
 /** Source owners supply liveness; personal status never grants execution authority. */
@@ -56,7 +74,10 @@ function presentPersonalGitHubPublicationStatus(
   action: PersonalGitHubAction,
   session: SessionIdentity & { archivedAt?: number | null },
   executing: boolean,
-  connection: Awaited<ReturnType<typeof personalGitHubStatusAsync>> | null,
+  connection: {
+    generation: string | null;
+    account: { accountId: number; login: string } | null;
+  } | null,
   lifecycle: GitHubPublicationSessionLifecycle | null,
 ): SessionGitHubStatusResult {
   const { row } = receipt;
@@ -71,9 +92,11 @@ function presentPersonalGitHubPublicationStatus(
       throw new Error("My GitHub publication was not found for this profile and session.");
     }
     if (pending) {
-      const { prepared } = receipt;
+      const handle = receipt.prepared;
+      const prepared = handle && statusPreparations.get(handle);
       if (
         !prepared ||
+        !prepared.isCurrent() ||
         prepared.requestId !== row.request_id ||
         prepared.workspaceId !== receipt.row.workspace_id
       ) {
@@ -154,10 +177,16 @@ export async function presentPersonalGitHubPublicationStatusAsync(
   action: PersonalGitHubAction,
   session: SessionIdentity & { archivedAt?: number | null },
   executing: boolean,
+  provider: RepositoryPublicationProvider,
 ): Promise<SessionGitHubStatusResult> {
   const pending = isPendingPersonalPublication(receipt, executing);
   const [connection, lifecycle] = await Promise.all([
-    pending ? personalGitHubStatusAsync(action) : null,
+    pending
+      ? provider.readPersonalSelection(action).then((value) => ({
+          generation: value.generation,
+          account: value.reference ? decodeNativePublisher(value.reference).account : null,
+        }))
+      : null,
     pending && receipt.kind === "worktree"
       ? readGitHubPublicationSessionLifecycleInWorker({
           publicationKind: "personal",
@@ -179,6 +208,7 @@ export async function presentPersonalGitHubPublicationStatusAsync(
 export function createRepositoryPersonalPublicationStatus(
   instanceId: string,
   active: ReadonlyMap<string, string>,
+  provider: RepositoryPublicationProvider,
 ) {
   return (
     row: RepositoryGitHubPublicationStatusRow,
@@ -193,5 +223,6 @@ export function createRepositoryPersonalPublicationStatus(
       row.execution_id !== null &&
         row.gateway_instance_id === instanceId &&
         active.get(row.request_id) === row.execution_id,
+      provider,
     );
 }

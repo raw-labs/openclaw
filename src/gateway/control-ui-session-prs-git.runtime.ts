@@ -16,7 +16,6 @@ import {
   readRemoteRevisions,
   resolveBranchLanding,
 } from "./control-ui-session-prs-landing.js";
-import { parseGitHubRemoteUrl } from "./github-remote.js";
 
 /** Observe only this checkout's refs; snapshot publication does not change PR facts. */
 export async function readCheckoutGitRevision(
@@ -166,7 +165,6 @@ function readDefaultRef(head: ReturnType<typeof readCheckoutHead>): string | nul
 
 export async function readCheckoutGitContext(
   root: string,
-  githubHost = "github.com",
 ): Promise<GitReadOperations["checkout.context"]["output"]> {
   const head = readCheckoutHead(root);
   const branch =
@@ -177,9 +175,7 @@ export async function readCheckoutGitContext(
     return null;
   }
   const remoteUrl = await gitOutput(root, ["remote", "get-url", "origin"]);
-  const publicRemote = remoteUrl ? parseGitHubRemoteUrl(remoteUrl) : null;
-  const remote = publicRemote ?? (remoteUrl ? parseGitHubRemoteUrl(remoteUrl, githubHost) : null);
-  if (!remote) {
+  if (!remoteUrl) {
     return null;
   }
   const preparedDefaultRef = readDefaultRef(head);
@@ -189,8 +185,7 @@ export async function readCheckoutGitContext(
       : preparedDefaultRef;
   const defaultBranch = defaultRef?.replace(/^origin\//, "");
   return {
-    ...remote,
-    ...(!publicRemote ? { host: githubHost } : {}),
+    originUrl: remoteUrl,
     branch: branch === "HEAD" ? null : branch,
     root,
     ...(defaultBranch ? { defaultBranch } : {}),

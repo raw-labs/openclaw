@@ -15,6 +15,7 @@ export {
   listAgentIds,
   resolveAgentConfig,
   resolveAgentDir,
+  resolveAgentWorkspaceDir,
   resolveDefaultAgentId,
   tryResolveDefaultAgentId,
 } from "../agents/agent-scope.js";
@@ -66,3 +67,5 @@ export {
   resolveSessionAgentIdCompatibility as resolveSessionAgentId,
   resolveSessionAgentIdsCompatibility as resolveSessionAgentIds,
 };
+
+export { withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";

@@ -11,6 +11,7 @@ import type {
 import type { PluginBoardWidgetContentKind } from "./board-widget-content-kind.types.js";
 import type { PluginCompatCode } from "./compat/registry.js";
 import type { PluginActivationSource } from "./config-activation-shared.js";
+import type { PluginDashboardDataBindingV1 } from "./dashboard-data-binding.types.js";
 import type { EmbeddingProviderAdapter } from "./embedding-provider-types.js";
 import type { PluginGatewayAccessPolicy } from "./gateway-access-policy.types.js";
 import type { HookRunnerRegistry } from "./hook-registry.types.js";
@@ -176,6 +177,7 @@ type PluginChannelSetupRegistration = PluginRegistrationOwner & {
 export type PluginDashboardDataBindingRegistration = PluginManifestDashboardDataBinding & {
   pluginId: string;
   capabilityId: string;
+  runtime?: PluginDashboardDataBindingV1;
   handler: GatewayRequestHandlers[string];
 };
 
@@ -350,6 +352,8 @@ export type PluginRecord = {
   configJsonSchema?: JsonSchemaObject;
   contracts?: PluginManifestContracts;
   dashboard?: PluginManifestDashboard;
+  /** Registration staging; admitted callbacks are published in dashboardDataBindings. */
+  dashboardDataBindingRuntimes?: Map<string, PluginDashboardDataBindingV1>;
   controlUi?: PluginManifestControlUi;
   repositorySources?: import("./manifest-types.js").PluginManifest["repositorySources"];
   uiCapabilities?: PluginManifestRecord["uiCapabilities"];

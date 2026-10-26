@@ -26,7 +26,7 @@ import { prepareSkillResourceDelivery } from "../../skills/runtime/resources.js"
 import { parseWorkerLaunchPlan } from "../../worker/launch-descriptor.js";
 import { WORKER_PROVIDER_REPLAY_LOCAL_RETRY_MESSAGE } from "../../worker/transcript-message.js";
 import { createWorkerPlacementTools } from "../../worker/worker-placement-tools.js";
-import { readGitHubPublicationFact } from "../github-publication-discovery.js";
+import type { WorkspacePublicationHost } from "../workspace-publication-provider.js";
 import { requireCurrentWorkerTurnEnvironment, StaleWorkerBuildError } from "./admission.js";
 import { workerInferencePlacement } from "./inference-placement.js";
 import { sameWorkerSessionTurnClaim } from "./placement-record.js";
@@ -75,6 +75,7 @@ export async function executeWorkerTurn(
     assertRunCurrent: () => void;
     onTerminal: () => void;
     onReply: (result: EmbeddedAgentRunResult) => void;
+    readWorkerPublicationFact?: WorkspacePublicationHost["readWorkerPublicationFact"];
   },
 ) {
   const { placement, turn: input } = params;
@@ -129,7 +130,7 @@ export async function executeWorkerTurn(
   params.assertRunCurrent();
   turn.abortSignal?.throwIfAborted();
   // Keep credential discovery independent of the brokered publication request tool.
-  readGitHubPublicationFact(placement);
+  params.readWorkerPublicationFact?.(placement);
 
   const startedAt = Date.now();
   await turn.onExecutionStarted?.({ lifecycleGeneration: turn.lifecycleGeneration, backend });
@@ -541,7 +542,7 @@ export async function executeWorkerTurn(
     const { bundleHash, openclawVersion, protocolFeatures } = bootstrapReceipt;
     githubGrant = await bindWorkerGitHubTurn({
       session: placement,
-      fact: readGitHubPublicationFact(placement),
+      fact: params.readWorkerPublicationFact?.(placement),
       sessionTarget: transcriptTarget,
       store: params.placements,
       claim: params.turnClaim,

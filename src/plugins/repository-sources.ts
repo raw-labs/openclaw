@@ -8,28 +8,42 @@ const SourceId = /^[a-z0-9][a-z0-9._-]{0,127}\/[a-z0-9][a-z0-9._-]{0,127}$/u;
 
 /** Explicit selection never falls through to another plugin or the native source. */
 export function resolvePluginRepositorySource(
-  sourceId: string,
+  sourceId: string | undefined,
   url: string,
   registry: PluginRegistry | null | undefined = getPluginRegistryForContext() ??
     getActivePluginRegistry(),
+  assertBoundCurrent: () => void = () => {},
 ) {
-  if (!SourceId.test(sourceId) || !normalizePluginRepositoryUrl(url)) {
+  assertBoundCurrent();
+  if ((sourceId !== undefined && !SourceId.test(sourceId)) || !normalizePluginRepositoryUrl(url)) {
     throw new Error("Select a supported repository URL with its repository source.");
   }
-  const entry = registry?.repositorySources.find(
-    ({ pluginId, provider }) => `${pluginId}/${provider.id}` === sourceId,
-  );
-  if (!entry) {
-    throw new Error("The selected repository source is unavailable. Enable its plugin and retry.");
+  const matches = (registry?.repositorySources ?? []).flatMap((entry) => {
+    const id = `${entry.pluginId}/${entry.provider.id}`;
+    if (sourceId && id !== sourceId) return [];
+    entry.assertCurrent();
+    const resolved = entry.provider.resolve(url);
+    return resolved && normalizePluginRepositoryUrl(resolved.url) ? [{ entry, resolved, id }] : [];
+  });
+  if (matches.length !== 1) {
+    throw new Error(
+      matches.length > 1
+        ? "Several repository sources accept this URL. Select a source explicitly."
+        : "The selected repository source is unavailable or does not accept this URL. Enable its plugin and retry.",
+    );
   }
+  const { entry, resolved, id } = matches[0]!;
   entry.assertCurrent();
-  const resolved = entry.provider.resolve(url);
-  if (!resolved || !normalizePluginRepositoryUrl(resolved.url)) {
-    throw new Error("The selected repository source does not accept this URL.");
-  }
-  const assertCurrent = () => entry.assertCurrent();
+  const assertCurrent = () => {
+    assertBoundCurrent();
+    entry.assertCurrent();
+    if (entry.provider.resolve(url)?.url !== resolved.url) {
+      throw new Error("Repository source changed; select it again.");
+    }
+  };
   return {
-    id: sourceId,
+    id,
+    name: resolved.name,
     url: resolved.url,
     assertCurrent,
     async prepare(input: Omit<Parameters<typeof entry.provider.prepare>[0], "url">) {
@@ -60,6 +74,56 @@ export function resolvePluginRepositorySource(
         },
       };
     },
+    isWorkerIdentityCurrent(input: {
+      agentId: string;
+      identity: { source: string; key?: string };
+    }) {
+      assertCurrent();
+      if (input.identity.source !== "plugin" || !input.identity.key) return false;
+      const current = entry.provider.worker?.isIdentityCurrent?.({
+        agentId: input.agentId,
+        identityKey: input.identity.key,
+      });
+      assertCurrent();
+      return current ?? false;
+    },
+    supportsPublicationRestoration: Boolean(entry.provider.worker?.restore),
+    async restoreWorker(input: {
+      agentId: string;
+      requiredCommit: string;
+      signal?: AbortSignal;
+      assertCurrent: () => void;
+    }) {
+      const restore = entry.provider.worker?.restore;
+      if (!restore)
+        throw new Error("This repository source does not support publication-bearing restoration.");
+      const assertSourceCurrent = () => {
+        assertCurrent();
+        input.signal?.throwIfAborted();
+        input.assertCurrent();
+      };
+      assertSourceCurrent();
+      const prepared = await restore({
+        ...input,
+        url: resolved.url,
+        assertCurrent: assertSourceCurrent,
+      });
+      const assertPrepared = () => {
+        assertSourceCurrent();
+        prepared.assertCurrent();
+      };
+      assertPrepared();
+      return {
+        project: prepared.project,
+        assertCurrent: assertPrepared,
+        async readRemoteHead(branch: string) {
+          assertPrepared();
+          const head = await prepared.readRemoteHead(branch);
+          assertPrepared();
+          return head;
+        },
+      };
+    },
     async prepareWorker(
       input: Omit<Parameters<NonNullable<typeof entry.provider.worker>["prepare"]>[0], "url">,
     ) {
@@ -79,8 +143,46 @@ export function resolvePluginRepositorySource(
         assertCurrent: assertSourceCurrent,
       });
       input.signal?.throwIfAborted();
-      assertSourceCurrent();
-      return prepared;
+      const assertPrepared = () => {
+        assertSourceCurrent();
+        prepared.assertCurrent();
+      };
+      assertPrepared();
+      const read = async <T>(run: () => Promise<T>, signal?: AbortSignal) => {
+        signal?.throwIfAborted();
+        assertPrepared();
+        const value = await run();
+        signal?.throwIfAborted();
+        assertPrepared();
+        return value;
+      };
+      const prepareGitPack = prepared.prepareGitPack;
+      return {
+        ...prepared,
+        assertCurrent: assertPrepared,
+        confirmAdmission: () => read(() => prepared.confirmAdmission(), input.signal),
+        revalidate: (signal?: AbortSignal) => read(() => prepared.revalidate(signal), signal),
+        readTree: (sha: string, signal?: AbortSignal) =>
+          read(() => prepared.readTree(sha, signal), signal),
+        readBlob: (sha: string, signal?: AbortSignal) =>
+          read(() => prepared.readBlob(sha, signal), signal),
+        ...(prepareGitPack
+          ? {
+              prepareGitPack: (pack: Parameters<typeof prepareGitPack>[0]) =>
+                read(
+                  () =>
+                    prepareGitPack({
+                      ...pack,
+                      assertCurrent: () => {
+                        assertPrepared();
+                        pack.assertCurrent();
+                      },
+                    }),
+                  pack.signal,
+                ),
+            }
+          : {}),
+      };
     },
     async checkoutWorker(
       input: Omit<Parameters<NonNullable<typeof entry.provider.worker>["checkout"]>[0], "url">,

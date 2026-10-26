@@ -12,6 +12,7 @@ export {
   parseHealthFindingSeverity,
   type HealthCheck,
   type HealthCheckContext,
+  type PluginDoctorHealthRegistrationHost,
   type HealthCheckScope,
   type HealthFinding,
   type HealthFindingSeverity,

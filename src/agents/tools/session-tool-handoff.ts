@@ -28,6 +28,10 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
 import { jsonResult, ToolInputError } from "./common.js";
 import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
+import {
+  recordSessionToolHandoffAcceptance,
+  recordSessionToolHandoffYield,
+} from "./session-tool-handoff-settlement.js";
 import type { SessionsYieldCallback } from "./sessions-yield-tool.js";
 
 const log = createSubsystemLogger("agent/tool-handoff");
@@ -102,6 +106,7 @@ export async function handoffSessionTool(params: {
         start: () => handoffSettled.promise,
       });
     }
+    recordSessionToolHandoffYield();
     await params.onYield(
       `${params.name} handed off; resume with its result in this same conversation.`,
     );
@@ -239,12 +244,14 @@ export async function handoffSessionTool(params: {
         }),
     );
     // The shared async-result receipt is also the yield owner's continuation evidence.
-    return jsonResult({
+    const acknowledgment = jsonResult({
       status: "started",
       async: true,
       yielded: true,
       message: `${params.name} will run after turn cleanup; its result will resume this session.`,
     });
+    recordSessionToolHandoffAcceptance(acknowledgment);
+    return acknowledgment;
   } catch (error) {
     handoffSettled.resolve(undefined);
     pending.delete(operation);

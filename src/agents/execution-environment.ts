@@ -6,7 +6,6 @@ import type {
 } from "../plugins/execution-environment-types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
 import type { SecretExecutionEnvironmentExclusions } from "../secrets/runtime-shared.js";
-import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
 
 type SharedEnvironmentFacts = Pick<
   PreparedExecutionEnvironment,
@@ -87,12 +86,12 @@ function preparationGuard(
 }
 
 /** Compose optional plugin facts without transferring the native identity owner's decisions. */
-export function capturePreparedExecutionEnvironment(
+export function capturePreparedExecutionEnvironment<Native extends PreparedExecutionEnvironment>(
   input: ExecutionEnvironmentPreparationV1,
-  native: PreparedGitHubToolEnvironment,
+  native: Native,
   registry: PluginRegistry | null | undefined,
   exclusions?: SecretExecutionEnvironmentExclusions,
-): PreparedGitHubToolEnvironment & PreparedExecutionEnvironment & CurrentExecutionEnvironment {
+): Native & PreparedExecutionEnvironment & CurrentExecutionEnvironment {
   const assertCurrent = preparationGuard(input, registry?.executionEnvironments ?? []);
   assertCurrent();
   const prepared: Contribution[] = [{ owner: "native", environment: native }];
@@ -101,11 +100,9 @@ export function capturePreparedExecutionEnvironment(
     assertCurrent();
   }
   return {
+    ...native,
     ...combine(prepared, assertCurrent, exclusions),
     assertCurrent,
-    // This private flag controls native GitHub token inheritance and profile selection.
-    // An unrelated plugin environment must never change that native decision.
-    managedLocalIdentity: native.managedLocalIdentity,
   };
 }
 

@@ -9,6 +9,7 @@ it("pins generic worker source facts and rechecks the exact plugin on preparatio
     const commit = "a".repeat(40);
     const config = { agents: { entries: { main: { workspace: home } } } };
     let identityKey = "selected-reader";
+    let withPack = true;
     const fixture = createRepositorySourceFixture({
       id: "remote",
       resolve: (candidate) => (candidate === url ? { url, name: "project" } : undefined),
@@ -29,9 +30,13 @@ it("pins generic worker source facts and rechecks the exact plugin on preparatio
           readBlob: async () => {
             throw new Error("No recipe blobs in this source");
           },
-          prepareGitPack: async () => {
-            throw new Error("No transport runs during source admission");
-          },
+          ...(withPack
+            ? {
+                prepareGitPack: async () => {
+                  throw new Error("No transport runs during source admission");
+                },
+              }
+            : {}),
         }),
         checkout: async () => {
           throw new Error("No worker starts during source admission");
@@ -60,6 +65,11 @@ it("pins generic worker source facts and rechecks the exact plugin on preparatio
         (await prepareRepositoryWorkerProjectSource({ ...options, expected: admitted.project }))
           .project,
       ).toEqual(admitted.project);
+      withPack = false;
+      expect(
+        (await prepareRepositoryWorkerProjectSource({ ...options, expected: admitted.project }))
+          .prepareGitPack,
+      ).toBeUndefined();
       identityKey = "replacement-reader";
       await expect(
         prepareRepositoryWorkerProjectSource({ ...options, expected: admitted.project }),

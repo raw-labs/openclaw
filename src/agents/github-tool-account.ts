@@ -1,11 +1,6 @@
+export type { GitHubToolAccount } from "./github-oauth-records.js";
 import { stringify as stringifyYaml } from "yaml";
 import { resolveConfiguredGitHubHost } from "./github-host.js";
-
-export type GitHubToolAccount = {
-  accountId: number;
-  login: string;
-  avatarUrl: string | null;
-};
 
 export function managedGitHubHosts(identity: { login: string; token: string }): string {
   return stringifyYaml({

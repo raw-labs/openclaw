@@ -15,8 +15,16 @@ import {
   githubOAuthDeviceFields,
   validGitHubDeviceTiming,
 } from "../shared/github-oauth-values.js";
-import type { GitHubOAuthTokenPair } from "./github-oauth-client.js";
-import type { GitHubToolAccount } from "./github-tool-account.js";
+
+export type GitHubToolAccount = { accountId: number; login: string; avatarUrl: string | null };
+export type GitHubOAuthTokenPair = {
+  accessToken: string;
+  tokenType: "bearer";
+  scopes: string[];
+  expiresInSeconds: number;
+  refreshToken: string;
+  refreshTokenExpiresInSeconds: number;
+};
 
 const OAUTH_RECORD_PREFIX = "github-oauth-";
 const OPAQUE_ID_PATTERN = /^[a-f0-9]{32}$/u;

@@ -1,5 +1,4 @@
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.types.js";
 import type { GitHubPublicationChange } from "../gateway/github-publication-events.js";
 import type { GitHubPublicationEffectTransition } from "../gateway/github-publication-execution-effects.js";
 import type { WorkerSessionTurnClaim } from "../gateway/worker-environments/placement-record.js";
@@ -24,7 +23,7 @@ export type SharedGitHubPublicationInsert = {
   requester: GitHubPublicationRequesterSnapshot;
   now: number;
   worktree: { id: string; repoFingerprint: string; branch: string };
-  identity: Pick<PreparedGitHubPublicationIdentity, "source" | "profileId" | "account">;
+  identity: import("../gateway/github-publication-publisher-facts.js").NativePublisherFacts;
   claim?: WorkerSessionTurnClaim;
   snapshot?: { sourceHeadCommit: string; sourceIndexTree: string; workspaceTree: string };
 };

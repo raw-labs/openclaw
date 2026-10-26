@@ -23,8 +23,8 @@ import {
   removeRemoteNodeInfoForConnection,
 } from "../skills/runtime/remote.js";
 import type { RestartRecoveryCandidate } from "./chat-abort.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
-import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
+import { startGitHubSessionPresentation } from "./control-ui-session-pr-presentation.js";
+import { createRepositorySessionReadHost } from "./control-ui-session-pr-runtime.js";
 import { retireDeviceTokenClients } from "./device-token-client-lifecycle.js";
 import { publishHooksTokenEnvKey } from "./hooks.js";
 import { STARTUP_UNAVAILABLE_GATEWAY_METHODS } from "./methods/core-method-policy.js";
@@ -70,7 +70,6 @@ export async function prepareGatewayLifecycle(params: {
     minimalTestGateway,
     transportBridge,
     sessionMessageSubscribers,
-    isConnectionActive,
     clients,
     mentionInbox,
     broadcast,
@@ -332,24 +331,20 @@ export async function prepareGatewayLifecycle(params: {
       runtimeState.stopMediaCleanup = handles.stopMediaCleanup;
     },
   };
-  runtimeState.controlUiSessionPullRequests = createControlUiSessionPullRequestSubscriptions({
-    scheduler: runtime.scheduler,
+  runtimeState.repositorySessions = createRepositorySessionReadHost({
+    signal: runtime.scheduler.signal,
+    getRuntimeConfig,
     getSessionRowProjection: runtime.getSessionRowProjection,
+    getClient: (connId) => clients.getByConnectionId(connId),
+    resolveGatewayContext: runtime.resolvePluginGatewayContext,
     broadcastToConnIds,
-    isConnectionActive,
-    prepareRead: async (connId, session) => {
-      const client = clients.getByConnectionId(connId);
-      return client
-        ? createControlUiSessionPrRead({
-            allowOwnImportedPullRequest: true,
-            client,
-            ...session,
-            getRuntimeConfig,
-            getSessionRowProjection: runtime.getSessionRowProjection,
-            isCurrentClient: () => clients.getByConnectionId(connId) === client,
-          })
-        : undefined;
-    },
+  });
+  startGitHubSessionPresentation({
+    scheduler: runtime.scheduler,
+    getConfig: getRuntimeConfig,
+    reads: runtimeState.repositorySessions.bindService(runtime.scheduler.signal, () =>
+      runtime.scheduler.signal.throwIfAborted(),
+    ),
   });
   runtimeState.sessionViewerPresence = createSessionViewerPresenceDeclarations({
     clients,
@@ -399,6 +394,7 @@ export async function prepareGatewayLifecycle(params: {
     talkClose.beginClose();
     void stopModelAccountsForClose();
     void closeAuthProfileUsage(params.sdkResourceHost);
+    void stopSessionPullRequestsForClose();
     runtime.scheduler.beginClose();
     void runtimeState.maintenance?.stopPeriodicTasks();
     // Fence new entry now; the run-shutdown owner records recovery before
@@ -414,7 +410,6 @@ export async function prepareGatewayLifecycle(params: {
     void stopMediaCleanupForClose();
     void runtimeState.stopGatewayUpdateCheck().catch(() => {});
     void stopConfigReloaderForClose().catch(() => {});
-    void runtimeState.controlUiSessionPullRequests?.stop();
     runtimeState.sessionViewerPresence?.stop();
     runtime.stopPresencePublications();
     cronReconciliation.invalidate();
@@ -433,6 +428,9 @@ export async function prepareGatewayLifecycle(params: {
       step("sandbox-registry", () => sandboxRegistry.drain()),
       step("talk-persistence", () => talkClose.drain()),
     ]);
+  let sessionPullRequestsStop: Promise<void> | undefined;
+  const stopSessionPullRequestsForClose = () =>
+    (sessionPullRequestsStop ??= runtimeState.repositorySessions?.presentation?.stop());
   const beginClosePrelude = async (options?: GatewayCloseOptions) => {
     await step("prelude-fence", () => markClosePreludeStarted(options));
     // Owners are fenced synchronously above. Join them before any runtime they
@@ -447,7 +445,7 @@ export async function prepareGatewayLifecycle(params: {
       step("periodic-maintenance", () =>
         runtimeState.maintenance?.stopPeriodicTasks().catch(() => {}),
       ),
-      step("session-pull-requests", () => runtimeState.controlUiSessionPullRequests?.stop()),
+      step("session-pull-requests", stopSessionPullRequestsForClose),
       step("health-work", () => healthWork.drain()),
     ]);
   };

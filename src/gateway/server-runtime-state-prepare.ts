@@ -26,10 +26,12 @@ import { resolveDatabasePath } from "../state/openclaw-state-db.paths.js";
 import { createGatewayAuthRateLimiter } from "./auth-rate-limit.js";
 import { resolveGatewayAuth } from "./auth.js";
 import { createDesktopSessionRegistry } from "./desktop/session-registry.js";
+import { createNativeGitHubPublicationProvider } from "./github-publication-provider.js";
 import { publishHooksTokenEnvKey } from "./hooks.js";
 import { isLoopbackHost } from "./net.js";
 import { createNodeReapprovalCoordinator } from "./node-reapproval-coordinator.js";
 import { GatewayOperatorAccessUnavailableError } from "./operator-access-policy.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import type { GatewayInstanceRuntime } from "./server-instance-runtime.types.js";
@@ -47,6 +49,7 @@ import { resolveHookClientIpConfig } from "./server/hook-client-ip-config.js";
 import { createPresencePublisher } from "./server/presence-events.js";
 import { createReadinessChecker, createStartupChecker } from "./server/readiness.js";
 import { resolveSharedGatewaySessionGeneration } from "./server/ws-shared-generation.js";
+import { createWorkspacePublicationHost } from "./workspace-publication-provider.js";
 
 type GatewayBootstrap = Awaited<ReturnType<typeof prepareGatewayServerBootstrap>>;
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
@@ -133,6 +136,7 @@ export async function prepareGatewayKernelState(params: {
     }),
   );
   await startupTrace.measure("device-pairing", () => readDevicePairingNodeSnapshot());
+  const repositorySources = createRepositorySources(scheduler.signal);
   const workerEnvironmentRuntime = workerEnvironmentStartup
     ? await startupTrace.measure("worker-environments.runtime-imports", async () => {
         const workerModule = await import("./server-worker-environment-startup.js");
@@ -180,14 +184,27 @@ export async function prepareGatewayKernelState(params: {
     }
     return (context.getCommittedRuntimeConfig ?? context.getRuntimeConfig)();
   };
-  const githubPublicationRuntime =
+  const workspacePublicationHost =
     workerEnvironmentStartup && workerPlacementModule
-      ? workerPlacementModule.createGatewayGitHubPublicationRuntime({
+      ? createWorkspacePublicationHost({
           placements: workerEnvironmentStartup.placementStore,
           getCommittedRuntimeConfig,
+          scheduler,
           warn: (message) => log.warn(message),
+          loadSessionRuntime: workerPlacementModule.loadWorkerPlacementSessionRuntimeModule,
+          managedByPlacement: Boolean(workerEnvironmentService && nodeWorkerGatewayNamespace),
         })
       : undefined;
+  if (workspacePublicationHost) {
+    await workspacePublicationHost.install(
+      createNativeGitHubPublicationProvider({
+        signal: scheduler.signal,
+        assertCurrent: () => scheduler.signal.throwIfAborted(),
+        getConfig: getCommittedRuntimeConfig,
+      }),
+      scheduler.signal,
+    );
+  }
   const workerPlacement =
     workerEnvironmentService &&
     workerEnvironmentStartup &&
@@ -243,7 +260,7 @@ export async function prepareGatewayKernelState(params: {
             revokeSessionAuthority: (request) => workerDispatchAuthority.revoke(request),
             info: (message) => log.info(message),
             warn: (message) => log.warn(message),
-            ...(githubPublicationRuntime ? { githubPublicationRuntime } : {}),
+            ...(workspacePublicationHost ? { workspacePublicationHost } : {}),
           }),
         )
       : undefined;
@@ -561,8 +578,8 @@ export async function prepareGatewayKernelState(params: {
     bindWorkerNodeDesktopControl,
     workerDispatchAuthority,
     workerPlacementRuntime,
-    githubPublicationRuntime,
-    githubPublicationService: githubPublicationRuntime?.coordinator,
+    workspacePublicationHost,
+    repositorySources,
     workerPlacementControlAvailable,
     desktopSessionRegistry,
     nodeDesktopStreamBroker,

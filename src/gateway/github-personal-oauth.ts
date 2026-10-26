@@ -19,19 +19,14 @@ import {
 } from "../agents/github-tool-identity.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { getOrCreatePromise } from "../shared/lazy-promise.js";
-import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { withOpenClawStateLease } from "../state/openclaw-state-lease.js";
-import { observeUserGitHubConnectionAuthority } from "../state/user-github-connection-events.js";
+import { createRepositoryPersonalAccountHostV1 } from "../state/repository-personal-account-host.js";
 import {
   cancelUserGitHubAuthorizationSync,
   disconnectUserGitHubConnectionSync,
   listUserGitHubConnectionsAsync,
-  mutateUserGitHubConnection as mutateConnection,
-  observeUserGitHubProfileRetirement,
   prepareUserGitHubConnection,
   readCanonicalUserGitHubConnectionAsync,
   readUserGitHubConnectionAsync,
-  updateUserGitHubRefreshAsync as updateRefresh,
   type UserGitHubConnection,
   type UserGitHubConnected,
   type UserGitHubDevice,
@@ -50,17 +45,6 @@ export type { PersonalGitHubAction } from "./github-personal-status.js";
 export type PersonalGitHubActionV2 = PersonalGitHubAction & { signal: AbortSignal };
 const profileDir = (profileId: string) =>
   resolveManagedGitHubProfileDir({ agentId: "", scope: "personal", profileId });
-const withProfileLease = <T>(profileId: string, run: (assertOwned: () => void) => Promise<T>) =>
-  withOpenClawStateLease(
-    {
-      scope: "personal-github-profile",
-      key: profileId,
-      database: { scope: "shared" },
-      leaseMs: 60000,
-      waitMs: 30000,
-    },
-    async (lease) => await run(() => lease.assertOwned()),
-  );
 
 function requirePending(
   record: UserGitHubConnection | undefined,
@@ -90,6 +74,7 @@ function needsRefresh(selection: UserGitHubConnected): boolean {
 /** Personal adapters share device transport and profile materialization with System/agent OAuth. */
 export function createPersonalGitHubOAuthLifecycle() {
   const abort = new AbortController();
+  const accounts = createRepositoryPersonalAccountHostV1(abort.signal);
   const polls = new Map<string, Promise<UsersGitHubAuthorizePollResult>>();
   const refreshes = new Map<string, Promise<void>>();
   const rotated = new Map<
@@ -111,20 +96,14 @@ export function createPersonalGitHubOAuthLifecycle() {
     );
     return work;
   };
-  const mutateUserGitHubConnection = (...args: Parameters<typeof mutateConnection>) =>
-    retainWrite(mutateConnection(...args));
-  const updateUserGitHubRefreshAsync = (...args: Parameters<typeof updateRefresh>) =>
-    retainWrite(updateRefresh(...args));
+  const mutateUserGitHubConnection = (...args: Parameters<typeof accounts.mutate>) =>
+    retainWrite(accounts.mutate(...args));
+  const updateUserGitHubRefreshAsync = (...args: Parameters<typeof accounts.settleRefresh>) =>
+    retainWrite(accounts.settleRefresh(...args));
   const retirements = new Set<string>();
   const cleanups = new Map<string, Promise<void>>();
   let stopped = false;
   let inspectedProfiles = false;
-  let connectionScan: { databasePath: string; current: boolean; empty: boolean } | undefined;
-  const unobserveConnections = observeUserGitHubConnectionAuthority(({ databasePath }) => {
-    if (connectionScan?.databasePath === databasePath) {
-      connectionScan.current = false;
-    }
-  });
   const profileIsReferenced = async (id: string) =>
     (await listUserGitHubConnectionsAsync()).some(
       ({ connection }) =>
@@ -141,25 +120,27 @@ export function createPersonalGitHubOAuthLifecycle() {
       cleanups,
       id,
       () =>
-        withProfileLease(id, async (assertOwned) => {
-          assertOwned();
-          if (await profileIsReferenced(id)) {
-            return;
-          }
-          assertOwned();
-          await removeManagedGitHubProfile(profileDir(id));
-        }).then(
-          () => {
-            retirements.delete(id);
-          },
-          () => {
-            retirements.add(id);
-          },
-        ),
+        accounts
+          .withProfile(id, async (assertOwned) => {
+            assertOwned();
+            if (await profileIsReferenced(id)) {
+              return;
+            }
+            assertOwned();
+            await removeManagedGitHubProfile(profileDir(id));
+          })
+          .then(
+            () => {
+              retirements.delete(id);
+            },
+            () => {
+              retirements.add(id);
+            },
+          ),
       { evictOnSettled: true },
     );
   };
-  const unobserve = observeUserGitHubProfileRetirement((ids) => {
+  const unobserve = accounts.observeRetirements((ids) => {
     for (const id of ids) {
       retirements.add(id);
       void retire(id);
@@ -191,7 +172,7 @@ export function createPersonalGitHubOAuthLifecycle() {
           throw new Error("My GitHub authorization changed.");
         }
       };
-      await withProfileLease(candidate.profileId, async (assertOwned) => {
+      await accounts.withProfile(candidate.profileId, async (assertOwned) => {
         const assertInstall = () => {
           assertOwned();
           assertCurrent();
@@ -366,7 +347,7 @@ export function createPersonalGitHubOAuthLifecycle() {
       refreshes,
       id,
       () =>
-        withProfileLease(id, async (assertOwned) => {
+        accounts.withProfile(id, async (assertOwned) => {
           const memory = rotated.get(id);
           if (memory) {
             if (!(await persistRotation(memory))) {
@@ -477,19 +458,7 @@ export function createPersonalGitHubOAuthLifecycle() {
     for (const id of retirements) {
       await retire(id);
     }
-    const databasePath = resolveOpenClawStateSqlitePath();
-    if (
-      connectionScan?.databasePath === databasePath &&
-      connectionScan.current &&
-      connectionScan.empty
-    ) {
-      return;
-    }
-    const scan = { databasePath, current: true, empty: false };
-    connectionScan = scan;
-    const connections = await listUserGitHubConnectionsAsync();
-    // Existing connection receipts also invalidate a scan while its read is in flight.
-    scan.empty = connections.length === 0;
+    const connections = await accounts.listForMaintenance();
     for (const { owner, connection } of connections) {
       if (stopped) {
         break;
@@ -609,7 +578,6 @@ export function createPersonalGitHubOAuthLifecycle() {
       stopped = true;
       abort.abort();
       unobserve();
-      unobserveConnections();
       await Promise.allSettled([
         ...(maintenance ? [maintenance] : []),
         ...writes,

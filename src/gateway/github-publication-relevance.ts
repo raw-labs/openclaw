@@ -1,13 +1,14 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
-import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
+import type { ControlUiSessionPullRequest } from "../plugin-sdk/repository-session-read.js";
+import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import { prepareSessionPullRequestGitHubRead } from "./control-ui-session-pr-request.js";
 import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";
 
-type AcceptedSnapshot = Pick<
-  GitHubPublicationExecutionRow,
-  "repository" | "branch" | "source_head_commit" | "workspace_tree"
->;
+type AcceptedSnapshot = {
+  repository: string | null;
+  branch: string;
+  sourceHeadCommit: string | null;
+  workspaceTree: string | null;
+};
 const gitObjectId = /^[a-f0-9]{40}$/iu;
 
 /** Published history can supersede a failed attempt without changing its durable outcome. */
@@ -17,7 +18,7 @@ export async function isGitHubPublicationSuperseded(
   { assertCurrent }: { assertCurrent: () => void },
 ): Promise<boolean> {
   assertCurrent();
-  const tree = snapshot.workspace_tree;
+  const tree = snapshot.workspaceTree;
   if (!tree || !gitObjectId.test(tree)) {
     return false;
   }
@@ -59,7 +60,7 @@ export async function isGitHubPublicationSuperseded(
       if (published.tree.sha === tree) {
         return true;
       }
-      const source = snapshot.source_head_commit;
+      const source = snapshot.sourceHeadCommit;
       if (!source || source === head || !gitObjectId.test(source)) {
         continue;
       }

@@ -10,6 +10,7 @@ import { createPluginManifestRecordFixture } from "../plugins/plugin-metadata.te
 import type { ProviderPolicySurface } from "../plugins/provider-policy-surface.js";
 import {
   registerBundledHealthChecks,
+  collectDeclaredPluginDoctorHealthChecks,
   resolveBundledHealthCheckPluginStateMode,
   resolveCodexHealthApi,
 } from "./bundled-health-checks.js";
@@ -18,6 +19,7 @@ import {
   clearHealthChecksForTest,
   getHealthCheck,
   listHealthChecks,
+  registerHealthCheck,
 } from "./health-check-registry.js";
 
 const STATE_DEFERRED_CHECK_ID = "memory-core/managed-local-embedding-setup";
@@ -95,7 +97,17 @@ function register(
   cfg: OpenClawConfig = {},
   options: Omit<Parameters<typeof registerBundledHealthChecks>[0], "cfg" | "cwd"> = {},
 ) {
-  return registerBundledHealthChecks({ cfg, cwd: workspaceDir, ...options });
+  const findings = registerBundledHealthChecks({ cfg, cwd: workspaceDir, ...options });
+  if (options.updateReadiness !== undefined) {
+    return findings;
+  }
+  const declared = collectDeclaredPluginDoctorHealthChecks({ cfg, cwd: workspaceDir, ...options });
+  for (const check of declared.checks) {
+    if (!getHealthCheck(check.id)) {
+      registerHealthCheck(check);
+    }
+  }
+  return [...findings, ...declared.findings];
 }
 
 function inspectMemory(env: NodeJS.ProcessEnv = process.env) {
@@ -441,9 +453,34 @@ it.each(["missing", "untrusted", "missing-api", "missing-export"])(
   },
 );
 
+it("discards partially registered checks when the selected Codex health artifact throws", () => {
+  writeFileSync(
+    join(workspaceDir, "api.js"),
+    `
+    module.exports.registerDoctorHealthChecks = (host) => {
+      host.registerHealthCheck({id: "codex/partial", kind: "plugin", source: "codex",
+        description: "Incomplete registration", detect: async () => []});
+      throw new Error("synthetic health registration failure");
+    };
+  `,
+  );
+  mocks.loadPluginManifestRegistryForPluginRegistry.mockReturnValue(
+    manifests(codexRecord("bundled", false)),
+  );
+  expect(register(codexConfig)).toEqual([
+    expect.objectContaining({
+      checkId: "core/doctor/codex-session-routes",
+      source: "codex",
+      severity: "warning",
+      message: expect.stringContaining("synthetic health registration failure"),
+    }),
+  ]);
+  expect(getHealthCheck("codex/partial")).toBeUndefined();
+});
+
 it("preserves disabled Codex policy without loading plugin code", () => {
   register({ ...codexConfig, plugins: { entries: { codex: { enabled: false } } } });
-  expect(mocks.loadPluginManifestRegistryForPluginRegistry).not.toHaveBeenCalled();
+  expect(getHealthCheck("codex/managed-app-server")).toBeUndefined();
   expect(mocks.registerCodexManagedAppServerDoctorChecks).not.toHaveBeenCalled();
 });
 

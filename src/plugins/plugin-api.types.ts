@@ -24,6 +24,7 @@ import type {
 } from "./capability-provider.types.js";
 import type { CliBackendPlugin } from "./cli-backend.types.js";
 import type { PluginConversationBindingResolvedEvent } from "./conversation-binding.types.js";
+import type { PluginDashboardDataBindingV1 } from "./dashboard-data-binding.types.js";
 import type { PluginGatewayAccessPolicy } from "./gateway-access-policy.types.js";
 import type {
   PluginHookHandlerMap,
@@ -275,6 +276,9 @@ export type OpenClawPluginApi = {
       scope?: OperatorScope;
       startup?: "available" | "unavailable-until-sidecars";
       controlPlaneWrite?: boolean;
+      /** Omit internal transport methods from client discovery without changing authorization. */
+      advertise?: boolean;
+      description?: string;
       since?: string;
       profileAccess?: "independent" | "required";
       /** Require a top-level sessionKey (and optional agentId) naming an existing session. */
@@ -288,6 +292,8 @@ export type OpenClawPluginApi = {
   registerGatewayAccessPolicy: (policy: PluginGatewayAccessPolicy) => void;
   /** Register a sandboxed board widget source kind owned by this plugin. */
   registerBoardWidgetContentKind: (definition: PluginBoardWidgetContentKind) => void;
+  /** Bind scoped-grant and preflight policy to an existing manifest dashboard declaration. */
+  registerDashboardDataBinding: (definition: PluginDashboardDataBindingV1) => void;
   /** Register a read-only external-session catalog with optional native adoption actions. */
   registerSessionCatalog: (provider: SessionCatalogProvider) => void;
   registerCli: (

@@ -1,18 +1,20 @@
-import { getSpawnBroker, runWithSpawnBroker } from "../process/spawn-broker/context.js";
-import { sessionChanges } from "../sessions/session-row-changes.js";
-import type { AsyncWorkScope } from "../shared/async-work-scope.js";
-import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
+import type { AsyncWorkScope } from "../plugin-sdk/concurrency-runtime.js";
+import type { OpenClawConfig } from "../plugin-sdk/config-contracts.js";
 import type {
   ControlUiSessionPullRequestSnapshot,
   ControlUiSessionPullRequests,
-} from "./control-ui-contract.js";
+  RepositorySessionReads,
+  RepositorySessionSourceScope,
+  PreparedRepositorySessionRead,
+} from "../plugin-sdk/repository-session-read.js";
+import { isIncognitoSessionKey } from "../plugin-sdk/session-key-runtime.js";
 import {
   prepareControlUiSessionPrServiceTarget,
   type ControlUiSessionPrTarget,
+  type ControlUiSessionPrRead,
   type ControlUiSessionPrReadContext,
-} from "./control-ui-session-pr-read.js";
+} from "./control-ui-session-pr-target.js";
 import type { ControlUiSessionPullRequestsParams } from "./control-ui-session-prs.js";
-import type { SessionRowProjection } from "./session-row-projection.js";
 
 export type LoadSessionPullRequests = (
   params: ControlUiSessionPullRequestsParams,
@@ -56,35 +58,77 @@ export type PreparedSessionPrState = {
   assertReadAuthority?: () => void;
 };
 
-/** Index each connection's requested keys on the cell that retains its snapshot. */
-export function addControlUiSessionPrMembership(
-  state: Pick<PreparedSessionPrState, "connIds"> & {
-    sessionKeysByConnId: Map<string, Set<string>>;
-  },
-  connId: string,
-  sessionKey: string,
-): void {
-  let keys = state.sessionKeysByConnId.get(connId);
-  if (!keys) {
-    keys = new Set();
-    state.sessionKeysByConnId.set(connId, keys);
-  }
-  keys.add(sessionKey);
-  state.connIds.add(connId);
-}
+export type WatchedSessionPrState = PreparedSessionPrState & {
+  sessionKeysByConnId: Map<string, Set<string>>;
+  refreshedAt?: number;
+  cancelRefresh?: () => void;
+  delivery?: Promise<void>;
+};
 
-/** Retire the unused cell through the same owner that retains its prepared readers. */
-export function retireControlUiSessionPrState<
-  State extends PreparedSessionPrState & { cancelRefresh?: () => void },
->(state: State | undefined, keyStates: Map<string, State>): void {
-  if (!state || state.prepared || state.connIds.size > 0) {
-    return;
-  }
-  state.cancelRefresh?.();
-  state.cacheLifetime.abort(null);
-  if (keyStates.get(state.target.identity) === state) {
-    keyStates.delete(state.target.identity);
-  }
+export type WatchedSessionPr = {
+  readCurrent: ControlUiSessionPrRead;
+  target: ControlUiSessionPrTarget;
+  deliveredHash?: string;
+  refreshPending?: boolean;
+};
+
+/** Acquire through the actual prepared viewer; cached observations never carry private authority. */
+export function createControlUiSessionPrSourceRead(deps: {
+  reads: Pick<RepositorySessionReads, "withSource">;
+  keyStates: ReadonlyMap<string, WatchedSessionPrState>;
+  currentWatcher: (
+    connId: string,
+    sessionKey: string,
+  ) => Promise<{ target: ControlUiSessionPrTarget } | undefined>;
+}) {
+  return async <T>(
+    target: ControlUiSessionPrTarget,
+    operation: (
+      assertCurrent: () => void,
+      sourceIdentity: string,
+      sourceScope: RepositorySessionSourceScope,
+      selectedRead?: PreparedRepositorySessionRead,
+    ) => Promise<T>,
+  ) => {
+    const run = (source: RepositorySessionSourceScope) =>
+      operation(source.assertCurrent, source.identity, source, target.read);
+    if (target.read) {
+      return await target.read.withSource(run);
+    }
+    if (!isIncognitoSessionKey(target.params.sessionKey) && !target.ownGitHubProfileId) {
+      return await deps.reads.withSource(target.observation, run);
+    }
+
+    // Private sources require a live viewer; observations never grant background access.
+    const state = deps.keyStates.get(target.identity);
+    if (state) {
+      for (const [connId, keys] of state.sessionKeysByConnId) {
+        const sessionKeys = Array.from(keys);
+        for (const key of sessionKeys) {
+          state.cacheLifetime.signal.throwIfAborted();
+          const watched = await deps.currentWatcher(connId, key);
+          const read = watched?.target.read;
+          if (!read || watched.target.identity !== target.identity) {
+            continue;
+          }
+          try {
+            return await read.withSource((source) =>
+              operation(source.assertCurrent, source.identity, source, read),
+            );
+          } catch (error) {
+            try {
+              read.assertCurrent();
+            } catch {
+              // A departing viewer can hand this read-only load to another current viewer.
+              continue;
+            }
+            throw error;
+          }
+        }
+      }
+    }
+    throw new Error("Session pull-request watchers changed");
+  };
 }
 
 /** Retain only branch facts across audience/mode changes on the same physical source. */
@@ -95,7 +139,7 @@ export function retainControlUiSessionPrBranchSnapshot(
   if (
     !previous?.target.branchIdentity ||
     previous.target.branchIdentity !== state.target.branchIdentity ||
-    previous.target.taskReceipts?.ownerProfileId !== state.target.taskReceipts?.ownerProfileId
+    previous.target.taskAudienceKey !== state.target.taskAudienceKey
   ) {
     return;
   }
@@ -112,30 +156,68 @@ export function retainControlUiSessionPrBranchSnapshot(
 }
 
 /** Background readers publish into the subscription owner's existing cells and concurrency. */
-export function createControlUiSessionPrPreparedRead<State extends PreparedSessionPrState>(deps: {
+export function createControlUiSessionPrPreparedRead(deps: {
   scope: Pick<AsyncWorkScope, "isClosing" | "track">;
   limit: <T>(run: () => Promise<T>) => Promise<T>;
   withSource: <T>(
     target: ControlUiSessionPrTarget,
-    operation: (assertCurrent: () => void, sourceIdentity: string) => Promise<T>,
+    operation: (
+      assertCurrent: () => void,
+      sourceIdentity: string,
+      sourceScope: RepositorySessionSourceScope,
+      selectedRead?: PreparedRepositorySessionRead,
+    ) => Promise<T>,
   ) => Promise<T>;
   load: LoadSessionPullRequests;
-  keyStates: Map<string, State>;
-  stateForTarget: (target: ControlUiSessionPrTarget) => State;
-  getSessionRowProjection?: () => SessionRowProjection | undefined;
+  keyStates: Map<string, WatchedSessionPrState>;
+  reads: RepositorySessionReads;
+  getConfig: () => OpenClawConfig;
 }) {
-  const { scope, limit, withSource, load, keyStates, stateForTarget } = deps;
-  const spawnBroker = getSpawnBroker();
-  const preparing = new Map<State, Promise<void>>();
+  const { scope, limit, withSource, load, keyStates } = deps;
+  const stateForTarget = (
+    target: ControlUiSessionPrTarget,
+    sourceIdentity?: string,
+    retained?: WatchedSessionPrState,
+  ) => {
+    // Shared snapshots outlive individual viewers; authority stays only in each watched reader.
+    const { assertCurrent: _assertCurrent, read: _read, ...preparedTarget } = target;
+    const previous = keyStates.get(target.identity);
+    if (
+      previous?.target.identity === target.identity &&
+      (sourceIdentity === undefined ||
+        previous.sourceIdentity === undefined ||
+        previous.sourceIdentity === sourceIdentity)
+    ) {
+      previous.target = preparedTarget;
+      previous.sourceIdentity ??= sourceIdentity;
+      retainControlUiSessionPrBranchSnapshot(previous, retained);
+      return previous;
+    }
+    previous?.cancelRefresh?.();
+    previous?.cacheLifetime.abort(null);
+    const state: WatchedSessionPrState = {
+      connIds: new Set(previous?.connIds),
+      sessionKeysByConnId: new Map(previous?.sessionKeysByConnId),
+      target: preparedTarget,
+      prepared: previous?.prepared,
+      sourceIdentity,
+      cacheLifetime: new AbortController(),
+    };
+    retainControlUiSessionPrBranchSnapshot(state, retained);
+    keyStates.set(target.identity, state);
+    return state;
+  };
+
+  const preparing = new Map<WatchedSessionPrState, Promise<void>>();
   const preparedTargets = new Map<string, string>();
-  const writeSnapshot = (state: State, snapshot: ControlUiSessionPullRequestSnapshot) => {
+  const writeSnapshot = (
+    state: WatchedSessionPrState,
+    snapshot: ControlUiSessionPullRequestSnapshot,
+  ) => {
     const changed = JSON.stringify(state.snapshot) !== JSON.stringify(snapshot);
     state.snapshot = snapshot;
     if (changed && state.prepared) {
-      sessionChanges.emit({
-        ...state.target.params,
-        scope: "runtime",
-      });
+      deps.reads.invalidate(state.target.params);
     }
   };
 
@@ -156,7 +238,7 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
     }
   };
   const publishSnapshot = (
-    state: State,
+    state: WatchedSessionPrState,
     snapshot: ControlUiSessionPullRequestSnapshot,
     assertReadAuthority?: () => void,
   ) => {
@@ -200,36 +282,40 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
     return scope.track(() =>
       limit(async () => {
         assertActive();
-        return await withSource(target, async (assertSourceCurrent, sourceIdentity) => {
-          const assertReadCurrent = () => {
-            assertActive();
-            assertSourceCurrent();
-          };
-          assertReadCurrent();
-          try {
-            const result = await load(target.params, undefined, {
-              target,
-              sourceIdentity,
-              projection,
-              onBranchRead: (branch) => {
-                assertReadCurrent();
-                publishBranchSnapshot(target, pushedSnapshot(branch));
-              },
-              assertCurrent: assertReadCurrent,
-              retainReadAuthority: (guard) => {
-                assertReadAuthority = guard;
-              },
-            });
+        return await withSource(
+          target,
+          async (assertSourceCurrent, sourceIdentity, sourceScope) => {
+            const assertReadCurrent = () => {
+              assertActive();
+              assertSourceCurrent();
+            };
             assertReadCurrent();
-            const snapshot = pushedSnapshot(result);
-            publish(snapshot);
-            return snapshot;
-          } catch {
-            assertReadCurrent();
-            publish(UNAVAILABLE_SNAPSHOT);
-            return { ...UNAVAILABLE_SNAPSHOT };
-          }
-        });
+            try {
+              const result = await load(target.params, undefined, {
+                target,
+                sourceIdentity,
+                sourceScope,
+                projection,
+                onBranchRead: (branch) => {
+                  assertReadCurrent();
+                  publishBranchSnapshot(target, pushedSnapshot(branch));
+                },
+                assertCurrent: assertReadCurrent,
+                retainReadAuthority: (guard) => {
+                  assertReadAuthority = guard;
+                },
+              });
+              assertReadCurrent();
+              const snapshot = pushedSnapshot(result);
+              publish(snapshot);
+              return snapshot;
+            } catch {
+              assertReadCurrent();
+              publish(UNAVAILABLE_SNAPSHOT);
+              return { ...UNAVAILABLE_SNAPSHOT };
+            }
+          },
+        );
       }),
     );
   };
@@ -263,47 +349,42 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
         }
       }
     }
-    if (target.source === null && !target.githubPullRequest) {
+    if (target.source === null) {
       state.snapshot ??= { pullRequests: [], rateLimited: false, status: "ready" };
     }
-    const getProjection = deps.getSessionRowProjection;
     if (
       (!state.snapshot || state.snapshot.status !== "ready" || state.snapshot.rateLimited) &&
       !preparing.has(state) &&
-      getProjection &&
       (!admitLoad || admitLoad())
     ) {
-      const promise = runInDetachedAsyncContext(() =>
-        // Keep the Gateway's process owner without reviving the requesting caller's context.
-        runWithSpawnBroker(spawnBroker, () =>
-          scope.track(async () => {
-            const current = await limit(async () => {
-              if (scope.isClosing || keyStates.get(preparedTarget.identity) !== state) {
-                return undefined;
-              }
-              return await prepareControlUiSessionPrServiceTarget(
-                getProjection,
-                preparedTarget.params,
-              );
-            });
-            if (!current) {
-              return;
+      const promise = scope
+        .track(async () => {
+          const current = await limit(async () => {
+            if (scope.isClosing || keyStates.get(preparedTarget.identity) !== state) {
+              return undefined;
             }
-            const assertCurrent = () => {
-              if (
-                scope.isClosing ||
-                keyStates.get(preparedTarget.identity) !== state ||
-                current.identity !== preparedTarget.identity
-              ) {
-                throw new Error("Prepared session pull-request target changed");
-              }
-              current.assertCurrent?.();
-            };
-            assertCurrent();
-            await read(current, assertCurrent);
-          }),
-        ),
-      )
+            return prepareControlUiSessionPrServiceTarget(
+              deps.reads,
+              deps.getConfig,
+              preparedTarget.params,
+            );
+          });
+          if (!current) {
+            return;
+          }
+          const assertCurrent = () => {
+            if (
+              scope.isClosing ||
+              keyStates.get(preparedTarget.identity) !== state ||
+              current.identity !== preparedTarget.identity
+            ) {
+              throw new Error("Prepared session pull-request target changed");
+            }
+            current.assertCurrent?.();
+          };
+          assertCurrent();
+          await read(current, assertCurrent);
+        })
         .catch(() => {})
         .finally(() => preparing.delete(state));
       preparing.set(state, promise);
@@ -311,22 +392,18 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
     return state.snapshot;
   };
 
-  const unsubscribeFacts = sessionChanges.subscribeFacts((change) => {
-    if (
-      "sessionKey" in change &&
-      (change.facts?.kind === "unchanged" ||
-        (change.scope === "runtime" && !change.facts && !change.factsInvalidated))
-    ) {
+  const unsubscribeFacts = deps.reads.subscribeChanges((change) => {
+    if (change.kind === "publications") {
       return;
     }
     const affected =
-      "sessionKey" in change
+      change.kind === "session"
         ? [...keyStates].filter(([, state]) => state.target.params.sessionKey === change.sessionKey)
         : keyStates;
     const invalidated: Array<ControlUiSessionPrTarget["params"]> = [];
     for (const [key, state] of affected) {
       state.branchSnapshot = undefined;
-      if (state?.prepared) {
+      if (state.prepared) {
         state.snapshot = undefined;
         if (state.connIds.size === 0) {
           state.cacheLifetime.abort(null);
@@ -335,14 +412,15 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
         invalidated.push(state.target.params);
       }
     }
-    if (!("sessionKey" in change)) {
-      sessionChanges.emitBatch(
-        invalidated.map(({ sessionKey, agentId }) => ({ sessionKey, agentId, scope: "runtime" })),
-      );
+    if (change.kind !== "session") {
+      for (const query of invalidated) {
+        deps.reads.invalidate(query);
+      }
     }
   });
 
   return {
+    stateForTarget,
     read,
     readPrepared,
     publishSnapshot,
@@ -350,4 +428,34 @@ export function createControlUiSessionPrPreparedRead<State extends PreparedSessi
     settle: () => Promise.allSettled(preparing.values()),
     stop: unsubscribeFacts,
   };
+}
+
+/** Index each requested key on the cell that owns its snapshot. */
+export function addControlUiSessionPrMembership(
+  state: Pick<PreparedSessionPrState, "connIds"> & {
+    sessionKeysByConnId: Map<string, Set<string>>;
+  },
+  connId: string,
+  sessionKey: string,
+): void {
+  let keys = state.sessionKeysByConnId.get(connId);
+  if (!keys) {
+    keys = new Set();
+    state.sessionKeysByConnId.set(connId, keys);
+  }
+  keys.add(sessionKey);
+  state.connIds.add(connId);
+}
+/** Unused cells retire through the owner retaining their prepared readers. */
+export function retireControlUiSessionPrState<
+  State extends PreparedSessionPrState & { cancelRefresh?: () => void },
+>(state: State | undefined, keyStates: Map<string, State>): void {
+  if (!state || state.prepared || state.connIds.size > 0) {
+    return;
+  }
+  state.cancelRefresh?.();
+  state.cacheLifetime.abort(null);
+  if (keyStates.get(state.target.identity) === state) {
+    keyStates.delete(state.target.identity);
+  }
 }

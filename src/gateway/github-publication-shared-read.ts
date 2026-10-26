@@ -5,27 +5,18 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import type { SharedGitHubPublicationReadInput } from "../state/github-publication-read.types.js";
 import { githubPublicationReceipts } from "../state/github-publication-receipts.js";
 import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
-import {
-  executeExistingOpenClawStateRead,
-  withArtifactPreservingStateReads,
-} from "../state/openclaw-state-db-readonly.js";
+import { withArtifactPreservingStateReads } from "../state/openclaw-state-db-readonly.js";
 import { captureOpenClawStateReadWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { repositoryWorkspacePublication } from "../state/session-repository-workspaces.receipts.js";
 import {
   prepareGitHubPublicationSession,
   type PublicationSessionIdentity,
 } from "./github-publication-availability.js";
-import { GitHubPublicationSessionChangedError } from "./github-publication-failure.js";
+import { RepositoryPublicationSessionChangedError } from "./github-publication-errors.js";
+import { readSharedPublicationObservation } from "./github-publication-reads.js";
 
 type SharedGitHubPublicationSelector = SharedGitHubPublicationReadInput["selector"];
-type SharedObservation = {
-  type: "githubPublication.sharedObservation";
-  input: SharedGitHubPublicationReadInput;
-};
-const pendingObservations = new Map<
-  string,
-  ReturnType<typeof executeExistingOpenClawStateRead<SharedObservation>>
->();
+const pendingObservations = new Map<string, ReturnType<typeof readSharedPublicationObservation>>();
 // Publication writes and database replacement must not join an earlier observation.
 githubPublicationReceipts.subscribeFacts(() => pendingObservations.clear());
 worktreeRegistryPublication.subscribeFacts(() => pendingObservations.clear());
@@ -75,9 +66,9 @@ export async function readSharedGitHubPublication(
     let pending = key ? pendingObservations.get(key) : undefined;
     if (!pending) {
       pending = withArtifactPreservingStateReads(() =>
-        executeExistingOpenClawStateRead(
+        readSharedPublicationObservation(
           { path: context.admission.databasePath, env: context.environment },
-          { type: "githubPublication.sharedObservation", input },
+          input,
           { current: true, preferIndependentWarmRead: true, context },
         ),
       );
@@ -108,7 +99,7 @@ export async function readSharedGitHubPublication(
         (session.lifecycleRevision !== undefined &&
           (entry.lifecycleRevision ?? null) !== session.lifecycleRevision)
       ) {
-        throw new GitHubPublicationSessionChangedError();
+        throw new RepositoryPublicationSessionChangedError();
       }
       return entry;
     };
@@ -119,7 +110,7 @@ export async function readSharedGitHubPublication(
       !workspaceIndependent &&
       !isDeepStrictEqual(workspaceSelection(entry), workspaceSelection(current))
     ) {
-      throw new GitHubPublicationSessionChangedError();
+      throw new RepositoryPublicationSessionChangedError();
     }
     return row;
   }
@@ -148,7 +139,7 @@ export async function readSharedGitHubPublication(
     (session.lifecycleRevision !== undefined &&
       (entry.lifecycleRevision ?? null) !== session.lifecycleRevision)
   ) {
-    throw new GitHubPublicationSessionChangedError();
+    throw new RepositoryPublicationSessionChangedError();
   }
   const row = await observe(entry);
   const current = readCurrent().entry;
@@ -159,7 +150,7 @@ export async function readSharedGitHubPublication(
     (!workspaceIndependent &&
       !isDeepStrictEqual(workspaceSelection(entry), workspaceSelection(current)))
   ) {
-    throw new GitHubPublicationSessionChangedError();
+    throw new RepositoryPublicationSessionChangedError();
   }
   return row;
 }

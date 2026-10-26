@@ -7,8 +7,6 @@ import { withAgentRosterFactsBatch } from "../agents/agent-scope-config.js";
 import { listAgentIds, resolveAgentConfig } from "../agents/agent-scope.js";
 import {
   inspectGitHubOAuthRecord,
-  listGitHubDeviceAuthorizationRecords,
-  listGitHubOAuthRecords,
   type GitHubDeviceAuthorizationRecord,
   type GitHubIdentityScope,
   type GitHubOAuthRecord,
@@ -16,76 +14,12 @@ import {
 import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
-import { subscribeSecretStoreChanges } from "../secrets/store/secret-store-changes.js";
-import {
-  registerOpenClawStateDatabaseAsyncResource,
-  registerOpenClawStateDatabaseLifecycleListener,
-} from "../state/openclaw-state-db-cache.js";
-import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
+import type { GitHubOAuthInventory } from "./github-oauth-lifecycle-host.js";
+export { createGitHubOAuthInventoryReader } from "./github-oauth-lifecycle-host.js";
 
 export const REFRESH_SKEW_MS = 10 * 60_000;
 export const MAINTENANCE_INTERVAL_MS = 60_000;
 export const SHUTDOWN_DRAIN_TIMEOUT_MS = 31_000;
-
-type GitHubOAuthInventory = {
-  deviceRecords: Awaited<ReturnType<typeof listGitHubDeviceAuthorizationRecords>>;
-  oauthRecords: Awaited<ReturnType<typeof listGitHubOAuthRecords>>;
-};
-
-export function createGitHubOAuthInventoryReader(onChange: () => void) {
-  let dirty = true;
-  let databasePath: string | undefined;
-  let snapshot: GitHubOAuthInventory | undefined;
-  const invalidate = () => {
-    dirty = true;
-    onChange();
-  };
-  const unsubscribe = subscribeSecretStoreChanges((change) => {
-    if (change.githubOAuth && change.databasePath === resolveOpenClawStateSqlitePath()) {
-      invalidate();
-    }
-  });
-  const unregisterResource = registerOpenClawStateDatabaseAsyncResource({
-    async close() {
-      snapshot = undefined;
-      invalidate();
-    },
-  });
-  const unsubscribeLifecycle = registerOpenClawStateDatabaseLifecycleListener((event) => {
-    if (event.kind !== "opened" && event.path === resolveOpenClawStateSqlitePath()) {
-      snapshot = undefined;
-      invalidate();
-    }
-  });
-  return {
-    async read() {
-      const path = resolveOpenClawStateSqlitePath();
-      if (snapshot && !dirty && databasePath === path) {
-        return snapshot;
-      }
-      databasePath = path;
-      dirty = false;
-      try {
-        const deviceRecords = await listGitHubDeviceAuthorizationRecords();
-        const oauthRecords = await listGitHubOAuthRecords();
-        snapshot = { deviceRecords, oauthRecords };
-        return snapshot;
-      } catch (error) {
-        dirty = true;
-        throw error;
-      }
-    },
-    get dirty() {
-      return dirty;
-    },
-    close() {
-      unsubscribe();
-      unsubscribeLifecycle();
-      unregisterResource();
-      snapshot = undefined;
-    },
-  };
-}
 
 export type ConfiguredOAuthIdentity = {
   scope: GitHubIdentityScope;

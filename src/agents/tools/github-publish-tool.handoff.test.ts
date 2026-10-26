@@ -15,7 +15,12 @@ import {
 } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
 import { readSessionMessagesAsync } from "../../gateway/session-transcript-readers.js";
 import * as exec from "../../infra/exec-request-context.js";
+import { createPluginRuntimeMock } from "../../plugin-sdk/test-helpers/plugin-runtime-mock.js";
+import { createTestPluginRegistry } from "../../plugins/registry-runtime.test-helpers.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
+import { createPluginRecord } from "../../plugins/status.test-helpers.js";
+import { createPluginToolFactoryContext } from "../../plugins/tool-factory-context.js";
+import { bindPluginToolCallbacks } from "../../plugins/tool-factory-runtime.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
 import { withSessionControllerOwner } from "../../sessions/session-controller.context.js";
 import { getSessionControllerEntryForOperation } from "../../sessions/session-controller.identity.js";
@@ -35,6 +40,29 @@ import {
   withGatewayToolCallerIdentity,
 } from "./gateway-caller-context.js";
 import { createGitHubPublishTool } from "./github-publish-tool.js";
+
+function bindPublicationTool(
+  tool: ReturnType<typeof createGitHubPublishTool>,
+  assertInvocationCurrent: () => void,
+) {
+  const builder = createTestPluginRegistry(createPluginRuntimeMock());
+  const record = createPluginRecord({
+    id: "publication-fixture",
+    contracts: { tools: [tool.name] },
+  });
+  builder.registry.plugins.push(record);
+  builder
+    .createApi(record, { config: {}, registrationMode: "full" })
+    .registerTool({ contextVersion: 2, create: () => tool }, { name: tool.name });
+  const entry = expectDefined(builder.registry.tools[0], "registered publication factory");
+  const context = createPluginToolFactoryContext({
+    entry,
+    registry: builder.registry,
+    context: {},
+    assertInvocationCurrent,
+  });
+  return bindPluginToolCallbacks(entry, builder.registry, tool, context.assertInvocationCurrent);
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -186,27 +214,30 @@ it.each(["prepared", "failed", "stop", "undelivered", "reset"] as const)(
                       async () => {
                         const wrapped = withSessionControllerOwner(operation, () =>
                           wrapToolWithAbortSignal(
-                            createGitHubPublishTool({
-                              sessionId,
-                              runId,
-                              // An ordinary local Docker conversation, as the visibility rule admits.
-                              sandbox: createSandboxTestContext({
-                                overrides: {
-                                  sessionKey,
-                                  workspaceSource: undefined,
-                                  backend: { id: "docker" } as never,
+                            bindPublicationTool(
+                              createGitHubPublishTool({
+                                sessionId,
+                                runId,
+                                // An ordinary local Docker conversation, as the visibility rule admits.
+                                sandbox: createSandboxTestContext({
+                                  overrides: {
+                                    sessionKey,
+                                    workspaceSource: undefined,
+                                    backend: { id: "docker" } as never,
+                                  },
+                                }),
+                                onYield() {
+                                  order.push("yield");
+                                  runAbort.abort(SESSIONS_YIELD_ABORT_REASON);
+                                  operation.completeWithAfterClearBarrier(
+                                    cleanup.promise.then(() => {
+                                      order.push("cleanup");
+                                    }),
+                                  );
                                 },
                               }),
-                              onYield() {
-                                order.push("yield");
-                                runAbort.abort(SESSIONS_YIELD_ABORT_REASON);
-                                operation.completeWithAfterClearBarrier(
-                                  cleanup.promise.then(() => {
-                                    order.push("cleanup");
-                                  }),
-                                );
-                              },
-                            }),
+                              captureGatewayToolCallerAssertion(),
+                            ),
                             runAbort.signal,
                           ),
                         );
@@ -235,6 +266,7 @@ it.each(["prepared", "failed", "stop", "undelivered", "reset"] as const)(
                           yielded: true,
                         });
                         expect(order).toEqual(["yield"]);
+                        await expect(tool.execute("after-yield", {})).rejects.toThrow();
                         expect(endpoint).not.toHaveBeenCalled();
                         if (outcome === "stop") {
                           exec.cancelExecRequestOwners(

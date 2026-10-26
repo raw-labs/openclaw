@@ -264,8 +264,19 @@ export function normalizeManifestDashboard(value: unknown): DashboardManifestRes
           error: `dashboard.actionVerbs[${index}].paramShape must be a JSON Schema object`,
         };
       }
+      const legacyId = field === "dataBindings" && isRecord(entry) ? entry.legacyId : undefined;
+      if (
+        legacyId !== undefined &&
+        (typeof legacyId !== "string" || !/^[a-z0-9][a-z0-9._-]*$/u.test(legacyId))
+      ) {
+        return {
+          ok: false,
+          error: `dashboard.dataBindings[${index}].legacyId must be a lowercase capability id`,
+        };
+      }
       entries.push({
         ...normalized,
+        ...(legacyId ? { legacyId } : {}),
         ...(rawParamShape ? { paramShape: rawParamShape as JsonSchemaObject } : {}),
       });
     }

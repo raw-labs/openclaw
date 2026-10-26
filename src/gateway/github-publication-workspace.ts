@@ -27,7 +27,9 @@ export async function prepareGitHubPublicationClaimWorkspace(
   claim: WorkerSessionTurnClaim,
 ): Promise<void> {
   await params.placements.closeWorkerTurnToolAdmission(claim);
-  const rows = await listGitHubPublicationsForClaimAsync(claim, { pendingOnly: true });
+  const rows = await listGitHubPublicationsForClaimAsync(claim, {
+    pendingOnly: true,
+  });
   if (rows.length === 0) {
     return;
   }

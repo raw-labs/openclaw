@@ -266,3 +266,5 @@ export function getToolPluginMetadata(entry: unknown): ToolPluginMetadata | unde
   }
   return metadata as ToolPluginMetadata;
 }
+export { bindAgentToolAvailability } from "../agents/agent-tool-availability.js";
+export type { AgentToolAvailabilityBinding } from "../agents/agent-tool-availability.js";

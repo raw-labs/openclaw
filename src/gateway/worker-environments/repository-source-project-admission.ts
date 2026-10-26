@@ -88,7 +88,13 @@ export async function preparePluginRepositoryWorkerProject(
   };
   const project = readRepositoryWorkerProjectSnapshot({
     key: createHash("sha256")
-      .update(stableStringify([params.namespace, facts]))
+      .update(
+        stableStringify(
+          lease.private
+            ? ["private-repository", params.namespace, facts]
+            : [params.namespace, facts],
+        ),
+      )
       .digest("hex"),
     baseCommit: lease.baseCommit,
     source: facts,
@@ -165,26 +171,31 @@ export async function preparePluginRepositoryWorkerProject(
     signal?.throwIfAborted();
     assertCurrent();
   };
+  const prepareGitPack = lease.prepareGitPack;
   return {
     project,
     setupRecipe,
     recipe,
     assertCurrent,
     revalidate,
-    async prepareGitPack(input: { temporaryRoot: string; signal: AbortSignal }) {
-      const assertFetchCurrent = () => {
-        input.signal.throwIfAborted();
-        assertAdmission();
-        assertCurrent();
-      };
-      assertFetchCurrent();
-      await revalidate(input.signal);
-      assertFetchCurrent();
-      const pack = await lease.prepareGitPack({ ...input, assertCurrent: assertFetchCurrent });
-      assertFetchCurrent();
-      await revalidate(input.signal);
-      assertFetchCurrent();
-      return pack;
-    },
+    ...(prepareGitPack
+      ? {
+          async prepareGitPack(input: { temporaryRoot: string; signal: AbortSignal }) {
+            const assertFetchCurrent = () => {
+              input.signal.throwIfAborted();
+              assertAdmission();
+              assertCurrent();
+            };
+            assertFetchCurrent();
+            await revalidate(input.signal);
+            assertFetchCurrent();
+            const pack = await prepareGitPack({ ...input, assertCurrent: assertFetchCurrent });
+            assertFetchCurrent();
+            await revalidate(input.signal);
+            assertFetchCurrent();
+            return pack;
+          },
+        }
+      : {}),
   };
 }

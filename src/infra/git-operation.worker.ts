@@ -100,8 +100,7 @@ serveWorkerTasks<GitWorkerReply<GitWorkerResult>, GitWorkerCommand>(
               );
             case "checkout.context":
               return import("../gateway/control-ui-session-prs-git.runtime.js").then(
-                ({ readCheckoutGitContext }) =>
-                  readCheckoutGitContext(command.input.root, command.input.githubHost),
+                ({ readCheckoutGitContext }) => readCheckoutGitContext(command.input.root),
               );
             case "pull-request.branch-comparison":
               return import("../gateway/control-ui-session-prs-git.runtime.js").then(

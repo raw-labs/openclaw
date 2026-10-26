@@ -1,7 +1,14 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { CronListPageResult } from "./list-page-types.js";
 
-type CanonicalCronListPage<TJob = unknown> = Omit<CronListPageResult, "jobs"> & { jobs: TJob[] };
+type CanonicalCronListPage<TJob = unknown> = {
+  jobs: TJob[];
+  snapshotRevision: string;
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+};
 
 function isSafeNonNegativeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

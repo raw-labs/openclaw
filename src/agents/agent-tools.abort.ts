@@ -12,6 +12,7 @@ import {
   getInternalToolExecutionPreparer,
 } from "./runtime/internal-hooks.js";
 import { registerTrustedToolNoStartError } from "./tool-result-error.js";
+import { runWithSessionToolHandoffYield } from "./tools/session-tool-handoff-settlement.js";
 
 function throwAbortError(): never {
   throw registerTrustedToolNoStartError(createAbortError("Aborted"));
@@ -30,6 +31,7 @@ export function raceWithAbortSignal<T>(
   promise: Promise<T>,
   signal: AbortSignal,
   yieldRunSignal?: AbortSignal,
+  ownsHandoff?: () => boolean,
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
@@ -43,7 +45,8 @@ export function raceWithAbortSignal<T>(
         yieldRunSignal?.aborted &&
         signal.reason === reason &&
         reason?.code === "sessions_yield" &&
-        reason.turnHandoff === true
+        reason.turnHandoff === true &&
+        (!ownsHandoff || ownsHandoff())
       ) {
         return;
       }
@@ -71,8 +74,7 @@ export function raceWithAbortSignal<T>(
 function isTurnYieldCall(tool: AnyAgentTool, args: unknown): boolean {
   return (
     tool.name === "sessions_yield" ||
-    (tool.name === "plugins" && asOptionalObjectRecord(args)?.action === "reloadAndResume") ||
-    (tool.name === "github_publish" && asOptionalObjectRecord(args)?.action === "prepare_pr")
+    (tool.name === "plugins" && asOptionalObjectRecord(args)?.action === "reloadAndResume")
   );
 }
 
@@ -95,16 +97,19 @@ export function wrapToolWithAbortSignal(
       if (combinedSignal.aborted) {
         throwAbortError();
       }
-      const execution = execute(toolCallId, params, combinedSignal, onUpdate);
-      // Code Mode cancels its worker and bridges itself. Racing that owner loses
-      // completed output and turns an intentional permission change into unknown dispatch.
-      return ownsCancellationOutcome
-        ? await execution
-        : await raceWithAbortSignal(
-            execution,
-            combinedSignal,
-            isTurnYieldCall(tool, params) ? abortSignal : undefined,
-          );
+      return await runWithSessionToolHandoffYield(async (isYielding) => {
+        const execution = execute(toolCallId, params, combinedSignal, onUpdate);
+        // Code Mode cancels its worker and bridges itself. Racing that owner loses
+        // completed output and turns an intentional permission change into unknown dispatch.
+        return ownsCancellationOutcome
+          ? await execution
+          : await raceWithAbortSignal(
+              execution,
+              combinedSignal,
+              abortSignal,
+              () => isTurnYieldCall(tool, params) || isYielding(),
+            );
+      });
     },
   };
   copyAgentToolMetadata(tool, wrappedTool, (source) =>
@@ -141,14 +146,17 @@ export function wrapToolWithAbortSignal(
           if (combinedSignal.aborted) {
             throwAbortError();
           }
-          const execution = prepared.execute(onImplementationStart);
-          return ownsCancellationOutcome
-            ? execution
-            : raceWithAbortSignal(
-                execution,
-                combinedSignal,
-                isTurnYieldCall(tool, prepared.args) ? abortSignal : undefined,
-              );
+          return runWithSessionToolHandoffYield((isYielding) => {
+            const execution = prepared.execute(onImplementationStart);
+            return ownsCancellationOutcome
+              ? execution
+              : raceWithAbortSignal(
+                  execution,
+                  combinedSignal,
+                  abortSignal,
+                  () => isTurnYieldCall(tool, prepared.args) || isYielding(),
+                );
+          });
         },
         dispose: prepared.dispose,
       };

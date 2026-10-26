@@ -10,11 +10,9 @@ import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
 import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
 import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
-import {
-  currentGitHubPublicationConfig,
-  prepareGitHubPublicationSession,
-} from "../github-publication-availability.js";
-import { GitHubPublicationSessionChangedError } from "../github-publication-failure.js";
+import { prepareGitHubPublicationSession } from "../github-publication-availability.js";
+import { RepositoryPublicationSessionChangedError } from "../github-publication-errors.js";
+import { currentGitHubPublicationConfig } from "../github-publication-identity.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { hasCurrentGatewayOperatorAccess } from "../operator-access-policy.js";
 import {
@@ -152,7 +150,7 @@ async function prepareOptionsSession(
       readCurrent: () => {
         assertCurrent();
         if (!active) {
-          throw new GitHubPublicationSessionChangedError();
+          throw new RepositoryPublicationSessionChangedError();
         }
         return session.readCurrent();
       },
@@ -400,7 +398,7 @@ async function bindPersonalGitHubSessionAction(
       currentGitHubClient(options, "operator.write", action.owner);
       const current = prepared.readCurrent();
       if (current.entry?.archivedAt !== undefined) {
-        throw new GitHubPublicationSessionChangedError();
+        throw new RepositoryPublicationSessionChangedError();
       }
       authorization?.assertCurrent();
     };

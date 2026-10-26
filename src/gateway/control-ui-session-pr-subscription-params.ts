@@ -1,6 +1,8 @@
-import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
-import { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../../packages/gateway-protocol/src/schema/primitives.js";
-import { CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS } from "./control-ui-contract.js";
+import {
+  CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
+  CHAT_SEND_SESSION_KEY_MAX_LENGTH,
+} from "../plugin-sdk/repository-session-read.js";
+import { asNullableRecord } from "../plugin-sdk/string-coerce-runtime.js";
 
 function parseSessionKeys(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS) {

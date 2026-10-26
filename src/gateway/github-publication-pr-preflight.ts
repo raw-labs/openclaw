@@ -1,10 +1,10 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { SessionGitHubPullRequestInspectResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import type { SessionGitHubPullRequestInspectResult } from "../../packages/gateway-protocol/src/index.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
+import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import {
   githubPublicationApiArgs,
-  runPublicationCommand,
-} from "./github-publication-git-transport.js";
+  runGitHubPublicationCommand,
+} from "./github-publication-remote.js";
 
 type PullRequest = Pick<
   SessionGitHubPullRequestInspectResult,
@@ -37,7 +37,7 @@ export async function assertExistingPullRequestWriteAccess(params: {
     );
   const read = async (endpoint: string): Promise<unknown> => {
     assertCurrent();
-    const response = await runPublicationCommand(
+    const response = await runGitHubPublicationCommand(
       githubPublicationApiArgs(endpoint, "GET", pr.host),
       { env: identity.env, beforeRun: assertCurrent },
     ).catch(() => {

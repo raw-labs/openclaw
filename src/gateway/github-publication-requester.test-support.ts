@@ -39,6 +39,7 @@ import { repositoryGitHubPublicationDigest } from "./github-repository-publicati
 import { createRepositoryPublicationFixture } from "./github-repository-publication.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { SESSION_READ_SCOPE, SESSION_WRITE_SCOPE } from "./operator-scopes.js";
+import { createContext as createGatewayContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import {
   REQUEST,
   seedActivePlacement,
@@ -136,10 +137,9 @@ export async function createGitHubPublicationRequesterFixture(params: {
     updatedAt: 1,
   };
   prepareGatewayConnectOperatorAccess(client);
-  const context = {
-    getRuntimeConfig: currentGitHubPublicationConfig,
+  const context = Object.assign(createGatewayContext([], currentGitHubPublicationConfig), {
     getCommittedRuntimeConfig: params.getCommittedRuntimeConfig ?? currentGitHubPublicationConfig,
-  };
+  });
   const session = { sessionKey: params.sessionKey, agentId: params.agentId };
   const captured = await prepareGitHubPublicationRequesterV2({ client, context }, session);
   onTestFinished(captured.release);

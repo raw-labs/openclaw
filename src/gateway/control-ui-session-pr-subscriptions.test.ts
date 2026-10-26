@@ -7,7 +7,7 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests as Snapshot } from "./control-ui-contract.js";
-import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "./control-ui-session-pr-subscriptions.js";
+import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "./control-ui-session-pr-subscription-params.js";
 import {
   createTestControlUiSessionPrSubscriptions,
   createTestSessionPrReadSource,
@@ -192,8 +192,8 @@ describe("control UI session PR subscriptions", () => {
     const signals = new Map<string, AbortSignal | undefined>();
     const load = vi.fn<NonNullable<Options["load"]>>(async (_params, signal, read) => {
       read.assertCurrent();
-      signals.set(read.target.identity, signal);
-      return { ...READY, rateLimited: read.target.identity === "private" };
+      signals.set(read.target.observation.identity, signal);
+      return { ...READY, rateLimited: read.target.observation.identity === "private" };
     });
     const active = start({
       load,

@@ -1,13 +1,13 @@
-import { createRetainedCache } from "../infra/retained-cache.js";
+import { createRetainedCache } from "../plugin-sdk/concurrency-runtime.js";
 import type {
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "./control-ui-contract.js";
+} from "../plugin-sdk/repository-session-read.js";
 import {
+  type SessionPullRequestReadCredential,
   createGitHubReadGroup,
   prepareSessionPullRequestGitHubRead,
-  type SessionPullRequestReadCredential,
 } from "./control-ui-session-pr-request.js";
 import {
   fetchSessionPullRequestCheckDetails,
@@ -203,4 +203,8 @@ export async function loadControlUiSessionPullRequestChecks(
   } finally {
     release();
   }
+}
+
+export function clearSessionPullRequestCheckDetails() {
+  checkDetailsCache.clear();
 }

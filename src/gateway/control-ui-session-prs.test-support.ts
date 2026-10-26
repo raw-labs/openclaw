@@ -8,14 +8,18 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitCheckoutContext } from "../infra/git-read-operations.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
-import { resolveControlUiSessionPrTarget } from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
+import { prepareSelectedRepositorySessionRead } from "./control-ui-session-pr-source.js";
+import {
+  repositorySessionPrTarget,
+  type ControlUiSessionPrTarget,
+  type ControlUiSessionPrReadContext,
+} from "./control-ui-session-pr-target.js";
+import type { GitHubCheckoutContext as GitCheckoutContext } from "./control-ui-session-prs.js";
 import { loadControlUiSessionPullRequests as loadPrs } from "./control-ui-session-prs.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
@@ -80,77 +84,118 @@ export const testGitContext = {
   branch: "claude/browser-tabs-tighter-header",
 };
 
-/** Direct loader tests supply real target facts; registered callers use the row projection. */
+const releases = new WeakMap<ControlUiSessionPrTarget, () => void>();
+const retained = new Set<() => void>();
+afterEach(() => {
+  for (const release of retained) {
+    release();
+  }
+  retained.clear();
+});
+
+/** The loader fixture retains the same real session/source owner as production. */
+export function withTestSessionPrRead<T>(
+  target: ControlUiSessionPrTarget,
+  operation: (read: ControlUiSessionPrReadContext) => Promise<T>,
+): Promise<T> {
+  if (!target.read) {
+    throw new Error("Missing prepared fixture read");
+  }
+  return target.read.withSource((sourceScope) =>
+    operation({
+      target,
+      sourceScope,
+      sourceIdentity: sourceScope.identity,
+      assertCurrent: sourceScope.assertCurrent,
+    }),
+  );
+}
+
 export async function loadTestSessionPullRequests(
   params: PrRequest,
   deps: PrDeps = {},
 ): ReturnType<typeof loadPrs> {
   const agentId = requestAgent(params);
+  const { resolveGitRoot, resolveGitContext, ...ownerDeps } = deps;
+  const requestedContext = await resolveGitContext?.(params);
+  const root = resolveGitRoot ? await resolveGitRoot(params) : requestedContext?.root;
+  if (typeof root === "string") {
+    // A requested test checkout is recorded on the real session, not selected by a runtime hook.
+    const current = await loadEntry(params.sessionKey, { agentId });
+    if (current.entry?.spawnedCwd !== root) {
+      await upsertSessionEntryCore(
+        { agentId, sessionKey: params.sessionKey },
+        { spawnedCwd: root },
+      );
+    }
+  }
   const target = await prepareTestSessionPrTarget({ ...params, agentId });
   if (!target) {
     return { pullRequests: [], rateLimited: false };
   }
-  const facts = await prepareSessionMutationFacts({
-    cfg: getRuntimeConfig(),
-    sessionKey: params.sessionKey,
-    agentId,
-  });
   try {
-    const original = facts.readCurrent(getRuntimeConfig()).target.entry;
-    return await withControlUiSessionPrSource(
-      target.readSource,
-      async (assertSourceCurrent, sourceIdentity) => {
-        const assertCurrent = () => {
-          assertSourceCurrent();
-          const current = facts.readCurrent(getRuntimeConfig()).target.entry;
-          if (
-            current.sessionId !== original.sessionId ||
-            current.lifecycleRevision !== original.lifecycleRevision
-          ) {
-            throw new Error("Session pull-request target changed");
-          }
-        };
-        const { resolveGitRoot, resolveGitContext, ...ownerDeps } = deps;
-        const request = { ...params, ...target.params };
-        assertCurrent();
-        const source = resolveGitContext
-          ? await resolveGitContext(request)
-          : resolveGitRoot
-            ? await resolveGitRoot(request)
-            : target.source;
-        assertCurrent();
-        return loadPrs(params, {
-          ...ownerDeps,
-          read: {
-            target: { ...target, source },
-            sourceIdentity,
-            assertCurrent,
-          },
-        });
-      },
+    const source = resolveGitContext
+      ? (requestedContext ?? null)
+      : root === null
+        ? null
+        : target.source;
+    return await withTestSessionPrRead({ ...target, source }, (read) =>
+      loadPrs(params, { ...ownerDeps, read }),
     );
   } finally {
-    facts.release();
+    const release = releases.get(target);
+    release?.();
+    if (release) {
+      retained.delete(release);
+    }
   }
 }
 
 async function prepareTestSessionPrTarget(params: { sessionKey: string; agentId?: string }) {
-  const read = () => loadEntry(params.sessionKey, { agentId: params.agentId });
-  const initial = await read();
-  const prepared = initial.entry?.repositoryWorkspaceId
+  const initial = await loadEntry(params.sessionKey, { agentId: params.agentId });
+  const workspace = initial.entry?.repositoryWorkspaceId
     ? await getSessionRepositoryWorkspaceStore().prepare(initial.entry.repositoryWorkspaceId)
     : undefined;
-  const selected = await read();
-  const repository = prepared?.current();
-  return resolveControlUiSessionPrTarget(
-    selected,
-    repository?.workspaceId === selected.entry?.repositoryWorkspaceId &&
-      repository?.agentId === selected.agentId &&
-      repository.sessionKey === selected.canonicalKey
-      ? repository
-      : null,
-    { includeBoundPullRequest: true },
-  );
+  const selected = await loadEntry(params.sessionKey, { agentId: params.agentId });
+  const facts = await prepareSessionMutationFacts({
+    cfg: getRuntimeConfig(),
+    sessionKey: params.sessionKey,
+    agentId: selected.agentId,
+  });
+  const original = facts.readCurrent(getRuntimeConfig()).target.entry;
+  const assertCurrent = () => {
+    const current = facts.readCurrent(getRuntimeConfig()).target.entry;
+    if (
+      current.sessionId !== original.sessionId ||
+      current.lifecycleRevision !== original.lifecycleRevision
+    ) {
+      throw new Error("Session pull-request target changed");
+    }
+  };
+  try {
+    const repository = workspace?.current();
+    const read = prepareSelectedRepositorySessionRead(
+      selected,
+      repository?.workspaceId === selected.entry?.repositoryWorkspaceId &&
+        repository?.agentId === selected.agentId &&
+        repository.sessionKey === selected.canonicalKey
+        ? repository
+        : null,
+      { assertCurrent, runSource: (run) => run() },
+    );
+    if (!read) {
+      facts.release();
+      return undefined;
+    }
+    const prepared = { ...read, boundPullRequest: selected.entry?.worktree?.githubPullRequest };
+    const target = repositorySessionPrTarget(prepared, getRuntimeConfig(), prepared);
+    releases.set(target, facts.release);
+    retained.add(facts.release);
+    return target;
+  } catch (error) {
+    facts.release();
+    throw error;
+  }
 }
 
 /** Git/network fixtures still select real sessions; each test owns its cache namespace. */

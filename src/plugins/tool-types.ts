@@ -48,6 +48,35 @@ export type OpenClawPluginToolModelExecution = {
   ) => Promise<T>;
 };
 
+/** Caller-bound plugin RPC and installed workspace-provider operations; custody stays host-owned. */
+export type OpenClawPluginToolGateway = Readonly<{
+  agentId: string;
+  sessionKey: string;
+  workspace: Readonly<{
+    publicationAvailable?: boolean;
+    controlAvailable: boolean;
+    preparation: "unavailable" | "in-place" | "handoff";
+    refreshBaseAvailable: boolean;
+    evidenceAvailable: boolean;
+  }>;
+  call: <T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown>,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ) => Promise<T>;
+  /** Stable for a replay of this assistant turn and tool call. */
+  idempotencyKey: (toolCallId: string) => string;
+  /** Transfer a workspace operation to the existing session owner and resume its result. */
+  handoff: (request: {
+    name: string;
+    method: string;
+    params: Record<string, unknown>;
+    signal?: AbortSignal;
+    fenceSuccessors?: true;
+    formatResult: (payload: Record<string, unknown>) => string;
+  }) => Promise<Awaited<ReturnType<AnyAgentTool["execute"]>>>;
+}>;
+
 /** Trusted execution context passed to plugin-owned agent tool factories. */
 type OpenClawPluginToolContextBase = {
   config?: OpenClawConfig;
@@ -123,6 +152,8 @@ type OpenClawPluginToolContextBase = {
   sandbox?: OpenClawPluginToolSandbox;
   /** Model authorization scope; does not execute inference or grant tool permissions. */
   modelExecution?: OpenClawPluginToolModelExecution;
+  /** Version-2 factory capability; dispatch rechecks the current admitted caller and plugin. */
+  gateway?: OpenClawPluginToolGateway;
   /**
    * True for explicit one-shot local CLI runs that must release plugin-owned
    * process resources before the command exits.
