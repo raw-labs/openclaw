@@ -28,3 +28,5 @@ export {
   MANAGED_GITHUB_PROFILE_ID_PATTERN,
   isManagedGitHubProfileId,
 } from "../config/github-identity-profile-id.js";
+
+export type { GitHubRepositoryAdmissionRequest } from "../agents/github-credential-reader.js";
