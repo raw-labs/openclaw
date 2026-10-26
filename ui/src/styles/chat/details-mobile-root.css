@@ -107,7 +107,7 @@
   color: var(--muted);
 }
 
-.chat-details-mobile-root__leading > svg {
+.chat-details-mobile-root__leading svg {
   width: 18px;
   height: 18px;
 }

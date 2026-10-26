@@ -80,7 +80,7 @@ export function createRuntimeProcessEntrypoints(currentModuleUrl: string) {
       "state/openclaw-agent-schema-inspection.worker",
     ),
     stateMigrationSnapshot: runtimeProcessEntrypoint("infra/state-migrations.snapshot.worker"),
-    githubExec: runtimeProcessEntrypoint("agents/github-exec-launcher"),
+    githubExec: runtimeProcessEntrypoint("worker/github-exec-launcher"),
     sqliteReadOnly: runtimeProcessEntrypoint("infra/sqlite-readonly-location.worker"),
     sqliteSnapshotStaging: runtimeProcessEntrypoint("infra/sqlite-snapshot-staging.worker"),
     sqliteReadOnlyNativeResource: runtimeProcessEntrypoint("infra/sqlite-readonly-native-resource"),

@@ -45,9 +45,10 @@ vi.mock("../commands/doctor-sandbox.js", () => ({
 vi.mock("../commands/doctor-bootstrap-size.js", () => ({
   noteBootstrapFileSize: () => obs.record("bootstrap-size-advice", undefined),
 }));
-// mock-isolation: record credential-advice selection without accessing real credentials.
-vi.mock("../gateway/github-public-api.js", () => ({
-  hasConfiguredGitHubApiCredential: () => obs.record("github-credential-advice", false),
+// mock-isolation: record declared plugin advice selection without loading operator plugins.
+vi.mock("./bundled-health-checks.js", () => ({
+  collectDeclaredPluginDoctorHealthChecks: () =>
+    obs.record("plugin-health-advice", { checks: [], findings: [] }),
 }));
 // mock-isolation: record advisory selection without reading or modifying real workspaces.
 vi.mock("../commands/doctor-workspace.js", () => ({
@@ -83,7 +84,7 @@ it.each(["standalone", "post-core"])(
       "doctor:db-bloat",
       "doctor:codex-bwrap",
       "doctor:workspace-suggestions",
-      "doctor:github-projects",
+      "doctor:plugin-health",
       "doctor:bootstrap-size",
     ]);
     const selected = resolveDoctorHealthContributions().filter((c) => ids.has(c.id));
@@ -109,7 +110,7 @@ it.each(["standalone", "post-core"])(
             "project-git",
             "project-git",
             "db-size-advice",
-            "github-credential-advice",
+            "plugin-health-advice",
             "bootstrap-size-advice",
             "workspace-suggestions",
           ]

@@ -1,0 +1,29 @@
+/* @vitest-environment jsdom */
+import { createSignal } from "solid-js";
+import { expect, it, vi } from "vitest";
+import { mountRepositorySolid as mountSolid } from "../../../ui/src/test-helpers/repository-ci.test-support.tsx";
+import { waitForSolid } from "../../../ui/src/test-helpers/solid-settle.ts";
+import { ChatCiAutomationView } from "./api.ts";
+
+it("retries with the current callback without replacing the error button", async () => {
+  const initialRetry = vi.fn();
+  const currentRetry = vi.fn();
+  const [retry, setRetry] = createSignal<() => void>(() => initialRetry);
+  const view = mountSolid(() => (
+    <ChatCiAutomationView
+      options={{ autoFix: false, autoMerge: false, autoArchive: false }}
+      pending={{}}
+      loading={false}
+      saving={false}
+      error="Unable to load automation"
+      onChange={() => {}}
+      onRetry={retry()}
+    />
+  ));
+  const button = view.getByRole("button", { name: "Try again" });
+  setRetry(() => currentRetry);
+  await waitForSolid(() => expect(view.getByRole("button", { name: "Try again" })).toBe(button));
+  button.click();
+  expect(currentRetry).toHaveBeenCalledOnce();
+  expect(initialRetry).not.toHaveBeenCalled();
+});

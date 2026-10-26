@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 // Install publication I/O fixtures before the registered action owner.
 // oxfmt-ignore
 import { createPublicationActionFixture as fixture } from "./github-publication-actions.test-support.js";
@@ -7,6 +8,7 @@ import { lookup as dnsLookup } from "node:dns/promises";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { updateGitHubToolIdentityConfig } from "../../extensions/github-repositories/tool-identity-config-api.js";
 import { createSandboxFsBridge } from "../agents/sandbox/fs-bridge.js";
 import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
 import { setRuntimeConfigSnapshot, writeConfigFile } from "../config/config.js";
@@ -27,7 +29,6 @@ import {
   commandResult,
   SESSION_KEY,
 } from "./github-publication.test-support.js";
-import { updateGitHubToolIdentityConfig } from "./github-tool-identity-config.js";
 import { createContext as createRequestContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "./server/ws-connection/connect-operator-access.js";
@@ -94,11 +95,21 @@ async function evidenceFixture(imported = false) {
     account: { accountId: 42, login: "roboclaw-bot", avatarUrl: null },
     env: { GH_TOKEN: "synthetic-evidence-token" },
   });
-  const config = { ...f.config, tools: { github: { profileId } } };
+  const config = {
+    ...f.config,
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: { ...readGitHubConfig(f.config), system: { profileId } },
+        },
+      },
+    },
+  };
   setRuntimeConfigSnapshot(config);
-  const actualIdentity = await vi.importActual<typeof import("../agents/github-tool-identity.js")>(
-    "../agents/github-tool-identity.js",
-  );
+  const actualIdentity = await vi.importActual<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >("../../extensions/github-repositories/tool-identity-api.js");
   mocks.matchesIdentity.mockImplementation(actualIdentity.matchesPreparedGitHubPublicationIdentity);
   const previous = mocks.runCommand.getMockImplementation()!;
   mocks.runCommand.mockImplementation(async (argv, options) =>
@@ -208,7 +219,7 @@ async function evidenceFixture(imported = false) {
       const next = await updateGitHubToolIdentityConfig({
         scope: "system",
         agentId: "main",
-        expectedIdentity: config.tools.github,
+        expectedIdentity: readGitHubConfig(config).system,
       });
       setRuntimeConfigSnapshot(next);
     },

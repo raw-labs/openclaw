@@ -1,3 +1,4 @@
+import { AGENT_EXEC_GIT_CONFIG_PARAMETERS } from "../infra/host-env-security.js";
 import type {
   ExecutionEnvironmentPreparationV1,
   PreparedExecutionEnvironment,
@@ -5,6 +6,7 @@ import type {
   SandboxExecutionEnvironmentPreparationV1,
 } from "../plugins/execution-environment-types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
+import { prepareExecutionEnvironmentExclusions } from "../secrets/runtime-execution-exclusions.js";
 import type { SecretExecutionEnvironmentExclusions } from "../secrets/runtime-shared.js";
 
 type SharedEnvironmentFacts = Pick<
@@ -24,12 +26,13 @@ function combine(
   values: readonly Contribution[],
   assertCurrent: () => void,
   exclusions?: SecretExecutionEnvironmentExclusions,
+  defaultGitParameters?: string,
 ): PreparedExecutionEnvironment {
   const credentialScrubEnv: Record<string, string> = {};
   const localIdentityEnv: Record<string, string> = {};
   const owners = new Map<string, string>();
   const excludedStoreNames = new Set(exclusions?.excludedStoreNames);
-  const gitParameters: string[] = [];
+  const gitParameters = defaultGitParameters ? [defaultGitParameters] : [];
   const wrappers: NonNullable<PreparedExecutionEnvironment["wrapLocalLaunch"]>[] = [];
   let hostExecutionRequired = false;
   for (const { owner, environment } of values) {
@@ -85,23 +88,27 @@ function preparationGuard(
   };
 }
 
-/** Compose optional plugin facts without transferring the native identity owner's decisions. */
-export function capturePreparedExecutionEnvironment<Native extends PreparedExecutionEnvironment>(
+/** Capture admitted plugin facts once; the selected runtime owns plugin loading. */
+export function capturePreparedExecutionEnvironment(
   input: ExecutionEnvironmentPreparationV1,
-  native: Native,
   registry: PluginRegistry | null | undefined,
   exclusions?: SecretExecutionEnvironmentExclusions,
-): Native & PreparedExecutionEnvironment & CurrentExecutionEnvironment {
+): PreparedExecutionEnvironment & CurrentExecutionEnvironment {
   const assertCurrent = preparationGuard(input, registry?.executionEnvironments ?? []);
   assertCurrent();
-  const prepared: Contribution[] = [{ owner: "native", environment: native }];
+  const prepared: Contribution[] = [];
   for (const { pluginId, provider } of registry?.executionEnvironments ?? []) {
     prepared.push({ owner: `${pluginId}:${provider.id}`, environment: provider.prepare(input) });
     assertCurrent();
   }
   return {
-    ...native,
-    ...combine(prepared, assertCurrent, exclusions),
+    ...combine(
+      prepared,
+      assertCurrent,
+      exclusions ??
+        prepareExecutionEnvironmentExclusions({ config: input.sourceConfig ?? input.config }),
+      AGENT_EXEC_GIT_CONFIG_PARAMETERS,
+    ),
     assertCurrent,
   };
 }
@@ -110,7 +117,6 @@ export function capturePreparedExecutionEnvironment<Native extends PreparedExecu
 export async function prepareSandboxExecutionEnvironment(
   input: SandboxExecutionEnvironmentPreparationV1,
   registry: PluginRegistry | null | undefined,
-  native?: PreparedSandboxExecutionEnvironment,
   exclusions?: SecretExecutionEnvironmentExclusions,
 ): Promise<(PreparedSandboxExecutionEnvironment & CurrentExecutionEnvironment) | undefined> {
   const providers = (registry?.executionEnvironments ?? []).filter(
@@ -119,9 +125,6 @@ export async function prepareSandboxExecutionEnvironment(
   const assertCurrent = preparationGuard(input, providers);
   assertCurrent();
   const prepared: Array<Contribution & { environment: PreparedSandboxExecutionEnvironment }> = [];
-  if (native) {
-    prepared.push({ owner: "native", environment: native });
-  }
   for (const { pluginId, provider } of providers) {
     const environment = await provider.prepareSandbox?.(input);
     assertCurrent();

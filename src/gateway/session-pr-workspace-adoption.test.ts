@@ -2,6 +2,7 @@ import "../config/sessions/session-entry-patch-delivery.test-support.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, assert, expect, it, vi } from "vitest";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
 import { makeUserMessage } from "../../test/helpers/user-message.js";
 import { getSession, waitForExecScope } from "../agents/bash-process-registry.js";
 import { createExecTool } from "../agents/bash-tools.exec-run.js";
@@ -39,9 +40,9 @@ import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { preparePullRequestSession } from "./github-pr-workspace-preparation.js";
 import * as baseRefresh from "./github-publication-base-refresh.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import { createGitHubPublicationCoordinator } from "./github-publication.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -540,6 +541,10 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
       provider,
       placements: createWorkerSessionPlacementStore({ database: openOpenClawStateDatabase() }),
       getCommittedRuntimeConfig: () => cfg,
+    });
+    await installPublicationRpcFixture(context, {
+      ...context.githubPublicationService,
+      inspectPullRequest: provider.inspectPullRequest,
     });
     const sandbox = createSandboxTestContext({
       overrides: {

@@ -1,17 +1,16 @@
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import type { ToolsEffectiveResult } from "../../api/types.ts";
 import {
   createGitHubIdentityForTest,
   githubIdentityViewFixture,
-} from "../../features/github-connections/github-identity.test-support.ts";
+} from "../../../../extensions/github-repositories/browser/github-identity.test-support.ts";
+import type { ToolsEffectiveResult } from "../../api/types.ts";
 import { captureI18nStateForTesting } from "../../i18n/lib/translate.test-support.ts";
 import { i18n } from "../../i18n/lib/translate.ts";
-import type { SolidBridgeElement } from "../../lib/solid-bridge.ts";
 import { installBrowserHistoryIsolation } from "../../test-helpers/browser-history.ts";
 import { mountSolid as mountConnected } from "../../test-helpers/mount-solid.ts";
 import { cleanupSolid } from "../../test-helpers/solid-cleanup.ts";
 import { mountSolid } from "../../test-helpers/solid-render.tsx";
-import { waitForSolid } from "../../test-helpers/solid-settle.ts";
+import { flush, waitForSolid } from "../../test-helpers/solid-settle.ts";
 import { createBaseParams } from "./panels-tools-skills.test-support.ts";
 import { AgentTools } from "./panels-tools-skills.tsx";
 
@@ -22,9 +21,11 @@ async function settleGitHubIdentity(container: HTMLElement) {
   if (!container.isConnected) {
     mountConnected(() => container);
   }
-  const bridge = container.querySelector<SolidBridgeElement<object>>("openclaw-github-identity");
+  const bridge = container.querySelector<HTMLElement>("openclaw-github-identity");
   assert(bridge, "Missing GitHub identity bridge");
-  await bridge.updateComplete;
+  flush();
+  await Promise.resolve();
+  flush();
 }
 
 const toolPreview: ToolsEffectiveResult = {

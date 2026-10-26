@@ -1,27 +1,56 @@
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { inspectPathPermissions } from "@openclaw/fs-safe/permissions";
+import { root as fsRoot } from "@openclaw/fs-safe/root";
+import { stringify as stringifyYaml } from "yaml";
 import type { WorkerHeartbeatResult } from "../../packages/gateway-protocol/src/schema/worker-admission.js";
-import { CLEARED_GITHUB_CREDENTIALS } from "../agents/github-host-runtime.js";
-import {
-  AGENT_GIT_CONFIG_PARAMETERS,
-  managedGitHubIdentityEnvironment,
-} from "../agents/github-tool-identity-env.js";
-import {
-  removeManagedGitHubProfile,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
-import type { PreparedGitHubToolEnvironment } from "../agents/github-tool-identity.types.js";
 import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
 import { executeGitCommand } from "../infra/git-exec.js";
+import { AGENT_EXEC_GIT_CONFIG_PARAMETERS as AGENT_GIT_CONFIG_PARAMETERS } from "../infra/host-env-security.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
+import type { PreparedExecutionEnvironment } from "../plugins/execution-environment-types.js";
+import { buildGitHubExecLaunchArgv } from "./github-exec-launch.js";
 import {
   parseWorkerGitHubLaunchBinding,
   type WorkerGitHubLaunchBinding,
 } from "./launch-descriptor.js";
+import { managedGitHubIdentityEnvironment } from "./worker-github-credentials.js";
 
 const log = createSubsystemLogger("worker/github");
+const CLEARED_GITHUB_CREDENTIALS = {
+  GH_TOKEN: "",
+  GH_ENTERPRISE_TOKEN: "",
+  GITHUB_TOKEN: "",
+  GITHUB_ENTERPRISE_TOKEN: "",
+};
+// This owner materializes the existing admitted worker credential wire payload;
+// it does not discover accounts, read plugin configuration, or publish Gateway profile events.
+async function removeManagedGitHubProfile(profileDir: string) {
+  await fs.rm(profileDir, { recursive: true, force: true });
+}
+async function writeManagedGitHubProfileFiles(
+  profileDir: string,
+  identity: { login: string; token: string },
+  options?: { assertCurrent: () => void },
+) {
+  await fs.mkdir(profileDir, { recursive: true, mode: 0o700 });
+  await fs.chmod(profileDir, 0o700);
+  const profile = await fsRoot(profileDir, { mode: 0o600, mkdir: false, durable: false });
+  await profile.write("config.yml", stringifyYaml({ version: "1" }));
+  await profile.write(
+    "hosts.yml",
+    stringifyYaml({
+      "github.com": {
+        user: identity.login,
+        oauth_token: identity.token,
+        users: { [identity.login]: { oauth_token: identity.token } },
+      },
+    }),
+    { assertBeforeMutation: options?.assertCurrent },
+  );
+}
 
 export function disposeWorkerGitHubEnvironment(stateDir: string, turnId: string) {
   return removeManagedGitHubProfile(
@@ -119,7 +148,8 @@ export async function prepareWorkerGitHubEnvironment(params: {
   cwd: string;
   signal?: AbortSignal;
 }): Promise<
-  | (PreparedGitHubToolEnvironment & {
+  | (PreparedExecutionEnvironment & {
+      managedLocalIdentity: true;
       refresh: (
         snapshot: NonNullable<WorkerHeartbeatResult["github"]>,
         assertCurrent: () => void,
@@ -196,6 +226,10 @@ export async function prepareWorkerGitHubEnvironment(params: {
         assertCurrent: assertActive,
       });
       assertActive();
+    },
+    wrapLocalLaunch(argv) {
+      signal?.throwIfAborted();
+      return buildGitHubExecLaunchArgv([...argv], profileDir);
     },
     managedLocalIdentity: true,
     excludedStoreNames: [],

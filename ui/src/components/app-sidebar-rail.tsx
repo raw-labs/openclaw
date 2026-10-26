@@ -24,6 +24,7 @@ import { projectOnlinePresenceViewers, presenceViewerLabel } from "../lib/presen
 import { elementRef } from "../lib/reactive/element-ref.ts";
 import { t } from "../lib/reactive/i18n.ts";
 import { nativeListener } from "../lib/solid-native-listener.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import {
   renderSidebarAgentCard,
   renderAppSidebarFooterBar,
@@ -283,11 +284,11 @@ function renderRailPin(
               when={tab()}
               fallback={
                 <Show when={plugin()} fallback={undefined}>
-                  <openclaw-plugin-contributions
-                    prop:kind={"navigation"}
-                    prop:navigationKey={entry.key}
-                    prop:navigationChildren={false}
-                    prop:navigationMenus={host.sidebarMenus}
+                  <PluginContributions
+                    kind={"navigation"}
+                    navigationKey={entry.key}
+                    navigationChildren={false}
+                    navigationMenus={host.sidebarMenus}
                   />
                 </Show>
               }

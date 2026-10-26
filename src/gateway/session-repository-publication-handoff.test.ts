@@ -4,6 +4,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
+import { prepareGitHubPublisher } from "../../extensions/github-repositories/publication-publisher-api.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
@@ -20,8 +22,6 @@ import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { executeGitHubPublication } from "./github-publication-executor.js";
 import { assertPublicationChangePermission } from "./github-publication-policy.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
-import { prepareGitHubPublisher } from "./github-publication-publisher.js";
 import { restoreGitHubPublicationRequester } from "./github-publication-requester.js";
 import {
   ensureGitHubPublicationStoreFixture as ensureGitHubPublicationStore,
@@ -39,6 +39,7 @@ import {
   prepareReceiptOwner,
 } from "./github-repository-publication-workspace.js";
 import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
+import { withRepositorySourceGatewayFixture } from "./worker-environments/repository-source.test-support.js";
 import { stageSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
@@ -54,8 +55,10 @@ vi.mock("../process/exec.js", async (original) => ({
   runCommandWithTimeout: mocked.timed,
 }));
 // mock-isolation: Publication handoff clones a local origin without GitHub credentials.
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../agents/github-tool-identity.js")>()),
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >()),
   prepareGitHubReadIdentity: async ({
     assertActive: assertCurrent = () => {},
   }: {
@@ -322,16 +325,21 @@ it.each([
           ),
       );
       const move = () =>
-        materializeSessionRepositoryWorkspaceOnGateway({
-          ...scope,
-          cfg,
-          sessionId,
-          assertCurrent: () => {
-            if (!currentOwner) {
-              throw new Error("move revoked");
-            }
-          },
-        });
+        withRepositorySourceGatewayFixture(
+          () => cfg,
+          (sources) =>
+            materializeSessionRepositoryWorkspaceOnGateway({
+              ...scope,
+              cfg,
+              sessionId,
+              getRepositorySources: () => sources,
+              assertCurrent: () => {
+                if (!currentOwner) {
+                  throw new Error("move revoked");
+                }
+              },
+            }),
+        );
       if (scenario === "unsettled" || scenario === "foreign head") {
         await expect(move()).rejects.toThrow(
           scenario === "unsettled" ? "awaiting a GitHub effect" : "differs from its recorded push",

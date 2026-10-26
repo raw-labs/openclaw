@@ -20,6 +20,7 @@ import { startNodeWorkspaceTransferTestServer } from "./node-workspace-transfer.
 import type { WorkerDispatchEnvironmentService } from "./placement-dispatch-failure.js";
 import { createWorkerPlacementReclaim } from "./placement-reclaim.js";
 import { placementTurnOwner } from "./placement-record.js";
+import { createLocalRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { createRepositoryWorkspaceMutationService } from "./repository-workspace-mutation.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import { readSessionRepositoryArtifacts } from "./session-repository-checkpoints.js";
@@ -115,10 +116,11 @@ export function useRepositoryWorkspaceResultFixture() {
     // Only pristine source bytes are shared; checkpoints and Git refs stay case-owned.
     await fs.cp(seed, origin, { recursive: true });
     const store = getSessionRepositoryWorkspaceStore();
+    const repositoryUrl = "https://repository-fixture.test/workspace-result.git";
     const repository = await store.create({
       agentId: sessionTarget.agentId,
       sessionKey: sessionTarget.sessionKey,
-      url: pathToFileURL(origin).href,
+      url: repositoryUrl,
       runSetupScript,
       assertCurrent: () => {},
     });
@@ -145,31 +147,44 @@ export function useRepositoryWorkspaceResultFixture() {
     });
     const ownerSignal = new AbortController().signal;
     const binding = { environmentId: ENVIRONMENT_ID, ownerEpoch: OWNER_EPOCH };
+    const workspaceActions = createNodeWorkerWorkspaceActions({
+      ...binding,
+      sessionId: SESSION_ID,
+      ownerSignal,
+      isOwnerCurrent: () => true,
+      workspaceTransfer: service,
+      runWorkspaceCommand: async (command) =>
+        await runtime.exec(
+          {
+            gatewayNamespace: "gateway-repository-results",
+            environmentId: ENVIRONMENT_ID,
+            sessionId: SESSION_ID,
+            generation: OWNER_EPOCH,
+            ...command,
+            argv: [...command.argv],
+          },
+          ownerSignal,
+          { url: server.gatewayUrl },
+        ),
+    });
     const tunnel: WorkerTunnelHandle = {
       ...binding,
       stop: vi.fn(),
-      ...createNodeWorkerWorkspaceActions({
-        ...binding,
-        sessionId: SESSION_ID,
-        ownerSignal,
-        isOwnerCurrent: () => true,
-        workspaceTransfer: service,
-        runWorkspaceCommand: async (command) =>
-          await runtime.exec(
-            {
-              gatewayNamespace: "gateway-repository-results",
-              environmentId: ENVIRONMENT_ID,
-              sessionId: SESSION_ID,
-              generation: OWNER_EPOCH,
-              ...command,
-              argv: [...command.argv],
-            },
-            ownerSignal,
-            { url: server.gatewayUrl },
-          ),
-      }),
+      ...workspaceActions,
+      syncWorkspace(request) {
+        // The host still admits an HTTPS source; only Git transport uses this private fixture.
+        return workspaceActions.syncWorkspace({
+          ...request,
+          source:
+            request.source.kind === "repository" && request.source.url === repositoryUrl
+              ? { ...request.source, url: pathToFileURL(origin).href }
+              : request.source,
+        });
+      },
     };
+    const sources = createLocalRepositorySourcesFixture();
     const synced = await syncSessionRepositoryWorkspace({
+      getRepositorySources: () => sources,
       ...sessionTarget,
       repository,
       tunnel,

@@ -6,11 +6,10 @@ import {
   type InstallationTarget,
 } from "../../infra/installation-target-context.js";
 import { applyPathPrepend, findPathKey, normalizePathPrepend } from "../../infra/path-prepend.js";
-import { getPluginRegistryForContext } from "../../plugins/runtime/gateway-request-scope.js";
+import type { PluginRegistry } from "../../plugins/registry-types.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { resolveSessionAgentIdStrict } from "../agent-scope.js";
 import { capturePreparedExecutionEnvironment } from "../execution-environment.js";
-import { prepareGitHubToolEnvironment } from "../github-tool-identity.js";
 import { resolveExecToolConfig } from "../lazy-exec-tool.js";
 
 const MAX_NATIVE_OPERATION_CWD_BYTES = 4096;
@@ -42,6 +41,7 @@ export function prepareAgentHarnessEnvironment(params: {
   sessionKey?: string;
   sandboxAgentId?: string;
   installationTarget?: InstallationTarget;
+  pluginRegistry?: PluginRegistry;
   assertCurrent: () => void;
   signal?: AbortSignal;
 }) {
@@ -63,22 +63,22 @@ export function prepareAgentHarnessEnvironment(params: {
     Object.freeze(localToolEnv);
   }
   const secrets = getActiveSecretsRuntimeConfigSnapshot();
-  const input = {
-    config: params.config ?? {},
-    sourceConfig: secrets?.sourceConfig,
-    agentId: resolveSessionAgentIdStrict(params),
-    assertCurrent: params.assertCurrent,
-    signal: params.signal,
-  };
   const identity = capturePreparedExecutionEnvironment(
-    input,
-    prepareGitHubToolEnvironment(input),
-    getPluginRegistryForContext(),
+    {
+      config: params.config ?? {},
+      sourceConfig: secrets?.sourceConfig,
+      agentId: resolveSessionAgentIdStrict(params),
+      assertCurrent: params.assertCurrent,
+      signal: params.signal,
+    },
+    params.pluginRegistry,
     secrets?.executionEnvironmentExclusions,
   );
   const localProcessEnv = installationTargetEnv(params.installationTarget);
   return Object.freeze({
     ...identity,
+    // Preserve the existing harness result field while plugins own identity selection.
+    managedLocalIdentity: Object.keys(identity.localIdentityEnv).length > 0,
     ...(localProcessEnv ? { localProcessEnv } : {}),
     ...(localToolEnv ? { localToolEnv, localToolPathPrepend } : {}),
   });

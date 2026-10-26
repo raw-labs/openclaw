@@ -13,15 +13,6 @@ import * as stateWorker from "../../state/openclaw-state-worker-store.js";
 import { placements, SESSION_ID, sessionTarget } from "./worker-turn-launcher.test-support.js";
 import { useRepositoryWorkspaceResultFixture } from "./workspace-result-repository.test-support.js";
 
-// mock-isolation: This fixture clones a local Git origin without GitHub credentials.
-vi.mock("./repository-github-identity.js", () => ({
-  prepareRepositoryGitHubIdentity: async (_agentId: string, assertCurrent: () => void) => ({
-    token: undefined,
-    assertSelected: assertCurrent,
-    start: async (start: () => Promise<unknown>) => await start(),
-  }),
-}));
-
 function readCommand(request: SqliteWorkerRequest) {
   const command: unknown = request.type === "execute" ? deserialize(request.input) : undefined;
   return isRecord(command) ? command : undefined;

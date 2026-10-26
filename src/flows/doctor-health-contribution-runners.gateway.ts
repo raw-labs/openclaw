@@ -108,16 +108,6 @@ export async function runWebFetchProxyHealth(ctx: DoctorHealthFlowContext): Prom
   await noteWebFetchProxyDiagnostic({ cfg: ctx.cfg, env: ctx.env ?? process.env });
 }
 
-export async function runGitHubProjectHealth(ctx: DoctorHealthFlowContext): Promise<void> {
-  const { hasConfiguredGitHubApiCredential } = await import("../gateway/github-public-api.js");
-  if (!hasConfiguredGitHubApiCredential(ctx.env ?? process.env, ctx.cfg)) {
-    note(
-      "Set gateway.controlUi.github.token with gateway.controlUi.github.host matching gateway.github.host for private project access. Public github.com can also use GH_TOKEN/GITHUB_TOKEN; otherwise search is public-only.",
-      "GitHub projects",
-    );
-  }
-}
-
 export async function runBrowserHealth(ctx: DoctorHealthFlowContext): Promise<void> {
   const { noteChromeMcpBrowserReadiness } = await import("../commands/doctor-browser.js");
   await noteChromeMcpBrowserReadiness(ctx.cfg);

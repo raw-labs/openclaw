@@ -512,7 +512,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
                 const Heading = dynamic(() => page().heading ?? (() => page().title));
                 return (
                   <Show
-                    when={page().details?.kind === "pull-request"}
+                    when={page().details?.kind === "contribution"}
                     fallback={
                       <div
                         ref={createTextOverflow(() => page().title)}
@@ -525,7 +525,7 @@ export function SidebarRegionView(props: SidebarRegionViewProps) {
                   >
                     <div
                       class="chat-mobile-host__title"
-                      data-details-route="pull-request"
+                      data-details-route="contribution"
                       title={page().title}
                     >
                       <Heading />

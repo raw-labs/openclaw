@@ -1,0 +1,280 @@
+@import "./repository-chat.css";
+@import "./chat-pull-request-presenters.css";
+.session-row-badge--pull-request[data-pull-request-state="open"] {
+  color: var(--ok);
+}
+.session-row-badge--pull-request[data-pull-request-state="merged"] {
+  color: var(--pr-merged);
+}
+.session-row-badge--pull-request[data-pull-request-state="closed"] {
+  color: var(--danger);
+}
+/* Hover actions replace trailing PR badges; leading state and second-line metadata stay visible. */
+.sidebar-recent-session--single-line:not(.sidebar-recent-session--child):is(:hover, :focus-within)
+  :is(
+    .session-row-badge--pull-request,
+    .session-row-badges:not(:has(.session-row-badge:not(.session-row-badge--pull-request)))
+  ) {
+  display: none;
+}
+
+.session-hovercard__pr-list {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.session-hovercard__branch-row,
+.session-hovercard__pr-row {
+  display: grid;
+  align-items: center;
+  column-gap: var(--space-2);
+  min-width: 0;
+  font-size: var(--control-ui-text-sm);
+  line-height: 1.4;
+  /* PR anchors retain the shared row reset. */
+  color: var(--muted);
+  text-decoration: none;
+}
+.session-hovercard__branch-row {
+  grid-template-columns: var(--session-hovercard-context-icon-size) minmax(0, 1fr) auto;
+}
+.session-hovercard__branch-action,
+.session-hovercard__branch-label {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-hovercard__branch-action,
+.session-hovercard__branch-label,
+.session-hovercard__pr-title {
+  min-width: 0;
+}
+.session-hovercard__pr-state-icon,
+.session-hovercard__branch-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--session-hovercard-context-icon-size);
+  height: var(--session-hovercard-context-icon-size);
+}
+.session-hovercard__pr-state-icon svg,
+.session-hovercard__branch-icon svg {
+  width: var(--session-hovercard-context-icon-size);
+  height: var(--session-hovercard-context-icon-size);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.session-hovercard__branch-action {
+  text-decoration: none;
+}
+.session-hovercard__pr-row {
+  margin-inline: calc(-1 * var(--space-2));
+  grid-template-columns: var(--session-hovercard-context-icon-size) minmax(0, 1fr);
+  align-items: start;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms ease;
+}
+.session-hovercard__pr-row:hover,
+.session-hovercard__pr-row:focus-visible {
+  background: var(--bg-hover);
+}
+.session-hovercard__pr-row[data-state="open"] {
+  --session-pr-state-color: var(--ok);
+}
+.session-hovercard__pr-row[data-state="draft"] {
+  --session-pr-state-color: var(--muted);
+}
+.session-hovercard__pr-row[data-state="merged"] {
+  --session-pr-state-color: var(--pr-merged);
+}
+.session-hovercard__pr-row[data-state="closed"] {
+  --session-pr-state-color: var(--danger);
+}
+.session-hovercard__pr-state-icon {
+  color: var(--session-pr-state-color, var(--muted));
+}
+.session-hovercard__pr-row .session-hovercard__diff {
+  gap: 6px;
+  margin-left: auto;
+  font-size: var(--control-ui-text-xs);
+}
+/* PRs need readable identities without widening ordinary session previews. */
+.session-progress-hovercard:has(.session-hovercard__pr-list) {
+  width: min(380px, calc(100vw - 24px));
+}
+.session-hovercard__pr-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block: var(--space-2) var(--space-1);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  font-weight: 600;
+}
+.session-hovercard__pr-count {
+  font-variant-numeric: tabular-nums;
+}
+.session-hovercard__pr-main {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.session-hovercard__pr-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 550;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.session-hovercard__pr-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px var(--space-2);
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+}
+.session-hovercard__pr-number {
+  overflow-wrap: anywhere;
+}
+.session-hovercard__pr-state {
+  color: var(--session-pr-state-color);
+}
+.session-hovercard__pr-source {
+  color: var(--muted);
+  font-size: var(--control-ui-text-xs);
+  overflow-wrap: anywhere;
+}
+.session-hovercard__pr-checks {
+  font-size: var(--control-ui-text-xs);
+  color: var(--muted);
+}
+.session-hovercard__pr-checks[data-checks="passing"] {
+  color: var(--ok);
+}
+.session-hovercard__pr-checks[data-checks="failing"] {
+  color: var(--danger);
+}
+.session-hovercard__pr-checks[data-checks="pending"] {
+  color: var(--warn);
+}
+
+.activity-feed__git {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--control-ui-text-xs);
+  padding: 0 var(--space-4) var(--space-3) calc(var(--space-4) + 28px + var(--space-3));
+}
+.activity-feed__git-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-feed__pr,
+.activity-feed__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--bg-elevated);
+  line-height: 1.4;
+}
+
+.activity-feed__pr:hover,
+.activity-feed__pr:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+
+.activity-feed__git-icon,
+.activity-feed__git-stale {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+}
+
+.activity-feed__git-icon svg,
+.activity-feed__git-stale svg {
+  width: 14px;
+  height: 14px;
+}
+
+.activity-feed__pr[data-state="open"] .activity-feed__git-icon,
+.activity-feed__additions {
+  color: var(--ok);
+}
+
+.activity-feed__pr[data-state="merged"] .activity-feed__git-icon {
+  color: var(--pr-merged);
+}
+
+.activity-feed__pr[data-state="closed"] .activity-feed__git-icon,
+.activity-feed__deletions {
+  color: var(--danger);
+}
+
+.activity-feed__diff {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.activity-feed__additions,
+.activity-feed__deletions {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-feed__git-stale {
+  color: var(--warn);
+}
+
+.chat-session-rail__prs,
+.chat-session-rail__pr {
+  display: flex;
+  align-items: center;
+}
+
+.chat-session-rail__prs {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+  padding: 0 14px;
+}
+
+.chat-session-rail__pr {
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.chat-session-rail__pr:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.chat-session-rail__pr-checks {
+  color: var(--muted);
+}

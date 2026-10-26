@@ -1,12 +1,9 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
-import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import { githubPublicationReceipts } from "../state/github-publication-receipts.js";
 import { createGitHubPublicationWorkerScope } from "../state/github-publication-worker.js";
-import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
-import { createNativeGitHubPublicationProvider } from "./github-publication-provider.js";
 import {
   listRepositoryGitHubPublicationsAsync,
   listSharedGitHubPublicationsAsync,
@@ -254,7 +251,7 @@ export function createGitHubPublicationRuntime(params: {
     }
   };
   return {
-    resolveGitAuthor(this: void, agentId: string) {
+    resolveGitAuthor(agentId: string) {
       return params.provider.resolveGitAuthor?.(agentId);
     },
     ready,
@@ -277,31 +274,4 @@ export function createGitHubPublicationRuntime(params: {
     reconcilePublications: (isStopping?: () => boolean) =>
       admit(() => reconcilePublications(isStopping)),
   };
-}
-
-export function createNativeGitHubPublicationRuntime(params: {
-  scheduler: GatewayScheduler;
-  placements: WorkerSessionPlacementStore;
-  getCommittedRuntimeConfig: () => OpenClawConfig;
-  warn: (message: string) => void;
-  loadSessionRuntime: () => Promise<RepositoryPublicationTranscriptRuntime>;
-}) {
-  const context = captureOpenClawStateWorkerContext();
-  const signal = params.scheduler.signal;
-  const provider = createNativeGitHubPublicationProvider({
-    signal,
-    assertCurrent: () => {
-      signal.throwIfAborted();
-      context.admission.assertCurrent();
-    },
-    getConfig: params.getCommittedRuntimeConfig,
-  });
-  return createGitHubPublicationRuntime({
-    ...params,
-    context,
-    signal,
-    provider,
-    formatReport: provider.formatReport,
-    loadSessionRuntime: params.loadSessionRuntime,
-  });
 }

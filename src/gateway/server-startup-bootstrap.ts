@@ -299,23 +299,6 @@ async function prepareGatewayServerBootstrapSelected(input: {
   );
   const cfgAtStart = authBootstrap.cfg;
   startupTrace.setConfig(cfgAtStart);
-  if (!opts.updateCanary) {
-    try {
-      const cleanup = await startupTrace.measure("agents.github-profile-cleanup", async () => {
-        const { cleanupRetiredManagedGitHubProfiles } =
-          await import("../agents/github-tool-profile-cleanup.js");
-        return await cleanupRetiredManagedGitHubProfiles({
-          config: cfgAtStart,
-          env: process.env,
-        });
-      });
-      for (const warning of cleanup.warnings) {
-        log.warn(`managed GitHub profile cleanup: ${warning}`);
-      }
-    } catch (error) {
-      log.warn(`managed GitHub profile cleanup failed: ${formatErrorMessage(error)}`);
-    }
-  }
   if (authBootstrap.generatedToken) {
     log.warn(formatRuntimeGatewayAuthTokenWarning());
   }

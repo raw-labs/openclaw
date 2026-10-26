@@ -1,3 +1,5 @@
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { expect, type Locator, type Page } from "playwright/test";
 import { it } from "vitest";
 import { installMockGateway, type MockGatewayControls } from "../test-helpers/control-ui-e2e.ts";
@@ -6,6 +8,27 @@ const suite = createControlUiE2eSuite({
   name: "Control UI GitHub connections",
   startServerBeforeBrowser: true,
 });
+import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
+import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
+let proofDir: string | undefined;
+async function captureSettings(page: Page, name: string, surface: Locator) {
+  if (process.env.OPENCLAW_CAPTURE_UI_PROOF !== "1") {
+    return;
+  }
+  proofDir ??= createControlUiE2eArtifactDir("github-settings");
+  await surface.scrollIntoViewIfNeeded();
+  const png = await takeControlUiViewportScreenshot(page, surface, [
+    surface.locator(".settings-section__heading").first(),
+  ]);
+  await writeFile(path.join(proofDir, name), png);
+}
+const nativePlugins = [
+  {
+    pluginId: "github-repositories",
+    rootDir: path.resolve(import.meta.dirname, "../../../extensions/github-repositories"),
+    source: "./browser/index.tsx",
+  },
+];
 const pageOptions = {
   locale: "en-US",
   serviceWorkers: "block" as const,
@@ -160,6 +183,7 @@ suite.define(() => {
         oauthScopes: [],
       } as const;
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         operatorScopes: adminScopes,
         methodResponses: {
           ...tools,
@@ -192,6 +216,7 @@ suite.define(() => {
       await expect(connection(profile, "system")).toContainText("No credentials");
       await expect(profile.getByText("No credentials", { exact: true }).first()).toBeVisible();
       await expect(profile.getByText(/OS account running the Gateway/)).toHaveCount(0);
+      await captureSettings(page, "profile-connections.png", profile);
       await profile.getByRole("button", { name: "View agent account", exact: true }).click();
       await expect(page).toHaveURL(/settings\/agents\/main\/tools$/);
       const section = page.locator(".settings-section").filter({
@@ -199,83 +224,137 @@ suite.define(() => {
       });
       await expect(section.getByText("No credentials", { exact: true }).first()).toBeVisible();
       await expect(section.getByText(/OS account running the Gateway/)).toHaveCount(0);
+      await captureSettings(page, "agent-tools-identity.png", section);
       await button(section, "Manage connections in Profile").click();
       await expect(page).toHaveURL(/settings\/profile#settings-profile-github-connections$/);
       await button(profile, "Change System GitHub").click();
       await visible(profile, "For the system");
       await expect(button(profile, "Continue with GitHub")).toBeVisible();
       await expect(button(profile, "Use a PAT instead")).toBeVisible();
+      await captureSettings(page, "profile-system-setup.png", profile);
       expect(await gateway.getRequests("tools.github.authorize.start")).toHaveLength(0);
       expect(await gateway.getRequests("tools.github.configure")).toHaveLength(0);
     });
   });
   it("preserves unidentified System management and keeps agent overrides advanced and distinct", async () => {
-    await suite.withPage(pageOptions, async ({ page }) => {
-      const gateway = await installMockGateway(page, {
-        operatorScopes: adminScopes,
-        methodResponses: {
-          "tools.github.status": {
-            cases: [
-              { match: { selectedScope: "system" }, response: systemStatus },
-              { match: { selectedScope: "agent" }, response: agentStatus },
-            ],
+    const configured = {
+      ...config,
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: {
+                profileId: "ghp_" + "a".repeat(32),
+                gitAuthor: { name: "Canonical System Author" },
+              },
+              agents: {
+                main: {
+                  profileId: "ghp_" + "b".repeat(32),
+                  gitAuthor: { name: "Canonical Agent Author" },
+                },
+              },
+            },
           },
-          ...tools,
         },
-      });
-      await page.goto(`${suite.server.baseUrl}settings/profile`);
-      const section = page.locator("#settings-profile-github-connections");
-      await visible(section, "Personal sign-in required");
-      await expect(connection(section, "system")).toContainText("@system-octocat");
-      await expect(connection(section, "system")).not.toContainText("@agent-octocat");
-      await expect(connection(section, "agent")).toContainText("@agent-octocat");
-      expect(await gateway.getRequests("users.github.status")).toHaveLength(0);
-      await button(section, "Change System GitHub").click();
-      await visible(section, "For the system");
-      const continueButton = button(section, "Continue with GitHub");
-      await expect(continueButton).not.toHaveClass(/primary/);
-      await beginAuthorization(gateway, section, "tools");
-      await expect(deviceLink(section)).toHaveAttribute("href", device.verificationUri);
-      const authorizationRow = section.locator(".settings-row", {
-        hasText: "GitHub authorization",
-      });
-      const authorizeLink = deviceLink(authorizationRow);
-      await expect(authorizeLink).toBeVisible();
-      await expect(authorizeLink).not.toHaveClass(/primary/);
-      await assertDeviceCodeCopy(page, device.userCode);
-      await gateway.waitForRequest("tools.github.authorize.poll");
-      const configReads = (await gateway.getRequests("config.get")).length;
-      await gateway.deferNext("tools.github.authorize.poll");
-      await gateway.resolveDeferred("tools.github.authorize.poll", {
-        status: "slow_down",
-        retryAfterMs: 1_000,
-      });
-      await visible(section, "GitHub asked us to wait longer…");
-      expect(await gateway.getRequests("config.get")).toHaveLength(configReads);
-      await gateway.waitForRequest("tools.github.authorize.poll", { after: 1 });
-      await gateway.resolveDeferred("tools.github.authorize.poll", {
-        status: "success",
-        githubStatus: systemStatus,
-      });
-      await expect(section.locator("[data-github-setup]")).toHaveCount(0);
-      await expect(button(section, "Continue with GitHub")).toHaveCount(0);
-      await button(section, "Change System GitHub").click();
-      await button(section, "Use a PAT instead").click();
-      await expect(section.getByLabel("Fine-grained PAT", { exact: true })).toBeVisible();
-      await expect(button(section, "Continue with GitHub")).toHaveCount(0);
-      await section.getByRole("button", { name: "View agent account", exact: true }).click();
-      await expect(page).toHaveURL(/settings\/agents\/main\/tools$/);
-      await visible(page, "@agent-octocat");
-      await expect(button(page, "Continue with GitHub")).not.toBeVisible();
-      await page.getByText("Advanced: agent GitHub override", { exact: true }).click();
-      await expect(button(page, "Continue with GitHub")).toBeVisible();
-      await button(page, "Manage connections in Profile").click();
-      await expect(page).toHaveURL(/settings\/profile#settings-profile-github-connections$/);
-    });
+      },
+    };
+    await suite.withPage(
+      {
+        ...pageOptions,
+        ...(process.env.OPENCLAW_CAPTURE_UI_PROOF === "1"
+          ? { recordVideo: { dir: suite.artifactDir, size: { width: 1280, height: 960 } } }
+          : {}),
+      },
+      async ({ page }) => {
+        const gateway = await installMockGateway(page, {
+          nativePlugins,
+          operatorScopes: adminScopes,
+          methodResponses: {
+            "tools.github.status": {
+              cases: [
+                { match: { selectedScope: "system" }, response: systemStatus },
+                { match: { selectedScope: "agent" }, response: agentStatus },
+              ],
+            },
+            ...tools,
+            "config.get": {
+              ...configResponse,
+              config: configured,
+              sourceConfig: configured,
+              runtimeConfig: configured,
+              raw: JSON.stringify(configured),
+            },
+          },
+        });
+        await page.goto(`${suite.server.baseUrl}settings/profile`);
+        const section = page.locator("#settings-profile-github-connections");
+        await visible(section, "Personal sign-in required");
+        await expect(connection(section, "system")).toContainText("@system-octocat");
+        await expect(connection(section, "system")).not.toContainText("@agent-octocat");
+        await expect(connection(section, "agent")).toContainText("@agent-octocat");
+        expect(await gateway.getRequests("users.github.status")).toHaveLength(0);
+        await button(section, "Change System GitHub").click();
+        await visible(section, "For the system");
+        const continueButton = button(section, "Continue with GitHub");
+        await expect(continueButton).not.toHaveClass(/primary/);
+        await beginAuthorization(gateway, section, "tools");
+        await expect(deviceLink(section)).toHaveAttribute("href", device.verificationUri);
+        const authorizationRow = section.locator(".settings-row", {
+          hasText: "GitHub authorization",
+        });
+        const authorizeLink = deviceLink(authorizationRow);
+        await expect(authorizeLink).toBeVisible();
+        await expect(authorizeLink).not.toHaveClass(/primary/);
+        await assertDeviceCodeCopy(page, device.userCode);
+        await gateway.waitForRequest("tools.github.authorize.poll");
+        const configReads = (await gateway.getRequests("config.get")).length;
+        await gateway.deferNext("tools.github.authorize.poll");
+        await gateway.resolveDeferred("tools.github.authorize.poll", {
+          status: "slow_down",
+          retryAfterMs: 1_000,
+        });
+        await visible(section, "GitHub asked us to wait longer…");
+        expect(await gateway.getRequests("config.get")).toHaveLength(configReads);
+        await gateway.waitForRequest("tools.github.authorize.poll", { after: 1 });
+        await gateway.resolveDeferred("tools.github.authorize.poll", {
+          status: "success",
+          githubStatus: systemStatus,
+        });
+        await expect(section.locator("[data-github-setup]")).toHaveCount(0);
+        await expect(button(section, "Continue with GitHub")).toHaveCount(0);
+        await button(section, "Change System GitHub").click();
+        await button(section, "Use a PAT instead").click();
+        await expect(section.getByLabel("Fine-grained PAT", { exact: true })).toBeVisible();
+        await expect(section.getByLabel("Author Name", { exact: true })).toHaveValue(
+          "Canonical System Author",
+        );
+        await captureSettings(page, "profile-canonical-author.png", section);
+        await expect(button(section, "Continue with GitHub")).toHaveCount(0);
+        await section.getByRole("button", { name: "View agent account", exact: true }).click();
+        await expect(page).toHaveURL(/settings\/agents\/main\/tools$/);
+        await visible(page, "@agent-octocat");
+        await expect(button(page, "Continue with GitHub")).not.toBeVisible();
+        await page.getByText("Advanced: agent GitHub override", { exact: true }).click();
+        await expect(button(page, "Continue with GitHub")).toBeVisible();
+        await button(page, "Use a PAT instead").click();
+        await expect(page.getByLabel("Author Name", { exact: true })).toHaveValue(
+          "Canonical Agent Author",
+        );
+        await captureSettings(
+          page,
+          "agent-canonical-author.png",
+          page
+            .locator(".settings-section")
+            .filter({ has: button(page, "Manage connections in Profile") }),
+        );
+        await button(page, "Manage connections in Profile").click();
+        await expect(page).toHaveURL(/settings\/profile#settings-profile-github-connections$/);
+      },
+    );
   });
   it("lets an identified reader connect, reconnect and disconnect only My GitHub", async () => {
     await suite.withPage(pageOptions, async ({ page }) => {
-      const gateway = await installMockGateway(page, readerOptions);
+      const gateway = await installMockGateway(page, { ...readerOptions, nativePlugins });
       await page.goto(`${suite.server.baseUrl}settings/profile`);
       const section = page.locator("#settings-profile-github-connections");
       await expect(connection(section, "system")).toContainText("@system-octocat");
@@ -342,6 +421,7 @@ suite.define(() => {
         },
       };
       const gateway = await installMockGateway(page, {
+        nativePlugins,
         operatorScopes: adminScopes,
         presenceUsers,
         methodResponses: {
@@ -374,7 +454,7 @@ suite.define(() => {
   });
   it("invalidates an old personal flow when the authenticated profile changes", async () => {
     await suite.withPage(pageOptions, async ({ page }) => {
-      const gateway = await installMockGateway(page, readerOptions);
+      const gateway = await installMockGateway(page, { ...readerOptions, nativePlugins });
       await page.goto(`${suite.server.baseUrl}settings/profile`);
       const section = page.locator("#settings-profile-github-connections");
       await button(section, "Connect My GitHub").click();
@@ -404,7 +484,9 @@ suite.define(() => {
         ],
       });
       await gateway.waitForRequest("users.github.status", { after: reads });
-      await gateway.waitForRequest("users.github.authorize.cancel");
+      // Identity replacement retires the old Settings authority. Its flow is
+      // withdrawn locally rather than cancelling through the replacement person.
+      expect(await gateway.getRequests("users.github.authorize.cancel")).toHaveLength(0);
       await expect(section.getByText(device.userCode, { exact: true })).toHaveCount(0);
       await expect(connection(section, "personal")).toContainText("Not connected");
     });

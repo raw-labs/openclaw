@@ -5,6 +5,8 @@ import path from "node:path";
 import { StatementSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeEach, expect, onTestFinished, vi } from "vitest";
+import { currentGitHubPublicationConfig } from "../../extensions/github-repositories/publication-availability-api.js";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
@@ -38,8 +40,6 @@ import {
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
 import { createPublicationCommandFixture } from "./github-publication-command.test-support.js";
-import { currentGitHubPublicationConfig } from "./github-publication-identity.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import {
   prepareGitHubPublicationRequesterV2,
   type GitHubPublicationRequesterV2,
@@ -71,8 +71,11 @@ const mocks = vi.hoisted(() => ({
 
 export const githubPublicationTestMocks = () => mocks;
 
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/github-tool-identity.js")>();
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-api.js")
+    >();
   return {
     ...actual,
     matchesPreparedGitHubPublicationIdentity: mocks.matchesIdentity,
@@ -81,8 +84,10 @@ vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
   };
 });
 
-vi.mock("./github-oauth-lifecycle.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./github-oauth-lifecycle.js")>()),
+vi.mock("../../extensions/github-repositories/account-runtime-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/account-runtime-api.js")
+  >()),
   requestCurrentGitHubOAuthRefresh: mocks.refreshIdentity,
   requestCurrentPersonalGitHubRefresh: mocks.refreshIdentity,
 }));
@@ -701,6 +706,9 @@ export function installGitHubPublicationTestHarness(
   });
 
   afterEach(async () => {
+    const { stopTestRegisteredPublicationProviders } =
+      await import("./github-account-service.test-support.js");
+    await stopTestRegisteredPublicationProviders();
     await closeOpenClawAgentDatabasesAsync();
     clearRuntimeConfigSnapshot();
     closeOpenClawAgentDatabasesForTest();

@@ -349,3 +349,19 @@ export function sanitizeSystemRunEnvOverrides(params?: {
   }
   return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
+
+/** Standalone local CLI authentication remains local; source-owner scrubs still win. */
+export function retainLocalCliAuthenticationEnvironment(
+  target: Record<string, string>,
+  source: NodeJS.ProcessEnv,
+): void {
+  for (const name of ["GH_TOKEN", "GITHUB_TOKEN"] as const) {
+    const value = source[name];
+    if (typeof value === "string") {
+      target[name] = value;
+    }
+  }
+}
+
+/** Agent commands do not start detached Git maintenance. */
+export const AGENT_EXEC_GIT_CONFIG_PARAMETERS = "'maintenance.auto=false' 'gc.auto=0'";

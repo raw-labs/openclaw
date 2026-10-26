@@ -22,8 +22,8 @@ import {
 import { updateRegistry } from "../agents/sandbox/registry.js";
 import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
 import { ensureEmptyWorktreeSource } from "../agents/worktrees/empty-source.js";
 import { deleteRegistryWorktree, insertRegistryWorktree } from "../agents/worktrees/registry.js";
@@ -32,6 +32,7 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { createRequesterPublicationFixture } from "./github-publication-requester.test-support.js";
 import { commandResult, githubPublicationTestMocks } from "./github-publication.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -269,13 +270,18 @@ export async function fixture(
       params: Record<string, unknown>,
     ) => {
       const respond = vi.fn();
+      const context = Object.assign(createRequestContext(), f.guestSource.context, {
+        workerSessionPlacementService: f.placements,
+      });
+      context.resolveGatewayContext = () => context;
+      await installPublicationRpcFixture(context, {
+        ...f.coordinator,
+        inspectPullRequest: f.coordinator.provider.inspectPullRequest,
+      });
       await handleGatewayRequest({
         req: { type: "req", id: randomUUID(), method, params },
         client: f.guestSource.client,
-        context: Object.assign(createRequestContext(), f.guestSource.context, {
-          githubPublicationService: f.coordinator,
-          workerSessionPlacementService: f.placements,
-        }),
+        context,
         isWebchatConnect: () => false,
         respond,
         signal,

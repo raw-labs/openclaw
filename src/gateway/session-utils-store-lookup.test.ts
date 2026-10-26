@@ -1,6 +1,7 @@
 import { existsSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { prepareCurrentGitHubPublicationOptionsIdentity } from "../../extensions/github-repositories/publication-availability-api.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import { loadCombinedSessionStoreForGatewayCore } from "../config/sessions/combined-store-gateway.native.js";
@@ -29,7 +30,7 @@ import {
 import { SQLITE_SESSION_WRITER_QUEUES } from "../state/openclaw-agent-write-admission-state.js";
 import { runOpenClawAgentWriteAdmission } from "../state/openclaw-agent-write-admission.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { prepareCurrentGitHubPublicationOptionsIdentity } from "./github-publication-availability.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { chatHistoryHandlers } from "./server-methods/chat-history-handler.js";
@@ -59,10 +60,10 @@ import type { GatewaySessionRow } from "./session-utils.types.js";
 
 afterEach(() => memorySessionActorOwners.reset());
 
-vi.mock("./github-publication-availability.js", async () => {
-  const actual = await vi.importActual<typeof import("./github-publication-availability.js")>(
-    "./github-publication-availability.js",
-  );
+vi.mock("../../extensions/github-repositories/publication-availability-api.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../extensions/github-repositories/publication-availability-api.js")
+  >("../../extensions/github-repositories/publication-availability-api.js");
   return {
     ...actual,
     prepareCurrentGitHubPublicationOptionsIdentity: vi.fn(async (agentId: string) => ({
@@ -284,8 +285,8 @@ describe("global session lookup ownership", () => {
       >(async () => null);
       const context = {
         getRuntimeConfig: () => cfg,
-        githubPublicationService: { latestShared },
       } as unknown as GatewayRequestContext;
+      await installPublicationRpcFixture(context, { latestShared });
       for (const agentId of ["research", "main", "research"]) {
         const respond = vi.fn<RespondFn>();
         await handleGatewayRequest({

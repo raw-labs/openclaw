@@ -4,6 +4,8 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import vm from "node:vm";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { createGitHubReadIdentity } from "../../../extensions/github-repositories/read-identity-api.js";
+import type { prepareGitHubReadIdentity } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
@@ -13,7 +15,6 @@ import {
   WORKER_EXECUTION_CONTEXT_PROTOCOL_FEATURE,
 } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import { createGitHubReadIdentity } from "../../agents/github-read-identity.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   areDiagnosticsEnabledForProcess,
@@ -43,7 +44,6 @@ import type { WorkerPlacementExecutionMode } from "./placement-record.js";
 import { createWorkerSessionPlacementStore } from "./placement-store.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
 import type { WorkerProjectPreparationIdentity } from "./preparation-identity.schema.js";
-import { prepareRepositoryGitHubIdentity } from "./repository-github-identity.js";
 import * as support from "./service.test-support.js";
 import {
   readSessionRepositoryArtifacts,
@@ -54,8 +54,22 @@ import { captureWorkspaceManifest } from "./workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./workspace-manifest.js";
 import { requireWorkspaceResultGit } from "./workspace-result-git.js";
 
+// The worker source explicitly requests allowAnonymous; mock that source-read overload.
+const prepareSourceIdentity = vi.hoisted(() =>
+  vi.fn<
+    (
+      params: Parameters<typeof prepareGitHubReadIdentity>[0] & { allowAnonymous: true },
+    ) => Promise<ReturnType<typeof createGitHubReadIdentity>>
+  >(),
+);
+
 // mock-isolation: Workspace startup supplies a synthetic identity without credential discovery.
-vi.mock("./repository-github-identity.js", () => ({ prepareRepositoryGitHubIdentity: vi.fn() }));
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: prepareSourceIdentity,
+}));
 
 vi.mock("../../config/config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/config.js")>()),
@@ -77,6 +91,8 @@ async function preparedHarness(
     executionMode?: WorkerPlacementExecutionMode;
     emptyWorkspace?: boolean;
     repository?: SessionRepositoryWorkspaceRecord & { baseCommit: string };
+    repositorySourceId?: string;
+    preparedRepositorySourceId?: string;
     recipe?: EnvironmentRecipe;
     lifecycleFailure?: boolean;
     boundWorkspace?: Pick<
@@ -97,7 +113,11 @@ async function preparedHarness(
     ...(options.repository
       ? {
           requiresNodeEnrollment: true,
-          resolveWorkspace: async () => ({ kind: "repository", repository: options.repository! }),
+          resolveWorkspace: async () => ({
+            kind: "repository",
+            repository: options.repository!,
+            repositorySourceId: options.repositorySourceId,
+          }),
         }
       : {}),
     isCurrentNodePlacement: (proof, requirement, mode) =>
@@ -131,6 +151,9 @@ async function preparedHarness(
         source: {
           kind: "repository",
           url: options.repository.url,
+          ...(options.preparedRepositorySourceId
+            ? { repositorySourceId: options.preparedRepositorySourceId }
+            : {}),
           repositoryId: "R_dispatch_fixture",
           owner: {
             agent: { agentId: REQUEST.agentId, provenance: null },
@@ -749,14 +772,35 @@ describe("prepared worker dispatch", () => {
     expect(harness.environments.destroy).toHaveBeenCalledWith(ready.environmentId);
     expect(harness.environments.schedulePreparedRefill).not.toHaveBeenCalled();
   });
-  it.each([true, false])(
-    "claims a repository-only reserve with setup %s and overlays its accepted checkpoint on the bound source",
-    async (runSetupScript) => {
+  it.each([
+    { sourceCase: "legacy unqualified source with setup", runSetupScript: true },
+    { sourceCase: "legacy unqualified source without setup", runSetupScript: false },
+    {
+      sourceCase: "automatically selected source",
+      runSetupScript: false,
+      preparedRepositorySourceId: "forge-a/repositories",
+    },
+    {
+      sourceCase: "matching explicit source",
+      runSetupScript: false,
+      repositorySourceId: "forge-a/repositories",
+      preparedRepositorySourceId: "forge-a/repositories",
+    },
+    {
+      sourceCase: "different explicit source",
+      runSetupScript: false,
+      repositorySourceId: "forge-b/repositories",
+      preparedRepositorySourceId: "forge-a/repositories",
+      rejectSource: true,
+    },
+  ])(
+    "keeps prepared repository dispatch bound to its $sourceCase and accepted checkpoint",
+    async ({ runSetupScript, repositorySourceId, preparedRepositorySourceId, rejectSource }) => {
       vi.stubEnv("OPENCLAW_STATE_DIR", support.testState.root);
       onTestFinished(() => {
         vi.unstubAllEnvs();
       });
-      vi.mocked(prepareRepositoryGitHubIdentity).mockResolvedValue(
+      prepareSourceIdentity.mockResolvedValue(
         createGitHubReadIdentity({
           token: undefined,
           selection: { source: "anonymous" },
@@ -825,6 +869,8 @@ describe("prepared worker dispatch", () => {
       };
       const { harness, store, ready, request } = await preparedHarness({
         repository: { ...accepted, baseCommit },
+        repositorySourceId,
+        preparedRepositorySourceId,
         boundWorkspace,
         ...(runSetupScript ? { recipe: lifecycleRecipe } : {}),
       });
@@ -860,7 +906,18 @@ describe("prepared worker dispatch", () => {
         return tunnel;
       });
 
-      const active = await harness.service.dispatch({ ...request, runSetupScript });
+      const dispatch = harness.service.dispatch({ ...request, runSetupScript });
+      if (rejectSource) {
+        await expect(dispatch).rejects.toThrow(
+          "Prepared repository does not match this session's source",
+        );
+        expect(harness.log).not.toContain("sync");
+        expect(harness.environments.destroy).toHaveBeenCalledWith(ready.environmentId);
+        expect(harness.environments.schedulePreparedRefill).not.toHaveBeenCalled();
+        expect(await repositoryStore.get(accepted.workspaceId)).toEqual(accepted);
+        return;
+      }
+      const active = await dispatch;
 
       expect(harness.environments.prepareProjectIntent).toHaveBeenCalledWith(request.profileId, {
         machineClass: undefined,
@@ -872,6 +929,7 @@ describe("prepared worker dispatch", () => {
           url: accepted.url,
           ref: accepted.requestedRef,
           baseCommit,
+          repositorySourceId,
         },
         runSetupScript,
         inherited: undefined,

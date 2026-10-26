@@ -1,4 +1,3 @@
-import { githubIdentityViewFixture } from "../../features/github-connections/github-identity.test-support.ts";
 import { createInitialCronState } from "../../lib/cron/index.ts";
 import type { AgentFiles } from "./panels-files.tsx";
 import type { Agents } from "./view.tsx";
@@ -143,8 +142,6 @@ export function createAgentViewTestProps(
       onDisableAll: () => false,
     },
     tools: {
-      onOpenGitHubConnections: () => undefined,
-      githubIdentity: githubIdentityViewFixture(),
       runtimeSessionKey: "main",
       runtimeSessionMatchesSelectedAgent: false,
       onProfileChange: () => undefined,

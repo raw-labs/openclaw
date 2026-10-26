@@ -858,20 +858,27 @@ Listings retain a session snapshot during discovery and recheck the contributing
 sessions before replying. Unrelated session creation and activity do not invalidate
 an in-flight listing; changed access to a contributing session still requires a retry.
 
-**Projects from GitHub.** Search the same picker or paste a GitHub HTTPS or `git@github.com` repository URL. For a remote destination, creation records that source and the runner fetches it during dispatch; no Gateway project clone is required. For Gateway execution, the picker clones into the Gateway-managed projects area. Recent repository sources retain their URL without inventing a local path. Public repository search and cloning work anonymously. Private remote checkout uses the effective shared `tools.github` identity; the discovery credential below only grants picker access. For affiliated and private repositories, prefer the explicit `gateway.controlUi.github.token` SecretRef so this service access has a clear runtime owner. Set `gateway.controlUi.github.host` to the selected Enterprise host; an omitted credential host means `github.com`. The shipped `GH_TOKEN` then `GITHUB_TOKEN` fallback applies only to `github.com`. A trusted host that sets `gateway.projects.nativeGitHubSearch: true` instead prepares the current native system GitHub identity for each search; this is intended for a protected `gh` wrapper or host login and retains the native identity's 60-second cache and rotation fences. Ambient `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` requires `GH_HOST` to match the selected Enterprise host; host-specific native login remains supported. When a Control UI SecretRef is explicit, its exact environment or store name is excluded from agent execution without clearing unrelated native GitHub CLI variables. Search caches GitHub response pages for 60 seconds, sharing affiliated repositories across queries for the same credential. Expired pages return with `stale: true` while one bounded background refresh per page runs, using ETags when GitHub supplies them. Every response rechecks the requesting connection and current GitHub identity; revocation or cancellation stops delivery. Each outbound request also rechecks the initiating requester’s authority. Refreshes belong to the Gateway and stop with its lifetime. Search requires `operator.read`, cloning requires `operator.write`, and deleting a Gateway-managed cloned checkout requires `operator.admin`. Clone deletion refuses while a live session or managed worktree still references the checkout. SecretRef ownership is not an OS-user security boundary; use a sandbox, dedicated host, or dedicated OS user when same-account processes are not trusted.
+**Projects from GitHub.** Enable the `github-repositories` plugin to admit its repository source. The picker uses its declared search method; disabling the independent reader plugin does not remove repositories. If a selected source is disabled, the draft keeps the repository and blocks submission until the source returns or you select another source or local folder. See [Repository sources](/plugins/sdk-repository-sources). Search the same picker or paste a GitHub HTTPS or `git@github.com` repository URL. For a remote destination, creation records that source and the runner fetches it during dispatch; no Gateway project clone is required. For Gateway execution, the picker clones into the Gateway-managed projects area. Recent repository sources retain their URL without inventing a local path. Public repository search and cloning work anonymously. Private remote checkout uses the effective shared `plugins.entries.github-repositories.config.system` identity; the discovery credential below only grants picker access. For affiliated and private repositories, prefer the explicit `plugins.entries.github-repositories.config.service.token` SecretRef so this service access has a clear runtime owner. Set `plugins.entries.github-repositories.config.service.host` to the selected Enterprise host; an omitted credential host means `github.com`. The shipped `GH_TOKEN` then `GITHUB_TOKEN` fallback applies only to `github.com`. A trusted host that sets `plugins.entries.github-repositories.config.repositorySearch.useNativeCredentials: true` instead prepares the current native system GitHub identity for each search; this is intended for a protected `gh` wrapper or host login and retains the native identity's 60-second cache and rotation fences. Ambient `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` requires `GH_HOST` to match the selected Enterprise host; host-specific native login remains supported. When a Control UI SecretRef is explicit, its exact environment or store name is excluded from agent execution without clearing unrelated native GitHub CLI variables. Search caches GitHub response pages for 60 seconds, sharing affiliated repositories across queries for the same credential. Expired pages return with `stale: true` while one bounded background refresh per page runs, using ETags when GitHub supplies them. Every response rechecks the requesting connection and current GitHub identity; revocation or cancellation stops delivery. Each outbound request also rechecks the initiating requester’s authority. Refreshes belong to the Gateway and stop with its lifetime. Search requires `operator.read`, cloning requires `operator.write`, and deleting a Gateway-managed cloned checkout requires `operator.admin`. Clone deletion refuses while a live session or managed worktree still references the checkout. SecretRef ownership is not an OS-user security boundary; use a sandbox, dedicated host, or dedicated OS user when same-account processes are not trusted.
 
-For a GitHub Enterprise deployment, configure `gateway.github.host` and `gateway.github.apiBaseUrl`. GitHub Enterprise Server uses `https://HOSTNAME/api/v3`; its GraphQL requests use `/api/graphql`. To preselect a repository on New Session, set `gateway.projects.defaultRepository.url` and optionally its `ref`. OpenClaw derives the repository identity from the URL and selects a worker profile through the existing `cloudWorkers.projectProfiles` mapping. The profile can use any configured provider, including Azure through the Crabbox plugin. The default is returned only to clients authorized for `sessions.create`, and applies only while the user has no saved project choice; selecting a folder or another project overrides it.
+For a GitHub Enterprise deployment, configure `plugins.entries.github-repositories.config.host` and `plugins.entries.github-repositories.config.apiBaseUrl`. GitHub Enterprise Server uses `https://HOSTNAME/api/v3`; its GraphQL requests use `/api/graphql`. To preselect a repository on New Session, set `gateway.projects.defaultRepository.url` and optionally its `ref`. OpenClaw derives the repository identity from the URL and selects a worker profile through the existing `cloudWorkers.projectProfiles` mapping. The profile can use any configured provider, including Azure through the Crabbox plugin. The default is returned only to clients authorized for `sessions.create`, and applies only while the user has no saved project choice; selecting a folder or another project overrides it.
 
 ```json5
 {
-  gateway: {
-    github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-    controlUi: {
-      github: {
-        host: "ghe.example.test",
-        token: { source: "store", provider: "default", id: "example-enterprise-service-token" },
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          host: "ghe.example.test",
+          apiBaseUrl: "https://ghe.example.test/api/v3",
+          service: {
+            host: "ghe.example.test",
+            token: { source: "store", provider: "default", id: "example-enterprise-service-token" },
+          },
+        },
       },
     },
+  },
+  gateway: {
     projects: {
       defaultRepository: { url: "https://ghe.example.test/acme/private-repo.git", ref: "main" },
     },
@@ -886,7 +893,7 @@ Use the Effort menu to choose Fast Mode before creating a session. New Session p
 
 Refreshing sessions after an initial `/think` command finishes updates chat's Effort setting.
 
-For agent GitHub CLI identity and Git author setup, see [`tools.github`](/gateway/config-tools#tools-github).
+For agent GitHub CLI identity and Git author setup, see [`plugins.entries.github-repositories.config.system`](/gateway/config-tools#tools-github).
 
 An expired Incognito link shows an expiration notice instead of an ordinary new conversation. **New Incognito session** opens a fresh private conversation and carries over unsent composer text and attachments within the current tab; it does not send them automatically. Previously submitted messages that were not sent remain on the expired conversation for copying or discarding, without a retry action.
 

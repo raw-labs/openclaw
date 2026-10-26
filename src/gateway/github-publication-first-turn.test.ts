@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { prepareSystemAgentRunAdmission } from "../agents/admitted-run-context.js";
 import { withPreparedEmbeddedGatewayTools } from "../agents/embedded-agent-runner/run/attempt-gateway-tools.js";
-import { createOpenClawTools } from "../agents/openclaw-tools.js";
+import { resolveGitHubPluginToolsFixture } from "../agents/github-plugin-tools.test-support.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -62,7 +62,12 @@ it.each([
   };
   const tools = () =>
     withPreparedEmbeddedGatewayTools(attempt, async () =>
-      createOpenClawTools({ githubPublicationAvailable: attempt.githubPublicationAvailable })
+      resolveGitHubPluginToolsFixture({
+        options: {
+          runSessionKey: attempt.sessionKey,
+          githubPublicationAvailable: attempt.githubPublicationAvailable,
+        },
+      })
         .map((tool) => tool.name)
         .filter((name) => name.startsWith("github_")),
     );

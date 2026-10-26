@@ -101,8 +101,6 @@ export type SidebarPanelProps = {
   embedSandboxMode?: EmbedSandboxMode;
   allowExternalEmbedUrls?: boolean;
   textReferences?: MarkdownRenderOptions["textReferences"];
-  githubRepo?: MarkdownRenderOptions["githubRepo"];
-  githubRepositories?: MarkdownRenderOptions["githubRepositories"];
   embedded?: boolean;
   attachmentRuntime: AttachmentSidebarRuntime;
   attachmentDownload?: { pending: boolean; error: string | null; onDownload: () => void };
@@ -534,9 +532,7 @@ export function SidebarPanel(props: SidebarPanelProps) {
                           content: toSanitizedMarkdownHtml(content().content, {
                             codeBlockInteraction: "interactive",
                             fileLinks: true,
-                            githubRepo: props.githubRepo ?? null,
                             textReferences: props.textReferences,
-                            githubRepositories: props.githubRepositories,
                             interactiveImages: props.onOpenImage !== undefined,
                             sessionLinks: true,
                           }),

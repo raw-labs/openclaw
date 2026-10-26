@@ -1,11 +1,11 @@
 import path from "node:path";
 import type { CDPSession, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { waitForLayoutSettled } from "../pages/chat/chat-layout.browser.test-support.ts";
 import { CHAT_TRANSCRIPT_END_THRESHOLD_PX } from "../pages/chat/scroll.ts";
-import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -239,7 +239,7 @@ async function verifyFooter(page: Page, width: number, height: number, touch: bo
   if (touch) {
     await pullRequest.tap();
     await page.getByRole("button", { name: "Checks", exact: true }).tap();
-    menu = page.locator('.chat-mobile-details-page[data-details-page="pull-request-checks"]');
+    menu = page.locator('[data-repository-page="checks"]:not([hidden])');
   } else {
     menu = await openDesktopPullRequestPage(pullRequest, "checks", "keyboard");
   }
@@ -248,7 +248,7 @@ async function verifyFooter(page: Page, width: number, height: number, touch: bo
   await waitForLayoutSettled(
     page,
     touch
-      ? '.chat-mobile-host, .chat-mobile-details-page[data-details-page="pull-request-checks"]'
+      ? '.chat-mobile-host, [data-repository-page="checks"]:not([hidden])'
       : ".chat-details, .chat-pr-menu",
   );
   const menuBounds = (await menu.boundingBox())!;
@@ -269,7 +269,7 @@ async function verifyFooter(page: Page, width: number, height: number, touch: bo
       .getByRole("button", { name: "Back", exact: true })
       .tap();
     await page.getByRole("button", { name: "CI monitoring", exact: true }).tap();
-    menu = page.locator('.chat-mobile-details-page[data-details-page="pull-request-monitoring"]');
+    menu = page.locator('[data-repository-page="monitoring"]:not([hidden])');
   } else {
     menu = await openDesktopPullRequestPage(pullRequest, "monitoring", "keyboard");
   }

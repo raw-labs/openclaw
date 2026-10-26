@@ -314,7 +314,9 @@ it.each(["changed", "removed"])(
         expiresAtMs: Number.MAX_SAFE_INTEGER,
       });
       presence.setRepository({ ...repository, source: { ...repository.source, url } });
-      fixture.config.gateway = { github: { host: new URL(url).hostname } };
+      fixture.config.plugins = {
+        entries: { "github-repositories": { config: { host: new URL(url).hostname } } },
+      };
       setRuntimeConfigSnapshot(fixture.config);
     } else {
       presence.disableSource();

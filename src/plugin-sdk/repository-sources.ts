@@ -44,15 +44,15 @@ export function createManagedProjectCheckoutV1(source: ManagedProjectSourceV1) {
     }
     const config = context.getRuntimeConfig();
     const assertCurrent = () => {
-      if (
-        !hasCurrentPluginInstanceAuthority(instance.pluginId) ||
-        resolveContext?.() !== context ||
-        context.getRuntimeConfig() !== config
-      ) {
+      if (!hasCurrentPluginInstanceAuthority(instance.pluginId) || resolveContext?.() !== context) {
         throw new Error("Managed repository checkout owner changed; retry preparation.");
       }
       options.signal?.throwIfAborted();
+      // Report the caller's current policy refusal before a generic config-reload rejection.
       options.assertCurrent?.();
+      if (context.getRuntimeConfig() !== config) {
+        throw new Error("Managed repository checkout owner changed; retry preparation.");
+      }
     };
     assertCurrent();
     return {

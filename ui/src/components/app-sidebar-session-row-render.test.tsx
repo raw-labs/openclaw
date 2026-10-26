@@ -18,6 +18,7 @@ import "../test-helpers/app-sidebar-suite.ts";
 import { domProbe } from "../test-helpers/dom-probe.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
 import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { renderAppSidebarOnline } from "./app-sidebar-online.tsx";
 import { renderSidebarAgentCard } from "./app-sidebar-render.tsx";
@@ -95,6 +96,7 @@ function mountRow(
   const [current, setCurrent] = createSignal(session);
   mountSolid(() => <RecentSession host={fixture.host} session={current()} {...options} />, {
     container: fixture.container,
+    wrapper: createSolidApplicationContextProvider(fixture.context).wrapper,
   });
   return { ...fixture, session, current, setCurrent };
 }
@@ -133,7 +135,10 @@ function mountObservedHost(
   view: (host: AppSidebarOwner) => JSX.Element,
 ) {
   const observed = observeHost(host);
-  mountSolid(() => view(observed.host), { container });
+  mountSolid(() => view(observed.host), {
+    container,
+    wrapper: createSolidApplicationContextProvider(host.context).wrapper,
+  });
   return observed.update;
 }
 
@@ -410,7 +415,10 @@ it("materializes the archive hint on hover without changing the action name", ()
   onTestFinished(installTitleTooltips(document));
   const { host, container, dom } = createHost();
   const session = projectSidebarSession({ key: "agent:main:thread", label: "Research" });
-  mountSolid(() => <RecentSession host={host} session={session} />, { container });
+  mountSolid(() => <RecentSession host={host} session={session} />, {
+    container,
+    wrapper: createSolidApplicationContextProvider(host.context).wrapper,
+  });
   const archive = dom.query<HTMLButtonElement>("[data-sidebar-session-archive]")!;
   const name = archive.getAttribute("aria-label");
   const hint = archive.title;
@@ -548,7 +556,10 @@ it.each([false, true])(
       observed.track();
       return session;
     };
-    mountSolid(() => <RecentSession host={observed.host} session={current()} />, { container });
+    mountSolid(() => <RecentSession host={observed.host} session={current()} />, {
+      container,
+      wrapper: createSolidApplicationContextProvider(host.context).wrapper,
+    });
     const update = observed.update;
     update();
     const row = dom.query(".sidebar-recent-session")!;
@@ -598,7 +609,10 @@ it("updates a pinned session's resolved avatar without replacing its row", () =>
     const label = avatar();
     return <span data-pinned-avatar>{label}</span>;
   };
-  mountSolid(() => <RecentSession host={host} session={session} icon={icon()} />, { container });
+  mountSolid(() => <RecentSession host={host} session={session} icon={icon()} />, {
+    container,
+    wrapper: createSolidApplicationContextProvider(host.context).wrapper,
+  });
   const row = dom.query(".sidebar-recent-session");
   expect(dom.text("[data-pinned-avatar]")).toBe("Loading avatar");
 

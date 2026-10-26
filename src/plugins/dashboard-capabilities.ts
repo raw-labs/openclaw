@@ -8,7 +8,6 @@ import {
   CORE_BOARD_HOST_CAPABILITY_IDS,
   LEGACY_BOARD_DATA_BINDING_IDS,
 } from "../boards/board-host-capability-ids.js";
-import { GITHUB_ACTIONS_AUTHOR_GUIDANCE } from "../boards/github-actions-capability.js";
 import { getPluginInstance } from "./plugin-instance-scope.js";
 import type {
   PluginDashboardActionVerbRegistration,
@@ -189,7 +188,7 @@ export function registerPluginDashboardCapabilities(params: {
 /** Describe only validated, active registrations, with whole entries under one prompt budget. */
 export function describeDashboardCapabilities(registry: PluginRegistry | null | undefined): string {
   const limit = 1050;
-  let text = `${GITHUB_ACTIONS_AUTHOR_GUIDANCE} Other core reads (grant the binding ID): ${CORE_BOARD_DATA_BINDING_IDS.join(", ")}.`;
+  let text = `Core reads (grant the binding ID): ${CORE_BOARD_DATA_BINDING_IDS.join(", ")}.`;
   const entries = [
     ...[...(registry?.dashboardDataBindings.values() ?? [])].map((entry) => ({
       id: entry.capabilityId,

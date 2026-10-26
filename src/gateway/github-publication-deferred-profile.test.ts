@@ -95,7 +95,7 @@ it.each(["own", "foreign"] as const)(
       "sessions.github.publish",
       params,
       {
-        context: Object.assign(f.guestSource.context, { githubPublicationService: f.coordinator }),
+        context: f.guestSource.context,
         client,
       },
       params.idempotencyKey,

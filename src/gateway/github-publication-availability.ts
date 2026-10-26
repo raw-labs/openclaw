@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import { isSupportedGitHubOrigin } from "../../extensions/github-repositories/publication-availability-api.js";
 import { SessionWorktreeSourceChangedError } from "../agents/worktrees/errors.js";
 import {
   captureWorktreeRegistryReadGuard,
@@ -28,7 +29,6 @@ import {
   RepositoryPublicationWorkspaceChangedError,
 } from "./github-publication-errors.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
-import { isSupportedGitHubOrigin } from "./github-publication-identity.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
@@ -650,11 +650,3 @@ export function readLocalGitHubPublicationWorktreeOwner(row: GitHubPublicationEx
     branch: row.branch,
   });
 }
-
-export {
-  currentGitHubPublicationConfig,
-  prepareCurrentGitHubPublicationIdentity,
-  prepareCurrentGitHubPublicationOptionsIdentity,
-  matchesCurrentGitHubPublicationIdentity,
-  assertExpectedSharedGitHubPublisher,
-} from "./github-publication-identity.js";

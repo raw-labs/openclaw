@@ -4,25 +4,17 @@ import {
   collectNestedErrorCandidates,
   extractErrorCode,
 } from "@openclaw/normalization-core/error-coercion";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import { slugifyWorktreeTitle } from "../agents/worktrees/name.js";
 import { cloneEnvWithPlatformSemantics } from "../config/config-env-vars.js";
 import { resolveStateDir } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
-import type { GitOperationStarter } from "../infra/git-network-retry.js";
 import type { OpenClawStateDatabaseOptions } from "../state/openclaw-state-db.js";
 import { withOpenClawStateLease } from "../state/openclaw-state-lease.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import type { ManagedProjectSourceV1 } from "./managed-project-source.js";
 import { resolveProjectDirectory, withProjectCheckoutLifecycle } from "./project-checkout.js";
-import {
-  cloneProjectCheckout,
-  ensureProjectCheckoutCommit,
-  ProjectCloneError,
-  refreshProjectCheckout,
-} from "./project-clone-runtime.js";
-import { parseProjectGitUrl } from "./project-git-url.js";
+import { ProjectCloneError } from "./project-clone-contract.js";
 import {
   prepareProjectRegistration,
   registerPreparedProjectRegistry,
@@ -37,14 +29,10 @@ async function existingCanonicalProject(
   cfg: OpenClawConfig,
   canonicalUrl: string,
   options: OpenClawStateDatabaseOptions,
-  source?: ManagedProjectSourceV1,
+  source: ManagedProjectSourceV1,
 ): Promise<ProjectRegistryRecord | undefined> {
   return (await listProjectRegistry(cfg, options)).find((project) => {
-    const origin = project.originUrl
-      ? source
-        ? source.resolveUrl(project.originUrl)
-        : parseProjectGitUrl(project.originUrl, resolveConfiguredGitHubHost(cfg))
-      : null;
+    const origin = project.originUrl ? source.resolveUrl(project.originUrl) : null;
     return origin?.url === canonicalUrl;
   });
 }
@@ -55,23 +43,15 @@ export async function materializeProjectClone(
   options: Pick<OpenClawStateDatabaseOptions, "path" | "env"> & {
     signal?: AbortSignal;
     timeoutMs?: number;
-    token?: string;
     assertCurrent?: () => void;
-    startRun?: GitOperationStarter;
-  } = {},
-  source?: ManagedProjectSourceV1,
+  },
+  source: ManagedProjectSourceV1,
 ): Promise<ProjectRegistryRecord> {
   const { cfg, gitUrl, name, requiredCommit } = input;
-  const { signal, timeoutMs, token, assertCurrent, startRun } = options;
-  const parsed = source
-    ? source.resolveUrl(gitUrl)
-    : parseProjectGitUrl(gitUrl, resolveConfiguredGitHubHost(cfg));
+  const { signal, timeoutMs, assertCurrent } = options;
+  const parsed = source.resolveUrl(gitUrl);
   if (!parsed) {
-    throw new ProjectCloneError(
-      "invalid_url",
-      source?.invalidUrlMessage ??
-        "Use a GitHub HTTPS or git@github.com repository URL. Local paths and file URLs are not accepted.",
-    );
+    throw new ProjectCloneError("invalid_url", source.invalidUrlMessage);
   }
   const env = cloneEnvWithPlatformSemantics(options.env ?? process.env);
   const context = captureOpenClawStateWorkerContext({ path: options.path, env });
@@ -117,14 +97,12 @@ export async function materializeProjectClone(
               return undefined;
             }
             if (requiredCommit) {
-              await (source?.ensureCommit ?? ensureProjectCheckoutCommit)(
+              await source.ensureCommit(
                 { url: parsed.url, target: current.repoRoot, commit: requiredCommit },
                 {
                   env,
                   signal: checkoutLease.signal,
                   timeoutMs,
-                  token,
-                  startRun,
                   assertCurrent: () => {
                     assertCloneCurrent();
                     checkoutLease.assertOwned();
@@ -143,15 +121,13 @@ export async function materializeProjectClone(
       const displayName = name?.trim() || parsed.name;
       const directoryName = slugifyWorktreeTitle(displayName) ?? "project";
       const target = path.join(resolveStateDir(env), "projects", fingerprint, directoryName);
-      await (source?.clone ?? cloneProjectCheckout)(
+      await source.clone(
         { url: parsed.url, target, requiredCommit },
         {
           env,
           signal: lease.signal,
           timeoutMs,
-          token,
           assertCurrent: assertCloneCurrent,
-          startRun,
         },
       );
       lease.assertOwned();
@@ -209,11 +185,9 @@ export async function refreshProjectClone(
   options: Pick<OpenClawStateDatabaseOptions, "path" | "env"> & {
     signal?: AbortSignal;
     timeoutMs?: number;
-    token?: string;
     assertCurrent?: () => void;
-    startRun?: GitOperationStarter;
-  } = {},
-  source?: ManagedProjectSourceV1,
+  },
+  source: ManagedProjectSourceV1,
 ): Promise<void> {
   if (project.source !== "cloned") {
     return;
@@ -224,7 +198,7 @@ export async function refreshProjectClone(
     source: project.source,
     originUrl: project.originUrl,
   };
-  const { signal, timeoutMs, token, assertCurrent, startRun } = options;
+  const { signal, timeoutMs, assertCurrent } = options;
   const env = cloneEnvWithPlatformSemantics(options.env ?? process.env);
   const context = captureOpenClawStateWorkerContext({ path: options.path, env });
   await withProjectCheckoutLifecycle(
@@ -261,15 +235,13 @@ export async function refreshProjectClone(
         );
       }
       // The registry owns source identity; origin can be changed inside the shared checkout.
-      await (source?.refresh ?? refreshProjectCheckout)(
+      await source.refresh(
         { target: current.repoRoot, url: originUrl },
         {
           env,
           signal: lease.signal,
           timeoutMs,
-          token,
           assertCurrent: assertRefreshCurrent,
-          startRun,
         },
       );
       assertRefreshCurrent();

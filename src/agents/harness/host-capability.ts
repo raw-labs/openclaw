@@ -256,6 +256,9 @@ export function createAgentHarnessHostCapabilities(params: {
     sessionKey: attempt.sessionKey,
     sandboxAgentId: attempt.sandboxAgentId,
     installationTarget,
+    pluginRegistry:
+      attempt.preparedModelRuntime?.pluginRegistry ??
+      getPluginRuntimeGatewayRequestScope()?.pluginRegistry,
     assertCurrent: assertActive,
     signal: bindAbortSignal(attempt.abortSignal),
   });

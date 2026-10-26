@@ -3,7 +3,8 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
-import { expect, it, vi } from "vitest";
+import { expect, it, vi, type TestContext } from "vitest";
+import * as projectClones from "../../../extensions/github-repositories/project-clone-api.js";
 import {
   awaitGateBeforeSettlement,
   createDeferred,
@@ -11,7 +12,7 @@ import {
 } from "../../../test/helpers/promise.js";
 import { runQaGatewayFixture } from "../../../test/helpers/qa-gateway-cleanup.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
-import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
+import { readRuntimeConfig, setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import {
   loadSessionEntry,
   loadTranscriptEvents,
@@ -26,7 +27,6 @@ import {
 import * as operationAdmission from "../../infra/sqlite-worker-operation-admission.js";
 import { NodeWorkerWorkspaceRuntime } from "../../node-host/node-worker-workspace.js";
 import type { WorkerProvider } from "../../plugins/types.js";
-import * as projectClones from "../../projects/project-clone.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { withOpenClawStateLease } from "../../state/openclaw-state-lease.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
@@ -37,6 +37,7 @@ import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
 import { reserveTestPortListener } from "../../test-utils/port-claims.js";
 import { parseNodeWorkerEnvironmentStopInput } from "../../worker/node-supervisor-protocol.js";
 import { parseNodeWorkerWorkspaceExecInput } from "../../worker/node-workspace-protocol.js";
+import type { RepositorySources } from "../repository-sources.js";
 import { createGatewayWorkerPlacementRuntime } from "../server-worker-placement-startup.js";
 import * as materialization from "../session-repository-materialization.js";
 import { hashWorkerCredential } from "./credential.js";
@@ -52,6 +53,7 @@ import { placementTurnOwner } from "./placement-record.js";
 import { createWorkerSessionPlacementStore } from "./placement-store.js";
 import { placementSource, placementTransition } from "./placement-suite.test-support.js";
 import { createWorkerSessionPlacementGate } from "./placement-worker-gate.js";
+import { withRepositorySourceGatewayFixture } from "./repository-source.test-support.js";
 import { deriveEnvironmentIntent } from "./service-contract.js";
 import { createWorkerEnvironmentService } from "./service.js";
 import { stageSessionRepositoryCheckpoint } from "./session-repository-checkpoints.js";
@@ -116,7 +118,11 @@ const authorityCases = [
     modes: ["failed-allowed", "failed-policy-transaction", "failed-policy-commit"],
   },
 ] as const;
-it.for(authorityCases)("enforces $contract", async ({ modes }, { signal }) => {
+async function runAuthorityCase(
+  { modes }: (typeof authorityCases)[number],
+  { signal }: Pick<TestContext, "signal">,
+  repositorySources: RepositorySources,
+) {
   await withOpenClawTestState(
     {
       label: "destination-authority",
@@ -314,6 +320,7 @@ process.stdin.pipe(child.stdin);
                 },
               };
               const environments = createWorkerEnvironmentService({
+                getRepositorySources: () => repositorySources,
                 scheduler,
                 store,
                 getConfig: () => config,
@@ -335,6 +342,7 @@ process.stdin.pipe(child.stdin);
                 node: await adapter.getCurrentNode(deviceId),
               }));
               const runtime = createGatewayWorkerPlacementRuntime({
+                getRepositorySources: () => repositorySources,
                 initialPlacements: await placements.listAsync(),
                 scheduler,
                 environments,
@@ -632,7 +640,7 @@ process.stdin.pipe(child.stdin);
                   });
                   await environments.destroy(active.environmentId);
                   const observedMaterialization = vi
-                    .spyOn(materialization, "materializeSessionRepositoryWorkspaceOnGateway")
+                    .spyOn(materialization, "prepareSessionRepositoryGatewayMove")
                     .mockClear();
                   const entered = createDeferred();
                   const release = createDeferred();
@@ -683,7 +691,7 @@ process.stdin.pipe(child.stdin);
                   }
                   if (mode !== "allowed") {
                     const currentCall = observedMaterialization.mock.calls.findIndex(
-                      ([params]) => params.sessionId === identity.sessionId,
+                      ([, target]) => target.sessionId === identity.sessionId,
                     );
                     expect(currentCall).toBeGreaterThanOrEqual(0);
                     await expect(
@@ -748,4 +756,10 @@ process.stdin.pipe(child.stdin);
       );
     },
   );
-});
+}
+
+it.for(authorityCases)("enforces $contract", async (scenario, context) =>
+  withRepositorySourceGatewayFixture(readRuntimeConfig, (sources) =>
+    runAuthorityCase(scenario, context, sources),
+  ),
+);

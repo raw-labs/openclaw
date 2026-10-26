@@ -19,7 +19,6 @@ import type {
   CatalogSessionMenuRequest,
   SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
-import type { SessionPullRequestIndicators } from "./app-sidebar-session-pr-indicators.ts";
 import type {
   SidebarSessionProjection,
   SidebarVisibleSections,
@@ -124,7 +123,6 @@ export interface SessionListHost {
     routeId: NavigationRouteId,
     options?: ApplicationNavigationOptions,
   ) => void;
-  readonly sessionPullRequests: Pick<SessionPullRequestIndicators, "summary" | "count">;
   mainSessionRow(): GatewaySessionRow | null;
   setSessionOwnerFilter(ownerId: string | null, involvingMe?: boolean): void;
   isSessionChildrenExpanded(session: SidebarRecentSession): boolean;
@@ -217,6 +215,15 @@ declare module "@solidjs/web" {
       "openclaw-plugin-contributions": HTMLAttributes<ContributionsElement> &
         Properties<ContributionsElement> & {
           "prop:agentId"?: ContributionsElement["agentId"];
+          "prop:facts"?: ContributionsElement["facts"];
+          "prop:compact"?: ContributionsElement["compact"];
+          "prop:dismissed"?: ContributionsElement["dismissed"];
+          "prop:artifact"?: ContributionsElement["artifact"];
+          "prop:worktreeId"?: ContributionsElement["worktreeId"];
+          "prop:registerControls"?: ContributionsElement["registerControls"];
+          "prop:onContentChange"?: ContributionsElement["onContentChange"];
+          "prop:onPresenceChange"?: ContributionsElement["onPresenceChange"];
+          "prop:onOpenSessionDiff"?: ContributionsElement["onOpenSessionDiff"];
           "prop:navigationMenus"?: ContributionsElement["navigationMenus"];
         };
     }

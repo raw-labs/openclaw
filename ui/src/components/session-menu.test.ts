@@ -304,7 +304,6 @@ describe("session menu", () => {
       context,
       currentOwner: { type: "agent", id: "research:one" },
       work: {
-        pullRequestUrl: "https://example.test/pr",
         worktreePath: "/work/openclaw",
       },
     });
@@ -373,7 +372,8 @@ describe("session menu", () => {
       {
         selectionCount: 3,
         cloudWorkerStopAllowed: true,
-        work: { pullRequestUrl: "https://example.test/pr", worktreePath: "/tmp/x" },
+        work: { worktreePath: "/tmp/x" },
+        pluginActions: [{ id: "github/open-pr", label: "Open PR" }],
       },
       ["Mark 3 as unread", "Archive 3", "Move 3 to group", "Delete 3…"],
     ],
@@ -751,31 +751,12 @@ describe("session menu", () => {
 
   it.each([
     ["absent", null],
-    ["unresolved", { pullRequestUrl: null, worktreePath: null }],
-    [
-      "PR",
-      {
-        pullRequestUrl: "https://github.com/openclaw/openclaw/pull/12345",
-        worktreePath: null,
-      },
-    ],
-    ["editor", { pullRequestUrl: null, worktreePath: "/work/trees/demo" }],
+    ["unresolved", { worktreePath: null }],
+    ["editor", { worktreePath: "/work/trees/demo" }],
   ] as const)("opens resolved workspace destinations: %s", async (_name, work) => {
     const { menu, onAction } = await actionMenu({ work });
     const openIn = menuItem(menu, "Open in");
     expectLabels(openIn, ["New tab", "New window", ...(work?.worktreePath ? editorLabels : [])]);
-    if (work?.pullRequestUrl) {
-      const openPr = menuItem(menu, "Open PR");
-      expect(openPr.disabled).toBe(false);
-      expect(openPr.hasAttribute("data-new-tab-action")).toBe(true);
-      expect(openPr.querySelector(".session-menu__shortcut")?.textContent).toBe("G");
-      openPr.focus();
-      press(openPr, "g");
-      await settleSessionMenu(menu);
-      expect(onAction.mock.calls).toEqual([[{ kind: "open-pr", url: work.pullRequestUrl }]]);
-    } else {
-      expect(menuItemLabels(menu)).not.toContain("Open PR");
-    }
     if (work?.worktreePath) {
       await openAdvanced(menu, "Open in");
       await selectMenuValue(menu, "open-in:vscode");
@@ -785,6 +766,29 @@ describe("session menu", () => {
         path: work.worktreePath,
       });
     }
+  });
+
+  it("dispatches one registered external action with native keyboard metadata", async () => {
+    const { menu, onAction } = await actionMenu({
+      pluginActions: [
+        {
+          id: "github/open-pr",
+          label: "Open PR",
+          icon: "gitPullRequest",
+          shortcut: "g",
+          opensExternal: true,
+        },
+      ],
+    });
+    const item = menuItem(menu, "Open PR");
+    expect(menuItemLabels(menu).filter((label) => label === "Open PR")).toHaveLength(1);
+    expect(item.hasAttribute("data-new-tab-action")).toBe(true);
+    expect(item.getAttribute("aria-keyshortcuts")).toBe("G");
+    expect(item.querySelector(".session-menu__shortcut")?.textContent).toBe("G");
+    item.focus();
+    press(item, "g");
+    await settleSessionMenu(menu);
+    expect(onAction.mock.calls).toEqual([[{ kind: "plugin", id: "github/open-pr" }]]);
   });
 
   it("ignores shortcut keys for disabled items and modified keystrokes", async () => {

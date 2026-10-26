@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { roleScopesAllow } from "../shared/operator-scope-compat.js";
@@ -245,7 +245,7 @@ export function createRepositoryViewerRead(params: {
               },
               async inspectBoundPullRequest() {
                 const { readOwnGitHubPullRequest } =
-                  await import("./github-publication-pr-inspect.js");
+                  await import("../../extensions/github-repositories/publication-inspect-api.js");
                 return await readOwnGitHubPullRequest({
                   pullRequestUrl: binding.url,
                   agentId: target.session.agentId,

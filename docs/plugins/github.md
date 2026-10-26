@@ -14,6 +14,46 @@ The bundled GitHub plugin adds public-repository link previews and a read-only
 reader to the [Control UI](/web/control-ui), plus the `github_read` and `github_search` agent tools. It is separate from the
 [GitHub Copilot model provider](/providers/github-copilot).
 
+## Repository integration
+
+The bundled `github-repositories` plugin owns account connections, repository
+discovery and checkout, managed execution identity, the `github_identity_status`
+and `github_publish` tools, session pull requests and CI controls, publication,
+and GitHub Actions Board widgets. It registers the repository-source, execution,
+managed-service, Board, and explicit Control UI V2 contributions through the
+public Plugin SDK. Core retains session access, approvals, checkout storage,
+local Git/index custody, publication receipts, and recovery.
+
+The existing `github` plugin remains the public reader and owns `github_read`
+and `github_search`. Its plugin ID and allow/deny policy are unchanged. GitHub
+Copilot, Gateway sign-in, and verified profile identity are separate owners.
+
+### Configuration and upgrade
+
+Repository integration settings are canonical under
+`plugins.entries.github-repositories.config`:
+
+| Setting                                 | Purpose                                                              |
+| --------------------------------------- | -------------------------------------------------------------------- |
+| `system`                                | Shared managed execution identity                                    |
+| `agents.<id>`                           | Complete per-agent identity override and optional sandbox permission |
+| `host`, `apiBaseUrl`                    | Matching GitHub or Enterprise endpoint pair                          |
+| `service.host`, `service.token`         | Gateway-only repository discovery and reader service credential      |
+| `repositorySearch.useNativeCredentials` | Explicit native-credential search opt-in                             |
+
+Run `openclaw doctor --fix` before starting with legacy native settings. The
+plugin-owned transform moves `tools.github`, `agents.entries.<id>.tools.github`,
+`gateway.github`, and `gateway.controlUi.github` to this block. Canonical values
+win; unknown legacy fields remain for explicit repair instead of being discarded.
+Managed OAuth records, personal connections, and accepted publication state keep
+their existing storage owners. See [managed identity](/gateway/config-tools/github-identity).
+
+Disabling `plugins.entries.github-repositories.enabled` withdraws its repository
+operations, managed service, tools, and browser contributions. It does not disable
+the independent reader plugin. Disabling `github` removes public reading without
+changing the repository integration. Existing plugin allowlists remain authoritative;
+include each plugin you intend to use.
+
 ## Upgrading with an existing plugin allowlist
 
 GitHub previews that previously lived in core now belong to the bundled
@@ -171,7 +211,7 @@ hovercard, and GitHub links open externally.
 - The reader is public-only and read-only. Use **Open on GitHub** for private
   repositories, posting comments, or merging pull requests.
 - Previews and reader documents use the selected agent’s managed GitHub identity,
-  or the configured Control UI GitHub token and Gateway environment fallback when
+  or the configured GitHub plugin service token and Gateway environment fallback when
   no managed identity is selected. Without credentials they use GitHub’s shared
   anonymous IP quota. Authenticated documents remain public-only: the reader checks
   repository visibility and identity before returning fresh or cached content.
@@ -221,7 +261,7 @@ Control UI owns tabs, layout, safe rendering, and keyboard interaction.
 
 ## Session-bound Enterprise previews
 
-When `gateway.github.host` selects an Enterprise host, the plugin also advertises
+When `plugins.entries.github-repositories.config.host` selects an Enterprise host, the plugin also advertises
 an exact-host, session-scoped reader. It uses the foreground session's repository
 and the selected GitHub App identity. Factory requests require the current signed-in
 operator's `session-item-read` proof and existing repository admission; a pasted

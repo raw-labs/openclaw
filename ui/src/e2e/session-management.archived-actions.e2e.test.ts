@@ -1,8 +1,9 @@
 import type { Locator } from "playwright";
 import { it, expect } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../src/gateway/control-ui-contract.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { createControlUiSessionRow as sessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { GITHUB_REPOSITORY_PLUGIN } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -84,6 +85,7 @@ suite.define(() => {
       const session = sessionRow(sessionKey, "Archive actions", baseTime);
       const main = sessionRow("agent:main:main", "Main", baseTime + 1_000);
       const gateway = await ui.installSessionRows(page, [main, session], {
+        nativePlugins: [GITHUB_REPOSITORY_PLUGIN],
         featureMethods: [
           "chat.metadata",
           "chat.startup",

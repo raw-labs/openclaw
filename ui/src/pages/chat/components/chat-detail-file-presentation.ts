@@ -22,7 +22,7 @@ import {
   loadFileWrapPreference,
   saveFileWrapPreference,
 } from "./chat-sidebar-file-view.tsx";
-import type { ChatDetailPanelProps, ChatDetailPanel } from "./chat-sidebar-view-types.ts";
+import type { ChatDetailPanel, ChatDetailPanelProps } from "./chat-sidebar-view-types.ts";
 import type { FileEditorViewHandle } from "./file-editor-view.ts";
 
 type FilePresentationState = {
@@ -41,6 +41,7 @@ type FilePresentationState = {
   searchToggle?: HTMLButtonElement | (() => HTMLButtonElement | undefined);
 };
 
+/** The file viewer borrows the same admitted providers as the transcript. */
 export function createFileTextReferences(props: ChatDetailPanelProps, host: ChatDetailPanel) {
   const application = useOptionalApplication();
   return createTextReferenceProjection(() => ({
@@ -356,6 +357,10 @@ export function createFilePresentationActions(context: {
   }
   return {
     interact,
+    toggleHtmlSource: () => {
+      presentation.fileSearchOpen = false;
+      context.htmlPreview.toggle();
+    },
     syncFileEditor,
     restoreFileReadingPresentation,
     showRequestedReadingMode,
@@ -467,7 +472,6 @@ export function renderFilePanelPresentation(context: {
           ? {
               content: context.actions.currentFileText(),
               options: {
-                ...context.props.githubContext,
                 textReferences: context.textReferences,
                 codeBlockInteraction: "interactive",
                 fileLinks: true,
@@ -526,7 +530,6 @@ export function renderFilePanelPresentation(context: {
     canvasPluginSurfaceUrl: context.props.canvasPluginSurfaceUrl,
     embedSandboxMode: context.props.embedSandboxMode,
     allowExternalEmbedUrls: context.props.allowExternalEmbedUrls,
-    ...context.props.githubContext,
     textReferences: context.textReferences,
     embedded: context.props.embedded,
     filePresentation: context.props.filePresentation ?? "desktop",
@@ -560,7 +563,6 @@ export const chatDetailPanelProperties = {
   canvasPluginSurfaceUrl: { default: null },
   embedSandboxMode: { default: "scripts" },
   allowExternalEmbedUrls: { default: false },
-  githubContext: { default: {}, attribute: false },
   embedded: { default: false },
   onOpenWorkspaceFile: { default: null, attribute: false },
   onOpenSessionLink: { default: null, attribute: false },

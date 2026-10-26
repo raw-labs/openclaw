@@ -1,4 +1,10 @@
 import { expect, vi } from "vitest";
+import { repositorySessionPrTarget } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
+import {
+  spyOnSessionPrLoader,
+  type SessionPrLoader,
+} from "../../extensions/github-repositories/control-ui-session-pr-subscriptions.test-support.js";
+import { startGitHubSessionPresentation } from "../../extensions/github-repositories/session-presentation-service-api.js";
 import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { deleteSessionEntryLifecycle } from "../config/sessions.js";
@@ -16,14 +22,9 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests } from "./control-ui-contract.js";
-import { startGitHubSessionPresentation } from "./control-ui-session-pr-presentation.js";
 import { createRepositorySessionReadHost } from "./control-ui-session-pr-runtime.js";
-import {
-  spyOnSessionPrLoader,
-  type SessionPrLoader,
-} from "./control-ui-session-pr-subscriptions.test-support.js";
-import { repositorySessionPrTarget } from "./control-ui-session-pr-target.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
+import { installGitHubAccountRpcFixture } from "./github-account-service.test-support.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -31,6 +32,7 @@ import {
   disposeSessionReadContexts,
   initializeSessionReadContext,
 } from "./server-methods/sessions-read-cache.test-support.js";
+import type { RespondFn } from "./server-methods/types.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 import { makeContextParams } from "./server-request-context.test-support.js";
 import { createGatewayWsTestSocket } from "./server/ws-connection.test-helpers.js";
@@ -56,6 +58,13 @@ export const readerChanges = [
   "replacement grant",
 ] as const;
 export type Load = SessionPrLoader;
+
+export function createRpcResponseCapture(received = vi.fn<RespondFn>()) {
+  // Undefined optional metadata is absent on the wire; retain any actual metadata.
+  const respond: RespondFn = (ok, payload, error, metadata) =>
+    metadata === undefined ? received(ok, payload, error) : received(ok, payload, error, metadata);
+  return { received, respond };
+}
 
 function authority(access = new AbortController()) {
   return { signal: access.signal, assertCurrent: () => access.signal.throwIfAborted() };
@@ -133,6 +142,7 @@ export async function createFixture(
   context.getRuntimeConfig = getRuntimeConfig;
   const resolveGatewayContext = () => context;
   context.resolveGatewayContext = resolveGatewayContext;
+  installGitHubAccountRpcFixture(getRuntimeConfig());
   const readHost = createRepositorySessionReadHost({
     signal: scheduler.signal,
     getRuntimeConfig,
@@ -222,7 +232,7 @@ export async function createFixture(
       return repository;
     },
     async subscribe(keys = [sessionKey], client = reader.client) {
-      const respond = vi.fn();
+      const { received, respond } = createRpcResponseCapture();
       await handleGatewayRequest({
         req: { type: "req", id: "watch", method: METHOD, params: { sessionKeys: keys } },
         client,
@@ -230,7 +240,11 @@ export async function createFixture(
         isWebchatConnect: () => false,
         respond,
       });
-      expect(respond).toHaveBeenCalledWith(true, { subscribed: keys.length > 0 }, undefined);
+      expect(received).toHaveBeenCalledExactlyOnceWith(
+        true,
+        { subscribed: keys.length > 0 },
+        undefined,
+      );
     },
     async close() {
       await services.stop();

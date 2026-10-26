@@ -2,9 +2,10 @@ import type { ChildProcess } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
+import { resolveManagedGitHubProfileDir } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createExecTool } from "./bash-tools.exec-run.js";
-import { resolveManagedGitHubProfileDir } from "./github-tool-identity.js";
+import { createGitHubExecutionFixture } from "./execution-environment.test-support.js";
 
 const relayCapture = vi.hoisted(() => ({
   sends: undefined as MockInstance<ChildProcess["send"]>[] | undefined,
@@ -116,14 +117,39 @@ describe.skipIf(process.platform === "win32")("selected GitHub profile authentic
         allowBackground: false,
         notifyOnExit: false,
         cwd: root,
-        config: { tools: { github: { profileId } } },
+        config: {
+          tools: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  system: { profileId },
+                },
+              },
+            },
+          },
+        },
         agentId: "main",
       });
       await writeProfile(profileState === "tokenless" ? undefined : "managed-token");
-      const result = await tool.execute(`synthetic-auth-${profileState}`, {
-        command: command(profileState, service ? "service" : "direct"),
-        pty,
+      const execution = createGitHubExecutionFixture({
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId },
+              },
+            },
+          },
+        },
       });
+      const result = await execution.run(() =>
+        tool.execute(`synthetic-auth-${profileState}`, {
+          command: command(profileState, service ? "service" : "direct"),
+          pty,
+        }),
+      );
       const output = result.content
         .filter((item) => item.type === "text")
         .map((item) => item.text)

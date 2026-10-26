@@ -1,3 +1,4 @@
+import { GITHUB_ACTIONS_BINDING_ID } from "../../extensions/github-repositories/board-capabilities-api.js";
 import {
   ErrorCodes,
   errorShape,
@@ -8,10 +9,6 @@ import { CORE_BOARD_DATA_BINDING_IDS } from "../boards/board-host-capability-ids
 import { BoardValidationError } from "../boards/board-layout.js";
 import { BoardEventPayloadError } from "../boards/board-notices.js";
 import type { BoardStore, BoardSessionTarget } from "../boards/board-store.js";
-import {
-  GITHUB_ACTIONS_BINDING_ID,
-  resolveGitHubActionsRequest,
-} from "../boards/github-actions-capability.js";
 import {
   captureExternalSessionCommitGuard,
   composeSessionSourceAssertion,
@@ -77,9 +74,7 @@ export function boardDataBindingCapability(
 ): string {
   const registration = registry?.dashboardDataBindings.get(bindingId);
   if (!registration?.runtime) {
-    return bindingId === GITHUB_ACTIONS_BINDING_ID
-      ? resolveGitHubActionsRequest(params).capability
-      : bindingId;
+    return bindingId;
   }
   const grant = registration.runtime.resolveGrant(params);
   // A plugin may narrow its own grant, never translate a different capability into access.
@@ -104,7 +99,7 @@ function createDashboardDataBindingHost(
   const assertCurrent = () => {
     authority.assertActive();
     if (
-      (bindingId !== GITHUB_ACTIONS_BINDING_ID && !registration) ||
+      !registration ||
       authority.pluginRegistry?.dashboardDataBindings.get(bindingId) !== registration
     ) {
       throw new BoardGatewayUnavailableError();
@@ -162,20 +157,17 @@ export async function prepareBoardDataBindingGrants(
     authority.assertActive();
   };
   const registrations = authority.pluginRegistry?.dashboardDataBindings;
+  // This binding predates plugin ownership. Keep its persisted grants, never a native fallback.
+  if (
+    grants.some((grant) => grant.startsWith(`${GITHUB_ACTIONS_BINDING_ID}:`)) &&
+    !registrations?.has(GITHUB_ACTIONS_BINDING_ID)
+  ) {
+    throw new BoardValidationError(
+      "invalid_operation",
+      "Dashboard data binding is unavailable; enable the plugin that provides it and retry",
+    );
+  }
   try {
-    if (
-      grants.some((grant) => grant.startsWith(`${GITHUB_ACTIONS_BINDING_ID}:`)) &&
-      !registrations?.has(GITHUB_ACTIONS_BINDING_ID)
-    ) {
-      const host = createDashboardDataBindingHost(
-        invocation,
-        { ...authority, assertActive: assertPreflightCurrent },
-        GITHUB_ACTIONS_BINDING_ID,
-      );
-      const { prepareBoardGitHubIdentity } = await import("./github-actions-read.js");
-      const identity = await prepareBoardGitHubIdentity(host);
-      prepared.push({ assertCurrent: identity.assertSelected, start: identity.start });
-    }
     for (const registration of registrations?.values() ?? []) {
       const runtime = registration.runtime;
       if (
@@ -420,17 +412,6 @@ export async function readBoardDataBinding(
   authority: BoardCapabilityAuthority,
   publish: GatewayHandlerInvocation["respond"],
 ): Promise<void> {
-  if (
-    bindingId === GITHUB_ACTIONS_BINDING_ID &&
-    !authority.pluginRegistry?.dashboardDataBindings.has(bindingId)
-  ) {
-    const { readBoardGitHubActions } = await import("./github-actions-read.js");
-    return await readBoardGitHubActions(
-      params,
-      createDashboardDataBindingHost(invocation, authority, bindingId),
-      (value) => publish(true, value),
-    );
-  }
   if (isBoardDataBindingId(bindingId)) {
     const handler = await prepareGatewayRequestHandler(coreGatewayHandlers[bindingId]!);
     return await invokeGatewayHandler(

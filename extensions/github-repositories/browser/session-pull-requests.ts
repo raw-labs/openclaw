@@ -1,0 +1,696 @@
+import type {
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestSnapshot,
+  ControlUiSessionPullRequestsChanged,
+} from "@openclaw/gateway-protocol";
+import {
+  CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
+  CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
+} from "@openclaw/gateway-protocol";
+import type {
+  ControlUiSetSyncOptions as SessionPullRequestSyncOptions,
+  ControlUiSetSync as SessionPullRequestSetSync,
+} from "openclaw/plugin-sdk/control-ui";
+import type { SessionCatalogPullRequestSummary } from "openclaw/plugin-sdk/session-catalog";
+import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { createChatPullRequestInvalidation } from "./chat-pull-request-invalidation.ts";
+import {
+  sessionGitHubRepository,
+  primarySessionPullRequest,
+} from "./session-pull-request-presentation.ts";
+
+export type {
+  ControlUiSetSyncOptions as SessionPullRequestSyncOptions,
+  ControlUiSetSync as SessionPullRequestSetSync,
+} from "openclaw/plugin-sdk/control-ui";
+/** Bound transport and session identity operations; application state stays with the host. */
+export type SessionPullRequestSourceHostV1 = {
+  hasClient: () => boolean;
+  canReadAll: () => boolean;
+  canCall: (method: string, scope: "operator.read") => boolean;
+  matchesSession: (sessionKey: string, eventKey: string, agentId?: string | null) => boolean;
+  readSessionChanged: (payload: unknown) => { key: string; agentId?: string | null } | null;
+  captureSummary: (sessionKey: string) => {
+    read: () => SessionCatalogPullRequestSummary | undefined;
+    publish: (summary: SessionCatalogPullRequestSummary | undefined) => void;
+  };
+  createConnectionLifecycle: () => { transition: () => boolean };
+  createSetSyncLifecycle: (options: SessionPullRequestSyncOptions) => SessionPullRequestSetSync;
+};
+
+export function summarizeSessionPullRequests(
+  pullRequests: readonly ControlUiSessionPullRequest[],
+  previous?: SessionCatalogPullRequestSummary,
+): SessionCatalogPullRequestSummary | undefined {
+  const current = primarySessionPullRequest(pullRequests);
+  if (!current) {
+    return undefined;
+  }
+  const numbers = [...new Set(pullRequests.map((pullRequest) => pullRequest.number))]
+    .slice(0, 20)
+    .toSorted((left, right) => left - right);
+  return previous?.state === current.state && previous.numbers.join(",") === numbers.join(",")
+    ? previous
+    : { numbers, state: current.state };
+}
+
+export const SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD = "controlUi.sessionPullRequests.subscribe";
+
+const STRUCTURAL_SESSION_REASONS = new Set<unknown>([
+  "new",
+  "reset",
+  "branch-switch",
+  "fork",
+  "rewind",
+]);
+
+export type SessionPullRequestSnapshotStore = {
+  branchKnown: (sessionKey: string) => boolean;
+  dispose: () => void;
+  watch: (
+    owner: object,
+    sessionKeys: readonly string[],
+    options?: { foreground?: boolean; passive?: boolean },
+  ) => void;
+  unwatch: (owner: object) => void;
+  load: (
+    owner: object,
+    sessionKey: string,
+  ) => Promise<ControlUiSessionPullRequestSnapshot | undefined>;
+  refresh: (sessionKey: string, options?: { automatic?: boolean }) => boolean;
+  get: (sessionKey: string) => ControlUiSessionPullRequestSnapshot | undefined;
+  subscribe: (listener: () => void) => () => void;
+};
+
+function readChangedSessions(
+  payload: unknown,
+): ControlUiSessionPullRequestsChanged["sessions"] | null {
+  if (!payload || typeof payload !== "object" || !("sessions" in payload)) {
+    return null;
+  }
+  const sessions = (payload as { sessions?: unknown }).sessions;
+  return asNullableRecord(sessions) as ControlUiSessionPullRequestsChanged["sessions"] | null;
+}
+
+export function createSessionPullRequestStore(
+  host: SessionPullRequestSourceHostV1,
+): SessionPullRequestSnapshotStore {
+  const watchedByOwner = new Map<
+    object,
+    { keys: Set<string>; foreground: boolean; passive: boolean }
+  >();
+  let orderedWatchedKeys: string[] | undefined;
+  let orderedRequestedKeys: string[] = [];
+  let orderedPassiveKeys: string[] = [];
+  const loadTokens = new WeakMap<object, object>();
+  const snapshots = new Map<string, ControlUiSessionPullRequestSnapshot>();
+  const knownBranches = new Set<string>();
+  const summarySinks = new Map<
+    string,
+    ReturnType<SessionPullRequestSourceHostV1["captureSummary"]>
+  >();
+  const listeners = new Set<() => void>();
+  const waiters = new Map<
+    string,
+    Set<(snapshot: ControlUiSessionPullRequestSnapshot | undefined) => void>
+  >();
+  const pendingRefreshKeys = new Set<string>();
+  const automaticRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const connection = host.createConnectionLifecycle();
+  const chatInvalidation = createChatPullRequestInvalidation((key) =>
+    refresh(key, { automatic: true }),
+  );
+  let disposed = false;
+  let subscriptionMayExist = false;
+  let refreshing: readonly string[] | null = null;
+
+  const canReadPullRequests = () =>
+    host.canCall(SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD, "operator.read");
+  const canReadAllPullRequests = host.canReadAll;
+  let broadRead = canReadAllPullRequests();
+
+  const notify = () => Array.from(listeners).forEach((listener) => listener());
+
+  const settle = (sessionKey: string, snapshot?: ControlUiSessionPullRequestSnapshot) => {
+    const pending = waiters.get(sessionKey);
+    if (!pending) {
+      return;
+    }
+    waiters.delete(sessionKey);
+    for (const resolve of pending) {
+      resolve(snapshot);
+    }
+  };
+
+  const clearSnapshotsAndWaiters = () => {
+    const hadSnapshots = snapshots.size > 0;
+    snapshots.clear();
+    knownBranches.clear();
+    for (const key of waiters.keys()) {
+      settle(key);
+    }
+    if (hadSnapshots) {
+      notify();
+    }
+  };
+
+  const matchesSession = host.matchesSession;
+
+  const watchedKeys = (): string[] => {
+    if (orderedWatchedKeys) {
+      return orderedWatchedKeys;
+    }
+    const keys = new Map<string, number>();
+    for (const watched of watchedByOwner.values()) {
+      if (watched.passive && !canReadAllPullRequests()) {
+        continue;
+      }
+      for (const key of watched.keys) {
+        const priority = watched.passive ? 0 : watched.foreground ? 2 : 1;
+        keys.set(key, Math.max(keys.get(key) ?? 0, priority));
+      }
+    }
+    const ordered = [...keys]
+      .toSorted(
+        ([leftKey, leftPriority], [rightKey, rightPriority]) =>
+          rightPriority - leftPriority || leftKey.localeCompare(rightKey),
+      )
+      .slice(0, CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS);
+    orderedWatchedKeys = ordered.map(([key]) => key);
+    orderedRequestedKeys = ordered.filter(([, priority]) => priority > 0).map(([key]) => key);
+    orderedPassiveKeys = ordered.filter(([, priority]) => priority === 0).map(([key]) => key);
+    return orderedWatchedKeys;
+  };
+
+  // Passive rows request only durable receipts; active viewers also poll Git/GitHub.
+  const requestedKeys = () => {
+    watchedKeys();
+    return orderedRequestedKeys;
+  };
+
+  const pruneUnwatched = () => {
+    const watched = new Set(watchedKeys());
+    const requested = new Set(requestedKeys());
+    chatInvalidation.retain(requested);
+    let removed = false;
+    for (const [key, timer] of automaticRefreshTimers) {
+      if (!requested.has(key)) {
+        clearTimeout(timer);
+        automaticRefreshTimers.delete(key);
+      }
+    }
+    for (const key of pendingRefreshKeys) {
+      if (!requested.has(key)) {
+        pendingRefreshKeys.delete(key);
+      }
+    }
+    for (const key of waiters.keys()) {
+      if (!requested.has(key)) {
+        settle(key);
+      }
+    }
+    for (const key of snapshots.keys()) {
+      if (!watched.has(key)) {
+        snapshots.delete(key);
+        summarySinks.get(key)?.publish(undefined);
+        summarySinks.delete(key);
+        knownBranches.delete(key);
+        removed = true;
+      }
+    }
+    if (removed) {
+      notify();
+    }
+  };
+
+  const isActive = () => watchedByOwner.size > 0 || listeners.size > 0 || waiters.size > 0;
+
+  const retainRefreshIntent = (keys: readonly string[]) => {
+    for (const key of refreshing ?? []) {
+      if (keys.includes(key)) {
+        pendingRefreshKeys.add(key);
+      }
+    }
+  };
+
+  const retireConnection = () => {
+    chatInvalidation.reset();
+    summarySinks.clear();
+    subscriptionMayExist = false;
+    retainRefreshIntent(watchedKeys());
+    lifecycle.clearRequest();
+    refreshing = null;
+    clearSnapshotsAndWaiters();
+  };
+
+  const handleGatewaySnapshot = () => {
+    const changed = connection.transition();
+    const nextBroadRead = canReadAllPullRequests();
+    const readScopeChanged = broadRead !== nextBroadRead;
+    broadRead = nextBroadRead;
+    if (changed || readScopeChanged) {
+      orderedWatchedKeys = undefined;
+      retireConnection();
+    }
+    if (changed || readScopeChanged || !lifecycle.isRequestCurrent()) {
+      lifecycle.resetRetry();
+      lifecycle.schedule();
+    }
+  };
+
+  const handleGatewayEvent: NonNullable<SessionPullRequestSyncOptions["onEvent"]> = (event) => {
+    if (event.event === "chat") {
+      const payload = asNullableRecord(event.payload);
+      if (typeof payload?.sessionKey !== "string") {
+        return;
+      }
+      for (const key of requestedKeys()) {
+        if (
+          !matchesSession(
+            key,
+            payload.sessionKey,
+            typeof payload.agentId === "string" ? payload.agentId : undefined,
+          )
+        ) {
+          continue;
+        }
+        const runId = typeof payload.runId === "string" ? payload.runId : undefined;
+        if (payload.state === "delta" && typeof payload.deltaText === "string") {
+          chatInvalidation.stream(key, runId, payload.deltaText);
+        }
+        if (payload.state === "final") {
+          chatInvalidation.final(key, runId, payload.message);
+        }
+      }
+      return;
+    }
+    if (event.event === "agent" || event.event === "session.tool") {
+      const payload = asNullableRecord(event.payload);
+      const data = asNullableRecord(payload?.data);
+      if (
+        typeof payload?.sessionKey !== "string" ||
+        !(
+          (payload.stream === "tool" && data?.phase === "result") ||
+          (payload.stream === "lifecycle" && (data?.phase === "end" || data?.phase === "error"))
+        )
+      ) {
+        return;
+      }
+      for (const sessionKey of requestedKeys()) {
+        if (
+          matchesSession(
+            sessionKey,
+            payload.sessionKey,
+            typeof payload.agentId === "string" ? payload.agentId : undefined,
+          )
+        ) {
+          refresh(sessionKey, { automatic: true });
+        }
+      }
+      return;
+    }
+    if (event.event === "sessions.changed") {
+      const changed = host.readSessionChanged(event.payload);
+      const reason = asNullableRecord(event.payload)?.reason;
+      if (
+        !changed &&
+        ["delete", "sharing", "profile-identity"].includes(String(reason)) &&
+        !host.canReadAll()
+      ) {
+        clearSnapshotsAndWaiters();
+        for (const key of watchedKeys()) {
+          refresh(key);
+        }
+        return;
+      }
+      if (!changed || !STRUCTURAL_SESSION_REASONS.has(reason)) {
+        return;
+      }
+      const matchingKeys = watchedKeys().filter((sessionKey) =>
+        matchesSession(sessionKey, changed.key, changed.agentId),
+      );
+      if (matchingKeys.length === 0) {
+        return;
+      }
+      let removed = false;
+      for (const sessionKey of matchingKeys) {
+        chatInvalidation.reset(sessionKey);
+        summarySinks.get(sessionKey)?.publish(undefined);
+        summarySinks.delete(sessionKey);
+        removed = snapshots.delete(sessionKey) || removed;
+        knownBranches.delete(sessionKey);
+        refresh(sessionKey, { automatic: true });
+      }
+      if (removed) {
+        notify();
+      }
+      return;
+    }
+    if (event.event !== CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT) {
+      return;
+    }
+    const changed = readChangedSessions(event.payload);
+    if (!changed) {
+      return;
+    }
+    const watched = new Set(watchedKeys());
+    let updated = false;
+    for (const [sessionKey, snapshot] of Object.entries(changed)) {
+      if (!watched.has(sessionKey)) {
+        continue;
+      }
+      const current = snapshots.get(sessionKey);
+      const repository = sessionGitHubRepository(snapshot);
+      const currentRepository = sessionGitHubRepository(current);
+      const currentBranch = current?.branch?.branch ?? current?.pullRequests[0]?.branch;
+      const canRetainCurrent =
+        (!repository ||
+          (repository.owner === currentRepository?.owner &&
+            repository.repo === currentRepository?.repo)) &&
+        (!snapshot.branch || !currentBranch || snapshot.branch.branch === currentBranch);
+      let next = snapshot;
+      if (
+        current &&
+        !snapshot.discardPrevious &&
+        canRetainCurrent &&
+        (snapshot.branchRead === false ||
+          snapshot.status === "rate-limited" ||
+          snapshot.status === "unavailable") &&
+        snapshot.pullRequests.length === 0
+      ) {
+        next = {
+          ...snapshot,
+          pullRequests: current.pullRequests,
+          branch: snapshot.branch ?? current.branch,
+          repository: snapshot.repository ?? current.repository,
+        };
+      }
+      if (snapshot.branchRead === false && current?.taskPullRequests) {
+        const retained = new Map(
+          current.taskPullRequests.map((task) => [task.url, task.pullRequest]),
+        );
+        next = {
+          ...next,
+          // Membership is authoritative even when passive reads omit GitHub metadata.
+          taskPullRequests: snapshot.taskPullRequests?.map((task) =>
+            Object.assign({}, task, { pullRequest: task.pullRequest ?? retained.get(task.url) }),
+          ),
+        };
+      }
+      if (!canRetainCurrent) {
+        knownBranches.delete(sessionKey);
+      }
+      if (
+        snapshot.discardPrevious ||
+        snapshot.branchRead !== false ||
+        snapshot.pullRequestCount !== undefined ||
+        snapshot.pullRequests.length > 0
+      ) {
+        knownBranches.add(sessionKey);
+      }
+      snapshots.set(sessionKey, next);
+      const sink = summarySinks.get(sessionKey);
+      if (
+        sink &&
+        (snapshot.discardPrevious ||
+          !snapshot.rateLimited ||
+          snapshot.pullRequests.length > 0 ||
+          !canRetainCurrent)
+      ) {
+        sink.publish(summarizeSessionPullRequests(next.pullRequests, sink.read()));
+      }
+      updated = true;
+      settle(sessionKey, next);
+    }
+    if (updated) {
+      notify();
+    }
+  };
+
+  const lifecycle = host.createSetSyncLifecycle({
+    sync,
+    onSnapshot: handleGatewaySnapshot,
+    onEvent: handleGatewayEvent,
+    onAttach: () => {
+      handleGatewaySnapshot();
+      lifecycle.clearRequest();
+    },
+    onDetach: () => {
+      refreshing = null;
+      snapshots.clear();
+      summarySinks.clear();
+      knownBranches.clear();
+      for (const timer of automaticRefreshTimers.values()) {
+        clearTimeout(timer);
+      }
+      automaticRefreshTimers.clear();
+    },
+  });
+
+  function sync() {
+    if (!canReadPullRequests() || !host.hasClient()) {
+      retainRefreshIntent(watchedKeys());
+      lifecycle.clearRequest();
+      clearSnapshotsAndWaiters();
+      if (!isActive()) {
+        lifecycle.detach();
+      }
+      return;
+    }
+    const desiredKeys = requestedKeys();
+    // Capture the roster epoch before sending any read. Publishing later never grants a
+    // stale response a new epoch, including after reconnect or a replacement session.
+    for (const key of desiredKeys) {
+      if (!summarySinks.has(key)) {
+        summarySinks.set(key, host.captureSummary(key));
+      }
+    }
+    const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
+    const sessionKeys = hidden ? [] : desiredKeys;
+    const passiveSessionKeys = hidden ? [] : orderedPassiveKeys;
+    const signature = JSON.stringify([sessionKeys.toSorted(), passiveSessionKeys.toSorted()]);
+    // Capability changes do not clear a subscription already sent on this connection.
+    if (sessionKeys.length === 0 && passiveSessionKeys.length === 0 && !subscriptionMayExist) {
+      if (!isActive()) {
+        lifecycle.detach();
+      }
+      return;
+    }
+    const sameRequest = lifecycle.matchesRequest(signature);
+    if (refreshing !== null && !sameRequest) {
+      // A replacement retires the old acknowledgement, not its retained intent.
+      // Hidden tabs keep desired keys so their refresh resumes when shown again.
+      retainRefreshIntent(desiredKeys);
+    }
+    const sessionKeySet = new Set(sessionKeys);
+    const refreshSessionKeys = [...pendingRefreshKeys].filter((key) => sessionKeySet.has(key));
+    if (sameRequest && refreshSessionKeys.length === 0) {
+      if (!isActive()) {
+        lifecycle.detach();
+      }
+      return;
+    }
+    // Repeated hints for the same watched union coalesce behind its current
+    // request. Membership changes still supersede immediately (notably hide).
+    if (refreshing !== null && sameRequest) {
+      return;
+    }
+    refreshing = refreshSessionKeys;
+    for (const key of refreshSessionKeys) {
+      pendingRefreshKeys.delete(key);
+    }
+    subscriptionMayExist ||= sessionKeys.length > 0 || passiveSessionKeys.length > 0;
+    lifecycle.send(
+      SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+      {
+        sessionKeys,
+        ...(passiveSessionKeys.length > 0 ? { passiveSessionKeys } : {}),
+        ...(refreshSessionKeys.length > 0 ? { refreshSessionKeys } : {}),
+      },
+      signature,
+      {
+        onSuccess: () => {
+          subscriptionMayExist = sessionKeys.length > 0 || passiveSessionKeys.length > 0;
+        },
+        onError: () => {
+          for (const key of refreshSessionKeys) {
+            pendingRefreshKeys.add(key);
+          }
+          lifecycle.scheduleRetry(() => {
+            if (lifecycle.attached && isActive()) {
+              lifecycle.schedule();
+            }
+          });
+          for (const key of sessionKeys) {
+            settle(key);
+          }
+        },
+        onSettled: (acknowledged) => {
+          refreshing = null;
+          if (acknowledged && pendingRefreshKeys.size > 0) {
+            lifecycle.schedule();
+          }
+        },
+      },
+    );
+    if (!isActive()) {
+      lifecycle.detach();
+    }
+  }
+
+  const watch = (
+    owner: object,
+    sessionKeys: readonly string[],
+    options: { foreground?: boolean; passive?: boolean } = {},
+  ) => {
+    if (disposed) {
+      return;
+    }
+    const wasActive = isActive();
+    const next = new Set(sessionKeys.map((key) => key.trim()).filter(Boolean));
+    const current = watchedByOwner.get(owner);
+    const unchanged =
+      current === undefined
+        ? next.size === 0
+        : current.keys.size === next.size &&
+          current.foreground === (options.foreground === true) &&
+          current.passive === (options.passive === true) &&
+          [...next].every((sessionKey) => current.keys.has(sessionKey));
+    if (unchanged) {
+      return;
+    }
+    if (next.size === 0) {
+      watchedByOwner.delete(owner);
+    } else {
+      watchedByOwner.set(owner, {
+        keys: next,
+        foreground: options.foreground === true,
+        passive: options.passive === true,
+      });
+    }
+    orderedWatchedKeys = undefined;
+    if (canReadPullRequests()) {
+      for (const key of requestedKeys()) {
+        if (!summarySinks.has(key)) {
+          summarySinks.set(key, host.captureSummary(key));
+        }
+      }
+    }
+    lifecycle.resetRetry();
+    pruneUnwatched();
+    if (isActive()) {
+      if (!wasActive) {
+        lifecycle.clearRequest();
+      }
+      lifecycle.attach();
+      lifecycle.schedule();
+    } else if (lifecycle.attached) {
+      lifecycle.sync();
+    }
+  };
+
+  function refresh(sessionKey: string, options: { automatic?: boolean } = {}): boolean {
+    const key = sessionKey.trim();
+    if (disposed || !key || !requestedKeys().includes(key)) {
+      return false;
+    }
+    clearTimeout(automaticRefreshTimers.get(key));
+    automaticRefreshTimers.delete(key);
+    if (options.automatic) {
+      automaticRefreshTimers.set(
+        key,
+        setTimeout(() => refresh(key), 5_000),
+      );
+    } else {
+      pendingRefreshKeys.add(key);
+      lifecycle.resetRetry();
+      lifecycle.schedule();
+    }
+    return true;
+  }
+
+  const store: SessionPullRequestSnapshotStore = {
+    branchKnown: (key) => !disposed && canReadPullRequests() && knownBranches.has(key),
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      chatInvalidation.reset();
+      watchedByOwner.clear();
+      listeners.clear();
+      orderedWatchedKeys = undefined;
+      clearSnapshotsAndWaiters();
+      lifecycle.detach();
+    },
+    watch,
+    unwatch: (owner) => {
+      loadTokens.delete(owner);
+      watch(owner, []);
+    },
+    load: async (owner, sessionKey) => {
+      const key = sessionKey.trim();
+      if (disposed || !key) {
+        return undefined;
+      }
+      const loadToken = {};
+      loadTokens.set(owner, loadToken);
+      const alreadyRequested = requestedKeys().includes(key);
+      // A one-shot load owns a foreground watch until it settles, which attaches the store
+      // before the waiter is registered and keeps gateway events available for resolution.
+      watch(owner, [key], { foreground: true });
+      try {
+        if (!canReadPullRequests()) {
+          return undefined;
+        }
+        const current = snapshots.get(key);
+        if (current && alreadyRequested) {
+          return current;
+        }
+        if (current) {
+          refresh(key);
+        }
+        return await new Promise((resolve) => {
+          const pending = waiters.get(key) ?? new Set();
+          pending.add(resolve);
+          waiters.set(key, pending);
+          lifecycle.schedule();
+        });
+      } finally {
+        const currentWatch = watchedByOwner.get(owner);
+        if (
+          loadTokens.get(owner) === loadToken &&
+          currentWatch?.keys.size === 1 &&
+          currentWatch.keys.has(key)
+        ) {
+          loadTokens.delete(owner);
+          watch(owner, []);
+        }
+      }
+    },
+    refresh,
+    get: (sessionKey) =>
+      !disposed && canReadPullRequests() ? snapshots.get(sessionKey) : undefined,
+    subscribe: (listener) => {
+      if (disposed) {
+        return () => {};
+      }
+      const wasActive = isActive();
+      listeners.add(listener);
+      if (!wasActive) {
+        lifecycle.clearRequest();
+      }
+      lifecycle.attach();
+      return () => {
+        if (listeners.delete(listener)) {
+          if (isActive()) {
+            lifecycle.schedule();
+          } else if (lifecycle.attached) {
+            lifecycle.sync();
+          }
+        }
+      };
+    },
+  };
+  return store;
+}

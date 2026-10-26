@@ -4,13 +4,14 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../extensions/github-repositories/exec-launch-api.js";
+import { prepareGitHubToolEnvironment } from "../../extensions/github-repositories/tool-identity-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { createProcessSupervisor } from "../process/supervisor/supervisor.js";
 import type { SpawnInput } from "../process/supervisor/types.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
 import { resolvePreparedExecEnvironment } from "./bash-tools.exec-request-preparation.js";
 import { runExecProcess } from "./bash-tools.exec-runtime.js";
-import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 
 const boundary = vi.hoisted(() => ({ spawn: vi.fn(), prepare: vi.fn() }));
 vi.mock("../process/supervisor/index.js", () => ({
@@ -48,7 +49,10 @@ function launch(overrides: Partial<Parameters<typeof runExecProcess>[0]> = {}) {
       GH_TOKEN: "",
       GITHUB_TOKEN: "",
     },
-    githubProfileDir: profileDir,
+    wrapLocalLaunch: (argv) =>
+      buildGitHubExecLaunchArgv([...argv], profileDir, {
+        githubHost: overrides.env?.GH_HOST ?? "github.com",
+      }),
     usePty: false,
     warnings: [],
     maxOutput: 1000,
@@ -135,7 +139,18 @@ describe.skipIf(process.platform === "win32")("local GitHub credential launch bo
 
   it("keeps prepared, requested and PTY snapshot environments secretless", async () => {
     const prepared = prepareGitHubToolEnvironment({
-      config: { tools: { github: { profileId: "ghp_11111111111111111111111111111111" } } },
+      config: {
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId: "ghp_11111111111111111111111111111111" },
+              },
+            },
+          },
+        },
+      },
       agentId: "main",
       env: { OPENCLAW_STATE_DIR: root },
     });
@@ -279,7 +294,7 @@ describe.skipIf(process.platform === "win32")("local GitHub credential launch bo
       expect(input.env).toMatchObject(env);
       return supervisor.spawn(input);
     });
-    const outcome = await (await launch({ env, githubProfileDir: undefined })).promise;
+    const outcome = await (await launch({ env, wrapLocalLaunch: undefined })).promise;
     expect(outcome.aggregated).toBe("native");
     expect(env.GH_TOKEN).toBe("synthetic-native-token");
   });

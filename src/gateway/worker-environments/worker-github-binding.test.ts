@@ -1,15 +1,17 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
-import { createDeferred } from "../../../test/helpers/promise.js";
-import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
+import { createGitHubPublicationProvider } from "../../../extensions/github-repositories/publication-provider-api.js";
 import {
   GitHubIdentityError,
   installManagedGitHubProfile,
   writeManagedGitHubProfileFiles,
   removeManagedGitHubProfile,
   resolveManagedGitHubProfileDir,
-} from "../../agents/github-tool-identity.js";
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import { WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
+import { createDeferred } from "../../../test/helpers/promise.js";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -17,9 +19,9 @@ import {
 import { recordCommittedSessionMetadataPublication } from "../../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { parseWorkerGitHubLaunchBinding } from "../../worker/launch-descriptor.js";
-import { createGitHubPublicationProvider } from "../github-publication-provider.js";
 import { RepositoryWorkerIdentityTransfer } from "../repository-worker-identity-transfer.js";
 import * as turnClaims from "./placement-turn-claim-events.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { syncSessionRepositoryWorkspace } from "./repository-workspace-startup.js";
 import type { WorkerTunnelHandle } from "./tunnel-contract.js";
 import {
@@ -27,7 +29,7 @@ import {
   prepareRepositoryWorkerPublicationFact,
 } from "./worker-github-binding.js";
 
-function preparePublicationFact(params: typeof session & { assertCurrent?: () => boolean | void }) {
+function preparePublicationFact(params: typeof session & { assertCurrent?: () => void }) {
   setRuntimeConfigSnapshot(config);
   return prepareRepositoryWorkerPublicationFact({
     ...params,
@@ -38,13 +40,10 @@ function preparePublicationFact(params: typeof session & { assertCurrent?: () =>
       assertCurrent: () => service.signal.throwIfAborted(),
       signal: service.signal,
     }),
-    assertCurrent: () => {
-      if (params.assertCurrent?.() === false) {
-        throw new Error("Worker discovery retired");
-      }
-    },
+    assertCurrent: params.assertCurrent ?? (() => {}),
   });
 }
+
 async function prepareWorkerGitHubBinding(params: Parameters<typeof preparePublicationFact>[0]) {
   const fact = await preparePublicationFact(params);
   if (!fact?.identity || !fact.branch) {
@@ -73,11 +72,19 @@ const mocks = vi.hoisted(() => ({
   nativeToken: vi.fn(),
   oauth: vi.fn(),
 }));
-
-vi.mock("../../agents/github-oauth-client.js", () => ({ verifyGitHubCredential: mocks.verify }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: mocks.refresh,
+// mock-isolation: Supply remote account facts while exercising real worker credential binding and retirement.
+vi.mock("../../../extensions/github-repositories/oauth-api.js", () => ({
+  verifyGitHubCredential: mocks.verify,
 }));
+vi.mock(
+  "../../../extensions/github-repositories/account-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../extensions/github-repositories/account-runtime-api.js")
+    >()),
+    requestCurrentGitHubOAuthRefresh: mocks.refresh,
+  }),
+);
 vi.mock("../../secrets/runtime-state.js", () => ({
   getActiveSecretsRuntimeConfigSnapshot: mocks.snapshot,
 }));
@@ -188,6 +195,10 @@ vi.mock("../../state/session-repository-workspaces.js", () => ({
 // mock-isolation: Grant tests control OAuth expiry without reading the persistent credential store.
 vi.mock("../../agents/github-oauth-records.js", () => ({ inspectGitHubOAuthRecord: mocks.oauth }));
 vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.nativeToken }));
+vi.mock("openclaw/plugin-sdk/process-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/process-runtime")>()),
+  runCommandBuffered: mocks.nativeToken,
+}));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const profileId = "ghp_11111111111111111111111111111111";
@@ -266,7 +277,7 @@ async function bindPreparedGrant(
 
 async function prepareGrant(assertCurrent = () => {}, accessExpiresAtMs?: number) {
   if (accessExpiresAtMs !== undefined) {
-    config.tools!.github!.kind = "oauth";
+    readGitHubConfig(config).system!.kind = "oauth";
     mocks.oauth.mockResolvedValue({
       state: "valid",
       record: {
@@ -296,7 +307,18 @@ describe("worker GitHub launch binding", () => {
   beforeEach(() => {
     service = new AbortController();
     vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("worker-github-binding-"));
-    config = { tools: { github: { profileId, gitAuthor: { name: "Shared Bot" } } } };
+    config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId, gitAuthor: { name: "Shared Bot" } },
+            },
+          },
+        },
+      },
+    };
     setRuntimeConfigSnapshot(config);
     mocks.snapshot.mockReset().mockImplementation(() => ({ config, sourceConfig: config }));
     mocks.refresh.mockReset().mockResolvedValue(undefined);
@@ -344,7 +366,7 @@ describe("worker GitHub launch binding", () => {
     if (scenario === "unavailable managed identity" || scenario === "invalid author") {
       await installProfile();
       if (scenario === "invalid author") {
-        config.tools!.github!.gitAuthor = { name: "Invalid\nAuthor" };
+        readGitHubConfig(config).system!.gitAuthor = { name: "Invalid\nAuthor" };
       } else {
         mocks.verify.mockResolvedValue({ status: "unavailable" });
       }
@@ -375,6 +397,7 @@ describe("worker GitHub launch binding", () => {
       syncWorkspace,
     };
     const operation = syncSessionRepositoryWorkspace({
+      getRepositorySources: () => createRepositorySourcesFixture(() => config),
       ...session,
       generation: 1,
       repository: {
@@ -435,10 +458,9 @@ describe("worker GitHub launch binding", () => {
   });
 
   it("uses the agent override author without inheriting system author fields", async () => {
-    config.agents = {
-      entries: {
-        main: { tools: { github: { profileId, gitAuthor: { email: "agent@example.test" } } } },
-      },
+    config.agents = { entries: { main: {} } };
+    readGitHubConfig(config).agents = {
+      main: { profileId, gitAuthor: { email: "agent@example.test" } },
     };
     await installProfile("agent");
     expect((await prepareWorkerGitHubBinding(session))?.gitAuthor).toEqual({
@@ -449,7 +471,18 @@ describe("worker GitHub launch binding", () => {
   it.each([{ name: "Shared\nBot" }, { email: "a".repeat(257) }])(
     "omits the optional launch binding for invalid author metadata: %j",
     async (gitAuthor) => {
-      config = { tools: { github: { profileId, gitAuthor } } };
+      config = {
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                system: { profileId, gitAuthor },
+              },
+            },
+          },
+        },
+      };
       await installProfile();
       await expect(prepareWorkerGitHubBinding(session)).resolves.toBeUndefined();
     },
@@ -493,7 +526,14 @@ describe("worker GitHub launch binding", () => {
         return { originUrl: "git@github.com:owner/repo.git" };
       });
       await expect(
-        prepareWorkerGitHubBinding({ ...session, assertCurrent: () => current }),
+        prepareWorkerGitHubBinding({
+          ...session,
+          assertCurrent: () => {
+            if (!current) {
+              throw new Error("claim closed");
+            }
+          },
+        }),
       ).resolves.toBeUndefined();
       if (phase === "before-preparation") {
         expect(mocks.verify).not.toHaveBeenCalled();
@@ -507,7 +547,18 @@ describe("worker GitHub launch binding", () => {
       await installProfile();
       mocks.repository.mockImplementation(async () => {
         if (replaced === "identity") {
-          config = { tools: { github: { profileId: "ghp_22222222222222222222222222222222" } } };
+          config = {
+            tools: {},
+            plugins: {
+              entries: {
+                "github-repositories": {
+                  config: {
+                    system: { profileId: "ghp_22222222222222222222222222222222" },
+                  },
+                },
+              },
+            },
+          };
         } else {
           mocks.worktree.mockReturnValue({ ...worktree, repoFingerprint: "replacement" });
         }
@@ -561,7 +612,11 @@ describe("worker GitHub launch binding", () => {
       });
       const binding = await prepareWorkerGitHubBinding({
         ...session,
-        assertCurrent: () => current,
+        assertCurrent: () => {
+          if (!current) {
+            throw new Error("claim closed");
+          }
+        },
       });
       if (state === "current") {
         expect(binding).toMatchObject({

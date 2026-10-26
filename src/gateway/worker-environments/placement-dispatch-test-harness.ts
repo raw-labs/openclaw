@@ -26,6 +26,7 @@ import {
   writePlacementEnvironmentFixture,
 } from "./placement-test-fixtures.js";
 import { createWorkerSessionPlacementGate } from "./placement-worker-gate.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import type { WorkerEnvironmentService } from "./service.js";
 import {
   WorkerTunnelOwnerDisconnectedError,
@@ -448,6 +449,7 @@ export async function createHarness(
     Object.assign(environments, options.environmentService);
   }
   const service = createWorkerPlacementDispatchService({
+    getRepositorySources: () => createRepositorySourcesFixture(),
     initialPlacements: await placementStore.listAsync(),
     placements,
     environments,
@@ -656,6 +658,7 @@ export const createRecoveryService = async (
   isShuttingDown: () => boolean = () => false,
 ) =>
   createWorkerPlacementDispatchService({
+    getRepositorySources: () => createRepositorySourcesFixture(),
     initialPlacements: await placements.listAsync(),
     placements,
     environments,

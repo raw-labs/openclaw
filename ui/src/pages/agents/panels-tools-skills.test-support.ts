@@ -1,10 +1,15 @@
+import { createComponent } from "solid-js";
 import { vi } from "vitest";
-import { githubIdentityViewFixture } from "../../features/github-connections/github-identity.test-support.ts";
+import type { TestGitHubIdentity } from "../../../../extensions/github-repositories/browser/github-identity.test-support.ts";
+import { githubIdentityViewFixture } from "../../../../extensions/github-repositories/browser/github-identity.test-support.ts";
+import { GitHubIdentity } from "../../../../extensions/github-repositories/browser/github-settings.test-support.tsx";
 import { createAgentViewTestProps } from "./agents-view.test-helpers.ts";
 import type { AgentTools } from "./panels-tools-skills.tsx";
 
-type Params = Parameters<typeof AgentTools>[0] &
-  Pick<
+type Params = Parameters<typeof AgentTools>[0] & {
+  githubIdentity: Omit<TestGitHubIdentity, "dispose">;
+  onOpenGitHubConnections: () => void;
+} & Pick<
     ReturnType<Parameters<typeof AgentTools>[0]["readData"]>,
     | "toolsCatalogLoading"
     | "toolsCatalogError"
@@ -16,7 +21,7 @@ type Params = Parameters<typeof AgentTools>[0] &
 
 export function createBaseParams(overrides: Partial<Params> = {}): Params {
   const githubIdentity = githubIdentityViewFixture();
-  return {
+  const params: Params = {
     readData() {
       return { ...createAgentViewTestProps().readData(), ...this };
     },
@@ -39,6 +44,13 @@ export function createBaseParams(overrides: Partial<Params> = {}): Params {
     runtimeSessionKey: "main",
     runtimeSessionMatchesSelectedAgent: true,
     githubIdentity,
+    renderSettings: () =>
+      createComponent(GitHubIdentity, {
+        get identity() {
+          return params.githubIdentity;
+        },
+        onOpenConnections: () => params.onOpenGitHubConnections(),
+      }),
     onOpenGitHubConnections: vi.fn(),
     onProfileChange: () => undefined,
     onOverridesChange: () => undefined,
@@ -46,4 +58,5 @@ export function createBaseParams(overrides: Partial<Params> = {}): Params {
     onConfigSave: () => undefined,
     ...overrides,
   };
+  return params;
 }

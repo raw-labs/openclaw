@@ -1,4 +1,4 @@
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { readRuntimeConfig } from "../config/runtime-snapshot.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
 import type { GitHubPublicationRequesterPolicyV2 } from "./github-publication-requester.js";

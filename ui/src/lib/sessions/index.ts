@@ -18,7 +18,6 @@ import {
 } from "./session-capability.ts";
 import { createSessionDeletions } from "./session-deletions.ts";
 import { createSessionEventSubscriptionOwner } from "./session-event-subscription.ts";
-import { createSessionGitHubPublication } from "./session-github-publication.ts";
 import { createSessionGroupCatalog } from "./session-group-catalog.ts";
 import { normalizeAgentId, parseAgentSessionKey } from "./session-key.ts";
 import { isPrimarySessionListQuery } from "./session-list-query.ts";
@@ -122,7 +121,6 @@ export function createSessionCapability(
     snapshot: () => gateway.snapshot,
     deletionState: (row) => deletions.deletionState(row.key, row.agentId, row.sessionId),
   });
-  const githubPublication = createSessionGitHubPublication(retainedOperations);
   const swarmActivity = new SwarmActivityTracker();
   const pullRequestSummaries = new Map<string, SessionCatalogPullRequestSummary>();
   const pullRequestEpochs = new Map<string, object>();
@@ -163,7 +161,7 @@ export function createSessionCapability(
         reconnectListRevision = null;
       }
     }
-    githubPublication.observeRows(next.result?.sessions ?? [], next.agentId);
+    retainedOperations.observeRows(next.result?.sessions ?? [], next.agentId);
     notifySubscribers();
   };
 
@@ -218,7 +216,7 @@ export function createSessionCapability(
       }
       if (previousError !== null && error === null) {
         // Observer outages do not replay events; every held query must close the gap.
-        githubPublication.invalidate();
+        retainedOperations.invalidate();
         void roster.refreshAutomatic({
           ...roster.lastOptions(),
           backgroundHydrate: true,
@@ -269,7 +267,7 @@ export function createSessionCapability(
       return projected;
     },
     onCanonicalList(result, requestRevision, agentId, observed) {
-      githubPublication.observeRows(observed?.sessions ?? result?.sessions ?? [], agentId);
+      retainedOperations.observeRows(observed?.sessions ?? result?.sessions ?? [], agentId);
       mutations.settlePrepared(result);
       for (const row of observed?.sessions ?? []) {
         thinkingClaims.settle(row, requestRevision, agentId);
@@ -382,7 +380,7 @@ export function createSessionCapability(
       thinkingClaims,
       decorate: decorateRows,
       deletions,
-      githubPublication,
+      retainedOperations,
       roster,
     });
 
@@ -449,7 +447,7 @@ export function createSessionCapability(
     roster.observeGateway(next, connectionChanged);
     cacheLifecycle.synchronize(next);
     connectionClient = next.client;
-    githubPublication.observeRows([]);
+    retainedOperations.observeRows([]);
     if (connectionChanged) {
       if (identityChanged) {
         deletions.clear();
@@ -540,8 +538,8 @@ export function createSessionCapability(
   });
 
   const stopEvents = gateway.subscribeEvents((event) => {
-    if (githubPublication.observeGatewayEvent(event)) {
-      return;
+    if (event.event !== "sessions.changed") {
+      retainedOperations.observePayload(event.event, event.payload);
     }
     if (event.event === "config.changed" || event.event === "chat.metadata.changed") {
       roster.observations.descriptions.clear();
@@ -640,7 +638,6 @@ export function createSessionCapability(
     get canonicalListRevision() {
       return canonicalListRevision;
     },
-    githubPublication,
     retainedOperations,
     get cachedRoutingDefaults() {
       return cacheLifecycle.routingDefaults;
@@ -725,7 +722,7 @@ export function createSessionCapability(
     dispose() {
       retirePresentation();
       cacheLifecycle.dispose();
-      githubPublication.clear();
+      retainedOperations.clear();
       roster.dispose();
       disposeOperations();
       connection.dispose();

@@ -26,7 +26,6 @@ import { resolveDatabasePath } from "../state/openclaw-state-db.paths.js";
 import { createGatewayAuthRateLimiter } from "./auth-rate-limit.js";
 import { resolveGatewayAuth } from "./auth.js";
 import { createDesktopSessionRegistry } from "./desktop/session-registry.js";
-import { createNativeGitHubPublicationProvider } from "./github-publication-provider.js";
 import { publishHooksTokenEnvKey } from "./hooks.js";
 import { isLoopbackHost } from "./net.js";
 import { createNodeReapprovalCoordinator } from "./node-reapproval-coordinator.js";
@@ -143,6 +142,7 @@ export async function prepareGatewayKernelState(params: {
         return await workerModule.createGatewayWorkerEnvironmentRuntime({
           scheduler,
           getPluginRegistry: () => pluginRuntime.registry,
+          getRepositorySources: () => repositorySources,
           getPortalRuntime: () => pluginGatewayContext.current,
           resolveGatewayContext: resolvePluginGatewayContext,
           desktopSessionRegistry,
@@ -195,16 +195,7 @@ export async function prepareGatewayKernelState(params: {
           managedByPlacement: Boolean(workerEnvironmentService && nodeWorkerGatewayNamespace),
         })
       : undefined;
-  if (workspacePublicationHost) {
-    await workspacePublicationHost.install(
-      createNativeGitHubPublicationProvider({
-        signal: scheduler.signal,
-        assertCurrent: () => scheduler.signal.throwIfAborted(),
-        getConfig: getCommittedRuntimeConfig,
-      }),
-      scheduler.signal,
-    );
-  }
+  await workspacePublicationHost?.ready;
   const workerPlacement =
     workerEnvironmentService &&
     workerEnvironmentStartup &&
@@ -216,6 +207,7 @@ export async function prepareGatewayKernelState(params: {
             placements: workerEnvironmentStartup.placementStore,
             initialPlacements: await workerEnvironmentStartup.placementStore.listAsync(),
             getCommittedRuntimeConfig,
+            getRepositorySources: () => repositorySources,
             environments: workerEnvironmentService,
             gatewayNamespace: nodeWorkerGatewayNamespace,
             nodeWorkerBundleRetention,

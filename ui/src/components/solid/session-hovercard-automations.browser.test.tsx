@@ -1,6 +1,6 @@
 import { expect, it, onTestFinished, vi } from "vitest";
 import { userEvent } from "vitest/browser";
-import { registerGitHubEnglish } from "../../i18n/locales/en-github.ts";
+import { registerSessionHovercardEnglish } from "../../i18n/locales/en-session-hovercard.ts";
 import { createCronJob, cronJobsListResponse } from "../../lib/cron/cron.test-support.ts";
 import { createApplicationGateway } from "../../test-helpers/application-context-fixtures.ts";
 import {
@@ -14,7 +14,7 @@ import { createPortaledHovercard, createPortaledHovercardOwner } from "../portal
 import { SessionHovercardAutomations } from "../session-hovercard-automations.tsx";
 import "../session-hovercard.css";
 
-registerGitHubEnglish();
+registerSessionHovercardEnglish();
 
 it.each([1, 2])("keeps inspection focus and retires %i disconnected jobs", async (jobCount) => {
   const instruction = "Check the repository and report actionable failures.";
@@ -48,17 +48,19 @@ it.each([1, 2])("keeps inspection focus and retires %i disconnected jobs", async
   const view = mountSolid(
     () => (
       <HovercardControlsContext value={controlsForHovercard(card)}>
-        <div class="session-hovercard__context">
-          <SessionHovercardAutomations
-            automation={{
-              gateway: source.gateway,
-              sessionKey: "agent:main:task",
-              agentId: "main",
-              href: "/automations?session=agent%3Amain%3Atask&agent=main",
-              navigate: () => undefined,
-            }}
-          />
-        </div>
+        <section class="session-hovercard__section session-hovercard__section--optional">
+          <div class="session-hovercard__context">
+            <SessionHovercardAutomations
+              automation={{
+                gateway: source.gateway,
+                sessionKey: "agent:main:task",
+                agentId: "main",
+                href: "/automations?session=agent%3Amain%3Atask&agent=main",
+                navigate: () => undefined,
+              }}
+            />
+          </div>
+        </section>
       </HovercardControlsContext>
     ),
     { container: card },

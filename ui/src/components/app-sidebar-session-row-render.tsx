@@ -86,7 +86,7 @@ function renderRecentSessionRow(params: RecentSessionParams) {
     narration = createMemo(() => subtitleState().narration),
     toolName = createMemo(() => subtitleState().toolName);
   const indicators = renderSidebarSessionIndicators(host, session, display, icon);
-  const { running, stateId, metaId, pullRequest, childrenExpanded } = indicators;
+  const { running, stateId, metaId, artifact, childrenExpanded } = indicators;
   const controls: CatalogRowControls = {};
   const openMenuFromEvent: JSX.EventHandler<HTMLDivElement, MouseEvent | KeyboardEvent> = (event) =>
     handleContextMenuEvent(event, controls.link ?? null, (trigger, x, y) => {
@@ -143,7 +143,7 @@ function renderRecentSessionRow(params: RecentSessionParams) {
           label(),
           session().archived === true,
           session().forkSource !== undefined,
-          pullRequest(),
+          artifact(),
         ])}
         keyed
       >

@@ -2,6 +2,7 @@ import "../test-utils/prepare-compiled-subprocesses.js";
 import { DatabaseSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { formatGitHubPublicationTranscript } from "../../extensions/github-repositories/publication-transcript-api.js";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/index.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { useSqliteWorkerFault } from "../../test/helpers/sqlite-worker-fault.js";
@@ -20,7 +21,6 @@ import {
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { formatGitHubPublicationTranscript } from "./github-publication-report.js";
 import { reportRepositoryPublicationTranscript } from "./github-publication-transcript.js";
 
 const reportFault = useSqliteWorkerFault([

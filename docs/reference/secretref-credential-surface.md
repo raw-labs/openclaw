@@ -27,7 +27,6 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 #### `agents`
 
 - `agents.entries.*.memory.search.remote.apiKey`
-- `agents.entries.*.tools.github.app.privateKey`
 - `agents.entries.*.tts.personas.*.providers.*.apiKey`
 - `agents.entries.*.tts.providers.*.apiKey`
 
@@ -143,6 +142,7 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 #### `plugins`
 
 - `plugins.entries.acpx.config.mcpServers.*.env.*`
+- `plugins.entries.beam.config.mirror.token`
 - `plugins.entries.brave.config.webSearch.apiKey`
 - `plugins.entries.codex.config.appServer.authToken`
 - `plugins.entries.codex.config.appServer.headers.*`
@@ -152,6 +152,9 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 - `plugins.entries.facetime.config.realtime.providers.*.apiKey`
 - `plugins.entries.firecrawl.config.webFetch.apiKey`
 - `plugins.entries.firecrawl.config.webSearch.apiKey`
+- `plugins.entries.github-repositories.config.agents.*.app.privateKey`
+- `plugins.entries.github-repositories.config.service.token`
+- `plugins.entries.github-repositories.config.system.app.privateKey`
 - `plugins.entries.google-meet.config.realtime.providers.*.apiKey`
 - `plugins.entries.google.config.webSearch.apiKey`
 - `plugins.entries.google.config.webSearch.headers.*`
@@ -160,6 +163,7 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 - `plugins.entries.moonshot.config.webSearch.apiKey`
 - `plugins.entries.parallel.config.webSearch.apiKey`
 - `plugins.entries.perplexity.config.webSearch.apiKey`
+- `plugins.entries.subq.config.apiKey`
 - `plugins.entries.tavily.config.webSearch.apiKey`
 - `plugins.entries.team-reports.config.discord.token`
 - `plugins.entries.team-reports.config.github.token`
@@ -179,10 +183,6 @@ Source generation fails if a present channel secret-contract artifact cannot loa
 
 - `talk.providers.*.apiKey`
 - `talk.realtime.providers.*.apiKey`
-
-#### `tools`
-
-- `tools.github.app.privateKey`
 
 #### `tts`
 

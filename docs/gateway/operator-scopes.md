@@ -377,7 +377,7 @@ configured host targets cannot bypass this restriction.
 
 By default, the agent's managed GitHub identity is not injected into sandboxed
 execution: `GH_CONFIG_DIR` is absent, and `GH_TOKEN` and `GITHUB_TOKEN` are blanked.
-An administrator can set `agents.entries.<id>.tools.github.allowInSandbox: true`
+An administrator can set `plugins.entries.github-repositories.config.agents.<id>.allowInSandbox: true`
 to expose that agent's managed identity to its own Docker or Podman sandbox,
 including role-required sandboxes isolated per creator. The profile is mounted
 read-only at `/openclaw/github`; sandboxed commands receive the managed token and

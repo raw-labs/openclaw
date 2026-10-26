@@ -50,7 +50,6 @@ import { publishUserPreferencesChanged } from "./user-preference-events.js";
 import { usersAuthConnectHandlers } from "./users-auth-connect.js";
 import { prepareUserBackgroundAction, usersBackgroundHandlers } from "./users-background.js";
 import { usersChannelIdentityHandlers } from "./users-channel-identities.js";
-import { usersGitHubHandlers } from "./users-github.js";
 import { usersPersonalFileHandlers } from "./users-personal-file.js";
 import {
   prepareAuthenticatedProfile,
@@ -106,7 +105,6 @@ function preparePersonalPreferences(client: GatewayRequestHandlerOptions["client
 export const usersHandlers: GatewayRequestHandlers = {
   ...usersAuthConnectHandlers,
   ...usersChannelIdentityHandlers,
-  ...usersGitHubHandlers,
   ...usersPersonalFileHandlers,
   ...usersBackgroundHandlers,
   "users.list": async ({ params, respond, context }) => {

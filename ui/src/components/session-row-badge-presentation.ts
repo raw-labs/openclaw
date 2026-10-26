@@ -5,10 +5,8 @@ import type {
   SessionPlacementDiskSpace,
   SessionPlacementMachine,
 } from "../../../packages/gateway-protocol/src/schema/session-placement.js";
-import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
-import { sessionPullRequestStateIcons } from "../lib/session-pull-request-presentation.ts";
 import { sessionMachineParts } from "./session-machine.ts";
 
 export type SessionPlacementState = NonNullable<GatewaySessionRow["placement"]>["state"];
@@ -18,8 +16,6 @@ export { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/
 export type SessionRowBadgesParams = {
   isChild?: boolean;
   incognito?: boolean;
-  pullRequest?: SessionCatalogPullRequestSummary;
-  pullRequestCount?: number;
   hasApproval?: boolean;
   outboxAttentionCount?: number;
   hasComposerDraft?: boolean;
@@ -33,18 +29,9 @@ export type SessionRowBadgesParams = {
 
 export type SessionRowBadge = {
   label: string;
-  icon:
-    | "incognito"
-    | "gitMerge"
-    | "gitPullRequest"
-    | "gitPullRequestDraft"
-    | "gitPullRequestClosed"
-    | "alertTriangle"
-    | "pencil"
-    | "globe";
+  icon: "incognito" | "alertTriangle" | "pencil" | "globe";
   modifier: string;
   count?: number;
-  pullRequestState?: SessionCatalogPullRequestSummary["state"];
   placementState?: SessionPlacementState;
   diskSpaceStatus?: SessionPlacementDiskSpace["status"];
   workspaceConflictCount?: number;
@@ -54,10 +41,6 @@ export function resolveSessionRowBadges(
   params: SessionRowBadgesParams,
   translate = t,
 ): SessionRowBadge[] {
-  const pullRequestLabel = params.pullRequest
-    ? `${params.pullRequest.numbers.map((number) => `#${number}`).join(", ")} · ${translate(`chat.pullRequests.${params.pullRequest.state}`)}`
-    : undefined;
-  const pullRequestState = params.pullRequest?.state;
   const placementState = params.isChild ? undefined : params.placementState;
   const cloudPlacementState = isCloudWorkerPlacementState(placementState)
     ? placementState
@@ -123,25 +106,6 @@ export function resolveSessionRowBadges(
       label: translate("sessionsView.incognito"),
       icon: "incognito",
       modifier: "incognito",
-    });
-  }
-  if (params.pullRequest || params.pullRequestCount) {
-    const count = params.pullRequestCount ?? params.pullRequest?.numbers.length ?? 0;
-    badges.push({
-      label: [
-        count > 1 || !pullRequestLabel
-          ? translate("sessionsView.pullRequestCount", { count: String(count) })
-          : "",
-        pullRequestLabel,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      icon: params.pullRequest
-        ? sessionPullRequestStateIcons[params.pullRequest.state]
-        : "gitPullRequest",
-      modifier: "pull-request",
-      pullRequestState,
-      count: count > 1 ? count : undefined,
     });
   }
   if (params.hasApproval) {

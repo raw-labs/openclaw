@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "@openclaw/github-repositories/config-api.js";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { textResult } from "openclaw/plugin-sdk/tool-results";
 import { parseGitHubSearchParams } from "./src/search-params.js";
@@ -125,6 +126,21 @@ export default definePluginEntry({
       },
       { name: "github_search", workspaceAccess: false },
     );
+    for (const method of ["tools.github.read", "tools.github.search"] as const) {
+      api.registerGatewayMethod(
+        method,
+        async (options) => {
+          const { toolsGitHubReadHandlers } = await import("./src/tools-github.js");
+          await toolsGitHubReadHandlers[method](options);
+        },
+        {
+          scope: "operator.sessions.read",
+          since: "2026.10",
+          advertise: false,
+          profileAccess: "independent",
+        },
+      );
+    }
     // Commits open in the reader, but do not spend anonymous quota on hover.
     for (const reader of [
       { id: "github", pathPattern: GITHUB_ITEM_PATH_PATTERN, previewMethod: "github.preview" },
@@ -146,7 +162,7 @@ export default definePluginEntry({
         requiredScopes: ["operator.read"],
       });
     }
-    const host = api.config.gateway?.github?.host?.trim().toLowerCase();
+    const host = readGitHubConfig(api.config).host?.trim().toLowerCase();
     if (host && host !== "github.com") {
       for (const reader of [
         {

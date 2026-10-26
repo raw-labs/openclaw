@@ -3,32 +3,20 @@ import type {
   SessionCatalogTranscriptItem,
   SessionsCatalogReadResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
-import type {
-  ControlUiSessionBranch,
-  ControlUiSessionPullRequest,
-  ControlUiSessionPullRequestSnapshot,
-} from "../../../../src/gateway/control-ui-contract.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { collectUnreadHiddenRunRows } from "../../components/app-sidebar-session-parent.ts";
 import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { clampText } from "../../lib/format.ts";
 import { isGatewayAvailable } from "../../lib/gateway-availability.ts";
-import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
 import { readSessionMethodAccess } from "../../lib/session-method-access.ts";
-import {
-  summarizeSessionPullRequests,
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionPullRequestsForGateway,
-  sessionGitHubRepository,
-} from "../../lib/session-pull-requests.ts";
 import {
   lookupCatalogSession,
   parseCatalogSessionKey,
   type CatalogSessionKey,
 } from "../../lib/sessions/catalog-key.ts";
-import { resolveSessionKey, scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
-import { parseAgentSessionKey, scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
+import { resolveSessionKey } from "../../lib/sessions/index.ts";
+import { parseAgentSessionKey } from "../../lib/sessions/session-key.ts";
 import { SessionUnreadPatchGuard } from "../../lib/sessions/unread.ts";
 import { releaseChatAttachmentPayloads } from "./attachment-payload-store.ts";
 import { catalogMessageId } from "./catalog-message-id.ts";
@@ -40,45 +28,12 @@ import {
   catalogRawString,
 } from "./chat-pane-shared.ts";
 import { ChatPaneTaskSuggestions } from "./chat-pane-task-suggestions.ts";
-import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
 import { resolveChatAgentId, selectedChatSessionRow } from "./chat-state-route.ts";
-import {
-  chatBranchId,
-  chatPullRequestId,
-  dismissChatPullRequest,
-  listDismissedChatPullRequests,
-} from "./components/chat-pull-requests.ts";
 import { scheduleControlUiAfterPaint } from "./performance.ts";
 import { scheduleChatScroll } from "./scroll.ts";
 
-const NO_PULL_REQUESTS: ControlUiSessionPullRequest[] = [];
-
 export abstract class ChatPaneSession extends ChatPaneTaskSuggestions {
-  readonly repository: {
-    target: { store: ReturnType<typeof sessionPullRequestsForGateway>; key: string } | null;
-    dismissedIds: ReadonlySet<string>;
-  } = { target: null, dismissedIds: new Set() };
-  private previousRepository: ReturnType<typeof sessionGitHubRepository> = null;
-
-  private readPullRequestSnapshot(): ControlUiSessionPullRequestSnapshot | undefined {
-    const target = this.repository.target;
-    return target?.store.get(target.key);
-  }
-
-  protected get sessionPullRequests(): ControlUiSessionPullRequest[] {
-    return this.readPullRequestSnapshot()?.pullRequests ?? NO_PULL_REQUESTS;
-  }
-  protected get sessionPullRequestsBranch(): ControlUiSessionBranch | undefined {
-    return this.readPullRequestSnapshot()?.branch;
-  }
-  protected get githubRepo() {
-    return sessionGitHubRepository(this.readPullRequestSnapshot());
-  }
-  protected get sessionPullRequestsStatus(): ControlUiSessionPullRequestSnapshot["status"] {
-    return this.readPullRequestSnapshot()?.status ?? "ready";
-  }
-
   private deferredSessionHydration: { resume?: () => void } | null = null;
   /** Hidden-run acknowledgements in flight or sent, keyed by run and activity revision. */
   private readonly hiddenRunReadRequests = new Map<
@@ -104,160 +59,6 @@ export abstract class ChatPaneSession extends ChatPaneTaskSuggestions {
             this.transcriptReady ||
             getAcceptedChatHistorySession(state)))),
     );
-  }
-
-  protected subscribeSessionRepositoryContext(): void {
-    const sessionPullRequests = sessionPullRequestsForGateway(this.context.gateway);
-    // Publications reconcile watched request ownership and admission, not only displayed rows.
-    this.chatState.addCleanup(
-      sessionPullRequests.subscribe(() => {
-        void this.refreshSessionPullRequests();
-      }),
-    );
-    this.chatState.addCleanup(() => sessionPullRequests.unwatch(this));
-  }
-
-  protected get visibleSessionPullRequests(): ControlUiSessionPullRequest[] {
-    return this.sessionPullRequests.filter(
-      (pullRequest) => !this.repository.dismissedIds.has(chatPullRequestId(pullRequest)),
-    );
-  }
-
-  protected get sessionPullRequestsBranchDismissed(): boolean {
-    const branch = this.sessionPullRequestsBranch;
-    return branch !== undefined && this.repository.dismissedIds.has(chatBranchId(branch));
-  }
-
-  protected refreshSessionPullRequests(
-    options: { refresh?: boolean; automatic?: boolean } = {},
-  ): boolean {
-    if (!this.presented) {
-      sessionPullRequestsForGateway(this.context.gateway).unwatch(this);
-      return false;
-    }
-    const scope = this.captureConnectionScope();
-    if (
-      !scope ||
-      !canCallGatewayMethod(
-        scope.context.gateway.snapshot,
-        SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-        "operator.read",
-      )
-    ) {
-      if (scope) {
-        sessionPullRequestsForGateway(scope.context.gateway).unwatch(this);
-      }
-      this.repository.target = null;
-      this.previousRepository = null;
-      return false;
-    }
-    const sessionKey = scope.state.sessionKey;
-    if (!sessionKey.trim() || parseCatalogSessionKey(sessionKey)) {
-      sessionPullRequestsForGateway(scope.context.gateway).unwatch(this);
-      this.repository.target = null;
-      this.previousRepository = null;
-      return false;
-    }
-    const pullRequestEpoch = scope.context.sessions.capturePullRequestEpoch(sessionKey);
-    const store = sessionPullRequestsForGateway(scope.context.gateway);
-    const pullRequestKey = scopedSessionArtifactKey(
-      sessionKey,
-      scopedAgentParamsForSession(scope.state, sessionKey).agentId ??
-        resolveChatAgentId(scope.state),
-    );
-    store.watch(this, [pullRequestKey], { foreground: true });
-    const refreshAdmitted = options.refresh === true && store.refresh(pullRequestKey, options);
-    const result = store.get(pullRequestKey);
-    if (!this.isConnectionScopeCurrent(scope) || sessionKey !== scope.state.sessionKey) {
-      return refreshAdmitted;
-    }
-    if (!result) {
-      if (this.previousRepository) {
-        scope.context.sessions.setPullRequestSummary(sessionKey, undefined, pullRequestEpoch);
-      }
-      this.repository.target = null;
-      this.repository.dismissedIds = new Set();
-      this.previousRepository = null;
-      return refreshAdmitted;
-    }
-    const repository = sessionGitHubRepository(result);
-    const repositoryChanged =
-      this.previousRepository != null &&
-      repository !== null &&
-      (this.previousRepository.owner !== repository.owner ||
-        this.previousRepository.repo !== repository.repo);
-    this.previousRepository = repository;
-    if (this.repository.target?.store !== store || this.repository.target.key !== pullRequestKey) {
-      this.repository.target = { store, key: pullRequestKey };
-    }
-    const dismissed = listDismissedChatPullRequests(sessionKey);
-    if (
-      this.repository.dismissedIds.size !== dismissed.size ||
-      [...dismissed].some((id) => !this.repository.dismissedIds.has(id))
-    ) {
-      this.repository.dismissedIds = dismissed;
-    }
-    if (
-      result.discardPrevious ||
-      !result.rateLimited ||
-      result.pullRequests.length > 0 ||
-      repositoryChanged
-    ) {
-      const previousSummary = scope.context.sessions.pullRequestSummary(sessionKey);
-      scope.context.sessions.setPullRequestSummary(
-        sessionKey,
-        summarizeSessionPullRequests(result.pullRequests, previousSummary),
-        pullRequestEpoch,
-      );
-    }
-    const published =
-      this.publication.binding?.result?.status === "published"
-        ? this.publication.binding?.result
-        : undefined;
-    const publishedPullRequest = published
-      ? result.pullRequests.find((pullRequest) => pullRequest.url === published.url)
-      : undefined;
-    if (
-      result.branch &&
-      published &&
-      (result.branch.branch !== published.branch ||
-        (publishedPullRequest &&
-          publishedPullRequest.state !== "open" &&
-          publishedPullRequest.state !== "draft"))
-    ) {
-      this.publication.binding?.reset();
-    }
-    return refreshAdmitted;
-  }
-
-  protected resetSessionPullRequests(): void {
-    if (this.state) {
-      retirePullRequestRefreshes(this.state);
-    }
-    sessionPullRequestsForGateway(this.context.gateway).unwatch(this);
-    this.repository.target = null;
-    this.previousRepository = null;
-    this.publication.binding?.detach();
-    this.publication.binding = null;
-    this.repository.dismissedIds = new Set();
-  }
-
-  protected readonly dismissSessionPullRequest = (
-    pullRequest: ControlUiSessionPullRequest,
-  ): void => {
-    this.dismissSessionPullRequestId(chatPullRequestId(pullRequest));
-  };
-
-  protected readonly dismissSessionPullRequestsBranch = (branch: ControlUiSessionBranch): void => {
-    this.dismissSessionPullRequestId(chatBranchId(branch));
-  };
-
-  private dismissSessionPullRequestId(id: string): void {
-    const sessionKey = this.state?.sessionKey;
-    if (!sessionKey) {
-      return;
-    }
-    this.repository.dismissedIds = dismissChatPullRequest(sessionKey, id);
   }
 
   protected deferSessionHydrationUntilTranscript(
@@ -309,7 +110,6 @@ export abstract class ChatPaneSession extends ChatPaneTaskSuggestions {
           void loadChatBranches(state);
           void this.probeSessionDiscussion(sessionKey);
           this.hydrateSessionCompanion(sessionKey);
-          void this.refreshSessionPullRequests();
         } else if (isCurrent()) {
           hydration.resume = () => scheduleHydration(historyCommitted);
         } else {

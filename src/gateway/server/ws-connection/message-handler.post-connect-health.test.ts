@@ -1,6 +1,7 @@
 // WebSocket message-handler health tests cover post-connect startup-unavailable and health-gated dispatch.
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { gitHubPublicApi } from "../../../../extensions/github-repositories/public-api.js";
 import { ConnectErrorDetailCodes } from "../../../../packages/gateway-protocol/src/connect-error-details.js";
 import {
   ErrorCodes,
@@ -27,7 +28,6 @@ import {
   withOpenClawTestState,
 } from "../../../test-utils/openclaw-test-state.js";
 import type { AuthRateLimiter } from "../../auth-rate-limit.js";
-import { gitHubPublicApi } from "../../github-public-api.js";
 import type { HealthSummary } from "../../health/types.js";
 import { getOperatorApprovalRuntimeToken } from "../../operator-approval-runtime-token.js";
 import {

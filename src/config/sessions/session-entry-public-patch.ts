@@ -25,6 +25,9 @@ function generationValidPrivateFieldsForSameSession(
     ...(existingEntry.lifecycleRunId !== undefined
       ? { lifecycleRunId: existingEntry.lifecycleRunId }
       : {}),
+    ...(existingEntry.repositorySourceId !== undefined
+      ? { repositorySourceId: existingEntry.repositorySourceId }
+      : {}),
     ...(existingEntry.pendingProjectGitUrl !== undefined
       ? { pendingProjectGitUrl: existingEntry.pendingProjectGitUrl }
       : {}),

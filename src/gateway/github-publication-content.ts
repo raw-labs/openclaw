@@ -1,5 +1,5 @@
+import { resolveConfiguredGitHubHost } from "../../extensions/github-repositories/host-api.js";
 import { prepareGitCoauthorAttribution } from "../agents/git-coauthor-attribution.js";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import { resolveControlUiPublicSessionUrl } from "../config/control-ui-link-base.js";
 import { resolveSessionPublicShare } from "../config/sessions/session-public-share.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
