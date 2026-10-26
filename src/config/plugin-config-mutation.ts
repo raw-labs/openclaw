@@ -4,7 +4,7 @@ import {
   type AgentLifecycleBinding,
 } from "../agents/agent-lifecycle-binding.js";
 import { resolveMutableAgentEntry } from "../agents/agent-scope-config.js";
-import { applyAgentConfig } from "../commands/agents.config.js";
+import { applyAgentConfig } from "../commands/agents.config-edit.js";
 import { mutateConfigFileWithRetry } from "./mutate.js";
 
 export type AgentScopedPluginConfigMutation = {

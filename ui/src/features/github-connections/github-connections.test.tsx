@@ -1,11 +1,13 @@
 /* @vitest-environment jsdom */
 import { expect, it, vi } from "vitest";
+import { settingsViews } from "../../../../extensions/github-repositories/browser/index.tsx";
 import { createDeferredCore } from "../../../../src/shared/deferred.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ToolsGitHubStatusResult } from "../../api/types.ts";
 import { createAgentSelectionCapability } from "../../app/agent-selection.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
 import { disconnectedGitHub } from "../../pages/profile/profile-rpc.test-support.ts";
+import { ControlUiSettingsSlot } from "../../plugins/control-ui-settings-slot.solid.tsx";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import {
@@ -14,7 +16,6 @@ import {
 } from "../../test-helpers/solid-application-context.tsx";
 import { flush } from "../../test-helpers/solid-settle.ts";
 import { waitForFast } from "../../test-helpers/wait-for.ts";
-import { GitHubConnections } from "./github-connections.tsx";
 
 const system: ToolsGitHubStatusResult["effective"] = {
   ...disconnectedGitHub.system,
@@ -52,7 +53,16 @@ function mount(
   const { gateway, publish } = createApplicationGateway({
     client: { request } as unknown as GatewayBrowserClient,
     phase: "connected",
-    hello: gatewayHelloForMethods([], scopes),
+    hello: gatewayHelloForMethods(
+      [
+        "users.github.status",
+        "tools.github.status",
+        "tools.github.configure",
+        "users.github.authorize.start",
+        "tools.github.authorize.start",
+      ],
+      scopes,
+    ),
     selfUser: profileId ? { id: profileId } : null,
   } as ApplicationGatewaySnapshot);
   const agents = {
@@ -70,6 +80,18 @@ function mount(
     subscribe: () => () => undefined,
   };
   const context = {
+    plugins: {
+      settingsContributions: settingsViews.map((view) => ({
+        pluginId: "github-repositories",
+        revision: "test",
+        placement: view.placement,
+      })),
+      subscribe: () => () => {},
+      reportError: vi.fn(),
+      async loadSettingsView(placement: unknown, signal: AbortSignal) {
+        return { view: settingsViews[0], signal, dispose() {} };
+      },
+    },
     basePath: "/ui",
     navigate: vi.fn(),
     gateway,
@@ -84,9 +106,12 @@ function mount(
       runExternalMutation: vi.fn(),
     },
   } as unknown as ApplicationContext;
-  const { container: element } = mountSolid(GitHubConnections, {
-    wrapper: createSolidApplicationContextProvider(context).wrapper,
-  });
+  const { container: element } = mountSolid(
+    () => <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />,
+    {
+      wrapper: createSolidApplicationContextProvider(context).wrapper,
+    },
+  );
   const query = element.querySelector.bind(element);
   const button = (label: string) =>
     [...element.querySelectorAll("button")].find((entry) => entry.textContent?.trim() === label)!;
@@ -122,7 +147,21 @@ it.each([
 ] as const)("reconciles GitHub reconnect authority: %s", async (access, scopes) => {
   const sharedIdentity = { ...system, account: { login: "admin-only-account" } };
   const request = statusRequest(sharedIdentity);
-  const config = { tools: { github: { gitAuthor: { name: "Configured author" } } } };
+  const config = {
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: {
+              profileId: "ghp_" + "a".repeat(32),
+              gitAuthor: { name: "Configured author" },
+            },
+          },
+        },
+      },
+    },
+  };
   const harness = mount(["operator.admin"], "profile-a", request, config);
   const { text, waitText, query, button, openPat } = harness;
   await waitText(["@admin-only-account"]);
@@ -146,7 +185,16 @@ it.each([
   const reconnect = {
     phase: "connected" as const,
     selfUser: undefined,
-    hello: gatewayHelloForMethods([], scopes),
+    hello: gatewayHelloForMethods(
+      [
+        "users.github.status",
+        "tools.github.status",
+        "tools.github.configure",
+        "users.github.authorize.start",
+        "tools.github.authorize.start",
+      ],
+      scopes,
+    ),
   };
   harness.emit(reconnect);
   if (access === "unchanged") {
@@ -167,7 +215,18 @@ it.each([
   if (access !== "unchanged") {
     text([], ["@admin-only-account"]);
     expect(query("[data-github-setup]")).toBeNull();
-    harness.emit({ hello: gatewayHelloForMethods([], ["operator.admin"]) });
+    harness.emit({
+      hello: gatewayHelloForMethods(
+        [
+          "users.github.status",
+          "tools.github.status",
+          "tools.github.configure",
+          "users.github.authorize.start",
+          "tools.github.authorize.start",
+        ],
+        ["operator.admin"],
+      ),
+    });
     await waitForFast(() => expect(button("Change System GitHub")?.disabled).toBe(false));
     openPat();
     expect(input()?.value).toBe("Configured author");
@@ -194,7 +253,11 @@ it.each([null, "profile-a"])("separates GitHub scopes for profile %s", async (pr
   );
   const { context, row, text, waitText } = mount(["operator.admin"], profileId, request);
   await waitForFast(() =>
-    expect(request).toHaveBeenCalledWith("tools.github.status", statusParams("main")),
+    expect(request).toHaveBeenCalledWith(
+      "tools.github.status",
+      statusParams("main"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ),
   );
   const agent = () => row("agent");
   if (profileId) {
@@ -207,10 +270,16 @@ it.each([null, "profile-a"])("separates GitHub scopes for profile %s", async (pr
     expectText(agent(), [], ["@main-account"]);
     const personalReads = request.mock.calls.filter(([method]) => method === "users.github.status");
     expect(personalReads).toHaveLength(1);
-    expect(request).toHaveBeenCalledWith("tools.github.status", statusParams("research"));
+    expect(request).toHaveBeenCalledWith(
+      "tools.github.status",
+      statusParams("research"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   } else {
     await waitText(["@system-account"]);
-    expect(request.mock.calls).toEqual([["tools.github.status", statusParams("main")]]);
+    expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
+      ["tools.github.status", statusParams("main")],
+    ]);
     text(["Personal sign-in required"], ["Connect My GitHub"]);
   }
   const agentId = profileId ? "research" : "main";
@@ -233,7 +302,9 @@ it("shows one status failure during setup and retries without reconnecting the a
     });
   const ui = mount(["operator.read"], "profile-a", request);
   await waitForFast(() => expect(ui.query('[role="alert"]')?.textContent).toContain(error));
-  expect(request.mock.calls).toEqual([["users.github.status", {}]]);
+  expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
+    ["users.github.status", {}],
+  ]);
   ui.text(
     ["Retry", unavailable],
     ["Change System GitHub", "Not verified", "Connect My GitHub", "Not connected"],
@@ -244,7 +315,7 @@ it("shows one status failure during setup and retries without reconnecting the a
   expect(ui.element.querySelectorAll('[role="alert"]')).toHaveLength(1);
   ui.button("Retry").click();
   await ui.waitText(["@personal-account"]);
-  expect(request.mock.calls).toEqual([
+  expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
     ["users.github.status", {}],
     ["users.github.status", {}],
   ]);
@@ -255,7 +326,7 @@ it("shows one status failure during setup and retries without reconnecting the a
 it.each(["available", "unavailable"] as const)("loads native %s", async (credentialState) => {
   const label = credentialState === "available" ? "Verified" : "No credentials";
   const pending = createDeferredCore<typeof personalStatus>();
-  const request = vi.fn(() => pending.promise);
+  const request = vi.fn((_method: string, _params?: unknown) => pending.promise);
   const { text, waitText, context, row } = mount(["operator.read"], "profile-a", request);
   await waitText(["Checking connection…"]);
   text([], ["Not verified", "Connect My GitHub"]);
@@ -280,7 +351,9 @@ it.each(["available", "unavailable"] as const)("loads native %s", async (credent
     ["Connect My GitHub", "Admin managed"],
     [unavailable, "Change System GitHub", "Use a PAT instead"],
   );
-  expect(request.mock.calls).toEqual([["users.github.status", {}]]);
+  expect(request.mock.calls.map(([method, params]) => [method, params])).toEqual([
+    ["users.github.status", {}],
+  ]);
   expect(context.runtimeConfig.ensureLoaded).not.toHaveBeenCalled();
 });
 
@@ -294,8 +367,40 @@ it("closes setup and resets its purpose when the same Gateway snapshot changes p
   await waitForFast(() => expect(query(".settings-secret input")).not.toBeNull());
   replaceProfile("profile-b");
   await waitForFast(() => expect(query("[data-github-setup]")).toBeNull());
+  await waitForFast(() =>
+    expect(query('[data-github-connection="personal"]')?.textContent).toContain("Not connected"),
+  );
   await waitForFast(() => expect(button("Manage connections").disabled).toBe(false));
   button("Manage connections").click();
   await waitForFast(() => expect(purpose()).toBe("personal"));
   expect(query(".settings-secret input")).toBeNull();
+});
+
+it("keeps unavailable canonical settings distinct from a loaded empty selection", async () => {
+  const config = {
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId: "ghp_" + "a".repeat(32), gitAuthor: { name: "Canonical author" } },
+          },
+        },
+      },
+    },
+  };
+  const harness = mount(["operator.admin"], "profile-a", statusRequest(), config);
+  await harness.waitText(["@system-account"]);
+  harness.openPat();
+  const author = () => harness.query<HTMLInputElement>('input[aria-label="Author Name"]');
+  expect(author()?.value).toBe("Canonical author");
+  // A disconnected config read is not an authoritative identity deletion.
+  harness.context.runtimeConfig.state.configForm = null;
+  harness.emit({ phase: "reconnecting" });
+  expect(author()).toMatchObject({ value: "Canonical author", disabled: true });
+  // A successful empty load clears the old clean draft through the actual Settings slot.
+  harness.context.runtimeConfig.state.configForm = {};
+  harness.emit({ phase: "connected" });
+  await harness.waitText(["@system-account"]);
+  harness.openPat();
+  expect(author()?.value).toBe("");
 });

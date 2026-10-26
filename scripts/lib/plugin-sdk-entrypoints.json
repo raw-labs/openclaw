@@ -382,5 +382,13 @@
   "agent-sessions",
   "llm",
   "execution-environment",
-  "repository-sources"
+  "repository-sources",
+  "repository-identity-host",
+  "repository-publication-content",
+  "repository-oauth-host",
+  "repository-session-host",
+  "worker-github-credentials",
+  "repository-session-read",
+  "repository-publication-engine",
+  "dashboard"
 ]

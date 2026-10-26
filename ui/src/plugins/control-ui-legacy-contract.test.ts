@@ -98,11 +98,24 @@ it("keeps legacy host fixtures, accessory placements and Settings switches sourc
 
 // New contribution views must receive the view-scoped V2 host, not only activation's host.
 function registerV2Views(host: ControlUiHostV2) {
+  host.ui.registerAction({
+    id: "external",
+    label: "External",
+    placement: "session",
+    run(context) {
+      context.host.navigation.openExternal("https://example.test/review");
+    },
+  });
   host.ui.registerPage({
     id: "page",
     label: "Page",
     mount(_container, context) {
       context.host.requests.capture();
+      return {
+        update(next) {
+          next.host.requests.capture();
+        },
+      };
     },
   });
   host.ui.registerPanel({
@@ -110,6 +123,11 @@ function registerV2Views(host: ControlUiHostV2) {
     label: "Panel",
     mount(_container, context) {
       context.host.sessions.captureSummary(context.props);
+      return {
+        update(next) {
+          next.host.sessions.captureSummary(next.props);
+        },
+      };
     },
   });
   host.ui.registerWidget({
@@ -117,6 +135,11 @@ function registerV2Views(host: ControlUiHostV2) {
     label: "Widget",
     mount(_container, context) {
       context.host.requests.capture();
+      return {
+        update(next) {
+          next.host.requests.capture();
+        },
+      };
     },
   });
   host.ui.registerReplacement({
@@ -125,6 +148,11 @@ function registerV2Views(host: ControlUiHostV2) {
     surface: "composer",
     mount(_container, context) {
       context.host.requests.capture();
+      return {
+        update(next) {
+          next.host.requests.capture();
+        },
+      };
     },
   });
 }

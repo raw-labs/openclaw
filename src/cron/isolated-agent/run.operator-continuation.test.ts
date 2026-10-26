@@ -1,5 +1,8 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import * as publicationIdentity from "../../../extensions/github-repositories/publication-availability-api.js";
+import * as publicationTransport from "../../../extensions/github-repositories/publication-git-transport-api.js";
+import { createGitHubPublicationProvider } from "../../../extensions/github-repositories/publication-provider-api.js";
 import { createOpenClawCodingToolsAsync } from "../../agents/agent-tools.js";
 import { withPreparedEmbeddedGatewayTools } from "../../agents/embedded-agent-runner/run/attempt-gateway-tools.js";
 import { applyEmbeddedAttemptToolsAllow } from "../../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
@@ -22,11 +25,10 @@ import { setRuntimeConfigSnapshot } from "../../config/config.js";
 import { hasMainSessionRecoveryClaim } from "../../config/sessions/restart-recovery-state.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import { resolveSessionWorkStartBlock } from "../../config/sessions/session-work-start.js";
-import * as publicationIdentity from "../../gateway/github-publication-availability.js";
-import * as publicationTransport from "../../gateway/github-publication-git-transport.js";
-import { createGitHubPublicationCoordinator } from "../../gateway/github-publication.js";
+import { installPublicationRpcFixture } from "../../gateway/github-account-service.test-support.js";
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { createOperatorRecoveryFixture } from "../../gateway/operator-run-recovery.test-support.js";
+import { createGitHubPublicationCoordinator } from "../../gateway/repository-publication-engine.js";
 import { createAgentEventTestHarness } from "../../gateway/server-chat.agent-events.test-harness.js";
 import {
   admission,
@@ -341,10 +343,17 @@ it.each([
 
   // Publication creation/storage and actual GitHub credentials are outside this regression.
   const coordinator = createGitHubPublicationCoordinator({
+    provider: createGitHubPublicationProvider({
+      getConfig: () => config,
+      refreshIdentity: async () => {},
+      refreshPersonal: async () => {},
+      assertCurrent: () => {},
+      signal: new AbortController().signal,
+    }),
     placements: createWorkerSessionPlacementStore(),
     getCommittedRuntimeConfig: () => config,
   });
-  context.githubPublicationService = coordinator;
+  await installPublicationRpcFixture(context, coordinator);
   const receipt = vi
     .spyOn(coordinator, "latestShared")
     .mockResolvedValue({ result: publication, confirmation: null });
@@ -358,7 +367,7 @@ it.each([
   let reads = 0;
   const writes: unknown[] = [];
   const github = vi
-    .spyOn(publicationTransport, "runPublicationCommand")
+    .spyOn(publicationTransport, "runGitHubPublicationCommand")
     .mockImplementation(async (argv, options) => {
       options?.beforeRun?.();
       if (argv.includes("PUT") && argv.includes("repos/fixture/repository/pulls/7/merge")) {

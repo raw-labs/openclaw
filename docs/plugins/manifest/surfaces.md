@@ -103,12 +103,27 @@ rebuildable artifact. This applies only to cleanup failures after import succeed
 Read, import, and verification failures still refuse the migration. Every plan
 consuming a shared source must opt in before its cleanup failures become advisory.
 
-The Codex plugin sets `doctorHealthChecks: true` when its public API exports
-health-check registration. Doctor checks the selected plugin's trust before
-loading this surface. Older installed versions without the declaration skip
-Codex health registration without preventing other checks; a declared but
-missing or broken API remains an error. This does not grant plugin capabilities
-or replace upgrade consent.
+`doctorHealthChecks: true` declares an `api.ts` public artifact exporting
+`registerDoctorHealthChecks(host: PluginDoctorHealthRegistrationHost): void`.
+The host comes from `openclaw/plugin-sdk/health` and provides `getHealthCheck`
+and `registerHealthCheck` for that Doctor invocation. Checks must use the
+plugin's `<id>/...` namespace. Registration inspects no credentials or external
+state; `detect` and optional `repair` run through the existing health runners.
+`detect` is non-mutating; `repair` requires Doctor's existing repair selection.
+Checks participate in ordinary Doctor, structured repair, and `doctor --lint`
+(including `--only`/`--skip`); existing opt-in `defaultEnabled: false` stays opt-in.
+They are prepared from selected metadata and never added to a new runtime registry.
+Routine plugin diagnostics remain outside update readiness unless that existing
+owner explicitly selects them.
+
+Doctor loads declarations only for active bundled or verified official owners.
+Disabled, denied, and excluded owners are skipped before artifact loading.
+A declared but missing or broken API is reported as unavailable. This does not
+grant plugin capabilities or replace upgrade consent. Current Codex exposes the
+generic entry while keeping the published
+`registerCodexManagedAppServerDoctorChecks` export. Doctor accepts that published
+name only for retained Codex installations; old installed versions without the
+manifest declaration continue to skip health registration.
 
 Channel plugins maintained in the OpenClaw source tree also expose these config
 exports through a pure `config-doctor-api.ts` entrypoint. The core package retains
@@ -549,6 +564,25 @@ for the V2 context and lifetime contract.
 ```
 
 The manifest ids are plugin-local. Widget grants use `<plugin-id>.<id>`, such as `example.items.list` and `example.refresh`. To keep the persisted grant namespace unambiguous, OpenClaw escapes `%` and `.` in the plugin-id segment as `%25` and `%2E`; ordinary plugin ids keep the natural form. `paramShape` is an optional JSON Schema applied to the action params object before OpenClaw invokes the plugin RPC.
+
+For an existing bundled capability moving into a plugin, a data binding may declare
+`legacyId` to preserve its shipped binding ID and persisted grant namespace. Only
+bundled plugins can claim this migration alias; normal collision and method-owner
+checks still apply. It is not an alias for a different permission or a fallback
+when the plugin is disabled.
+
+A binding that needs resource-scoped grants or credential checks before a widget
+is saved can bind `registerDashboardDataBinding({ apiVersion: 1, id, resolveGrant,
+prepare })` to its manifest-local ID. `resolveGrant(params)` may return only the
+binding ID or a scoped `<binding-id>:<resource>` grant. The Board checks that exact
+stored grant; granting the unscoped ID does not authorize a scoped read.
+`prepare(host)` returns `assertCurrent()` and `start(operation)` guards for the
+save. The read handler obtains its admitted host through
+`captureDashboardDataBindingRead()` from `openclaw/plugin-sdk/dashboard`; calling
+the underlying RPC directly does not manufacture Board authority. The host
+provides the selected agent, current configuration, an opaque Gateway cache scope,
+and guarded execution, not the raw caller or Board ticket. Retained hosts fail
+when the widget, caller, plugin registration, or Gateway is no longer current.
 
 ## catalog reference
 

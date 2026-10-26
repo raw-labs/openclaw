@@ -30,7 +30,6 @@ import {
   SettingsValue,
 } from "../../components/solid/settings-ui.tsx";
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
-import { GitHubConnections } from "../../features/github-connections/github-connections.tsx";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
 import { registerProfileEnglish } from "../../i18n/locales/en-profile.ts";
 import { formatUiError } from "../../lib/format-error.ts";
@@ -573,7 +572,6 @@ export function ProfilePage() {
                   : null
               }
             />
-            <GitHubConnections />
             <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />
             <SettingsGroup>
               <SettingsNavRow

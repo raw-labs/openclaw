@@ -4,6 +4,7 @@ import {
   RequiredWorkerProfileError,
 } from "../../config/required-worker-profile.js";
 import { resolveNodeCommandAllowlist } from "../node-command-policy.js";
+import type { RepositorySources } from "../repository-sources.js";
 import { sessionLog } from "../session-log.js";
 import { startSlowRequestDiagnostics } from "../slow-request-diagnostics.js";
 import type { WorkerNodePlacementAuthority } from "./device-placement-eligibility.js";
@@ -78,6 +79,7 @@ type WorkerPlacementDispatchOptions = WorkerPlacementReclaimBarriers &
       Pick<WorkerEnvironmentService, "recordError" | "requestDestroy"> &
       Partial<Pick<WorkerEnvironmentService, "requiresNodeEnrollment">>;
     initialPlacements: readonly WorkerDispatchPlacement[];
+    getRepositorySources?: () => RepositorySources;
     isShuttingDown?: () => boolean;
     runnerAvailability: WorkerPlacementRunnerAvailabilityReader;
     runLocalBarrier: WorkerLocalDispatchBarrier;
@@ -224,6 +226,7 @@ export function createWorkerPlacementDispatchService(options: WorkerPlacementDis
                   repository: {
                     agentId: request.agentId,
                     url: workspace.repository.url,
+                    repositorySourceId: workspace.repositorySourceId,
                     ref: workspace.repository.requestedRef ?? undefined,
                     baseCommit: workspace.repository.baseCommit ?? undefined,
                     ...(workspace.repositorySourceId

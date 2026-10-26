@@ -171,6 +171,8 @@
   "realtime-voice-provider",
   "reply-payload-testing",
   "reply-reference",
+  "repository-identity-host",
+  "repository-publication-content",
   "request-url",
   "response-limit-runtime",
   "retry-runtime",
@@ -227,5 +229,10 @@
   "web-content-extractor",
   "webhook-targets",
   "windows-spawn",
-  "worker-task-server"
+  "worker-task-server",
+  "repository-oauth-host",
+  "repository-session-host",
+  "worker-github-credentials",
+  "repository-session-read",
+  "repository-publication-engine"
 ]

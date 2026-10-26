@@ -1,9 +1,12 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveGitHubToolIdentityStatus } from "../agents/github-tool-identity.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import { prepareGatewayProjectGitHubIdentity } from "../../extensions/github-repositories/project-identity-api.js";
+import { resolveGitHubToolIdentityStatus } from "../../extensions/github-repositories/tool-identity-api.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { prepareGatewayProjectGitHubIdentity } from "./project-github-identity.js";
+import { factoryGitHubClientProof } from "./factory-github-proof.js";
+import { withFactoryPublicationIdentity } from "./github-publication-factory-identity.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { coreGatewayHandlers } from "./server-methods/core-handlers.js";
 import type { GatewayClient } from "./server-methods/types.js";
@@ -106,10 +109,17 @@ function prepare(caller = client(), requestedRepository?: string) {
     agentId: "main",
     config,
     context: { getRuntimeConfig: () => config },
-    client: caller,
     requestedRepository,
     assertActive,
-    factoryCredential: { claim: structuredClone(claim), assertCurrent: assertActive },
+    withCredential: (run) => {
+      const credential = { claim: structuredClone(claim), assertCurrent: assertActive };
+      const actor = factoryGitHubClientProof({ client: caller, ...credential });
+      return withFactoryPublicationIdentity(
+        { ...actor, sessionKey: claim.binding.sessionKey },
+        credential,
+        run,
+      );
+    },
   });
 }
 
@@ -132,19 +142,28 @@ beforeEach(() => {
   onRequest = undefined;
   catalog.emails = [`github:${host}:42`];
   config = {
-    gateway: { github: { host, apiBaseUrl } },
-    tools: {
-      github: {
-        kind: "app-installation",
-        profileId: "ghp_00000000000000000000000000000001",
-        app: {
-          appId: 101,
-          installationId: 202,
-          accountId: 303,
-          repositories: [{ id: 404, fullName: "example/project" }],
-          permissions,
-          privateKey,
-          keyVersion: "synthetic-v1",
+    gateway: {},
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host,
+            apiBaseUrl,
+            system: {
+              kind: "app-installation",
+              profileId: "ghp_00000000000000000000000000000001",
+              app: {
+                appId: 101,
+                installationId: 202,
+                accountId: 303,
+                repositories: [{ id: 404, fullName: "example/project" }],
+                permissions,
+                privateKey,
+                keyVersion: "synthetic-v1",
+              },
+            },
+          },
         },
       },
     },
@@ -226,7 +245,7 @@ afterEach(() => {
 
 describe("Factory project read admission composition", () => {
   function configureMultipleRepositories() {
-    const selected = config.tools?.github;
+    const selected = readGitHubConfig(config).system;
     if (selected?.kind !== "app-installation") {
       throw new Error("Expected App fixture");
     }
@@ -275,7 +294,17 @@ describe("Factory project read admission composition", () => {
           { id: 404, fullName: "example/project" },
         ],
       };
-      config = { ...config, tools: { github: { ...selected, app } } };
+      config = {
+        ...config,
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: { ...readGitHubConfig(config), system: { ...selected, app } },
+            },
+          },
+        },
+      };
       setRuntimeConfigSnapshot(config);
       try {
         await expect(identity!.start(() => fetch(issueUrl))).rejects.toThrow("changed");

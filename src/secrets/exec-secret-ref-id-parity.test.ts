@@ -19,21 +19,21 @@ import { isValidExecSecretRefId, isValidFileSecretRefId } from "./ref-contract.j
 import { listSecretTargetRegistryEntries } from "./target-registry.js";
 
 describe("exec SecretRef id parity", () => {
-  it.each(["tools.github.app.privateKey", "agents.entries.*.tools.github.app.privateKey"])(
-    "rejects traversal exec refs on the registered App key surface %s",
-    (targetType) => {
-      const entry = listSecretTargetRegistryEntries().find(
-        (target) => target.targetType === targetType,
-      );
-      expect(entry?.includeInPlan).toBe(true);
-      const pathSegments = targetType.split(".").map((part) => (part === "*" ? "main" : part));
-      const target = { type: targetType, path: pathSegments.join("."), pathSegments };
-      const accepts = (id: string) =>
-        planAcceptsRef({ source: "exec", provider: "vault", id }, target);
-      expect(accepts("apps/signing-key")).toBe(true);
-      expect(accepts("../apps/signing-key")).toBe(false);
-    },
-  );
+  it.each([
+    "plugins.entries.github-repositories.config.system.app.privateKey",
+    "plugins.entries.github-repositories.config.agents.*.app.privateKey",
+  ])("rejects traversal exec refs on the registered App key surface %s", (targetType) => {
+    const entry = listSecretTargetRegistryEntries().find(
+      (target) => target.targetType === targetType,
+    );
+    expect(entry?.includeInPlan).toBe(true);
+    const pathSegments = targetType.split(".").map((part) => (part === "*" ? "main" : part));
+    const target = { type: targetType, path: pathSegments.join("."), pathSegments };
+    const accepts = (id: string) =>
+      planAcceptsRef({ source: "exec", provider: "vault", id }, target);
+    expect(accepts("apps/signing-key")).toBe(true);
+    expect(accepts("../apps/signing-key")).toBe(false);
+  });
   const validateGatewaySecretRef = Compile(GatewaySecretRefSchema);
   const pluginSdkSecretInput = buildSecretInputSchema();
   const validEnvIds = ["OPENAI_API_KEY", "A", "A_1", `A${"B".repeat(127)}`];

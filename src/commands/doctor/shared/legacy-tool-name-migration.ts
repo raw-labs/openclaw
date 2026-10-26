@@ -3,9 +3,12 @@ import { compileGlobPatterns, matchesAnyGlobPattern } from "../../../agents/glob
 import { normalizeToolPolicyName } from "../../../agents/tool-policy-shared.js";
 import { isToolPolicyPath } from "./legacy-tool-policy-scopes.js";
 
-type LegacyToolNameMigration = {
+export type LegacyToolNameMigration = {
   legacyName: string;
   canonicalName: string;
+  /** Exact legacy family entries can expand to multiple concrete tools. */
+  additionalCanonicalNames?: readonly string[];
+  exactOnly?: boolean;
 };
 
 export const TASK_SUGGESTION_TOOL_NAME_MIGRATION = {
@@ -16,6 +19,13 @@ export const TASK_SUGGESTION_TOOL_NAME_MIGRATION = {
 export const IMAGE_INSPECTION_TOOL_NAME_MIGRATION = {
   legacyName: "image",
   canonicalName: "view_image",
+} as const satisfies LegacyToolNameMigration;
+
+export const GITHUB_READER_TOOL_GROUP_MIGRATION = {
+  legacyName: "github",
+  canonicalName: "github_read",
+  additionalCanonicalNames: ["github_search"],
+  exactOnly: true,
 } as const satisfies LegacyToolNameMigration;
 
 function inspectLegacyToolNameList(value: unknown, migration: LegacyToolNameMigration) {
@@ -29,6 +39,7 @@ function inspectLegacyToolNameList(value: unknown, migration: LegacyToolNameMigr
   return {
     exactLegacy,
     appendCanonical:
+      !migration.exactOnly &&
       !exactLegacy &&
       matchesAnyGlobPattern(legacyName, patterns) &&
       !matchesAnyGlobPattern(normalizeToolPolicyName(migration.canonicalName), patterns),
@@ -50,9 +61,15 @@ export function migrateLegacyToolNameList(
   }
   if (state.exactLegacy) {
     const legacyName = normalizeToolPolicyName(migration.legacyName);
-    for (const [index, entry] of value.entries()) {
+    for (let index = value.length - 1; index >= 0; index -= 1) {
+      const entry = value[index];
       if (typeof entry === "string" && normalizeToolPolicyName(entry) === legacyName) {
-        value[index] = migration.canonicalName;
+        value.splice(
+          index,
+          1,
+          migration.canonicalName,
+          ...(migration.additionalCanonicalNames ?? []),
+        );
       }
     }
   }

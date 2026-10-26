@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createOperationalRunInstanceRef } from "../agents/admitted-run-context.js";
+import { createGitHubIdentityStatusTool } from "../agents/test-helpers/github-plugin-tools.js";
 import {
   withGatewayPersonalToolUser,
   withGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubIdentityStatusTool } from "../agents/tools/github-identity-status-tool.js";
 import {
   callAgentToolGatewayRequest,
   runWithGatewayToolContinuationContext,

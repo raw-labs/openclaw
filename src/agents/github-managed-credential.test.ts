@@ -3,6 +3,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import {
+  clearGitHubCredentialVerificationCache,
+  pollGitHubOAuthDeviceToken,
+  refreshGitHubOAuthToken,
+} from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
   clearRuntimeConfigSnapshot,
@@ -12,11 +19,6 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveCommandEnv } from "../process/exec-spawn.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { commandResult as result } from "./github-identity.test-support.js";
-import {
-  clearGitHubCredentialVerificationCache,
-  pollGitHubOAuthDeviceToken,
-  refreshGitHubOAuthToken,
-} from "./github-oauth-client.js";
 
 const commands = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock("../process/exec.js", () => ({ runCommandBuffered: commands.run }));
@@ -32,7 +34,7 @@ import {
   refreshManagedGitHubProfile,
   resolveGitHubToolIdentityStatus,
   resolveManagedGitHubProfileDir,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 
 const dirs = useAutoCleanupTempDirTracker(afterEach);
 const account = { id: 202, login: "managed-user", avatar_url: null };
@@ -42,7 +44,17 @@ const install = (profileDir: string, token: string, commitConfig = async () => {
 const rotate = (profileDir: string, token: string) =>
   refreshManagedGitHubProfile({ profileDir, token, expectedAccountId: account.id });
 const enterprise = (host = "ghe.example.test", apiBaseUrl = `https://${host}/api/v3`) => ({
-  gateway: { github: { host, apiBaseUrl } },
+  gateway: {},
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          host,
+          apiBaseUrl,
+        },
+      },
+    },
+  },
 });
 const personal = (accountId = account.id) =>
   preparePersonalGitHubPublicationIdentity({
@@ -62,6 +74,7 @@ describe("managed credential isolation", () => {
     resolveGitHubToolIdentityStatus({ config, agentId: "main", selectedScope, env });
   beforeEach(() => {
     // Cases reuse token literals with different verification responses.
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     root = dirs.make("github-managed-");
     env = { OPENCLAW_STATE_DIR: root };
@@ -113,6 +126,7 @@ describe("managed credential isolation", () => {
     });
     assert(refreshed.status === "refreshed");
     await rotate(profileDir, refreshed.tokens.accessToken);
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     const identity = await personal();
     expect(requests).toEqual([
@@ -139,6 +153,7 @@ describe("managed credential isolation", () => {
       const config = enterprise("a.ghe.example.test");
       setRuntimeConfigSnapshot(config);
       await install(profile("personal", ""), "synthetic-personal-host-token");
+      clearNativeGitHubTokenCache();
       clearGitHubCredentialVerificationCache();
       const started = createDeferredCore();
       const release = createDeferredCore<Response>();
@@ -153,8 +168,8 @@ describe("managed credential isolation", () => {
       await started.promise;
       setRuntimeConfigSnapshot(
         enterprise(
-          change === "host" ? "b.ghe.example.test" : config.gateway.github.host,
-          "https://b.ghe.example.test/api/v3",
+          change === "host" ? "b.ghe.example.test" : readGitHubConfig(config).host,
+          change === "API" ? "https://api.a.ghe.example.test" : "https://b.ghe.example.test/api/v3",
         ),
       );
       release.resolve(Response.json(account));
@@ -163,7 +178,18 @@ describe("managed credential isolation", () => {
   );
 
   it("pins the verified system credential for broker children across profile retirement and host changes", async () => {
-    const config = { tools: { github: { profileId, gitAuthor: { name: "Managed Author" } } } };
+    const config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId, gitAuthor: { name: "Managed Author" } },
+            },
+          },
+        },
+      },
+    };
     const profileDir = profile("system");
     await install(profileDir, "synthetic-managed-before");
     const identity = await publish(config);
@@ -228,7 +254,18 @@ describe("managed credential isolation", () => {
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await fs.writeFile(path.join(profileDir, "config.yml"), "editor: [invalid");
-    const config = { tools: { github: { profileId } } };
+    const config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId },
+            },
+          },
+        },
+      },
+    };
     const status = await statusFor(config, "system");
     expect(status.effective.credentialState).toBe("configured_unavailable");
     await fs.writeFile(path.join(profileDir, "config.yml"), "version: 1");
@@ -254,7 +291,26 @@ describe("managed credential isolation", () => {
         await expect(personal(101)).rejects.toThrow(/unavailable/);
       } else {
         const github = { profileId };
-        const config = { agents: { entries: { main: { tools: { github } } } } };
+        const config = {
+          agents: {
+            entries: {
+              main: {
+                tools: {},
+              },
+            },
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  agents: {
+                    main: github,
+                  },
+                },
+              },
+            },
+          },
+        };
         const status = await statusFor(config, scope);
         expect(status.effective).toMatchObject({
           credentialState: "configured_unavailable",

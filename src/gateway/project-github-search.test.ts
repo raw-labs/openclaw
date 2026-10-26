@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { searchRemoteProjects } from "../../extensions/github-repositories/project-search-api.js";
 import { withinTest } from "../../test/helpers/promise.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import { createDeferredCore } from "../shared/deferred.js";
-import { searchRemoteProjects } from "./project-github-search.js";
 
 function repository(fullName: string, updatedAt: string, description?: string) {
   const [owner, name] = fullName.split("/");
@@ -164,7 +164,17 @@ describe("project GitHub search", () => {
   it("separates native search results when the selected Enterprise host changes", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => page());
     const config = (host: string) => ({
-      gateway: { github: { host, apiBaseUrl: `https://${host}/api/v3` } },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host,
+              apiBaseUrl: `https://${host}/api/v3`,
+            },
+          },
+        },
+      },
     });
     setRuntimeConfigSnapshot(config("a.ghe.example.test"));
     await searchRemoteProjects("same-query", { token: "native-token", fetchImpl });

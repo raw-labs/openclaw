@@ -1,3 +1,5 @@
+import { BoardValidationError } from "./board-errors.js";
+export { BoardValidationError } from "./board-errors.js";
 import type {
   BoardOp,
   BoardSnapshot,
@@ -16,17 +18,6 @@ export const BOARD_SIZE_PRESETS = {
 export type BoardSize = keyof typeof BOARD_SIZE_PRESETS;
 export const BOARD_WIDGET_PROPS_MAX_BYTES = 8 * 1024;
 type BoardLayout = Pick<BoardSnapshot, "tabs" | "widgets">;
-type BoardValidationErrorCode = "conflict" | "invalid_operation" | "not_found";
-
-export class BoardValidationError extends Error {
-  readonly code: BoardValidationErrorCode;
-
-  constructor(code: BoardValidationErrorCode, message: string) {
-    super(message);
-    this.name = "BoardValidationError";
-    this.code = code;
-  }
-}
 
 function clampInteger(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(value)));

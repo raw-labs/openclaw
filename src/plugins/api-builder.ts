@@ -67,6 +67,7 @@ const noops = {
   registerToolMetadata: () => {},
   registerControlUiDescriptor: () => {},
   registerBoardWidgetContentKind: () => {},
+  registerDashboardDataBinding: () => {},
   registerRuntimeLifecycle: () => {},
   registerAgentEventSubscription: () => {},
   emitAgentEvent: () => ({

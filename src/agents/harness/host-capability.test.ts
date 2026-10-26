@@ -28,6 +28,10 @@ import {
   runBeforeToolCallHook,
 } from "../agent-tools.before-tool-call.js";
 import * as agentTools from "../agent-tools.js";
+import {
+  activateExecutionSecretSnapshot,
+  createGitHubExecutionFixture,
+} from "../execution-environment.test-support.js";
 import { createAgentRunRestartAbortError } from "../run-termination.js";
 import {
   attachInternalToolExecutionPreparer,
@@ -446,20 +450,33 @@ describe("agent harness host capability", () => {
     async ({ managed, source }) => {
       const { attempt } = await admittedAttempt(`run-${source}-${managed ? "managed" : "native"}`, {
         config: {
-          ...(managed
-            ? { tools: { github: { profileId: "ghp_66666666666666666666666666666666" } } }
-            : {}),
           gateway: {
-            controlUi: {
-              github: {
-                token: { source, provider: "default", id: "PREVIEW_SERVICE_TOKEN" },
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...(managed
+                    ? { system: { profileId: "ghp_66666666666666666666666666666666" } }
+                    : {}),
+                  service: {
+                    token: { source, provider: "default", id: "PREVIEW_SERVICE_TOKEN" },
+                  },
+                },
               },
             },
           },
         },
       });
-      const host = createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" });
+      const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-host-execution-secrets-"));
+      await activateExecutionSecretSnapshot(attempt.config ?? {}, stateDir);
+      const execution = createGitHubExecutionFixture(attempt.config ?? {});
+      const host = execution.run(() =>
+        createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" }),
+      );
       const environment = host.capabilities.preparedEnvironment?.();
+      fs.rmSync(stateDir, { recursive: true, force: true });
 
       if (managed) {
         expect(environment?.credentialScrubEnv).toMatchObject({

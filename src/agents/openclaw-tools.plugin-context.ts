@@ -51,6 +51,9 @@ export type OpenClawPluginToolOptions = Pick<
   | "abortSignal"
   | "pluginExecutionSkillsSnapshot"
   | "pluginExecutionAuthority"
+  | "githubPublicationAvailable"
+  | "sessionControlAuthority"
+  | "onYield"
 > & { activeProjectKeys?: readonly string[]; approvalReviewerDeviceId?: string };
 
 export function resolveOpenClawPluginToolInputs(params: {

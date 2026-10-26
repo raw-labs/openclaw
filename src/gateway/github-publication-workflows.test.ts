@@ -12,12 +12,13 @@ import {
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assert, expect, it, onTestFinished, vi } from "vitest";
+import { readRepositoryServices } from "../../extensions/github-repositories/account-runtime-api.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { callGatewayTool } from "../agents/tools/gateway.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { setCanonicalUserProfileRole } from "../state/user-profile-writes.js";
-import * as publicationExecutor from "./github-publication-executor.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import {
   createGitHubPublicationRequesterFixture,
@@ -27,6 +28,7 @@ import {
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import type { OperatorScope } from "./operator-scopes.js";
+import * as publicationExecutor from "./repository-publication-local-execution.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
@@ -193,6 +195,9 @@ it.each([
       ...source.context,
       githubPublicationService: f.coordinator,
     };
+    if (!readRepositoryServices(context)) {
+      await installPublicationRpcFixture(context, f.coordinator);
+    }
     let result: unknown;
     if (route !== "rpc") {
       const original = await captureGatewayOperatorRunAuthority({ client, context });
@@ -326,6 +331,9 @@ it.each(["first", "checkpoint", "merge"])(
       ...f.guestSource.context,
       githubPublicationService: f.coordinator,
     };
+    if (!readRepositoryServices(context)) {
+      await installPublicationRpcFixture(context, f.coordinator);
+    }
     const accepted = vi.spyOn(f.coordinator, "requestForSessionV2");
     const result = await invokeTool(
       context,
@@ -500,9 +508,16 @@ it("cannot reintroduce a workflow after a remote reset following the last observ
   const transport = mocks.runCommand.getMockImplementation()!;
   let pushes = 0;
   mocks.runCommand.mockImplementation(async (args, options) => {
-    if (args.includes("ls-remote")) {
+    if (args.some((arg: string) => arg.includes("/git/matching-refs/heads/"))) {
       return commandResult(
-        await workspace.git("ls-remote", "--refs", remote, `refs/heads/${BRANCH}`),
+        JSON.stringify([
+          {
+            ref: `refs/heads/${BRANCH}`,
+            object: {
+              sha: await workspace.git("--git-dir", remote, "rev-parse", `refs/heads/${BRANCH}`),
+            },
+          },
+        ]),
       );
     }
     if (args.includes("push")) {

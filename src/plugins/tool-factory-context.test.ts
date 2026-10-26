@@ -292,3 +292,21 @@ it.each(["allowed", "owner-close", "run-close", "plugin-close"] as const)(
     expect(effect).toHaveBeenCalledTimes(mode === "allowed" ? 1 : 0);
   },
 );
+
+it("rejects an authored yield-shaped result after its invocation closes", async () => {
+  let current = true;
+  const registration = register(
+    {
+      contextVersion: 2,
+      create: () => ({
+        ...probe(() => {}),
+        async execute() {
+          current = false;
+          return { content: [], details: { status: "started", async: true, yielded: true } };
+        },
+      }),
+    },
+    { assertInvocationCurrent: () => assert(current, "run closed") },
+  );
+  await expect(registration.tool().execute("authored-yield", {})).rejects.toThrow("run closed");
+});

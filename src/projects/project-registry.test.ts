@@ -6,6 +6,13 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cloneProjectCheckout,
+  ensureProjectCheckoutCommit,
+  ProjectCloneError,
+  refreshProjectCheckout,
+} from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import { parseProjectGitUrl } from "../../extensions/github-repositories/project-url-api.js";
+import {
   closeHttpServer as closeServer,
   listenLoopback as listen,
 } from "../../test/helpers/gateway-integration-fixtures.js";
@@ -21,18 +28,8 @@ import {
 } from "../state/openclaw-state-db.js";
 import { observe } from "../state/openclaw-state-lease-async.test-support.js";
 import { createCommandResult } from "../test-utils/npm-spec-install-test-helpers.js";
-import {
-  cloneProjectCheckout,
-  ensureProjectCheckoutCommit,
-  ProjectCloneError,
-  refreshProjectCheckout,
-} from "./project-clone-runtime.js";
-import {
-  materializeProjectClone,
-  refreshProjectClone,
-  removeClonedProjectCheckout,
-} from "./project-clone.js";
-import { parseProjectGitUrl } from "./project-git-url.js";
+import { createManagedProjectCheckoutV1, removeClonedProjectCheckout } from "./project-clone.js";
+import { materializeProjectClone, refreshProjectClone } from "./project-clone.test-support.js";
 import {
   listProjectRegistry,
   ProjectCheckoutError,
@@ -469,7 +466,8 @@ describe("project registry persistence", () => {
       ) => refreshProjectCheckout({ ...input, url: source }, selected),
     };
     const selected = { ...options, env: { ...process.env, OPENCLAW_STATE_DIR: root } };
-    const project = await materializeProjectClone({ cfg: {}, gitUrl: url }, selected, transport);
+    const sourceCheckout = createManagedProjectCheckoutV1(transport);
+    const project = await sourceCheckout.materialize({ cfg: {}, gitUrl: url }, selected);
 
     expect(project).toMatchObject({ originUrl: url, source: "cloned" });
     expect(
@@ -478,9 +476,7 @@ describe("project registry persistence", () => {
     expect(await gitText(project.repoRoot, "rev-parse", "HEAD")).toBe(
       await gitText(source, "rev-parse", "HEAD"),
     );
-    expect(await materializeProjectClone({ cfg: {}, gitUrl: url }, selected, transport)).toEqual(
-      project,
-    );
+    expect(await sourceCheckout.materialize({ cfg: {}, gitUrl: url }, selected)).toEqual(project);
     await expect(materializeProjectClone({ cfg: {}, gitUrl: url }, selected)).rejects.toThrow(
       "GitHub",
     );

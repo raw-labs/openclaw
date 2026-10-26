@@ -1,26 +1,26 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
+import { requestCurrentGitHubOAuthRefresh } from "../../../extensions/github-repositories/account-runtime-api.js";
 import {
   clearGitHubCredentialVerificationCache,
   verifyGitHubCredential,
-} from "../../agents/github-oauth-client.js";
+} from "../../../extensions/github-repositories/oauth-api.js";
+import { personalGitHubStatusAsync as personalGitHubStatus } from "../../../extensions/github-repositories/personal-status-api.js";
+import * as publicationAvailability from "../../../extensions/github-repositories/publication-availability-api.js";
+import * as relevance from "../../../extensions/github-repositories/publication-relevance-api.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import * as stateWriter from "../../state/openclaw-state-worker-owner.js";
 import type { UserGitHubConnection } from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
-import * as prRead from "../control-ui-session-pr-read.js";
-import { requestCurrentGitHubOAuthRefresh } from "../github-oauth-lifecycle.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
-import * as publicationAvailability from "../github-publication-availability.js";
-import * as relevance from "../github-publication-relevance.js";
 import {
   mockPublicationIdentity,
   publisher,
@@ -33,16 +33,26 @@ import {
 } from "./sessions-github-read.test-support.js";
 
 const mocks = vi.hoisted(() => ({ runCommandBuffered: vi.fn() }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.runCommandBuffered }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../process/exec.js")>()),
+  runCommandBuffered: mocks.runCommandBuffered,
+}));
 vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../agents/tools/gateway-caller-context.js")>()),
   getGatewayToolCallerIdentity: () => undefined,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
-}));
+vi.mock(
+  "../../../extensions/github-repositories/account-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../extensions/github-repositories/account-runtime-api.js")
+    >()),
+    requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
+  }),
+);
 
 beforeEach(() => {
+  clearNativeGitHubTokenCache();
   clearGitHubCredentialVerificationCache();
   mockPublicationIdentity();
 });
@@ -210,6 +220,7 @@ it("reuses native authentication for consecutive options requests and refreshes 
       expect.any(Object),
     );
     expect(fetch).toHaveBeenCalledOnce();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     await fixture.options();
     expect(mocks.runCommandBuffered).toHaveBeenCalledTimes(2);
@@ -339,17 +350,11 @@ it.each([false, true])(
         source_head_commit: "1".repeat(40),
         workspace_tree: "2".repeat(40),
       };
-      const target = {
-        params: { sessionKey, agentId: "main" },
-        identity: "pr-source",
-        readSource: { agentId: "main", path: "/fixture" },
-        source: { owner: "owner", repo: "repo", branch: "feature" },
-        assertCurrent: vi.fn(),
-      };
-      vi.spyOn(prRead, "createControlUiSessionPrRead").mockReturnValue(async () => target);
       const prs = [
         {
-          ...target.source,
+          owner: "owner",
+          repo: "repo",
+          branch: "feature",
           number: 1,
           title: "Published work",
           url: "https://github.com/owner/repo/pull/1",
@@ -380,7 +385,9 @@ it.each([false, true])(
         );
       }
       expect(fixture.pullRequests.read).toHaveBeenCalledWith(
-        target,
+        expect.objectContaining({
+          session: expect.objectContaining({ sessionKey, agentId: "main" }),
+        }),
         expect.any(Function),
         "publication",
       );

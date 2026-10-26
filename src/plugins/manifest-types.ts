@@ -297,6 +297,8 @@ export type PluginManifestQaRunner = {
 };
 
 export type PluginManifestDashboardDataBinding = {
+  /** Bundled cutover only: preserve an already-shipped binding/grant namespace. */
+  legacyId?: string;
   /** Plugin-local id. Widget grants receive the plugin-id prefix. */
   id: string;
   /** Read-scoped Gateway method registered by this plugin. */

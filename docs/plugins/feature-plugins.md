@@ -482,6 +482,11 @@ through `ControlUiViewV2`. Named `ControlUiPageV2`, `ControlUiPanelV2`,
 contribution definitions. Ordinary legacy views retain `ControlUiView` and their
 original context shape.
 
+V2 views also receive that context on their returned `update(context)` callback.
+Use `ControlUiActionV2` for extracted actions: its `run(context)` receives an
+action-scoped V2 host, including `context.host.navigation.openExternal`. Do not
+retain activation authority to execute a later action.
+
 ### Contributed Profile and Agent Settings
 
 A native plugin can declare additional views in the existing Profile connections

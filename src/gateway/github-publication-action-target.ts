@@ -1,10 +1,7 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { SessionGitHubPublicationPublished } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
-import { prepareGitHubPublicationSession } from "./github-publication-availability.js";
+import { prepareRepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 
-type SessionRead = Awaited<ReturnType<typeof prepareGitHubPublicationSession>>;
+type SessionRead = Awaited<ReturnType<typeof prepareRepositoryPublicationSession>>;
 
 /** Keep every selected parent alive; a reparented child cannot redirect a retained action. */
 export async function preparePublishingSession(
@@ -13,7 +10,7 @@ export async function preparePublishingSession(
   resources: DisposableStack,
 ) {
   const source = resources.use(
-    await prepareGitHubPublicationSession(params.sessionKey, {
+    await prepareRepositoryPublicationSession(params.sessionKey, {
       agentId: params.agentId,
       assertCurrent,
     }),
@@ -21,7 +18,7 @@ export async function preparePublishingSession(
   const selected =
     params.publishingSessionKey && params.publishingSessionKey !== source.loaded.canonicalKey
       ? resources.use(
-          await prepareGitHubPublicationSession(params.publishingSessionKey, { assertCurrent }),
+          await prepareRepositoryPublicationSession(params.publishingSessionKey, { assertCurrent }),
         )
       : source;
   const readers: SessionRead[] = [source, selected];
@@ -43,7 +40,7 @@ export async function preparePublishingSession(
     }
     seen.add(identity);
     const lineage = resources.use(
-      await prepareGitHubPublicationSession(key, {
+      await prepareRepositoryPublicationSession(key, {
         agentId: parseAgentSessionKey(key) ? undefined : agentId,
         assertCurrent,
         fields: ["sessionId", "lifecycleRevision", "parentSessionKey", "spawnedBy"],
@@ -67,70 +64,4 @@ export async function preparePublishingSession(
   }
   assertSessions();
   return { selected, assertCurrent: assertSessions };
-}
-
-export function pullRequestState(
-  value: unknown,
-  publication: Pick<SessionGitHubPublicationPublished, "url" | "repository" | "branch">,
-  binding?: SessionGitHubPullRequestBinding,
-  authorAccountId?: number,
-) {
-  if (
-    !isRecord(value) ||
-    !isRecord(value.head) ||
-    !isRecord(value.base) ||
-    !isRecord(value.base.repo) ||
-    typeof value.node_id !== "string" ||
-    !value.node_id ||
-    value.html_url !== publication.url ||
-    value.head.ref !== publication.branch ||
-    typeof value.base.repo.full_name !== "string" ||
-    value.base.repo.full_name.toLowerCase() !== publication.repository.toLowerCase() ||
-    typeof value.head.sha !== "string" ||
-    !/^[a-f0-9]{40}$/u.test(value.head.sha) ||
-    (value.state !== "open" && value.state !== "closed") ||
-    typeof value.draft !== "boolean" ||
-    typeof value.merged !== "boolean" ||
-    (value.mergeable !== null && typeof value.mergeable !== "boolean") ||
-    typeof value.mergeable_state !== "string" ||
-    typeof value.title !== "string" ||
-    (value.body !== null && typeof value.body !== "string") ||
-    (value.merge_commit_sha !== null && typeof value.merge_commit_sha !== "string")
-  ) {
-    throw new Error(
-      "GitHub returned an invalid pull request state; inspect the published PR before retrying.",
-    );
-  }
-  if (
-    binding &&
-    (value.number !== binding.number ||
-      value.base.repo.id !== binding.base.repositoryId ||
-      value.base.ref !== binding.base.branch ||
-      !isRecord(value.head.repo) ||
-      value.head.repo.id !== binding.head.repositoryId ||
-      value.head.repo.full_name !== binding.head.repository ||
-      (authorAccountId !== undefined &&
-        (!isRecord(value.user) || value.user.id !== authorAccountId)))
-  ) {
-    throw new Error(
-      "The original PR target or author changed; inspect it again before continuing.",
-    );
-  }
-  return {
-    nodeId: value.node_id,
-    state: value.merged
-      ? ("merged" as const)
-      : value.state === "closed"
-        ? ("closed" as const)
-        : value.draft
-          ? ("draft" as const)
-          : ("open" as const),
-    headCommit: value.head.sha,
-    // Open PRs can expose a synthetic test-merge SHA, not a landed commit.
-    mergeCommit: value.merged ? value.merge_commit_sha : null,
-    mergeable: value.mergeable,
-    mergeState: value.mergeable_state,
-    title: value.title,
-    body: value.body ?? "",
-  };
 }

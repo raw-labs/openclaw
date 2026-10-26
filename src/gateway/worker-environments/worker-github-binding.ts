@@ -1,9 +1,4 @@
 import { WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
-import {
-  onManagedGitHubProfileChanged,
-  resolveConfiguredGitHubToolIdentity,
-} from "../../agents/github-tool-identity.js";
-import type { PreparedGitHubPublicationIdentity } from "../../agents/github-tool-identity.types.js";
 import type { AgentRunSessionTarget } from "../../agents/run-session-target.types.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
 import { registerConfigWriteListener } from "../../config/config.js";
@@ -16,15 +11,16 @@ import {
   parseWorkerGitHubLaunchBinding,
   type WorkerGitHubLaunchBinding,
 } from "../../worker/launch-descriptor.js";
+import type {
+  RepositoryPublicationProvider,
+  RepositoryWorkerIdentity,
+} from "../repository-publication-engine-contract.js";
+import { samePublicationWorkspace } from "../repository-publication-policy.js";
 import {
-  currentGitHubPublicationConfig,
-  matchesCurrentGitHubPublicationIdentity,
-  prepareCurrentGitHubPublicationIdentity,
-  prepareGitHubPublicationWorkspaceOwner,
-  sameGitHubPublicationWorkspace,
-  type PublicationSessionIdentity,
-} from "../github-publication-availability.js";
-import { parseGitHubRemoteUrl } from "../github-remote.js";
+  prepareRepositoryPublicationWorkspace,
+  type RepositoryPublicationSession,
+} from "../repository-publication-workspace-authority.js";
+import { RepositoryWorkerIdentityTransfer } from "../repository-worker-identity-transfer.js";
 import { StaleWorkerBuildError } from "./admission.js";
 import { raceNodeWorkerOperation } from "./node-worker-abort.js";
 import type { WorkerSessionTurnClaim } from "./placement-record.js";
@@ -38,8 +34,8 @@ import type {
 } from "./worker-github-binding-contract.js";
 
 function workspaceKey(
-  workspace: Awaited<ReturnType<typeof prepareGitHubPublicationWorkspaceOwner>>["initial"],
-): string {
+  workspace: Awaited<ReturnType<typeof prepareRepositoryPublicationWorkspace>>["initial"],
+) {
   return JSON.stringify(
     workspace.kind === "repository"
       ? [
@@ -57,68 +53,54 @@ function workspaceKey(
   );
 }
 
-export async function prepareGitHubPublicationFact(
-  params: PublicationSessionIdentity & {
-    assertCurrent?: () => boolean;
+export type RepositoryWorkerPublicationFact = {
+  available: boolean;
+  identity?: RepositoryWorkerIdentity;
+  workspaceKey?: string;
+  branch?: string;
+};
+
+/** Core prepares source custody; the active vendor owns account discovery and credentials. */
+export async function prepareRepositoryWorkerPublicationFact(
+  params: RepositoryPublicationSession & {
+    provider: RepositoryPublicationProvider;
+    assertCurrent: () => void;
   },
-): Promise<
-  | {
-      available: boolean;
-      github?: WorkerGitHubLaunchBinding;
-      identity?: PreparedGitHubPublicationIdentity;
-      workspaceKey?: string;
-    }
-  | undefined
-> {
+): Promise<RepositoryWorkerPublicationFact | undefined> {
   try {
-    if (params.assertCurrent?.() === false) {
-      return undefined;
-    }
-    const currentWorkspace = await prepareGitHubPublicationWorkspaceOwner(params);
-    using _ = { [Symbol.dispose]: () => currentWorkspace.release() };
-    const workspace = currentWorkspace.initial;
-    const identity = await prepareCurrentGitHubPublicationIdentity(params.agentId);
-    const originUrl =
-      workspace.kind === "repository"
-        ? workspace.workspace.url
-        : (await managedWorktrees.resolveRepositoryIdentity(workspace.worktree.path)).originUrl;
-    const current = await currentWorkspace.read();
-    if (
-      params.assertCurrent?.() === false ||
-      !sameGitHubPublicationWorkspace(workspace, current) ||
-      !matchesCurrentGitHubPublicationIdentity({ agentId: params.agentId, identity })
-    ) {
-      return undefined;
-    }
-    const remote = parseGitHubRemoteUrl(originUrl);
-    const remoteUrl =
-      remote && /^[A-Za-z0-9_.-]+$/u.test(remote.owner) && /^[A-Za-z0-9_.-]+$/u.test(remote.repo)
-        ? `https://github.com/${remote.owner}/${remote.repo}.git`
-        : undefined;
-    const scope =
-      identity.source === "agent-override"
-        ? "agent"
-        : identity.source === "system-configured"
-          ? "system"
-          : undefined;
-    const gitAuthor = scope
-      ? resolveConfiguredGitHubToolIdentity({
-          config: currentGitHubPublicationConfig(),
-          agentId: params.agentId,
-          scope,
-        })?.gitAuthor
-      : undefined;
-    const binding = parseWorkerGitHubLaunchBinding({
-      token: identity.env.GH_TOKEN,
-      login: identity.account.login,
-      branch:
-        workspace.kind === "repository" ? workspace.workspace.branch : workspace.worktree.branch,
-      ...(remoteUrl ? { remoteUrl } : {}),
-      ...(gitAuthor ? { gitAuthor } : {}),
+    params.assertCurrent();
+    params.provider.assertCurrent();
+    using workspace = await prepareRepositoryPublicationWorkspace(params, {
+      assertCurrent: params.assertCurrent,
     });
+    const initial = workspace.initial;
+    const originUrl =
+      initial.kind === "repository"
+        ? initial.workspace.url
+        : (await managedWorktrees.resolveRepositoryIdentity(initial.worktree.path)).originUrl;
+    params.assertCurrent();
+    const identity = await params.provider.prepareWorkerIdentity?.({
+      agentId: params.agentId,
+      originUrl,
+      assertCurrent: params.assertCurrent,
+    });
+    const current = await workspace.read();
+    params.assertCurrent();
+    params.provider.assertCurrent();
+    identity?.assertCurrent();
+    if (!samePublicationWorkspace(initial, current)) {
+      return undefined;
+    }
     return {
-      available: Boolean(identity.env.GH_TOKEN),
-      ...(binding ? { github: binding, identity, workspaceKey: workspaceKey(workspace) } : {}),
+      available: Boolean(identity),
+      ...(identity
+        ? {
+            identity,
+            workspaceKey: workspaceKey(initial),
+            branch:
+              initial.kind === "repository" ? initial.workspace.branch : initial.worktree.branch,
+          }
+        : {}),
     };
   } catch {
     return undefined;
@@ -127,31 +109,56 @@ export async function prepareGitHubPublicationFact(
 
 const log = createSubsystemLogger("gateway/worker-github");
 
-/** Discovery prepared the account off the turn path; admission binds only local live authority. */
+async function receiveIdentity(
+  identity: RepositoryWorkerIdentity,
+  branch: string,
+  assertCurrent: () => void,
+) {
+  let received: { binding: WorkerGitHubLaunchBinding; expiresAtMs?: number } | undefined;
+  await identity.deliver(
+    new RepositoryWorkerIdentityTransfer(async (credential, assertIdentity) => {
+      assertCurrent();
+      assertIdentity();
+      const { expiresAtMs, ...launchCredential } = credential;
+      if (expiresAtMs !== undefined && expiresAtMs <= Date.now()) {
+        throw new Error("Prepared credential expired; retry after background refresh.");
+      }
+      const binding = parseWorkerGitHubLaunchBinding({ ...launchCredential, branch });
+      if (!binding) {
+        throw new Error("Prepared worker identity is invalid.");
+      }
+      received = { binding, expiresAtMs };
+    }),
+  );
+  assertCurrent();
+  identity.assertCurrent();
+  if (!received) {
+    throw new Error("Worker identity transfer was not consumed.");
+  }
+  return received;
+}
+
+/** Admission binds cached account authority to the exact live turn and workspace. */
 async function prepareWorkerGitHubBindingGrant(
-  params: PublicationSessionIdentity & {
-    github: WorkerGitHubLaunchBinding;
-    identity: PreparedGitHubPublicationIdentity;
+  params: RepositoryPublicationSession & {
+    identity: RepositoryWorkerIdentity;
     workspaceKey: string;
+    branch: string;
     sessionTarget: AgentRunSessionTarget;
     signal: AbortSignal;
     assertCurrent: () => void;
   },
 ): Promise<WorkerGitHubBindingGrant> {
   const controller = new AbortController();
-  const signal = AbortSignal.any([params.signal, controller.signal]);
+  const signal = AbortSignal.any([params.signal, params.identity.signal, controller.signal]);
   const assertRun = () => {
     signal.throwIfAborted();
     params.assertCurrent();
   };
   assertRun();
-  if (
-    params.identity.accessExpiresAtMs !== undefined &&
-    params.identity.accessExpiresAtMs <= Date.now()
-  ) {
-    throw new Error("Prepared GitHub credential expired; retry after background refresh");
-  }
-  const workspace = await prepareGitHubPublicationWorkspaceOwner(params, {
+  params.identity.assertCurrent();
+  const initialCredential = await receiveIdentity(params.identity, params.branch, assertRun);
+  const workspace = await prepareRepositoryPublicationWorkspace(params, {
     sessionTarget: params.sessionTarget,
     assertCurrent: assertRun,
   });
@@ -159,19 +166,18 @@ async function prepareWorkerGitHubBindingGrant(
   const branch = initial.kind === "repository" ? initial.workspace.branch : initial.worktree.branch;
   if (
     workspaceKey(initial) !== params.workspaceKey ||
-    branch !== params.github.branch ||
-    params.identity.env.GH_TOKEN !== params.github.token
+    branch !== initialCredential.binding.branch
   ) {
     workspace.release();
-    throw new Error("Prepared GitHub workspace or identity changed");
+    throw new Error("Prepared publication workspace changed.");
   }
   let revision = 0;
   let preparedRevision = 0;
   let checkedAt = Date.now();
   let generation = 0;
   let pending: WorkerGitHubBindingRefresh | undefined;
-  let currentToken = params.github.token;
-  let expiresAt = params.identity.accessExpiresAtMs;
+  let currentToken = initialCredential.binding.token;
+  let expiresAt = initialCredential.expiresAtMs;
   let pendingWork: Promise<WorkerGitHubBindingRefresh | undefined> | undefined;
   let released = false;
   const stops: (() => void)[] = [];
@@ -183,7 +189,7 @@ async function prepareWorkerGitHubBindingGrant(
     signal.removeEventListener("abort", onAbort);
     stops.splice(0).forEach((stop) => stop());
     workspace.release();
-    controller.abort(new Error("Worker GitHub credential authority closed"));
+    controller.abort(new Error("Worker credential authority closed"));
   };
   const onAbort = () => {
     void revoke();
@@ -191,14 +197,9 @@ async function prepareWorkerGitHubBindingGrant(
   const assertCurrent = () => {
     try {
       assertRun();
-      if (
-        !sameGitHubPublicationWorkspace(initial, workspace.current()) ||
-        !matchesCurrentGitHubPublicationIdentity({
-          agentId: params.agentId,
-          identity: params.identity,
-        })
-      ) {
-        throw new Error("Worker GitHub credential authority changed");
+      params.identity.assertCurrent();
+      if (!samePublicationWorkspace(initial, workspace.current())) {
+        throw new Error("Worker credential workspace authority changed.");
       }
     } catch (error) {
       controller.abort(error);
@@ -218,13 +219,11 @@ async function prepareWorkerGitHubBindingGrant(
       registerConfigWriteListener(changed),
       onUserProfilesChanged(changed),
       onUserProfileEmailBindingChanged(changed),
-      onManagedGitHubProfileChanged(({ profileDir, kind }) => {
-        if (profileDir === params.identity.env.GH_CONFIG_DIR) {
-          if (kind === "removed") {
-            controller.abort(new Error("Selected GitHub profile removed"));
-          } else {
-            revision++;
-          }
+      params.identity.subscribe((change) => {
+        if (change === "retired") {
+          controller.abort(new Error("Selected account profile removed"));
+        } else {
+          revision++;
         }
       }),
     );
@@ -234,7 +233,7 @@ async function prepareWorkerGitHubBindingGrant(
     throw error;
   }
   return {
-    binding: params.github,
+    binding: initialCredential.binding,
     signal,
     assertCurrent,
     revoke,
@@ -257,33 +256,25 @@ async function prepareWorkerGitHubBindingGrant(
           return pending;
         }
         const startedRevision = revision;
-        const identity = await prepareCurrentGitHubPublicationIdentity(
-          params.agentId,
-          assertCurrent,
-        );
-        const current = await workspace.read();
-        assertCurrent();
-        if (
-          !sameGitHubPublicationWorkspace(initial, current) ||
-          identity.source !== params.identity.source ||
-          identity.profileId !== params.identity.profileId ||
-          identity.account.accountId !== params.identity.account.accountId ||
-          identity.account.login.toLowerCase() !== params.identity.account.login.toLowerCase()
-        ) {
-          controller.abort(new Error("Selected GitHub account changed; start a new turn"));
+        if ((await params.identity.refresh(assertCurrent)) === "retired") {
+          controller.abort(new Error("Selected account changed; start a new turn"));
           signal.throwIfAborted();
         }
-        const token = identity.env.GH_TOKEN;
-        if (
-          !token ||
-          (identity.accessExpiresAtMs !== undefined && identity.accessExpiresAtMs <= Date.now())
-        ) {
-          throw new Error("Selected GitHub credential expired or unavailable");
+        const current = await workspace.read();
+        assertCurrent();
+        if (!samePublicationWorkspace(initial, current)) {
+          controller.abort(new Error("Worker publication workspace changed"));
+          signal.throwIfAborted();
         }
+        const next = await receiveIdentity(params.identity, branch, assertCurrent);
         checkedAt = Date.now();
         preparedRevision = startedRevision;
-        if (token !== (pending?.token ?? currentToken)) {
-          pending = { generation: ++generation, token, expiresAtMs: identity.accessExpiresAtMs };
+        if (next.binding.token !== (pending?.token ?? currentToken)) {
+          pending = {
+            generation: ++generation,
+            token: next.binding.token,
+            expiresAtMs: next.expiresAtMs,
+          };
         }
         return pending;
       })()
@@ -294,7 +285,7 @@ async function prepareWorkerGitHubBindingGrant(
             signal.throwIfAborted();
           }
           log.warn(
-            "Worker GitHub renewal failed; retrying while the current credential remains usable.",
+            "Worker credential renewal failed; retrying while the current credential remains usable.",
           );
           return pending;
         })
@@ -306,10 +297,10 @@ async function prepareWorkerGitHubBindingGrant(
   };
 }
 
-/** Attach the background fact to this admitted turn without running identity discovery. */
+/** Attach a background fact to an admitted turn without running identity discovery. */
 export async function bindWorkerGitHubTurn(params: {
-  session: PublicationSessionIdentity;
-  fact: Awaited<ReturnType<typeof prepareGitHubPublicationFact>>;
+  session: RepositoryPublicationSession;
+  fact: RepositoryWorkerPublicationFact | undefined;
   sessionTarget: AgentRunSessionTarget;
   store: WorkerTurnExecutionIdentityStore;
   claim: WorkerSessionTurnClaim;
@@ -317,8 +308,8 @@ export async function bindWorkerGitHubTurn(params: {
   signal: AbortSignal;
   assertCurrent: () => void;
 }): Promise<WorkerGitHubBindingGrant | undefined> {
-  const { github, identity, workspaceKey: expectedWorkspace } = params.fact ?? {};
-  if (!github || !identity || !expectedWorkspace) {
+  const { identity, workspaceKey: expectedWorkspace, branch } = params.fact ?? {};
+  if (!identity || !expectedWorkspace || !branch) {
     return undefined;
   }
   if (!params.protocolFeatures.includes(WORKER_GITHUB_REFRESH_PROTOCOL_FEATURE)) {
@@ -326,9 +317,9 @@ export async function bindWorkerGitHubTurn(params: {
   }
   const preparing = prepareWorkerGitHubBindingGrant({
     ...params.session,
-    github,
     identity,
     workspaceKey: expectedWorkspace,
+    branch,
     sessionTarget: params.sessionTarget,
     signal: params.signal,
     assertCurrent: params.assertCurrent,

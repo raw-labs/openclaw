@@ -486,7 +486,14 @@
     "!dist/plugin-sdk/node-crypto-runtime.d.ts",
     "!dist/plugin-sdk/path-existence-runtime.d.ts",
     "!dist/plugin-sdk/provider-auth-markers.d.ts",
-    "!dist/plugin-sdk/terminal-safe-text.d.ts"
+    "!dist/plugin-sdk/terminal-safe-text.d.ts",
+    "!dist/plugin-sdk/repository-identity-host.d.ts",
+    "!dist/plugin-sdk/repository-publication-content.d.ts",
+    "!dist/plugin-sdk/repository-oauth-host.d.ts",
+    "!dist/plugin-sdk/repository-session-host.d.ts",
+    "!dist/plugin-sdk/worker-github-credentials.d.ts",
+    "!dist/plugin-sdk/repository-session-read.d.ts",
+    "!dist/plugin-sdk/repository-publication-engine.d.ts"
   ],
   "type": "module",
   "main": "dist/index.js",
@@ -1733,6 +1740,31 @@
     "./plugin-sdk/repository-sources": {
       "types": "./dist/plugin-sdk/repository-sources.d.ts",
       "default": "./dist/plugin-sdk/repository-sources.js"
+    },
+    "./plugin-sdk/repository-identity-host": {
+      "default": "./dist/plugin-sdk/repository-identity-host.js"
+    },
+    "./plugin-sdk/repository-publication-content": {
+      "default": "./dist/plugin-sdk/repository-publication-content.js"
+    },
+    "./plugin-sdk/repository-oauth-host": {
+      "default": "./dist/plugin-sdk/repository-oauth-host.js"
+    },
+    "./plugin-sdk/repository-session-host": {
+      "default": "./dist/plugin-sdk/repository-session-host.js"
+    },
+    "./plugin-sdk/worker-github-credentials": {
+      "default": "./dist/plugin-sdk/worker-github-credentials.js"
+    },
+    "./plugin-sdk/repository-session-read": {
+      "default": "./dist/plugin-sdk/repository-session-read.js"
+    },
+    "./plugin-sdk/repository-publication-engine": {
+      "default": "./dist/plugin-sdk/repository-publication-engine.js"
+    },
+    "./plugin-sdk/dashboard": {
+      "types": "./dist/plugin-sdk/dashboard.d.ts",
+      "default": "./dist/plugin-sdk/dashboard.js"
     },
     "./cli-entry": "./openclaw.mjs"
   },

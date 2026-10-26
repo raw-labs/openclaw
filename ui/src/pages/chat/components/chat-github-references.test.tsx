@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MarkdownRenderOptions } from "../../../components/markdown-render-options.ts";
+import { githubReferenceOptions } from "../../../test-helpers/github-text-references.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { GroupedMessage } from "./chat-message-bubble-view.tsx";
 import { prepareChatMessageRender } from "./chat-message-markdown-view.tsx";
@@ -8,10 +8,10 @@ import { SidebarPanel } from "./chat-sidebar-content.tsx";
 
 const text =
   "Original ClawSweeper PR **#1558 merged**; Follow-up ClawSweeper PR **#1576 opened**; OpenClaw PR #1576.";
-const context: MarkdownRenderOptions = {
+const context = githubReferenceOptions({
   githubRepo: { owner: "openclaw", repo: "openclaw" },
   githubRepositories: [{ owner: "openclaw", repo: "clawsweeper", aliases: ["ClawSweeper"] }],
-};
+});
 
 describe("GitHub reference presentation parity", () => {
   it.each(["persisted", "streaming", "sidebar"] as const)(

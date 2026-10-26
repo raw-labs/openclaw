@@ -5,8 +5,8 @@ import { beforeEach, expect, it, onTestFinished } from "vitest";
 import { runCommandBuffered } from "../process/exec.js";
 import {
   assertSafeGitPublicationWorkspace as assertSafeWorkspace,
-  captureGitHubPublicationWorkspaceSnapshot as captureSnapshot,
-} from "./github-publication-git-transport.js";
+  capturePublicationWorkspaceSnapshot as captureSnapshot,
+} from "./repository-publication-git.js";
 
 let root: string;
 const commit = expect.stringMatching(/^[a-f0-9]{40}$/u);

@@ -2,6 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
+import {
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createDiagnosticLogRecordCapture } from "../logging/test-helpers/diagnostic-log-capture.js";
@@ -10,10 +14,8 @@ import {
   activateDisabledExecutionExclusions,
   createExecutionEnvironmentFixture,
 } from "../plugins/execution-environment.test-support.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "./github-tool-identity.js";
+import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import { createGitHubExecutionFixture } from "./execution-environment.test-support.js";
 import { registerSandboxBackend } from "./sandbox/backend.js";
 import type { CreateSandboxBackendParams } from "./sandbox/backend.types.js";
 import { resolveSandboxContext } from "./sandbox/context.js";
@@ -84,8 +86,21 @@ async function fixture(
         },
       },
       entries: {
-        release: { tools: { github: { ...identity, allowInSandbox: options.allowInSandbox } } },
         other: {},
+        release: {
+          tools: {},
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            agents: {
+              release: { ...identity, allowInSandbox: options.allowInSandbox },
+            },
+          },
+        },
       },
     },
   };
@@ -94,18 +109,22 @@ async function fixture(
 
 function resolve(config: OpenClawConfig, agentId = "release", required = false, creator = "alice") {
   const sessionKey = `agent:${agentId}:task`;
-  return resolveSandboxContext({
-    config,
-    sessionKey,
-    workspaceDir: config.agents?.defaults?.workspace,
-    preparedRuntimeStatus: resolvePreparedSandboxRuntimeStatus({
-      cfg: config,
+  const run = () =>
+    resolveSandboxContext({
+      config,
       sessionKey,
-      preparedSessionEntry: required
-        ? { sandbox: "required", createdActor: { type: "human", source: "profile", id: creator } }
-        : null,
-    }),
-  });
+      workspaceDir: config.agents?.defaults?.workspace,
+      preparedRuntimeStatus: resolvePreparedSandboxRuntimeStatus({
+        cfg: config,
+        sessionKey,
+        preparedSessionEntry: required
+          ? { sandbox: "required", createdActor: { type: "human", source: "profile", id: creator } }
+          : null,
+      }),
+    });
+  return getPluginRuntimeGatewayRequestScope()?.pluginRegistry
+    ? run()
+    : createGitHubExecutionFixture(config).run(run);
 }
 
 it.each([false, true])("isolates read-only identity (role required=%s)", async (required) => {

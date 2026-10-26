@@ -9,20 +9,32 @@ import {
   expect,
   it,
   type Mock,
+  onTestFinished,
   vi,
 } from "vitest";
+import { registerGitHubBoardBinding } from "../../../extensions/github-repositories/board-binding-api.js";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
+import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
+import manifest from "../../../extensions/github-repositories/openclaw.plugin.json" with { type: "json" };
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
+import { resolveManagedGitHubProfileDir } from "../../../extensions/github-repositories/tool-identity-api.js";
 import type { BoardSnapshot } from "../../../packages/gateway-protocol/src/index.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
-import { clearGitHubCredentialVerificationCache } from "../../agents/github-oauth-client.js";
-import { resolveManagedGitHubProfileDir } from "../../agents/github-tool-identity.js";
 import { createTestBoardStore } from "../../boards/board-store.test-support.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  createPluginRegistryFixture,
+  registerTestPlugin,
+} from "../../plugin-sdk/plugin-test-contracts.js";
 import { createPluginBoardWidgetContentKindRegistrar } from "../../plugins/board-widget-content-kinds.js";
+import { registerPluginDashboardCapabilities } from "../../plugins/dashboard-capabilities.js";
 import { createPluginRecord } from "../../plugins/loader-records.js";
+import { getPluginInstance } from "../../plugins/plugin-instance-scope.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../plugins/runtime.js";
 import * as processExec from "../../process/exec.js";
@@ -34,7 +46,6 @@ import {
 } from "../../test-utils/openclaw-test-state.js";
 import { toRequestUrl } from "../../test-utils/provider-usage-fetch.js";
 import { drainSessionStateForTest } from "../../test-utils/session-state-cleanup.js";
-import { gitHubPublicApi } from "../github-public-api.js";
 import { createBoardHarness } from "./board.test-support.js";
 import type { GatewayRequestHandlerOptions, RespondFn } from "./types.js";
 
@@ -112,6 +123,7 @@ describe("board authenticated GitHub Actions", () => {
   let boardStore: ReturnType<typeof createTestBoardStore>;
   let caseNumber = 0;
   let config: OpenClawConfig;
+  let pluginRegistry: ReturnType<typeof createEmptyPluginRegistry>;
   let actions: () => Response | Promise<Response>;
   let http: Mock<typeof fetch>;
   const account = vi.fn(async () => accountResponse());
@@ -152,6 +164,7 @@ describe("board authenticated GitHub Actions", () => {
   beforeEach(async () => {
     caseNumber += 1;
     resetPluginRuntimeStateForTest();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     state.envVars.GH_TOKEN = undefined;
     state.envVars.GITHUB_TOKEN = undefined;
@@ -161,9 +174,39 @@ describe("board authenticated GitHub Actions", () => {
     state.applyEnv();
     config = {
       agents: { entries: { main: {} } },
-      tools: { exec: { mode: "full" }, github: { profileId } },
-      gateway: { controlUi: { github: { token: "synthetic-preview-only" } } },
+      tools: {
+        exec: { mode: "full" },
+      },
+      gateway: {
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId },
+              service: { token: "synthetic-preview-only" },
+            },
+          },
+        },
+      },
     };
+    const fixture = createPluginRegistryFixture(config);
+    const record = createPluginRecord({
+      id: manifest.id,
+      source: "github-board-binding-fixture",
+      origin: "bundled",
+      enabled: true,
+      configSchema: false,
+      dashboard: manifest.dashboard,
+    });
+    registerTestPlugin({ ...fixture, record, register: registerGitHubBoardBinding });
+    pluginRegistry = fixture.registry.registry;
+    registerPluginDashboardCapabilities({ record, registry: pluginRegistry });
+    setActivePluginRegistry(pluginRegistry);
+    onTestFinished(async () => {
+      await getPluginInstance(record)?.dispose();
+    });
     await writeCredential(token);
     native.mockReset().mockRejectedValue(new Error("Unexpected native credential subprocess"));
     vi.spyOn(processExec, "runCommandBuffered").mockImplementation(native);
@@ -229,10 +272,11 @@ describe("board authenticated GitHub Actions", () => {
     return held;
   }
   function useNativeCredentials() {
-    delete config.tools!.github;
+    delete readGitHubConfig(config).system;
     native.mockImplementation(async () => commandResult(token));
   }
   function holdNativeCredentials() {
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     const held = hold(() => commandResult(token));
     native.mockImplementationOnce(held.execute);
@@ -278,15 +322,41 @@ describe("board authenticated GitHub Actions", () => {
     return { leader, follower };
   }
 
+  it("does not serve or pin persisted scoped grants when the plugin is disabled", async () => {
+    const harness = await reader();
+    const calls = http.mock.calls.length;
+    setActivePluginRegistry(createEmptyPluginRegistry());
+    await expectDenied(harness.read(), /unavailable|invalid|stale/);
+    await expectDenied(harness.invoke("board.widget.put", widgetInput()), /unavailable/);
+    expect(http).toHaveBeenCalledTimes(calls);
+  });
+
+  it("does not let the plugin's read RPC bypass a widget's exact grant", async () => {
+    const harness = createGitHubBoardHarness();
+    const method = "github-repositories.board.actions.runs";
+    const params = { repository: "owner/repo" };
+    await expect(
+      pluginRegistry.gatewayHandlers[method]!({
+        req: { type: "req", id: "direct", method, params },
+        params,
+        context: harness.context,
+        client: null,
+        isWebchatConnect: () => false,
+        respond: vi.fn(),
+      }),
+    ).rejects.toThrow(/admitted Board widget grant/);
+    expect(http).not.toHaveBeenCalled();
+  });
+
   it.each(["managed", "native environment", "native CLI"])(
     "keeps public Actions credentials and transport together with Enterprise selected (%s)",
     async (source) => {
-      config.gateway!.github = {
+      Object.assign(readGitHubConfig(config), {
         host: "ghe.example.test",
         apiBaseUrl: "https://ghe.example.test/api/v3",
-      };
+      });
       if (source !== "managed") {
-        delete config.tools!.github;
+        delete readGitHubConfig(config).system;
       }
       state.envVars.GH_TOKEN = source === "native environment" ? token : undefined;
       state.envVars.GH_HOST = "ghe.example.test";
@@ -316,7 +386,7 @@ describe("board authenticated GitHub Actions", () => {
   );
 
   it("verifies identity before saving registered host capabilities and preserves a failed update", async () => {
-    const registry = createEmptyPluginRegistry();
+    const registry = pluginRegistry;
     createPluginBoardWidgetContentKindRegistrar(registry)(
       createPluginRecord({
         id: "fixture",
@@ -348,6 +418,7 @@ describe("board authenticated GitHub Actions", () => {
     const before = await store.getSnapshot(target);
     expect(before.widgets[0]?.declared?.tools).toEqual(["github.actions.runs:owner/repo"]);
     broadcast.mockClear();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     account.mockImplementationOnce(async () => new Response(token, { status: 401 }));
     await expectDenied(invoke("board.widget.put", input), /reconnect|retry/);
@@ -630,6 +701,7 @@ describe("board authenticated GitHub Actions", () => {
     expect(actionCalls()).toHaveLength(1);
     await expectResult(follower.read());
     expect(actionCalls()).toHaveLength(1);
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     account.mockImplementationOnce(async () => {
       await removeWidget(follower, "follower");

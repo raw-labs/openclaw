@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createGitHubIdentityStatusTool } from "../test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "./gateway-caller-context.js";
-import { createGitHubIdentityStatusTool } from "./github-identity-status-tool.js";
 import * as gateway from "./in-process-gateway.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -31,10 +31,14 @@ describe("github_identity_status tool", () => {
       async () => await tool.execute("status-1", {}),
     );
 
-    expect(callGatewayMock).toHaveBeenCalledWith("tools.github.status", {
-      agentId: "main",
-      selectedScope: "agent",
-    });
+    expect(callGatewayMock).toHaveBeenCalledWith(
+      "tools.github.status",
+      {
+        agentId: "main",
+        selectedScope: "agent",
+      },
+      expect.objectContaining({ sessionMutationCommitGuard: expect.any(Function) }),
+    );
     expect(JSON.stringify(result)).toContain("Ask the operator");
   });
 });

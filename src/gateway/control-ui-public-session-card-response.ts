@@ -13,7 +13,6 @@ import {
 } from "./control-ui-public-session-read.js";
 import { publicSessionTitle } from "./control-ui-public-session-render.js";
 import type { PublicSessionShareLocator } from "./control-ui-public-session-token.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
 import type { SessionRowProjection } from "./session-row-projection.js";
 
@@ -30,7 +29,7 @@ export async function servePublicSessionCardRepresentation(params: {
   card: {
     render: PublicSessionCardRenderer["render"];
     fallback: () => Promise<void>;
-    pullRequests?: GatewayRequestContext["controlUiSessionPullRequests"];
+    pullRequests?: import("./repository-session-read-host.js").RepositorySessionPresentation;
   };
 }): Promise<true> {
   const { res, config, gate, locator, projection, card } = params;

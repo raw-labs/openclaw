@@ -19,6 +19,7 @@ import { resolveExecSafeBinRuntimePolicy } from "../infra/exec-safe-bin-runtime-
 import { logInfo } from "../logger.js";
 import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { isSecretEgressProxyActive } from "../secrets/egress-proxy/registry.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import type { SecretStoreExecEnvironment } from "../secrets/store/secret-store.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { captureOpenClawStateReadWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -89,7 +90,10 @@ export function createExecTool(defaults?: ExecToolDefaults) {
       runId: defaults?.runId,
       sessionId: defaults?.sessionId,
     });
-  const preparedRunEnvironment = resolveExecPreparedRunEnvironment(defaults);
+  let runEnvironment = defaults?.preparedRunEnvironment;
+  let storeProjectionAdmitted: boolean | undefined;
+  const resolveRunEnvironment = () =>
+    (runEnvironment ??= resolveExecPreparedRunEnvironment(defaults));
   let subagentExecutionPromise: Promise<boolean> | undefined;
   const resolveSubagentExecution = () =>
     defaults?.preparedSubagentExecution ??
@@ -105,13 +109,16 @@ export function createExecTool(defaults?: ExecToolDefaults) {
     defaults?.preparedStoreEnvironment === undefined
       ? undefined
       : Promise.resolve(defaults.preparedStoreEnvironment);
-  const resolveStoreEnv = () => {
+  const resolveStoreEnv = (): Promise<Readonly<SecretStoreExecEnvironment>> => {
     if (storeEnvPromise === undefined) {
+      if (!storeProjectionAdmitted) {
+        return Promise.resolve({});
+      }
       const context = captureOpenClawStateReadWorkerContext();
       storeEnvPromise = import("../secrets/store/secret-store.js").then((store) =>
         store.readSecretStoreExecEnvironment({
           includeSecretSentinels: secretEgressEnabled,
-          excludeNames: preparedRunEnvironment.excludedStoreNames,
+          excludeNames: resolveRunEnvironment().excludedStoreNames,
           context,
         }),
       );
@@ -202,6 +209,8 @@ export function createExecTool(defaults?: ExecToolDefaults) {
     execute: async (toolCallId, args, signal, onUpdate) => {
       signal?.throwIfAborted();
       const assertSourceActive = captureAgentToolSourceExecutionGuard(signal);
+      const preparedRunEnvironment = resolveRunEnvironment();
+      storeProjectionAdmitted ??= getActiveSecretsRuntimeConfigSnapshot() !== null;
       assertSupportedExecParams(args);
       // Capture settings and cancellation per execution; unused reviewers must not load model runtime.
       let autoReviewer: ExecAutoReviewer | undefined = defaults?.autoReviewer;
@@ -492,10 +501,6 @@ export function createExecTool(defaults?: ExecToolDefaults) {
           throw new Error("exec internal error: local execution requires a resolved workdir");
         }
 
-        const githubProfileDir =
-          host === "gateway" && preparedRunEnvironment.managedLocalIdentity
-            ? preparedRunEnvironment.localIdentityEnv.GH_CONFIG_DIR
-            : undefined;
         const wrapLocalLaunch =
           host === "gateway" ? preparedRunEnvironment.wrapLocalLaunch : undefined;
 
@@ -504,7 +509,6 @@ export function createExecTool(defaults?: ExecToolDefaults) {
             ...hostApprovalParams(),
             workdir,
             secretEgressBindings,
-            githubProfileDir,
             wrapLocalLaunch,
             assertExecutionEnvironmentCurrent: preparedRunEnvironment.assertCurrent,
             transportCredentialScrubEnv: preparedRunEnvironment.credentialScrubEnv,
@@ -558,7 +562,6 @@ export function createExecTool(defaults?: ExecToolDefaults) {
           workdir,
           env,
           secretEgressBindings,
-          githubProfileDir,
           wrapLocalLaunch,
           assertExecutionEnvironmentCurrent: preparedRunEnvironment.assertCurrent,
           transportCredentialScrubEnv: preparedRunEnvironment.credentialScrubEnv,

@@ -60,6 +60,7 @@ type Capability = readonly [
     scope?: "operator.read" | "operator.write";
     registeredMethod?: string;
     paramShape?: object;
+    legacyId?: string;
   },
 ];
 
@@ -70,6 +71,7 @@ function writeDashboardPlugin(id: string, ...capabilities: Capability[]): TempPl
       id: capabilityId,
       method,
       description: "Fixture capability",
+      ...(options.legacyId ? { legacyId: options.legacyId } : {}),
       ...(options.paramShape && { paramShape: options.paramShape }),
     });
     const scope = options.scope ?? (kind === "dataBindings" ? "operator.read" : "operator.write");
@@ -251,4 +253,27 @@ it("publishes validated dashboard bindings and action verbs", () => {
     pluginId: plugin.id,
     method: "valid.refresh",
   });
+});
+
+it("does not let external plugins claim shipped binding/grant namespaces", () => {
+  const plugin = writeDashboardPlugin("external", [
+    "dataBindings",
+    "runs",
+    "external.read",
+    { legacyId: "github.actions.runs" },
+  ]);
+  expectRejected(
+    plugin,
+    "legacy binding ids are reserved for bundled capability cutovers",
+    "dashboardDataBindings",
+  );
+});
+
+it("keeps disabled pre-plugin grant namespaces reserved against implicit external claims", () => {
+  const plugin = writeDashboardPlugin("github", ["dataBindings", "actions.runs", "github.read"]);
+  expectRejected(
+    plugin,
+    'capability id "github.actions.runs" is reserved by core',
+    "dashboardDataBindings",
+  );
 });

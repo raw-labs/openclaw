@@ -1,13 +1,20 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { withPluginRuntimeRegistryScope } from "openclaw/plugin-sdk/channel-test-helpers";
 import { createDeferred } from "openclaw/plugin-sdk/extension-shared";
+import {
+  createPluginRegistryFixture,
+  registerVirtualTestPlugin,
+} from "openclaw/plugin-sdk/plugin-test-contracts";
 import {
   createAgentHarnessHostCapabilitiesForTest,
   createMockPluginRegistry,
+  disposePluginRegistryInstances,
   initializeGlobalHookRunner,
   resetGlobalHookRunner,
 } from "openclaw/plugin-sdk/plugin-test-runtime";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { githubExecutionEnvironment } from "../../../github-repositories/execution-environment-api.js";
 import { shouldEnableCodexAppServerNativeToolSurface } from "./dynamic-tool-build.js";
 import {
   buildDynamicToolsForTest,
@@ -38,26 +45,45 @@ async function fixture(
   const params = createParams(path.join(root, "session.jsonl"), root);
   params.agentId = "main";
   params.disableTools = false;
+  const identity = { profileId: "ghp_11111111111111111111111111111111" };
   params.config = {
     tools: {
       exec: { host: "gateway", mode: options.mode ?? "full" },
-      github: { profileId: "ghp_11111111111111111111111111111111" },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": { config: { system: identity } },
+      },
     },
   };
-  const { hostCapabilities: _unused, ...attempt } = params;
-  const host = await createAgentHarnessHostCapabilitiesForTest({
-    attempt,
-    pluginId: "codex",
-    ...(options.assertCurrent
-      ? {
-          operatorSource: {
-            profileId: "original",
-            scopes: ["operator.admin"],
-            assertCurrent: options.assertCurrent,
-          },
-        }
-      : {}),
+  const plugin = createPluginRegistryFixture(params.config);
+  registerVirtualTestPlugin({
+    ...plugin,
+    id: "github-repositories",
+    name: "GitHub",
+    register(api) {
+      api.registerExecutionEnvironment(githubExecutionEnvironment);
+    },
   });
+  onTestFinished(async () => {
+    await disposePluginRegistryInstances(plugin.registry.registry);
+  });
+  const { hostCapabilities: _unused, ...attempt } = params;
+  const host = await withPluginRuntimeRegistryScope(plugin.registry.registry, () =>
+    createAgentHarnessHostCapabilitiesForTest({
+      attempt,
+      pluginId: "codex",
+      ...(options.assertCurrent
+        ? {
+            operatorSource: {
+              profileId: "original",
+              scopes: ["operator.admin"],
+              assertCurrent: options.assertCurrent,
+            },
+          }
+        : {}),
+    }),
+  );
   params.hostCapabilities = host.capabilities;
   closers.push(host.close);
   const environment = host.capabilities.preparedEnvironment!();
@@ -69,7 +95,7 @@ async function fixture(
     { mode: 0o600 },
   );
   if (options.mutateSelection) {
-    params.config.tools!.github!.profileId = "ghp_22222222222222222222222222222222";
+    identity.profileId = "ghp_22222222222222222222222222222222";
   }
   const nativeExecutionPolicy = await prepareTestNativeExecutionPolicy(params);
   const native = shouldEnableCodexAppServerNativeToolSurface(params, undefined, {

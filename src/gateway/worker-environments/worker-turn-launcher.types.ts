@@ -1,3 +1,4 @@
+import type { WorkspacePublicationHost } from "../workspace-publication-provider.js";
 import type { WorkerSessionPlacementRecord, WorkerSessionTurnClaim } from "./placement-store.js";
 import type { WorkerPlacementRedispatch } from "./service-contract.js";
 import type { WorkerSessionWorkspace } from "./session-workspace.js";
@@ -10,6 +11,7 @@ import type { WorkerWorkspaceOperationCoordinator } from "./workspace-operation-
 
 export type WorkerTurnLauncherOptions = WorkerTurnAdmissionOptions & {
   environments: WorkerTurnEnvironmentService;
+  readWorkerPublicationFact?: WorkspacePublicationHost["readWorkerPublicationFact"];
   /** Read-only resolution; a cancelled turn may stop waiting for these facts. */
   resolveWorkspace: (identity: {
     sessionId: string;

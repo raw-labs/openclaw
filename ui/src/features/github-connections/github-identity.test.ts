@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../../../extensions/github-repositories/config-api.js";
 import { createDeferredCore } from "../../../../src/shared/deferred.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { createRuntimeConfigCapability } from "../../lib/config/runtime-config-capability.ts";
@@ -31,8 +32,26 @@ function authorConfig(systemName: string, agentName: string) {
     gitAuthor: { name },
   });
   return {
-    tools: { github: identity(systemName, "a") },
-    agents: { entries: { main: { tools: { github: identity(agentName, "b") } } } },
+    tools: {},
+    agents: {
+      entries: {
+        main: {
+          tools: {},
+        },
+      },
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: identity(systemName, "a"),
+            agents: {
+              main: identity(agentName, "b"),
+            },
+          },
+        },
+      },
+    },
   };
 }
 
@@ -111,7 +130,7 @@ it("keeps independent identity drafts isolated and clears only the inherited tar
 });
 
 it.each(["access", "profile"] as const)(
-  "deletes a stored handoff when %s changes before dispatch",
+  "does not stage a secret when %s changes before serialized dispatch",
   async (change) => {
     const behavior: { beforeDispatch?: () => void } = {};
     const { identity, sync, requests } = createController(behavior);
@@ -122,10 +141,8 @@ it.each(["access", "profile"] as const)(
 
     await identity.configure();
 
-    expect(requests.map((entry) => entry.method)).toEqual([
-      "secrets.store.set",
-      "secrets.store.delete",
-    ]);
+    // Config serialization admits the complete operation before any secret is staged.
+    expect(requests).toEqual([]);
     expect(identity.read().configurable).toBe(change === "profile");
     expect(identity.read().error).toBeNull();
   },
@@ -168,7 +185,16 @@ it("config.set drains drafts before managed and refreshes both edits", async () 
   let hashCounter = 1;
   let storedConfig: Record<string, unknown> = {
     pendingEdit: "original",
-    tools: { github: { profileId: "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId: "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          },
+        },
+      },
+    },
   };
   const request = vi.fn(async (method: string, params?: unknown) => {
     order.push(method);
@@ -187,7 +213,17 @@ it("config.set drains drafts before managed and refreshes both edits", async () 
       expect(params).toMatchObject({ mode: "managed" });
       storedConfig = {
         ...storedConfig,
-        tools: { github: { profileId: "ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+        tools: {},
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                ...readGitHubConfig(storedConfig),
+                system: { profileId: "ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+              },
+            },
+          },
+        },
       };
       hashCounter += 1;
       return availableStatus("system");
@@ -212,8 +248,8 @@ it("config.set drains drafts before managed and refreshes both edits", async () 
     await identity.configure();
 
     expect(order).toEqual([
-      "secrets.store.set",
       "config.set",
+      "secrets.store.set",
       "tools.github.configure",
       "config.get",
     ]);
@@ -225,7 +261,16 @@ it("config.set drains drafts before managed and refreshes both edits", async () 
     });
     expect(runtimeConfig.state.configForm).toMatchObject({
       pendingEdit: "managed",
-      tools: { github: { profileId: "ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: "ghp_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+            },
+          },
+        },
+      },
     });
   } finally {
     unsubscribe();
@@ -307,7 +352,18 @@ it("invalidates an in-flight status on effective identity change and verifies on
   const first = createDeferredCore<ReturnType<typeof availableStatus>>();
   const second = createDeferredCore<ReturnType<typeof availableStatus>>();
   const responses = [first.promise, second.promise];
-  const config = (profileId: string) => ({ tools: { github: { profileId } } });
+  const config = (profileId: string) => ({
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: { profileId },
+          },
+        },
+      },
+    },
+  });
   const { request, sync, identity } = setupRequest(async () => responses.shift(), {
     context: { config: config("ghp_11111111111111111111111111111111") },
   });

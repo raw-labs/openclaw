@@ -20,8 +20,11 @@ import {
 } from "./test/server-sessions.test-helpers.js";
 
 const projectCloneMocks = vi.hoisted(() => ({ materialize: vi.fn() }));
-vi.mock("../projects/project-clone.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../projects/project-clone.js")>();
+vi.mock("../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/project-clone-api.js")
+    >();
   return { ...actual, materializeProjectClone: projectCloneMocks.materialize };
 });
 
@@ -103,8 +106,7 @@ test("sessions.create retains a cloud repository across replay without creating 
       if (operation.type === "checkout.context") {
         return {
           root: operation.input.root,
-          owner: "openclaw",
-          repo: "openclaw",
+          originUrl: "https://github.com/openclaw/openclaw",
           branch: "previous-local-branch",
           defaultBranch: "main",
         };

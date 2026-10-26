@@ -30,6 +30,7 @@ import { publishHooksTokenEnvKey } from "./hooks.js";
 import { isLoopbackHost } from "./net.js";
 import { createNodeReapprovalCoordinator } from "./node-reapproval-coordinator.js";
 import { GatewayOperatorAccessUnavailableError } from "./operator-access-policy.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { createGatewayControlUiRootLifecycle } from "./server-control-ui-root.js";
 import type { GatewayInstanceRuntime } from "./server-instance-runtime.types.js";
@@ -47,6 +48,7 @@ import { resolveHookClientIpConfig } from "./server/hook-client-ip-config.js";
 import { createPresencePublisher } from "./server/presence-events.js";
 import { createReadinessChecker, createStartupChecker } from "./server/readiness.js";
 import { resolveSharedGatewaySessionGeneration } from "./server/ws-shared-generation.js";
+import { createWorkspacePublicationHost } from "./workspace-publication-provider.js";
 
 type GatewayBootstrap = Awaited<ReturnType<typeof prepareGatewayServerBootstrap>>;
 type GatewayLogger = ReturnType<typeof createSubsystemLogger>;
@@ -133,12 +135,14 @@ export async function prepareGatewayKernelState(params: {
     }),
   );
   await startupTrace.measure("device-pairing", () => readDevicePairingNodeSnapshot());
+  const repositorySources = createRepositorySources(scheduler.signal);
   const workerEnvironmentRuntime = workerEnvironmentStartup
     ? await startupTrace.measure("worker-environments.runtime-imports", async () => {
         const workerModule = await import("./server-worker-environment-startup.js");
         return await workerModule.createGatewayWorkerEnvironmentRuntime({
           scheduler,
           getPluginRegistry: () => pluginRuntime.registry,
+          getRepositorySources: () => repositorySources,
           getPortalRuntime: () => pluginGatewayContext.current,
           resolveGatewayContext: resolvePluginGatewayContext,
           desktopSessionRegistry,
@@ -180,12 +184,15 @@ export async function prepareGatewayKernelState(params: {
     }
     return (context.getCommittedRuntimeConfig ?? context.getRuntimeConfig)();
   };
-  const githubPublicationRuntime =
+  const workspacePublicationHost =
     workerEnvironmentStartup && workerPlacementModule
-      ? workerPlacementModule.createGatewayGitHubPublicationRuntime({
+      ? createWorkspacePublicationHost({
           placements: workerEnvironmentStartup.placementStore,
           getCommittedRuntimeConfig,
+          scheduler,
           warn: (message) => log.warn(message),
+          loadSessionRuntime: workerPlacementModule.loadWorkerPlacementSessionRuntimeModule,
+          managedByPlacement: Boolean(workerEnvironmentService && nodeWorkerGatewayNamespace),
         })
       : undefined;
   const workerPlacement =
@@ -199,6 +206,7 @@ export async function prepareGatewayKernelState(params: {
             placements: workerEnvironmentStartup.placementStore,
             initialPlacements: await workerEnvironmentStartup.placementStore.listAsync(),
             getCommittedRuntimeConfig,
+            getRepositorySources: () => repositorySources,
             environments: workerEnvironmentService,
             gatewayNamespace: nodeWorkerGatewayNamespace,
             nodeWorkerBundleRetention,
@@ -243,7 +251,7 @@ export async function prepareGatewayKernelState(params: {
             revokeSessionAuthority: (request) => workerDispatchAuthority.revoke(request),
             info: (message) => log.info(message),
             warn: (message) => log.warn(message),
-            ...(githubPublicationRuntime ? { githubPublicationRuntime } : {}),
+            ...(workspacePublicationHost ? { workspacePublicationHost } : {}),
           }),
         )
       : undefined;
@@ -561,8 +569,8 @@ export async function prepareGatewayKernelState(params: {
     bindWorkerNodeDesktopControl,
     workerDispatchAuthority,
     workerPlacementRuntime,
-    githubPublicationRuntime,
-    githubPublicationService: githubPublicationRuntime?.coordinator,
+    workspacePublicationHost,
+    repositorySources,
     workerPlacementControlAvailable,
     desktopSessionRegistry,
     nodeDesktopStreamBroker,

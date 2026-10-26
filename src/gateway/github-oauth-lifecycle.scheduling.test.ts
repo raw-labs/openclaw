@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { createGitHubOAuthLifecycle } from "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
+import { createPersonalGitHubOAuthLifecycle } from "../../extensions/github-repositories/personal-oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as githubRecords from "../agents/github-oauth-records.js";
 import { createDeferredCore } from "../shared/deferred.js";
@@ -12,7 +14,6 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
-import { createGitHubOAuthLifecycle } from "./github-oauth-lifecycle.js";
 import {
   configForScope,
   identity,
@@ -20,11 +21,10 @@ import {
   oauthRecord,
   OLD_PROFILE,
 } from "./github-oauth-lifecycle.test-support.js";
-import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
 
 const refreshToken = vi.hoisted(() => vi.fn());
-vi.mock("../agents/github-oauth-client.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../agents/github-oauth-client.js")>()),
+vi.mock("../../extensions/github-repositories/oauth-api.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../extensions/github-repositories/oauth-api.js")>()),
   refreshGitHubOAuthToken: refreshToken,
 }));
 

@@ -38,6 +38,10 @@ background services, plus the SDK helpers those surfaces depend on. Part of the
 
 Gateway methods default to `profileAccess: "required"`, so a request is rejected before plugin dispatch if authenticated-profile verification fails. Set `profileAccess: "independent"` only for an audited method that neither reads nor mutates durable user or session state. Operator scope remains a separate authorization requirement.
 
+Use `advertise: false` for an internal transport method that should not appear in
+client discovery. This does not change its scope or invocation authorization.
+`description` supplies the method's discovery description.
+
 Read-only methods may opt into WebSocket response sharing with registration options
 `shareKey(caller, params)`, `shareInvalidationEvents`, and `shareMaxAgeMs`.
 Return `null` when a request cannot share. The key must include every caller and

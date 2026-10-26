@@ -65,16 +65,16 @@ const additionalLintRules: Partial<Record<Group, string[]>> = {
 };
 const validators: Array<[name: string, schema: TSchema, type: string, group: Group]> = [
   [
-    "ControlUiRepositorySearchResult",
-    ControlUiRepositorySearchResultSchema,
-    'import("../../../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySearchResult',
-    "session-input",
-  ],
-  [
     "BoardSnapshot",
     BoardSnapshotSchema,
     'import("' + schemaRoot + 'board.js").BoardSnapshot',
     "board",
+  ],
+  [
+    "ControlUiRepositorySearchResult",
+    ControlUiRepositorySearchResultSchema,
+    'import("../../../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySearchResult',
+    "session-input",
   ],
   [
     "SessionParticipantIdentity",

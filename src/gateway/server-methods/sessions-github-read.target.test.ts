@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as availability from "../../../extensions/github-repositories/publication-availability-api.js";
+import { prepareGitHubPublicationTarget } from "../../../extensions/github-repositories/publication-target-api.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { runGit } from "../../agents/worktrees/git.js";
@@ -9,8 +11,7 @@ import { managedWorktrees } from "../../agents/worktrees/service.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
-import * as availability from "../github-publication-availability.js";
-import { prepareGitHubPublicationTarget } from "../github-publication-target.js";
+import * as workspaceAuthority from "../repository-publication-workspace-authority.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import * as sessionStoreWorker from "../session-utils-store-worker.js";
 import {
@@ -212,11 +213,17 @@ describe("registered guest publication target discovery", () => {
       expect(await options(fixture)).toHaveBeenCalledWith(true, sharedOptions);
       expect(lookup).toHaveBeenCalledOnce();
       await expect(
-        prepareGitHubPublicationTarget({
-          worktree,
-          identity: { ...publisherIdentity, env: {} },
-          assertCurrent: () => {},
-        }),
+        (async () => {
+          const source = await workspaceAuthority.readRepositoryPublicationTargetFacts({
+            worktree,
+            assertCurrent: () => {},
+          });
+          return prepareGitHubPublicationTarget({
+            source,
+            identity: { ...publisherIdentity, env: {} },
+            assertCurrent: () => {},
+          });
+        })(),
       ).rejects.toThrow(repositoryChanged);
       now += 1;
       expectFailure(await options(fixture), { message: repositoryChanged });
@@ -341,7 +348,7 @@ describe("registered guest publication target discovery", () => {
     "preserves %s account discovery without a publication workspace",
     async (caller) => {
       await withReadFixture(async (fixture) => {
-        const target = vi.spyOn(availability, "hasSupportedGitHubPublicationTarget");
+        const target = vi.spyOn(workspaceAuthority, "hasSupportedGitHubPublicationTarget");
         const respond = caller === "broad" ? await options(fixture) : vi.fn();
         if (caller === "internal") {
           await handleGatewayRequest({

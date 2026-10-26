@@ -1,3 +1,4 @@
+import { GITHUB_ACTIONS_BINDING_ID } from "../../extensions/github-repositories/board-capabilities-api.js";
 import {
   ErrorCodes,
   errorShape,
@@ -9,13 +10,14 @@ import { BoardValidationError } from "../boards/board-layout.js";
 import { BoardEventPayloadError } from "../boards/board-notices.js";
 import type { BoardStore, BoardSessionTarget } from "../boards/board-store.js";
 import {
-  GITHUB_ACTIONS_BINDING_ID,
-  resolveGitHubActionsRequest,
-} from "../boards/github-actions-capability.js";
-import {
   captureExternalSessionCommitGuard,
   composeSessionSourceAssertion,
 } from "../config/sessions/session-source-authority.js";
+import { withDashboardDataBindingRead } from "../plugins/dashboard-data-binding-scope.js";
+import type {
+  PluginDashboardDataBindingHost,
+  PreparedPluginDashboardDataBinding,
+} from "../plugins/dashboard-data-binding.types.js";
 import {
   capturePluginRegistryLifecycleEpoch,
   isPluginRegistryLifecycleEpochActive,
@@ -25,6 +27,7 @@ import { getActivePluginRegistry } from "../plugins/runtime.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { validateJsonSchemaValue } from "../plugins/schema-validator.js";
 import { isGatewaySubordinateWorkAdmissionClosed } from "../process/gateway-work-admission.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import {
   BoardGatewayUnavailableError,
   type BoardViewTicketAuthorityInput,
@@ -67,10 +70,153 @@ export function assertBoardCapabilityParamsSize(
 export function boardDataBindingCapability(
   bindingId: string,
   params: Record<string, unknown>,
+  registry?: PluginRegistry,
 ): string {
-  return bindingId === GITHUB_ACTIONS_BINDING_ID
-    ? resolveGitHubActionsRequest(params).capability
-    : bindingId;
+  const registration = registry?.dashboardDataBindings.get(bindingId);
+  if (!registration?.runtime) return bindingId;
+  const grant = registration.runtime.resolveGrant(params);
+  // A plugin may narrow its own grant, never translate a different capability into access.
+  if (grant !== bindingId && !grant.startsWith(`${bindingId}:`)) {
+    throw new BoardValidationError(
+      "invalid_operation",
+      "dashboard binding resolved a grant outside its namespace",
+    );
+  }
+  return grant;
+}
+
+function createDashboardDataBindingHost(
+  invocation: GatewayHandlerInvocation,
+  authority: BoardRequestAuthority & {
+    boardSession: Required<BoardSessionTarget>;
+    useCurrent?: BoardCapabilityAuthority["useCurrent"];
+  },
+  bindingId: string,
+): PluginDashboardDataBindingHost {
+  const registration = authority.pluginRegistry?.dashboardDataBindings.get(bindingId);
+  const assertCurrent = () => {
+    authority.assertActive();
+    if (
+      !registration ||
+      authority.pluginRegistry?.dashboardDataBindings.get(bindingId) !== registration
+    ) {
+      throw new BoardGatewayUnavailableError();
+    }
+  };
+  const host: PluginDashboardDataBindingHost = {
+    agentId: authority.boardSession.agentId,
+    getConfig: () => {
+      assertCurrent();
+      return invocation.context.getRuntimeConfig();
+    },
+    getSourceConfig: () => {
+      assertCurrent();
+      return (
+        getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig ??
+        invocation.context.getRuntimeConfig()
+      );
+    },
+    cacheScope: invocation.context,
+    assertCurrent,
+    useCurrent: async <T>(start: () => T): Promise<Awaited<T>> => {
+      assertCurrent();
+      const result = authority.useCurrent
+        ? await authority.useCurrent(() => {
+            assertCurrent();
+            return start();
+          })
+        : await start();
+      assertCurrent();
+      return await result;
+    },
+    trackExecution: async <T>(run: () => T | Promise<T>): Promise<Awaited<T>> => {
+      assertCurrent();
+      return await invocation.context.trackExecution(() => {
+        assertCurrent();
+        return run();
+      });
+    },
+  };
+  return host;
+}
+
+/** Credential preflight is plugin-owned; the Board still commits under exact caller/session authority. */
+export async function prepareBoardDataBindingGrants(
+  grants: readonly string[],
+  invocation: GatewayHandlerInvocation,
+  authority: BoardRequestAuthority & { boardSession: Required<BoardSessionTarget> },
+): Promise<PreparedPluginDashboardDataBinding> {
+  const prepared: PreparedPluginDashboardDataBinding[] = [];
+  let active = true;
+  const assertPreflightCurrent = () => {
+    if (!active) throw new Error("Dashboard data binding preflight is closed");
+    authority.assertActive();
+  };
+  const registrations = authority.pluginRegistry?.dashboardDataBindings;
+  // This binding predates plugin ownership. Keep its persisted grants, never a native fallback.
+  if (
+    grants.some((grant) => grant.startsWith(`${GITHUB_ACTIONS_BINDING_ID}:`)) &&
+    !registrations?.has(GITHUB_ACTIONS_BINDING_ID)
+  ) {
+    throw new BoardValidationError(
+      "invalid_operation",
+      "Dashboard data binding is unavailable; enable the plugin that provides it and retry",
+    );
+  }
+  try {
+    for (const registration of registrations?.values() ?? []) {
+      const runtime = registration.runtime;
+      if (
+        runtime &&
+        grants.some(
+          (grant) =>
+            grant === registration.capabilityId ||
+            grant.startsWith(`${registration.capabilityId}:`),
+        )
+      ) {
+        const host = createDashboardDataBindingHost(
+          invocation,
+          { ...authority, assertActive: assertPreflightCurrent },
+          registration.capabilityId,
+        );
+        const binding = await runtime.prepare(host);
+        host.assertCurrent();
+        binding.assertCurrent();
+        prepared.push({
+          assertCurrent: () => {
+            host.assertCurrent();
+            binding.assertCurrent();
+          },
+          start: (run) => host.useCurrent(() => binding.start(run)),
+        });
+      }
+    }
+  } catch (error) {
+    active = false;
+    throw error;
+  }
+
+  const assertCurrent = () => {
+    assertPreflightCurrent();
+    for (const binding of prepared) binding.assertCurrent();
+  };
+  return {
+    assertCurrent,
+    start: async <T>(run: () => T): Promise<Awaited<T>> => {
+      const startAt = async (index: number): Promise<Awaited<T>> =>
+        index === prepared.length
+          ? await run()
+          : await prepared[index]!.start(() => startAt(index + 1));
+      try {
+        assertCurrent();
+        const value = await startAt(0);
+        assertCurrent();
+        return value;
+      } finally {
+        active = false;
+      }
+    },
+  };
 }
 
 /** Retained reads/actions own the exact live widget grant, not just its Gateway. */
@@ -260,10 +406,6 @@ export async function readBoardDataBinding(
   authority: BoardCapabilityAuthority,
   publish: GatewayHandlerInvocation["respond"],
 ): Promise<void> {
-  if (bindingId === GITHUB_ACTIONS_BINDING_ID) {
-    const { readBoardGitHubActions } = await import("./github-actions-read.js");
-    return await readBoardGitHubActions(params, invocation.context, authority, publish);
-  }
   if (isBoardDataBindingId(bindingId)) {
     const handler = await prepareGatewayRequestHandler(coreGatewayHandlers[bindingId]!);
     return await invokeGatewayHandler(
@@ -283,13 +425,16 @@ export async function readBoardDataBinding(
       `board widget data binding is not allowed: ${bindingId}`,
     );
   }
-  return await invokeGatewayHandler(
-    registration.handler,
-    registration.method,
-    params,
-    invocation,
-    authority,
-    publish,
+  const host = createDashboardDataBindingHost(invocation, authority, bindingId);
+  return await withDashboardDataBindingRead(host, () =>
+    invokeGatewayHandler(
+      registration.handler,
+      registration.method,
+      params,
+      invocation,
+      authority,
+      publish,
+    ),
   );
 }
 

@@ -22,7 +22,6 @@ import type { ApplicationOverlays } from "../app/overlays-types.ts";
 import type { AppSidebarElement, AppSidebarOwner } from "../components/app-sidebar.tsx";
 import type { AgentIdentityCapability } from "../lib/agents/identity.ts";
 import { createInitialConfigState } from "../lib/config/config-state-model.ts";
-import { isSessionRunStateActive } from "../lib/session-run-state.ts";
 import {
   createSessionCapability,
   type SessionCapability,
@@ -32,7 +31,10 @@ import { reconcileSessionHistory } from "../lib/sessions/reconcile.ts";
 import { createSessionArchiveState } from "../lib/sessions/session-archive-state.ts";
 import type { SessionRequestClient } from "../lib/sessions/session-capability.ts";
 import { createSessionRowProvenance } from "../lib/sessions/session-row-provenance.ts";
-import { createSidebarContextLifecycle } from "./app-sidebar-context-lifecycle.ts";
+import {
+  createSidebarContextLifecycle,
+  sidebarSessionHostServices,
+} from "./app-sidebar-context-lifecycle.ts";
 import { seedSidebarEveryonePreference } from "./app-sidebar-setup.ts";
 import {
   createApplicationContextProvider,
@@ -64,8 +66,7 @@ export function createGatewayHarness(client: GatewayBrowserClient) {
     typeof client.request === "function"
       ? (client.request.bind(client) as GatewayBrowserClient["request"])
       : undefined;
-  // Custom-element registrations survive non-isolated test files, so real
-  // attention health requests must not consume sidebar feature response mocks.
+  // Keep attention health outside sidebar feature RPC fixtures.
   client.request = <T = unknown>(
     ...args: Parameters<GatewayBrowserClient["request"]>
   ): Promise<T> => {
@@ -303,18 +304,16 @@ export function createSessionsHarness(agentId: string, keys: string[]) {
     get canonicalListRevision() {
       return canonicalListRevision;
     },
-    captureConnectionScope: () => scopedSessions?.captureConnectionScope() ?? null,
-    isConnectionScopeCurrent: (
-      scope: Parameters<SessionCapability["isConnectionScopeCurrent"]>[0],
-    ) => scopedSessions?.isConnectionScopeCurrent(scope) ?? false,
+    ...sidebarSessionHostServices(() => scopedSessions),
+    get retainedOperations() {
+      return scopedSessions?.retainedOperations;
+    },
     subscribe(listener: (next: SessionState) => void) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     subscribeCreated: () => () => undefined,
     isPreparedWorkSession: () => false,
-    isRunVisuallyActive: (row: GatewaySessionRow) =>
-      scopedSessions?.isRunVisuallyActive(row) ?? isSessionRunStateActive(row),
     pullRequestSummary: (key: string) => pullRequestSummaries.get(key),
     setPullRequestSummary(key: string, summary: SessionCatalogPullRequestSummary | undefined) {
       if (summary) {

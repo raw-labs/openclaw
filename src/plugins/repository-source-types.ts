@@ -22,6 +22,8 @@ export type RepositoryWorkerReadLease = {
   repositoryId: string;
   /** Opaque, nonsecret cache partition. Never evidence of current access. */
   identityKey: string;
+  /** Public sources may use the host's anonymous archive transport instead of a Git pack. */
+  private?: boolean;
   baseCommit: string;
   tree: string;
   assertCurrent: () => void;
@@ -30,7 +32,7 @@ export type RepositoryWorkerReadLease = {
   readTree: (sha: string, signal?: AbortSignal) => Promise<RepositoryTreeEntry[]>;
   readBlob: (sha: string, signal?: AbortSignal) => Promise<string>;
   /** Sources own authentication; the native worker pack owner consumes the resulting file. */
-  prepareGitPack: (input: {
+  prepareGitPack?: (input: {
     temporaryRoot: string;
     signal: AbortSignal;
     assertCurrent: () => void;
@@ -49,6 +51,21 @@ export type RepositorySourceV1 = {
     assertCurrent: () => void;
   }) => Promise<RepositorySourcePreparation>;
   worker?: {
+    /** Opt in to host-owned published-branch/checkpoint restoration with source-owned identity. */
+    restore?: (input: {
+      url: string;
+      agentId: string;
+      requiredCommit: string;
+      signal?: AbortSignal;
+      assertCurrent: () => void;
+    }) => Promise<{
+      project: RepositorySourceProject;
+      assertCurrent: () => void;
+      readRemoteHead: (branch: string) => Promise<string | undefined>;
+    }>;
+
+    /** Cheap current selection check for reusing a prepared worker, never credential authority. */
+    isIdentityCurrent?: (input: { agentId: string; identityKey: string }) => boolean;
     prepare: (input: {
       url: string;
       agentId: string;

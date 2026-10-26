@@ -6,6 +6,7 @@ import {
   supportsCurrentWorkerLaunch,
 } from "../../worker/worker-build-identity.js";
 import type { NodeWorkerSupervisorNodeProof } from "../node-registry-private.js";
+import type { RepositorySources } from "../repository-sources.js";
 import {
   DevicePlacementUnavailableError,
   resolveDevicePlacementEligibility,
@@ -58,6 +59,7 @@ type WorkerNodePlacementAdmission = {
 
 export function createWorkerPlacementDispatchStartup(options: {
   placements: WorkerDispatchPlacementStore;
+  getRepositorySources?: () => RepositorySources;
   environments: WorkerDispatchEnvironmentService & Pick<WorkerEnvironmentService, "recordError">;
   isShuttingDown?: () => boolean;
   failure: PlacementFailureActions;
@@ -374,8 +376,7 @@ export function createWorkerPlacementDispatchStartup(options: {
         if (project && "source" in project) {
           if (
             params.workspace.kind !== "repository" ||
-            project.source.url !== params.workspace.repository.url ||
-            project.source.repositorySourceId !== params.workspace.repositorySourceId
+            project.source.url !== params.workspace.repository.url
           ) {
             throw new Error("Prepared repository does not match this session's source");
           }
@@ -402,6 +403,7 @@ export function createWorkerPlacementDispatchStartup(options: {
                 markPhase: params.markPhase,
                 repository: params.workspace.repository,
                 repositorySourceId: params.workspace.repositorySourceId,
+                getRepositorySources: options.getRepositorySources,
                 preparedRepository,
                 tunnel,
                 sessionId: request.sessionId,

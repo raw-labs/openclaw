@@ -15,7 +15,6 @@ import {
 import { sessionPlacementAction } from "../../components/session-placement-action.ts";
 import { openEditor } from "../../lib/editor-links.ts";
 import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
-import { openExternalUrlSafe } from "../../lib/open-external-url.ts";
 import {
   canArchiveSessionRow,
   canDeleteSessionRows,
@@ -150,9 +149,6 @@ export function handleSessionManagementNavigationAction(
 ) {
   const { context, row, isCurrent } = params;
   switch (action.kind) {
-    case "open-pr":
-      openExternalUrlSafe(action.url);
-      return undefined;
     case "open-in":
       openEditor(action.editor, action.path);
       return undefined;

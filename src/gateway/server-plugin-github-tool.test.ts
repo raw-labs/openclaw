@@ -1,11 +1,13 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
-import { clearGitHubCredentialVerificationCache } from "../agents/github-oauth-client.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
 import { createAdmittedHostCapabilityTestFixture } from "../agents/harness/host-capability.test-support.js";
 import { resolveSandboxToolPolicyForAgent } from "../agents/sandbox/tool-policy.js";
 import {
@@ -48,7 +50,7 @@ import {
 import { resetTestPluginRegistry, setTestPluginRegistry } from "./test-helpers.plugin-registry.js";
 
 const { default: github } = await loadBundledPluginFacade<{ default: OpenClawPluginDefinition }>({
-  pluginId: "github",
+  pluginId: "github-repositories",
   artifactBasename: "index.ts",
 });
 const profileId = `ghp_${"7".repeat(32)}`;
@@ -62,6 +64,7 @@ beforeEach(async () => {
     scenario: "minimal",
     env: { GH_TOKEN: undefined, GITHUB_TOKEN: undefined },
   });
+  clearNativeGitHubTokenCache();
   clearGitHubCredentialVerificationCache();
 });
 afterEach(async () => {
@@ -78,11 +81,31 @@ afterEach(async () => {
 async function createFixture(allow?: string[], throughSearch = false) {
   const config: OpenClawConfig = {
     agents: {
-      entries: { reader: { workspace: state.workspaceDir, tools: { github: { profileId } } } },
+      entries: {
+        reader: {
+          workspace: state.workspaceDir,
+          tools: {},
+        },
+      },
     },
     tools: { profile: "coding", allow, toolSearch: throughSearch },
-    plugins: { allow: ["github"], slots: { memory: "none" } },
-    gateway: { controlUi: { github: { token: "synthetic-unused-service-credential" } } },
+    plugins: {
+      allow: ["github-repositories"],
+      slots: { memory: "none" },
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: "synthetic-unused-service-credential" },
+            agents: {
+              reader: { profileId },
+            },
+          },
+        },
+      },
+    },
+    gateway: {
+      controlUi: {},
+    },
   };
   setRuntimeConfigSnapshot(config);
   await writeManagedGitHubProfileFiles(
@@ -91,7 +114,7 @@ async function createFixture(allow?: string[], throughSearch = false) {
   );
   const { registry } = createPluginRegistryFixture(config);
   const record = createPluginRecord({
-    id: "github",
+    id: "github-repositories",
     origin: "bundled",
     contracts: {
       tools: ["github_read", "github_search"],
@@ -104,7 +127,7 @@ async function createFixture(allow?: string[], throughSearch = false) {
     record,
     register: expectDefined(github.register, "GitHub registration"),
   });
-  cleanups.push(() => registry.rollbackPluginGlobalSideEffects("github", record));
+  cleanups.push(() => registry.rollbackPluginGlobalSideEffects("github-repositories", record));
   setTestPluginRegistry(registry.registry);
   const context = createContext();
   context.getRuntimeConfig = () => config;
@@ -531,7 +554,7 @@ describe("GitHub agent reader", () => {
   );
   it.each([
     { policy: "coding profile", allow: undefined },
-    { policy: "plugin allowlist", allow: ["github"] },
+    { policy: "plugin allowlist", allow: ["github-repositories"] },
     { policy: "plugin group allowlist", allow: ["group:plugins"] },
   ])("reads with $policy, session-only scopes and the invoking identity", async ({ allow }) => {
     fixture = await createFixture(allow);
@@ -607,20 +630,23 @@ describe("GitHub agent reader", () => {
 
   it("omits the tool when policy denies it or its owner is deactivated", async () => {
     fixture = await createFixture();
-    for (const denied of ["github_read", "github_search", "github", "group:plugins"]) {
+    for (const denied of ["github_read", "github_search", "github-repositories", "group:plugins"]) {
       fixture.config.tools = { ...fixture.config.tools, deny: [denied] };
       setRuntimeConfigSnapshot(fixture.config);
       const names = (await fixture.assemble()).map((tool) => tool.name);
       for (const name of ["github_read", "github_search"]) {
-        if (denied === name || denied === "github" || denied === "group:plugins") {
+        if (denied === name || denied === "github-repositories" || denied === "group:plugins") {
           expect(names).not.toContain(name);
         }
       }
     }
     fixture.config.tools = { profile: "coding" };
-    fixture.config.plugins = { ...fixture.config.plugins, entries: { github: { enabled: false } } };
+    fixture.config.plugins = {
+      ...fixture.config.plugins,
+      entries: { "github-repositories": { enabled: false } },
+    };
     setRuntimeConfigSnapshot(fixture.config);
-    fixture.registry.rollbackPluginGlobalSideEffects("github", fixture.record);
+    fixture.registry.rollbackPluginGlobalSideEffects("github-repositories", fixture.record);
     const names = (await fixture.assemble()).map((tool) => tool.name);
     expect(names).not.toContain("github_read");
     expect(names).not.toContain("github_search");
@@ -657,7 +683,7 @@ describe("GitHub agent reader", () => {
         } else if (change === "close caller") {
           fixture.host.closeHost();
         } else {
-          fixture.registry.rollbackPluginGlobalSideEffects("github", fixture.record);
+          fixture.registry.rollbackPluginGlobalSideEffects("github-repositories", fixture.record);
         }
         release.resolve();
         await rejected;
@@ -715,8 +741,8 @@ describe("GitHub agent reader", () => {
           }),
         ]);
         const requestsBeforeChange = fixture.fetcher.mock.calls.length;
-        const agent = expectDefined(fixture.config.agents?.entries?.reader, "reader configuration");
-        agent.tools = { ...agent.tools, github: { profileId: `ghp_${"8".repeat(32)}` } };
+        const plugin = readGitHubConfig(fixture.config);
+        plugin.agents = { ...plugin.agents, reader: { profileId: `ghp_${"8".repeat(32)}` } };
         setRuntimeConfigSnapshot(fixture.config);
         release.resolve();
         await rejected;

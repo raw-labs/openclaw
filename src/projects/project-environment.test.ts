@@ -85,7 +85,8 @@ vi.mock("./project-checkout.js", () => ({
   resolveProjectCheckout: mocks.resolveCheckout,
   resolveProjectDirectory: async (directory: string) => directory,
 }));
-vi.mock("./project-clone-runtime.js", () => ({
+// mock-isolation: Capture the host's Windows transport environment without loading process-runtime's SQLite/filesystem owners, which this fixture deliberately forbids.
+vi.mock("../../extensions/github-repositories/project-clone-runtime-api.js", () => ({
   ProjectCloneError: class extends Error {},
   cloneProjectCheckout: mocks.clone,
   refreshProjectCheckout: mocks.refresh,
@@ -103,7 +104,7 @@ import type { OpenClawStateLeaseContext } from "../state/openclaw-state-lease.js
 import type { OpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.types.js";
 import type { OpenClawStateWorkerOperations } from "../state/openclaw-state-worker-contract.js";
 import { withMockedPlatform } from "../test-utils/vitest-spies.js";
-import { materializeProjectClone, refreshProjectClone } from "./project-clone.js";
+import { materializeProjectClone, refreshProjectClone } from "./project-clone.test-support.js";
 import { registerProjectRegistry, removeProjectRegistry } from "./project-registry.js";
 import type { ProjectRegistryRecord } from "./project-registry.types.js";
 

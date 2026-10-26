@@ -4,9 +4,9 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../extensions/github-repositories/exec-launch-api.js";
 import { quotePowerShellArg } from "../cli/quote-cli-arg.js";
 import { withMockedWindowsPlatform } from "../test-utils/vitest-spies.js";
-import { buildGitHubExecLaunchArgv } from "./github-exec-launch.js";
 import { getShellConfig } from "./shell-utils.js";
 
 const roots: string[] = [];
@@ -169,7 +169,10 @@ describe.skipIf(process.platform === "win32")("GitHub launch source runtimes", (
         );
         const driver = path.join(root, "driver.mts");
         // Exercise the source route in each runtime; real exec tests cover prepared artifacts.
-        const source = new URL("./github-exec-launch.ts", import.meta.url).href;
+        const source = new URL(
+          "../../extensions/github-repositories/exec-launch-api.ts",
+          import.meta.url,
+        ).href;
         await fs.writeFile(
           driver,
           `

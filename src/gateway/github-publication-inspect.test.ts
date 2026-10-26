@@ -1,29 +1,40 @@
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 // Keep external GitHub I/O synthetic while exercising registered admission and current profile state.
 // oxfmt-ignore
-import { commandResult, githubPublicationTestMocks, installGitHubPublicationTestHarness, SESSION_ID, SESSION_KEY } from "./github-publication.test-support.js";
-// Install the existing tool transport before loading the publication tool.
-// oxfmt-ignore
-import { withPublicationToolTransport } from "./github-publication-actions.test-support.js";
+import { commandResult, githubPublicationTestMocks, installGitHubPublicationTestHarness, createTestGitHubPublicationCoordinator, SESSION_ID, SESSION_KEY } from "./github-publication.test-support.js";
 import { randomUUID } from "node:crypto";
 import { Value } from "typebox/value";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionGitHubPullRequestInspectResultSchema } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
 import { setRuntimeConfigSnapshot } from "../config/config.js";
 import {
   loadSessionEntryReadOnly,
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
+import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import {
   syncCanonicalGitHubIdentity,
   ensureCanonicalEnterpriseGitHubProfile,
   linkCanonicalUserProfileEmail,
 } from "../state/user-profile-writes.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import { createRequesterPolicyFixture } from "./github-publication-requester.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
+
+// Each scenario models a fresh Gateway, not one anonymous agent exhausting a shared minute budget.
+let scenarioClock = Date.now();
+let clock: { mockRestore(): void } | undefined;
+beforeEach(() => {
+  scenarioClock += 60_000;
+  clock = vi.spyOn(Date, "now").mockReturnValue(scenarioClock);
+});
+afterEach(() => {
+  clock?.mockRestore();
+});
 
 const mocks = githubPublicationTestMocks();
 const HEAD = "a".repeat(40);
@@ -33,8 +44,29 @@ async function fixture(
   options: { linked?: boolean; host?: string; repository?: string; login?: string } = {},
 ) {
   const f = await createRequesterPolicyFixture({ sessionId: SESSION_ID, sessionKey: SESSION_KEY });
+  const coordinator = createTestGitHubPublicationCoordinator();
+  await installPublicationRpcFixture(f.guestSource.context, {
+    ...coordinator,
+    inspectPullRequest: coordinator.provider.inspectPullRequest,
+  });
   const host = options.host ?? "github.com";
-  const config = { ...f.config, gateway: { ...f.config.gateway, github: { host } } };
+  const config = {
+    ...f.config,
+    gateway: {
+      ...f.config.gateway,
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...readGitHubConfig(f.config),
+            host,
+            apiBaseUrl: host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+          },
+        },
+      },
+    },
+  };
   setRuntimeConfigSnapshot(config);
   if (options.linked !== false) {
     if (host === "github.com") {
@@ -131,8 +163,14 @@ async function fixture(
         raw
           ? await callGateway("sessions.github.action", { sessionKey: SESSION_KEY, ...input })
           : (
-              await withPublicationToolTransport(callGateway, () =>
-                createGitHubPublishTool().execute("inspect", input),
+              await withPluginRuntimeGatewayRequestScope(
+                {
+                  context: f.guestSource.context,
+                  resolveGatewayContext: f.guestSource.context.resolveGatewayContext,
+                  client: f.guestSource.client,
+                  isWebchatConnect: () => false,
+                },
+                () => createGitHubPublishTool().execute("inspect", input),
               )
             ).details,
     );
@@ -360,7 +398,20 @@ describe("own PR inspection through the admitted agent tool and Gateway", () => 
     ).rejects.toThrow("configured GitHub host");
     setRuntimeConfigSnapshot({
       ...f.config,
-      gateway: { ...f.config.gateway, github: { host: "other.example.test" } },
+      gateway: {
+        ...f.config.gateway,
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(f.config),
+              host: "other.example.test",
+              apiBaseUrl: "https://other.example.test/api/v3",
+            },
+          },
+        },
+      },
     });
     await expect(
       f.invoke({ pullRequestUrl: "https://other.example.test/example/repository/pull/7" }),

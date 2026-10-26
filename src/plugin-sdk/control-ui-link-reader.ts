@@ -6,4 +6,5 @@ export type {
   ControlUiLinkReaderMetadata,
   ControlUiLinkReaderPreview,
   ControlUiLinkReaderPreviewParams,
+  ControlUiLinkReaderSection,
 } from "../shared/control-ui-link-reader.js";

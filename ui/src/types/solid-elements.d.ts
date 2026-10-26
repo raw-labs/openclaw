@@ -1,8 +1,6 @@
 import type { JSX } from "@solidjs/web";
-import type { ControlUiSessionPullRequest } from "../../../src/gateway/control-ui-contract.js";
 import type { ControlUiSurfaceProps } from "../../../src/plugin-sdk/control-ui.js";
 import type { ClawHubRecommendation } from "../../../src/shared/clawhub-recommendations.js";
-import type { ApplicationGateway } from "../app/gateway.ts";
 import type { LobsterPetProps } from "../components/lobster-pet-contract.ts";
 import type { MascotMood } from "../components/mascot-pose.ts";
 import type { MessageActionDetails } from "../pages/chat/components/chat-message-markdown.types.ts";
@@ -16,18 +14,6 @@ type DockElementAttributes = JSX.HTMLAttributes<HTMLElement> & {
 type Tooltip = HTMLElementTagNameMap["openclaw-tooltip"];
 
 export type ElementProperties<T> = { [Key in keyof T as `prop:${string & Key}`]?: T[Key] };
-type ChatCiProperties = {
-  gateway?: ApplicationGateway;
-  pullRequest?: ControlUiSessionPullRequest;
-  sessionKey: string;
-  presented: boolean;
-  inline?: boolean;
-  // Match the native menu registry without pulling renderer modules into SDK declarations.
-  controls?: {
-    readonly elements: ReadonlySet<HTMLElement>;
-    ref(this: void): (element: HTMLElement) => void;
-  };
-};
 type PluginViewProperties = {
   [Surface in keyof ControlUiSurfaceProps]: {
     "prop:surface": Surface;
@@ -68,10 +54,6 @@ declare module "@solidjs/web" {
       "openclaw-chat-tool-review-outcome": HTMLAttributes<HTMLElement>;
       "openclaw-custodian-setup-card": HTMLAttributes<HTMLElement>;
       "openclaw-agent-memory-panel": HTMLAttributes<HTMLElement>;
-      "openclaw-chat-ci-details": HTMLAttributes<HTMLElement> &
-        ElementProperties<ChatCiProperties & { menuControls?: boolean }>;
-      "openclaw-chat-ci-automation": HTMLAttributes<HTMLElement> &
-        ElementProperties<ChatCiProperties & { sessionId: string; menuPresentation?: boolean }>;
       "openclaw-panel-empty-state": HTMLAttributes<HTMLElement>;
       "openclaw-panel-loading-skeleton": HTMLAttributes<HTMLElement> & {
         compact?: string;
@@ -108,7 +90,6 @@ declare module "@solidjs/web" {
           entry: import("../pages/agents-home/claws-catalog-client.ts").ClawCatalogEntry,
         ) => void;
       };
-      "openclaw-github-identity": HTMLAttributes<HTMLElement>;
       "openclaw-chat-permission-card": HTMLAttributes<HTMLElement>;
       "openclaw-chat-run-failure-notice": HTMLAttributes<HTMLElement>;
       "openclaw-chat-retry-status": HTMLAttributes<HTMLElement>;

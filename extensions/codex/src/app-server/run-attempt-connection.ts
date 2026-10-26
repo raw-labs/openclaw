@@ -168,7 +168,9 @@ export async function prepareCodexAttemptConnection({ params, options }: CodexRu
   const disableLoginShell =
     remoteExec ||
     preparedEnvironment?.localProcessEnv !== undefined ||
-    preparedEnvironment?.managedLocalIdentity === true ||
+    preparedEnvironment?.hostExecutionRequired === true ||
+    (preparedEnvironment !== undefined &&
+      Object.keys(preparedEnvironment.localIdentityEnv).length > 0) ||
     (preparedEnvironment !== undefined &&
       Object.keys(preparedEnvironment.credentialScrubEnv).length > 0);
   let shellEnvironment = baseShellEnvironment;

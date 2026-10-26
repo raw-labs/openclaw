@@ -293,10 +293,10 @@ describe("shared worktree receipt observation", () => {
   });
 
   it("borrows prepared session custody for receipt reads and rejects its release", async () => {
-    const { prepareGitHubPublicationSession } =
-      await import("./github-publication-availability.js");
+    const { prepareRepositoryPublicationSession } =
+      await import("./repository-publication-workspace-authority.js");
     await persistPublicationTestSession();
-    using selected = await prepareGitHubPublicationSession(SESSION_KEY, { agentId: "main" });
+    using selected = await prepareRepositoryPublicationSession(SESSION_KEY, { agentId: "main" });
     const entry = selected.readCurrent().entry!;
     const identity = { ...session, lifecycleRevision: entry.lifecycleRevision ?? null };
     const coordinator = sharedPublicationCoordinator();
@@ -310,10 +310,10 @@ describe("shared worktree receipt observation", () => {
   });
 
   it("shares a reconnect burst's pending observation and invalidates it on publication", async () => {
-    const { prepareGitHubPublicationSession } =
-      await import("./github-publication-availability.js");
+    const { prepareRepositoryPublicationSession } =
+      await import("./repository-publication-workspace-authority.js");
     await persistPublicationTestSession();
-    using selected = await prepareGitHubPublicationSession(SESSION_KEY, { agentId: "main" });
+    using selected = await prepareRepositoryPublicationSession(SESSION_KEY, { agentId: "main" });
     const identity = {
       ...session,
       lifecycleRevision: selected.readCurrent().entry!.lifecycleRevision ?? null,

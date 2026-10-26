@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "../config/github-identity-profile-id.js";
+import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "../../extensions/github-repositories/profile-id-api.js";
 
 export const githubOAuthTimestamp = z.number().int().nonnegative().safe();
 export const githubOAuthSecret = z

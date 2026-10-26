@@ -1,7 +1,7 @@
 import {
   GITHUB_EXEC_CREDENTIAL_UNAVAILABLE,
   readGitHubExecToken,
-} from "./github-exec-credential.js";
+} from "../worker/worker-github-credentials.js";
 
 // The shell bootstrap captures stdout privately; it must never become tool output.
 // Keep this entrypoint free of runtime logging, worker IPC and credential caching.

@@ -13,6 +13,7 @@ import {
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
+import * as publicationStore from "./github-publication-store-async.js";
 import {
   BRANCH,
   NEW_HEAD,
@@ -26,7 +27,7 @@ import {
   commands,
   createSystemGitHubPublicationRequesterFixture,
   createTestGitHubPublicationCoordinator as createGitHubPublicationCoordinator,
-  createTestGitHubPublicationRuntime as createGitHubPublicationRuntime,
+  createTestGitHubPublicationRuntime as createRepositoryPublicationRuntime,
   githubPublicationTestMocks,
   installGitHubPublicationTestHarness,
   persistClaimPublicationWorkspace,
@@ -192,8 +193,10 @@ describe("Gateway GitHub publication", () => {
       true,
     );
     expect(commands.some((argv) => argv.some((arg) => arg.includes("roboclaw-token")))).toBe(false);
-    for (const argv of commandMatchesAny("update-ref", "read-tree", "add", "reset", "push")) {
-      expect(argv, argv.join(" ")).toContain(`core.hooksPath=${os.devNull}`);
+    for (const call of commandCalls.filter(({ argv }) =>
+      ["update-ref", "read-tree", "add", "reset", "push"].some((arg) => argv.includes(arg)),
+    )) {
+      expect(call.hooksPath, call.argv.join(" ")).toBe(os.devNull);
     }
     for (const argv of commandMatchesAny("read-tree", "add", "reset")) {
       expect(argv).toContain("core.fsmonitor=false");
@@ -204,15 +207,17 @@ describe("Gateway GitHub publication", () => {
       expect.arrayContaining([
         "--no-follow-tags",
         "--recurse-submodules=no",
-        "credential.helper=!gh auth git-credential",
         `${NEW_HEAD}:refs/heads/${BRANCH}`,
       ]),
     );
     expect(push).not.toContain(`HEAD:refs/heads/${BRANCH}`);
+    expect(commandCalls.find((call) => call.argv === push)).toMatchObject({
+      credentialHelperDisabled: true,
+      authorizationTarget: "http.https://github.com/openclaw/openclaw.git.extraHeader",
+    });
     const fetch = commands.find((argv) => argv.includes("fetch"));
     expect(fetch).toEqual(
       expect.arrayContaining([
-        `core.hooksPath=${os.devNull}`,
         "core.fsmonitor=false",
         "maintenance.auto=false",
         "gc.auto=0",
@@ -229,9 +234,12 @@ describe("Gateway GitHub publication", () => {
       base: "main",
       draft: false,
     });
-    for (const [, options] of mocks.runCommand.mock.calls) {
+    for (const [argv, options] of mocks.runCommand.mock.calls) {
+      if (argv[0] === "gh" && argv[1] === "auth") {
+        continue;
+      }
       expect(options?.env).toMatchObject({
-        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_COUNT: options?.env?.GIT_CONFIG_KEY_2 ? "3" : "1",
         GIT_CONFIG_KEY_0: "core.hooksPath",
         GIT_CONFIG_VALUE_0: os.devNull,
       });
@@ -263,8 +271,10 @@ describe("Gateway GitHub publication", () => {
           '{"fork":true,"default_branch":"main","parent":{"name":"openclaw","default_branch":"main","owner":{"login":"openclaw"}}}\n',
         );
       }
-      if (command.includes("ls-remote") && command.includes("roboclaw-bot/openclaw.git")) {
-        return commandResult(`${NEW_HEAD}\trefs/heads/${BRANCH}\n`);
+      if (command.includes("repos/roboclaw-bot/openclaw/git/matching-refs/heads/")) {
+        return commandResult(
+          JSON.stringify([{ ref: `refs/heads/${BRANCH}`, object: { sha: NEW_HEAD } }]),
+        );
       }
       if (pullLookup(command)) {
         return pullResponse({ url: "https://github.com/openclaw/openclaw/pull/125201" });
@@ -504,7 +514,7 @@ describe("Gateway GitHub publication", () => {
   it("binds the accepted worker snapshot before acceptance and never recaptures it", async () => {
     await persistClaimPublicationWorkspace();
     const { database, placements, claim } = await workerClaim("environment-snapshot", "snapshot");
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements,
       loadSessionRuntime: async () => {
         throw new Error("not used");
@@ -594,12 +604,12 @@ describe("Gateway GitHub publication", () => {
           );
         }
 
-        if (
-          command.startsWith(
-            "git -c credential.helper= -c credential.helper=!gh auth git-credential ls-remote",
-          )
-        ) {
-          return commandResult(remotePublished ? `${NEW_HEAD}\trefs/heads/${BRANCH}\n` : "");
+        if (command.includes("/git/matching-refs/heads/")) {
+          return commandResult(
+            JSON.stringify(
+              remotePublished ? [{ ref: `refs/heads/${BRANCH}`, object: { sha: NEW_HEAD } }] : [],
+            ),
+          );
         }
         if (argv.includes("push")) {
           remotePublished = true;
@@ -638,7 +648,7 @@ describe("Gateway GitHub publication", () => {
 
   it("reports an in-run publication notice into the requesting run", async () => {
     await persistPublicationTestSession();
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements: createWorkerSessionPlacementStore({ database: openDatabase() }),
       loadSessionRuntime,
       warn: (message) => {
@@ -674,7 +684,7 @@ describe("Gateway GitHub publication", () => {
     );
     await persistClaimPublicationWorkspace();
     const warnings: string[] = [];
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements,
       loadSessionRuntime,
       warn: (message) => warnings.push(message),
@@ -690,7 +700,7 @@ describe("Gateway GitHub publication", () => {
     await runtime.prepareAcceptedWorkspacePublication(claim);
     await placements.acceptWorkspaceResult(claim);
     const processClaim = vi
-      .spyOn(runtime.coordinator, "processClaim")
+      .spyOn(publicationStore, "listGitHubPublicationsForClaimAsync")
       .mockRejectedValueOnce(new Error("transient publication failure"));
     await expect(runtime.publishAcceptedWorkspace(claim)).rejects.toThrow(
       "transient publication failure",
@@ -698,9 +708,17 @@ describe("Gateway GitHub publication", () => {
     expect(warnings).toEqual([expect.stringContaining("GitHub publication deferred")]);
     processClaim.mockRestore();
     warnings.length = 0;
-    vi.spyOn(runtime.coordinator, "markReportedAsync").mockImplementationOnce(() => {
-      throw new Error("Gateway stopped after transcript append");
-    });
+    // Fail only the report receipt after the real transcript append, not the coordinator call.
+    const maintain = publicationStore.runGitHubPublicationMaintenanceAsync;
+    const markReported = vi
+      .spyOn(publicationStore, "runGitHubPublicationMaintenanceAsync")
+      .mockImplementation(async (input, assertCurrent) => {
+        if (input.operation === "report") {
+          markReported.mockRestore();
+          throw new Error("Gateway stopped after transcript append");
+        }
+        return maintain(input, assertCurrent);
+      });
 
     await expect(runtime.publishAcceptedWorkspace(claim)).resolves.toBeUndefined();
     expect(warnings).toEqual([
@@ -718,7 +736,7 @@ describe("Gateway GitHub publication", () => {
     await closeOpenClawStateDatabaseAsync();
     closeOpenClawStateDatabaseForTest();
     const reopened = openDatabase();
-    const restarted = createGitHubPublicationRuntime({
+    const restarted = createRepositoryPublicationRuntime({
       placements: createWorkerSessionPlacementStore({ database: reopened }),
       loadSessionRuntime,
       warn: (message) => warnings.push(message),

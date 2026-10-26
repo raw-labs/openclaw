@@ -1,6 +1,4 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { normalizePluginRepositoryUrl } from "../../plugins/repository-source-url.js";
-import { parseProjectGitUrl } from "../../projects/project-git-url.js";
 import {
   RepositoryWorkerProjectSchema,
   type RepositoryWorkerProjectSnapshot,
@@ -15,19 +13,19 @@ export function readRepositoryWorkerProjectSnapshot(
   }
   const parsed = RepositoryWorkerProjectSchema.safeParse(value);
   const source = parsed.success ? parsed.data.source : undefined;
-  const githubHost =
-    source && URL.canParse(source.url) ? new URL(source.url).hostname.toLowerCase() : undefined;
+  const url = source && URL.canParse(source.url) ? new URL(source.url) : undefined;
   if (
     Object.keys(value).some(
       (key) => !["key", "baseCommit", "source", "preparation"].includes(key),
     ) ||
     !parsed.success ||
-    (!source?.repositorySourceId && !githubHost) ||
-    (source?.repositorySourceId
-      ? source.owner.identity.source !== "plugin" ||
-        normalizePluginRepositoryUrl(source.url) !== source.url
-      : source?.owner.identity.source === "plugin" ||
-        parseProjectGitUrl(parsed.data.source.url, githubHost)?.url !== parsed.data.source.url)
+    !url ||
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    url.href !== parsed.data.source.url
   ) {
     throw new Error("Worker environment has an invalid repository preparation snapshot");
   }

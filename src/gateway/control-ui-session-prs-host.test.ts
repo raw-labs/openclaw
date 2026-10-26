@@ -1,15 +1,19 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import { createControlUiSessionPrRead } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
+import { loadControlUiSessionPullRequests } from "../../extensions/github-repositories/control-ui-session-prs-api.js";
 import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { loadControlUiSessionPullRequests } from "./control-ui-session-prs.js";
-import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
+import {
+  withTestSessionPrRead,
+  githubJson,
+  pullListItem,
+  requestUrl,
+} from "./control-ui-session-prs.test-support.js";
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
 async function withReader(run: (fixture: Fixture) => Promise<void>) {
@@ -74,13 +78,10 @@ it.each([false, true])(
         const secondReader = f.addReader("second-publication-reader");
         const targets = await Promise.all(
           [f.client, secondReader.client].map(async (client) => {
-            const capture = createControlUiSessionPrRead({
-              client,
-              sessionKey,
+            const capture = createControlUiSessionPrRead(
+              f.sessionReads.createViewerRead(client.connId!, { sessionKey }),
               getRuntimeConfig,
-              getSessionRowProjection: () => getSessionRowProjection(f.context),
-              isCurrentClient: () => !client.invalidated,
-            });
+            );
             const target = await capture?.();
             if (!target) {
               throw new Error("Fixture reader was not admitted");
@@ -89,20 +90,8 @@ it.each([false, true])(
           }),
         );
         const load = (target: (typeof targets)[number], refresh = false) =>
-          withControlUiSessionPrSource(target.readSource, (assertSource, sourceIdentity) =>
-            loadControlUiSessionPullRequests(
-              { sessionKey, refresh },
-              {
-                read: {
-                  target,
-                  sourceIdentity,
-                  assertCurrent: () => {
-                    assertSource();
-                    target.assertCurrent?.();
-                  },
-                },
-              },
-            ),
+          withTestSessionPrRead(target, (read) =>
+            loadControlUiSessionPullRequests({ sessionKey, refresh }, { read }),
           );
         const first = load(targets[0]!);
         const rejected = expect(first).rejects.toThrow("target changed");
@@ -146,8 +135,19 @@ it.each([false, true])(
         ...f.cfg,
         gateway: {
           ...f.cfg.gateway,
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: { github: { host: "ghe.example.test", token: "synthetic-enterprise-token" } },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                ...readGitHubConfig(f.cfg),
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-token" },
+              },
+            },
+          },
         },
       });
       await seedRepository(f, sessionKey, enterprise ? "ghe.example.test" : "github.com");

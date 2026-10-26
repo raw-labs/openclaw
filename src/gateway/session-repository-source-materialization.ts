@@ -18,6 +18,7 @@ export async function materializePluginRepositoryWorkspace(
     initial: GatewaySessionEntryRead;
     repository: SessionRepositoryWorkspaceRecord;
     repositorySourceId: string;
+    source: ReturnType<typeof resolvePluginRepositorySource>;
     assertRepositoryCurrent: () => void;
   },
 ) {
@@ -50,7 +51,8 @@ export async function materializePluginRepositoryWorkspace(
     },
   );
   assertOwner();
-  const source = resolvePluginRepositorySource(params.repositorySourceId, repository.url);
+  const source = params.source;
+  source.assertCurrent();
   const checkout = await source.prepare({
     agentId: params.agentId,
     requiredCommit: repository.baseCommit,

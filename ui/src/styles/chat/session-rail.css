@@ -19,39 +19,10 @@ openclaw-chat-session-rail {
   animation: none;
 }
 
-.chat-session-rail__prs,
-.chat-session-rail__pr {
-  display: flex;
-  align-items: center;
-}
-
-.chat-session-rail__prs {
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 11px;
-  padding: 0 14px;
-}
-
-.chat-session-rail__pr {
-  gap: 5px;
-  padding: 4px 7px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--text);
-  font-size: 10.5px;
-  line-height: 1;
-}
-
-.chat-session-rail__pr:hover {
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-
-.chat-session-rail__pr-checks,
 .chat-session-rail__timestamp,
 .chat-session-rail__hint {
   color: var(--muted);
+  font-size: var(--control-ui-text-sm);
 }
 
 .chat-session-rail__thread {
@@ -92,11 +63,6 @@ openclaw-chat-session-rail {
   width: fit-content;
   max-width: 90%;
   margin-inline-start: auto;
-}
-
-.chat-session-rail__timestamp,
-.chat-session-rail__hint {
-  font-size: var(--control-ui-text-sm);
 }
 
 .chat-session-rail__exchange--error .chat-session-rail__hint {

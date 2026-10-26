@@ -1,10 +1,5 @@
 import type { HumanMention } from "@openclaw/gateway-protocol";
 import type { ControlUiTextReferenceSnapshot } from "../../../src/plugin-sdk/control-ui.js";
-import { markdownGitHubAliasSignature } from "./markdown-github-repositories.ts";
-import type {
-  MarkdownGitHubRepository,
-  MarkdownGitHubRepositoryAliases,
-} from "./markdown-github-repositories.ts";
 
 export type MarkdownHumanMentionToken = { marker: string; profileId: string; label: string };
 
@@ -17,8 +12,6 @@ export type MarkdownRenderOptions = {
   codeBlockInteraction?: "interactive" | "static";
   fileLinks?: boolean;
   textReferences?: readonly ControlUiTextReferenceSnapshot[];
-  githubRepo?: MarkdownGitHubRepository | null;
-  githubRepositories?: readonly MarkdownGitHubRepositoryAliases[];
   humanMentions?: readonly HumanMention[];
   interactiveImages?: boolean;
   linkFavicons?: boolean;
@@ -28,11 +21,6 @@ export type MarkdownRenderOptions = {
   sessionLinks?: boolean;
   tableInteractions?: "enabled" | "none";
 };
-
-export type MarkdownGitHubContext = Pick<
-  MarkdownRenderOptions,
-  "githubRepo" | "githubRepositories"
->;
 
 export type MarkdownRenderEnv = Required<MarkdownRenderOptions> & {
   streamingOpenFence?: boolean;
@@ -48,9 +36,7 @@ export function normalizeMarkdownRenderOptions(
     codeBlockInteraction: options.codeBlockInteraction ?? "static",
     fileLinks: options.fileLinks ?? false,
     textReferences: options.textReferences ?? [],
-    githubRepo: options.githubRepo ?? null,
     humanMentions: options.humanMentions ?? [],
-    githubRepositories: options.githubRepositories ?? [],
     interactiveImages: options.interactiveImages ?? false,
     linkFavicons: options.linkFavicons ?? false,
     progressBars: options.progressBars ?? false,
@@ -61,7 +47,8 @@ export function normalizeMarkdownRenderOptions(
   };
 }
 
-// Immutable resolver snapshots must not share cached output when their declared keys coincide.
+// Snapshot objects capture immutable resolver facts; a reused plugin key cannot alias
+// a replacement snapshot's output in Markdown or the settled transcript cache.
 const textReferenceIdentities = new WeakMap<ControlUiTextReferenceSnapshot, number>();
 let nextTextReferenceIdentity = 0;
 export function markdownTextReferenceSignature(
@@ -80,16 +67,5 @@ export function markdownTextReferenceSignature(
 }
 
 export function markdownRenderKey(options: MarkdownRenderEnv, locale: string): string {
-  return `${locale}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${markdownReferenceSignature(options)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
-}
-
-export function markdownReferenceSignature(
-  options: Pick<MarkdownRenderOptions, "textReferences" | "githubRepo" | "githubRepositories">,
-): string {
-  return JSON.stringify([
-    options.githubRepo?.owner,
-    options.githubRepo?.repo,
-    markdownGitHubAliasSignature(options.githubRepositories, options.githubRepo),
-    markdownTextReferenceSignature(options.textReferences),
-  ]);
+  return `${locale}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${markdownTextReferenceSignature(options.textReferences)}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
 }

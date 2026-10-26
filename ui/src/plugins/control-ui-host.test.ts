@@ -19,52 +19,15 @@ import {
   sessionsResult,
 } from "../lib/sessions/session-capability.test-support.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
-import { createControlUiPluginHost } from "./control-ui-host.ts";
-import { type ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
-import { scopeControlUiHost } from "./control-ui-scope.ts";
+import { createHost, scopedHost, subscriptions } from "./control-ui-host.test-support.ts";
+import { ControlUiPluginRuntime } from "./control-ui-runtime.ts";
 
-const subscribe = () => () => undefined;
-const subscriptions = Object.fromEntries(
-  ["gateway", "sessions", "agents", "agentSelection", "theme"].map((name) => [name, { subscribe }]),
-);
 const sessionListener = () => vi.fn<(snapshot: ControlUiSessionListSnapshot) => void>();
 const sessionList = (
   key: string,
   ts = 1,
   fields: Partial<ReturnType<typeof sessionsResult>["sessions"][number]> = {},
 ) => sessionsResult([{ key, kind: "direct", updatedAt: ts, ...fields }], ts);
-
-function createHost(
-  context: ApplicationContext,
-  runtime?: ControlUiPluginRuntime,
-  client?: GatewayBrowserClient,
-) {
-  const owner = {
-    client,
-    abort: new AbortController(),
-    descriptor: { pluginId: "review" },
-    disposers: new Set<() => void>(),
-    contributions: { navigation: new Map(), panels: new Map() },
-  } as Omit<ControlUiPluginOwner, "host">;
-  const activeRuntime =
-    runtime ??
-    ({
-      isCurrent: (current: Omit<ControlUiPluginOwner, "host">) =>
-        current === owner && !current.abort.signal.aborted,
-    } as ControlUiPluginRuntime);
-  const dispose = () => {
-    owner.abort.abort();
-    owner.disposers.forEach((stop) => stop());
-    owner.disposers.clear();
-  };
-  onTestFinished(dispose);
-  return {
-    owner,
-    abort: owner.abort,
-    dispose,
-    host: createControlUiPluginHost(() => context, activeRuntime, owner),
-  };
-}
 
 const sessionSnapshot = (
   result: ReturnType<typeof sessionsResult> | null,
@@ -116,12 +79,6 @@ function createRosterHost(request: GatewayBrowserClient["request"], assistantDoc
 const globalList = (agentId: string, ts: number, fields: Parameters<typeof sessionList>[2]) =>
   sessionsResult([{ key: "global", kind: "global", agentId, ...fields }], ts);
 const chatPath = (pathname: string) => expect.objectContaining({ pathname });
-
-function scopedHost(host: ReturnType<typeof createHost>["host"]) {
-  const view = new AbortController();
-  onTestFinished(() => view.abort());
-  return { view, host: scopeControlUiHost(host, view.signal) };
-}
 
 async function observeGlobal(
   fixture: ReturnType<typeof createRosterHost>,
@@ -682,7 +639,7 @@ it("retires captured requests and native controls with their view and activation
     name: "plug",
   });
   expect(container.childNodes.length).toBeGreaterThan(0);
-  const popup = vi.spyOn(window, "open").mockReturnValue(null);
+  const popup = vi.spyOn(window, "open").mockReturnValue(null).mockClear();
   host.navigation.openExternal("javascript:alert(1)");
   expect(popup).not.toHaveBeenCalled();
   host.navigation.openExternal("https://example.test/item");

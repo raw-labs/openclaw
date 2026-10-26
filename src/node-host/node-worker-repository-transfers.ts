@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempWorkspace } from "@openclaw/fs-safe/temp";
-import { REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS } from "../gateway/github-repository-publication-snapshot.js";
+import { REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS } from "../gateway/repository-publication-snapshot.js";
 import type {
   WorkerWorkspaceManifest,
   WorkerWorkspaceReconciliationJournal,
@@ -96,7 +96,7 @@ export async function withNodeRepositoryPublication<T>(
         argv: [
           "node",
           "-e",
-          REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS,
+          REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS,
           params.workspaceDir,
           params.baseCommit,
           publication.dir,

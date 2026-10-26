@@ -16,7 +16,7 @@ import type { DB } from "../../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../../state/openclaw-state-db.js";
 import { closeStateDatabaseForTest } from "../../test-utils/database-cleanup.js";
 import { observeMainThreadSql } from "../../test-utils/main-thread-sql-spies.test-support.js";
-import * as publicationSnapshot from "../github-repository-publication-snapshot.js";
+import * as publicationSnapshot from "../repository-publication-snapshot.js";
 import { workerService } from "../server-methods/environments.test-support.js";
 import { resolveRepositoryWorkspaceAccess } from "../server-methods/session-repository-workspace-access.js";
 import { createGatewayRequestContext } from "../server-request-context.js";
@@ -52,15 +52,6 @@ import {
   readStagedWorkerWorkspaceResult,
   workerWorkspaceResultRef,
 } from "./workspace-result-staging.js";
-
-// mock-isolation: This fixture clones a local Git origin without GitHub credentials.
-vi.mock("./repository-github-identity.js", () => ({
-  prepareRepositoryGitHubIdentity: async (_agentId: string, assertCurrent: () => void) => ({
-    token: undefined,
-    assertSelected: assertCurrent,
-    start: async (start: () => Promise<unknown>) => await start(),
-  }),
-}));
 
 describe("repository workspace result ownership", () => {
   const { fixture, readArtifact } = useRepositoryWorkspaceResultFixture();
@@ -216,8 +207,8 @@ describe("repository workspace result ownership", () => {
             return queued;
           });
         }
-        const read = publicationSnapshot.readGitHubRepositoryPublicationMetadata;
-        vi.spyOn(publicationSnapshot, "readGitHubRepositoryPublicationMetadata").mockImplementation(
+        const read = publicationSnapshot.readRepositoryPublicationMetadata;
+        vi.spyOn(publicationSnapshot, "readRepositoryPublicationMetadata").mockImplementation(
           async (...args) => {
             const metadata = await read(...args);
             if (boundary === "publication-metadata" && !observedBoundary) {

@@ -67,19 +67,29 @@ export function createManagedProjectCheckoutV1(source: ManagedProjectSourceV1) {
       options: ManagedProjectOptions = {},
     ): Promise<ProjectRegistryRecord> {
       const admitted = invocation(options);
-      const { materializeProjectClone } = await import("../projects/project-clone.js");
+      const { createManagedProjectCheckoutV1 } = await import("../projects/project-clone.js");
       admitted.options.assertCurrent();
-      return await materializeProjectClone(
+      return await createManagedProjectCheckoutV1(admitted.source).materialize(
         { ...input, cfg: admitted.config },
         admitted.options,
-        admitted.source,
       );
     },
     async refresh(project: ProjectRegistryRecord, options: ManagedProjectOptions = {}) {
       const admitted = invocation(options);
-      const { refreshProjectClone } = await import("../projects/project-clone.js");
+      const { createManagedProjectCheckoutV1 } = await import("../projects/project-clone.js");
       admitted.options.assertCurrent();
-      await refreshProjectClone(project, admitted.options, admitted.source);
+      await createManagedProjectCheckoutV1(admitted.source).refresh(project, admitted.options);
     },
   };
+}
+
+/** Native pack custody is loaded only for admitted source transport. */
+export async function prepareRepositoryCheckoutPack(
+  ...args: Parameters<
+    typeof import("../gateway/worker-environments/repository-git-pack.js").prepareRepositoryCheckoutPack
+  >
+) {
+  return await (
+    await import("../gateway/worker-environments/repository-git-pack.js")
+  ).prepareRepositoryCheckoutPack(...args);
 }

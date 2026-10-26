@@ -28,13 +28,13 @@ import { createCodeModeHarness } from "../code-mode.test-support.js";
 import { SESSIONS_YIELD_ABORT_REASON } from "../embedded-agent-runner/run/attempt-sessions-yield.js";
 import { createOperationalRunInstanceRef } from "../operational-run-instance.js";
 import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
+import { resolveGitHubPluginToolsFixture } from "../test-helpers/github-plugin-tool-registration.js";
 import { clearToolSearchCatalog } from "../tool-search.js";
 import {
   captureGatewayToolCallerAssertion,
   getGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "./gateway-caller-context.js";
-import { createGitHubPublishTool } from "./github-publish-tool.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -186,27 +186,34 @@ it.each(["prepared", "failed", "stop", "undelivered", "reset"] as const)(
                       async () => {
                         const wrapped = withSessionControllerOwner(operation, () =>
                           wrapToolWithAbortSignal(
-                            createGitHubPublishTool({
-                              sessionId,
-                              runId,
-                              // An ordinary local Docker conversation, as the visibility rule admits.
-                              sandbox: createSandboxTestContext({
-                                overrides: {
-                                  sessionKey,
-                                  workspaceSource: undefined,
-                                  backend: { id: "docker" } as never,
-                                },
-                              }),
-                              onYield() {
-                                order.push("yield");
-                                runAbort.abort(SESSIONS_YIELD_ABORT_REASON);
-                                operation.completeWithAfterClearBarrier(
-                                  cleanup.promise.then(() => {
-                                    order.push("cleanup");
+                            expectDefined(
+                              resolveGitHubPluginToolsFixture({
+                                options: {
+                                  sessionId,
+                                  runId,
+                                  githubPublicationAvailable: true,
+                                  assertInvocationCurrent: captureGatewayToolCallerAssertion(),
+                                  // An ordinary local Docker conversation, as the visibility rule admits.
+                                  sandbox: createSandboxTestContext({
+                                    overrides: {
+                                      sessionKey,
+                                      workspaceSource: undefined,
+                                      backend: { id: "docker" } as never,
+                                    },
                                   }),
-                                );
-                              },
-                            }),
+                                  onYield() {
+                                    order.push("yield");
+                                    runAbort.abort(SESSIONS_YIELD_ABORT_REASON);
+                                    operation.completeWithAfterClearBarrier(
+                                      cleanup.promise.then(() => {
+                                        order.push("cleanup");
+                                      }),
+                                    );
+                                  },
+                                },
+                              }).find((candidate) => candidate.name === "github_publish"),
+                              "registered publication tool",
+                            ),
                             runAbort.signal,
                           ),
                         );
@@ -236,6 +243,7 @@ it.each(["prepared", "failed", "stop", "undelivered", "reset"] as const)(
                         });
                         expect(order).toEqual(["yield"]);
                         expect(endpoint).not.toHaveBeenCalled();
+                        await expect(tool.execute("after-yield", {})).rejects.toThrow();
                         if (outcome === "stop") {
                           exec.cancelExecRequestOwners(
                             exec.activeExecRequestOwners({ sessionKey }, () => true),

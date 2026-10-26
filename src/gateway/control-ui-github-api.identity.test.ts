@@ -1,19 +1,20 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import type { GitHubPluginConfig } from "../../extensions/github-repositories/config-api.js";
+import {
+  gitHubPublicApi,
+  githubApiToken,
+  hasConfiguredGitHubApiCredential,
+} from "../../extensions/github-repositories/public-api.js";
 import {
   setRuntimeConfigSnapshot,
   clearRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
-import type { GatewayControlUiConfig as UiConfig } from "../config/types.gateway.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   setActiveDegradedSecretOwners,
   SecretSurfaceUnavailableError,
 } from "../secrets/runtime-degraded-state.js";
-import {
-  gitHubPublicApi,
-  githubApiToken,
-  hasConfiguredGitHubApiCredential,
-} from "./github-public-api.js";
 
 afterEach(() => {
   setActiveDegradedSecretOwners([]);
@@ -23,8 +24,8 @@ afterEach(() => {
 const coldToken = { source: "store", provider: "default", id: "PREVIEW_TOKEN" } as const;
 const enterpriseHost = "ghe.example.test";
 const ambient = { GH_TOKEN: "ambient-gh", GITHUB_TOKEN: "ambient-github" };
-function previewConfig(github: UiConfig["github"], host?: string): OpenClawConfig {
-  return { gateway: { github: { host }, controlUi: { github } } };
+function previewConfig(service: GitHubPluginConfig["service"], host?: string): OpenClawConfig {
+  return { plugins: { entries: { "github-repositories": { config: { host, service } } } } };
 }
 
 it.each([
@@ -48,7 +49,18 @@ it.each([
     "separate preview credential",
     {
       ...previewConfig({ token: "preview-service-token" }),
-      tools: { github: { profileId: "ghp_99999999999999999999999999999999" } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(previewConfig({ token: "preview-service-token" })),
+              service: { token: "preview-service-token" },
+              system: { profileId: "ghp_99999999999999999999999999999999" },
+            },
+          },
+        },
+      },
     },
     "preview-service-token",
   ],
@@ -75,10 +87,10 @@ it("fails closed for an explicitly configured cold SecretRef owner", () => {
   setActiveDegradedSecretOwners([
     {
       ownerKind: "capability",
-      ownerId: "control-ui-github",
+      ownerId: "plugins.entries.github-repositories.config.service.token",
       state: "unavailable",
       degradationState: "cold",
-      paths: ["gateway.controlUi.github.token"],
+      paths: ["plugins.entries.github-repositories.config.service.token"],
       refKeys: ["store:default:PREVIEW_TOKEN"],
       reason: "secret reference was not found",
     },

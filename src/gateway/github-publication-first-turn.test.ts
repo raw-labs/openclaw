@@ -11,13 +11,13 @@ import {
   createGatewaySchedulerClock,
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
-import { startGitHubPublicationDiscovery } from "./github-publication-discovery.js";
+import { createRepositoryPublicationDiscovery } from "./repository-publication-discovery.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
-import { prepareGitHubPublicationFact } from "./worker-environments/worker-github-binding.js";
+import { prepareRepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
 
 // mock-isolation: Fixed credential/workspace I/O; discovery and turn tool selection are real.
 vi.mock("./worker-environments/worker-github-binding.js", () => ({
-  prepareGitHubPublicationFact: vi.fn(async () => ({ available: true })),
+  prepareRepositoryWorkerPublicationFact: vi.fn(async () => ({ available: true })),
 }));
 
 afterEach(() => clearRuntimeConfigSnapshot());
@@ -33,7 +33,12 @@ it.each([
   setRuntimeConfigSnapshot({});
   const clock = createGatewaySchedulerClock(1_000);
   const scheduler = createTestGatewayScheduler(clock.clock);
-  const discovery = startGitHubPublicationDiscovery({ scheduler });
+  createRepositoryPublicationDiscovery({
+    scheduler,
+    getProvider: () => {
+      throw new Error("Cold tool construction must not acquire a publisher.");
+    },
+  });
   const admission = prepareSystemAgentRunAdmission(
     {},
     "publisher-first-turn",
@@ -66,10 +71,9 @@ it.each([
     expect(first.includes("github_publish")).toBe(scenario.expected);
     expect(first.includes("github_identity_status")).toBe(scenario.expected);
     await clock.wake();
-    expect(prepareGitHubPublicationFact).not.toHaveBeenCalled();
+    expect(prepareRepositoryWorkerPublicationFact).not.toHaveBeenCalled();
   } finally {
     admission.close();
-    await discovery.stop();
     await scheduler.stop();
   }
 });

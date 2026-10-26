@@ -3,6 +3,7 @@ cli-invocation.mjs
 cli-parent-lifetime.mjs
 cli-root-options.mjs
 config/ci-test-timings.json
+extensions/github-repositories/host-api.ts
 node-compile-cache.mjs
 gateway-prewarm.mjs
 gateway-shutdown-budget.mjs
@@ -273,7 +274,6 @@ src/agents/configured-provider-model.ts
 src/agents/defaults.ts
 src/agents/glob-pattern.ts
 src/agents/github-host-runtime.ts
-src/agents/github-host.ts
 src/agents/internal-runtime-context.ts
 src/agents/mcp-oauth-store-error.ts
 src/agents/model-auth-policy.ts
@@ -576,7 +576,7 @@ src/config/gateway-control-ui-origins.ts
 src/config/gateway-env-selection.ts
 src/config/gateway-portal-ingress.ts
 src/config/gateway-public-origin.ts
-src/config/github-identity-profile-id.ts
+extensions/github-repositories/profile-id-api.ts
 src/config/implicit-agent-roster.ts
 src/config/include-write-boundary.ts
 src/config/includes.ts
@@ -828,11 +828,11 @@ src/daemon/service-process-env.ts
 src/gateway/chat-display-projection.helpers.ts
 src/gateway/control-ui-bootstrap-contract.ts
 src/gateway/control-ui-session-diff-revision.ts
-src/gateway/control-ui-session-prs-git.runtime.ts
-src/gateway/control-ui-session-prs-landing.ts
-src/gateway/github-publication-base.ts
+extensions/github-repositories/remote-api.ts
+src/infra/repository-checkout-landing.ts
+src/gateway/repository-publication-git-config.ts
 src/gateway/github-remote.ts
-src/gateway/github-repository-publication-snapshot.ts
+src/gateway/repository-publication-snapshot.ts
 src/gateway/model-account-connect-errors.ts
 src/gateway/operator-scopes.ts
 src/gateway/security-path.ts
@@ -1496,6 +1496,7 @@ src/plugins/loader-cache-state.ts
 src/plugins/managed-npm-retention-contract.ts
 src/plugins/managed-npm-retention.ts
 src/plugins/management-lifecycle-error.ts
+src/plugins/manifest-repository-sources.ts
 src/plugins/manifest-capability-normalizers.ts
 src/plugins/manifest-command-aliases.ts
 src/plugins/manifest-config-groups.ts

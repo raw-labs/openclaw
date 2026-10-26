@@ -9,6 +9,8 @@ import { readBoardRegistered } from "../../boards/board-store.test-support.js";
 import type { PluginBoardWidgetContentKind } from "../../plugins/board-widget-content-kind.types.js";
 import { createPluginBoardWidgetContentKindRegistrar } from "../../plugins/board-widget-content-kinds.js";
 import { registerPluginDashboardCapabilities } from "../../plugins/dashboard-capabilities.js";
+import { captureDashboardDataBindingRead } from "../../plugins/dashboard-data-binding-scope.js";
+import type { PluginDashboardDataBindingHost } from "../../plugins/dashboard-data-binding.types.js";
 import { createPluginRecord } from "../../plugins/loader-records.js";
 import { createEmptyPluginRegistry } from "../../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../../plugins/runtime.js";
@@ -113,6 +115,77 @@ function widgetRequest(
     params: { ticket, [field]: capability, ...(extra ? { params: extra } : {}) },
   };
 }
+
+it.each(["read", "preflight"] as const)(
+  "closes every retained plugin %s operation when its Board work settles",
+  async (stage) => {
+    let retained: PluginDashboardDataBindingHost | undefined;
+    const harness = await widgetHarness({
+      readHandler: ({ respond }) => {
+        retained = captureDashboardDataBindingRead();
+        respond(true, { ok: true });
+      },
+      actionHandler: ({ respond }) => respond(true, {}),
+    });
+    if (stage === "preflight") {
+      const registration = harness.registry.dashboardDataBindings.get("workboard.cards.list")!;
+      registration.runtime = {
+        apiVersion: 1,
+        id: "cards.list",
+        resolveGrant: () => "workboard.cards.list",
+        prepare: async (host) => {
+          retained = host;
+          return { assertCurrent: host.assertCurrent, start: host.useCurrent };
+        },
+      };
+      const response = await harness.invoke("board.widget.put", {
+        ...target,
+        name: "preflight-widget",
+        content: { kind: "html", html: "guarded" },
+        declared: { tools: ["workboard.cards.list"] },
+      });
+      expect(response.mock.calls[0]?.[0]).toBe(true);
+    } else {
+      const response = await harness.call("read", await harness.ticket());
+      expect(response.mock.calls[0]).toEqual([true, { ok: true }]);
+    }
+    expect(retained).toBeDefined();
+    const host = retained!;
+    const effect = vi.fn();
+    for (const read of [host.assertCurrent, host.getConfig, host.getSourceConfig])
+      expect(read).toThrow(/is closed/);
+    await expect(host.useCurrent(effect)).rejects.toThrow(/is closed/);
+    await expect(host.trackExecution(effect)).rejects.toThrow(/is closed/);
+    expect(effect).not.toHaveBeenCalled();
+  },
+);
+
+it("rejects a binding that resolves a different capability's grant before invoking its handler", async () => {
+  const readHandler = vi.fn<GatewayRequestHandlers[string]>(({ respond }) =>
+    respond(true, { ok: true }),
+  );
+  const harness = await widgetHarness({
+    readHandler,
+    actionHandler: ({ respond }) => respond(true, {}),
+  });
+  const registration = harness.registry.dashboardDataBindings.get("workboard.cards.list")!;
+  registration.runtime = {
+    apiVersion: 1,
+    id: "cards.list",
+    resolveGrant: () => "health",
+    prepare: async (host) => ({ assertCurrent: host.assertCurrent, start: host.useCurrent }),
+  };
+  const response = await harness.call("read", await harness.ticket());
+  expect(response.mock.calls[0]).toEqual([
+    false,
+    undefined,
+    expect.objectContaining({
+      code: "INVALID_REQUEST",
+      message: expect.stringContaining("outside its namespace"),
+    }),
+  ]);
+  expect(readHandler).not.toHaveBeenCalled();
+});
 
 it.each([
   { operation: "read", phase: "start" },

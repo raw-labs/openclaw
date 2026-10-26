@@ -1,16 +1,14 @@
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { runGitReadOperation } from "../infra/git-read-cache.js";
 import type { GitMergedPullHead } from "../infra/git-read-operations.js";
 import { getInProcessGatewayRequestContext } from "../plugins/runtime/gateway-request-scope.js";
-import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { readKnownSessionBranchMergedHeads } from "./control-ui-session-prs.js";
+import { observeProjectedRepositorySession } from "./repository-session-read-source.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
+import { withReadySessionRows } from "./session-row-prepared-read.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 
-/** Optional cap-ordering evidence; never starts a GitHub request or supplies removal authority. */
+/** Optional cap-ordering evidence; never starts a remote request or supplies removal authority. */
 export async function readKnownWorktreeMergedHeads(
   record: ManagedWorktreeRecord,
   config: OpenClawConfig,
@@ -19,60 +17,49 @@ export async function readKnownWorktreeMergedHeads(
     return [];
   }
   const owner = getInProcessGatewayRequestContext();
+  const presentation = owner?.repositorySessions?.presentation;
   const projection = getSessionRowProjection(owner);
-  if (!owner || !projection) {
+  if (!owner || !presentation || !projection) {
     return [];
   }
-  const currentProjection = () =>
-    getInProcessGatewayRequestContext() === owner && getRuntimeConfig() === config
-      ? getSessionRowProjection(owner)
-      : undefined;
   try {
     const requested = resolveRequestedSessionAgentId(config, record.ownerId);
     if (!requested.ok) {
       return [];
     }
-    const target = await prepareControlUiSessionPrServiceTarget(currentProjection, {
-      sessionKey: record.ownerId,
-      agentId: requested.agentId,
-    });
-    if (!target?.assertCurrent || typeof target.source !== "string") {
-      return [];
-    }
-    const row = projection.capture({
-      key: target.params.sessionKey,
-      agentId: target.params.agentId,
-    });
-    const binding = row?.entry?.worktree;
+    const query = { key: record.ownerId, agentId: requested.agentId };
+    const observation = await withReadySessionRows(
+      projection,
+      () => [query],
+      (read) => {
+        const row = read.describe(query);
+        const binding = row?.entry.worktree;
+        if (
+          !row ||
+          binding?.id !== record.id ||
+          binding.branch !== record.branch ||
+          binding.repoRoot !== record.repoRoot
+        ) {
+          return undefined;
+        }
+        return observeProjectedRepositorySession(config, row);
+      },
+    );
     if (
-      binding?.id !== record.id ||
-      binding.branch !== record.branch ||
-      binding.repoRoot !== record.repoRoot
+      !observation ||
+      getRuntimeConfig() !== config ||
+      getInProcessGatewayRequestContext() !== owner ||
+      getSessionRowProjection(owner) !== projection ||
+      owner.repositorySessions?.presentation !== presentation
     ) {
       return [];
     }
-    const assertTargetCurrent = target.assertCurrent;
-    const root = target.source;
-    return await withControlUiSessionPrSource(
-      target.readSource,
-      async (assertSourceCurrent, sourceIdentity) => {
-        const assertCurrent = () => {
-          assertTargetCurrent();
-          assertSourceCurrent();
-        };
-        assertCurrent();
-        const context = await runGitReadOperation({
-          type: "checkout.context",
-          input: { root, githubHost: target.githubHost },
-        });
-        assertCurrent();
-        return context?.branch === record.branch
-          ? readKnownSessionBranchMergedHeads(context, { target, sourceIdentity, assertCurrent })
-          : [];
-      },
-    );
+    const heads = await presentation.knownMergedHeads(observation);
+    return getRuntimeConfig() === config && owner.repositorySessions?.presentation === presentation
+      ? heads
+      : [];
   } catch {
-    // A missing or revoked fact affects ranking only; Git still classifies the candidate.
+    // Missing or revoked evidence affects ranking only; Git still classifies the candidate.
     return [];
   }
 }

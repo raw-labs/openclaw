@@ -2,6 +2,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../../extensions/github-repositories/exec-launch-api.js";
+import { managedGitHubIdentityEnvironment } from "../../../extensions/github-repositories/tool-identity-env-api.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
@@ -10,7 +12,6 @@ import {
 } from "../../plugins/execution-environment.test-support.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { prepareSandboxExecutionEnvironment } from "../execution-environment.js";
-import { managedGitHubIdentityEnvironment } from "../github-tool-identity-env.js";
 import type { CreateSandboxBackendParams, SandboxBackendHandle } from "./backend.types.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 
@@ -122,7 +123,6 @@ it.each(["docker", "podman"] as const)(
     const backend = await createBackend(
       backendParams({ cfg: resolveSandboxConfigForAgent(createConfig(engine, false)) }),
       undefined,
-      undefined,
       environment,
     );
     const spec = await backend.buildExecSpec({
@@ -151,15 +151,9 @@ it("scrubs exclusion-only container and transport environments without a provide
   const environment = await prepareSandboxExecutionEnvironment(
     { config: {}, agentId: "main", backend: "docker", scope: "agent", assertCurrent() {} },
     undefined,
-    undefined,
     getActiveSecretsRuntimeConfigSnapshot()?.executionEnvironmentExclusions,
   );
-  const backend = await createDockerSandboxBackend(
-    backendParams(),
-    undefined,
-    undefined,
-    environment,
-  );
+  const backend = await createDockerSandboxBackend(backendParams(), undefined, environment);
   const spec = await backend.buildExecSpec({
     command: "printf reviewed-command",
     env: {
@@ -681,14 +675,24 @@ process.stdout.write(JSON.stringify({
       }),
       undefined,
       {
-        managedLocalIdentity: true,
         credentialScrubEnv: { GH_TOKEN: "", GITHUB_TOKEN: "", PREVIEW_TOKEN: "" },
-        localIdentityEnv: managedGitHubIdentityEnvironment({
-          profileDir: profile,
-          host,
-          gitAuthor: { name: "Release Agent", email: "release@example.test" },
-        }),
-        excludedStoreNames: [],
+        localIdentityEnv: {
+          ...managedGitHubIdentityEnvironment({
+            profileDir: profile,
+            host,
+            gitAuthor: { name: "Release Agent", email: "release@example.test" },
+          }),
+          GH_CONFIG_DIR: "/openclaw/github",
+        },
+        wrapLocalLaunch: (argv) =>
+          buildGitHubExecLaunchArgv([...argv], profile, { githubHost: host }),
+        readOnlyResourceMounts: [{ hostPath: profile, containerPath: "/openclaw/github" }],
+        inheritedEnvironmentNames: [
+          "GH_TOKEN",
+          "GH_ENTERPRISE_TOKEN",
+          "GITHUB_TOKEN",
+          "GITHUB_ENTERPRISE_TOKEN",
+        ],
       },
     );
     const spec = await backend.buildExecSpec({

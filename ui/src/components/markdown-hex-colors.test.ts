@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { githubReferenceOptions } from "../test-helpers/github-text-references.ts";
 import { htmlFragment } from "./markdown.test-support.ts";
 import { toSanitizedMarkdownHtml, toStreamingMarkdownParts } from "./markdown.ts";
 
@@ -44,9 +45,12 @@ describe("Markdown hex colors", () => {
 
   it("keeps repository references as links and reader documents literal", () => {
     const fragment = htmlFragment(
-      toSanitizedMarkdownHtml("PR #178969, color #aabbcc.", {
-        githubRepo: { owner: "openclaw", repo: "openclaw" },
-      }),
+      toSanitizedMarkdownHtml(
+        "PR #178969, color #aabbcc.",
+        githubReferenceOptions({
+          githubRepo: { owner: "openclaw", repo: "openclaw" },
+        }),
+      ),
     );
     expect(fragment.querySelector("a")?.getAttribute("href")).toBe(
       "https://github.com/openclaw/openclaw/pull/178969",

@@ -375,8 +375,7 @@ it("never admits nested host secrets after guest de-ignore", async () => {
 });
 
 it("keeps de-ignored host bytes outside guest and publication admission after archive restore", async () => {
-  const { captureGitHubPublicationWorkspaceSnapshot } =
-    await import("../github-publication-git-transport.js");
+  const { capturePublicationWorkspaceSnapshot } = await import("../repository-publication-git.js");
   const { service } = await archiveFixture();
   await git(repo, "config", "--unset-all", "credential.helper");
   const projection = await prepare();
@@ -397,7 +396,7 @@ it("keeps de-ignored host bytes outside guest and publication admission after ar
   await expectMissing(projection, ".env.local");
   const paths = await treePaths(tree);
   expect(paths).toContain(".env.local");
-  const publication = await captureGitHubPublicationWorkspaceSnapshot({ cwd: canonical });
+  const publication = await capturePublicationWorkspaceSnapshot({ cwd: canonical });
   expect(await treePaths(publication.workspaceTree)).not.toContain(".env.local");
   expect(paths).toContain("guest-new.txt");
 });
@@ -978,9 +977,9 @@ it.each(["legacy decoder", "failed restore retry", "retention"] as const)(
     await expectMissing(projection, ".env.allowed");
     expect((await readProjection())?.pending_ref).toBeNull();
     await git(repo, "config", "--unset-all", "credential.helper");
-    const { captureGitHubPublicationWorkspaceSnapshot } =
-      await import("../github-publication-git-transport.js");
-    const published = await captureGitHubPublicationWorkspaceSnapshot({ cwd: canonical });
+    const { capturePublicationWorkspaceSnapshot } =
+      await import("../repository-publication-git.js");
+    const published = await capturePublicationWorkspaceSnapshot({ cwd: canonical });
     expect(await treePaths(published.workspaceTree)).not.toContain("guest-ignored");
   },
 );

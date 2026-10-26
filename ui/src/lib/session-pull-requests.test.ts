@@ -1,19 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { sessionGitHubRepository } from "../../../extensions/github-repositories/read-facts-api.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import {
   createGatewayHarness,
   createHello,
   flushSync,
 } from "./session-pull-requests.test-support.ts";
-import {
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionGitHubRepository,
-  sessionPullRequestsForGateway,
-} from "./session-pull-requests.ts";
 import { scopedSessionArtifactKey } from "./sessions/session-key.ts";
 
 function createStoreHarness() {
   const harness = createGatewayHarness();
-  return { harness, store: sessionPullRequestsForGateway(harness.gateway), owner: {} };
+  return { harness, store: harness.repository.store, owner: {} };
 }
 
 function emitReadySnapshot(
@@ -576,7 +573,7 @@ describe("session pull request snapshot store", () => {
     vi.useFakeTimers();
     const harness = createGatewayHarness();
     harness.request.mockRejectedValue(new Error("temporarily unavailable"));
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const owner = {};
     store.watch(owner, ["agent:main:demo"]);
     await flushSync();
@@ -754,7 +751,7 @@ describe("session pull request snapshot store", () => {
 
   it("carries a pending refresh into a superseding replace-set", async () => {
     const harness = createGatewayHarness();
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const foregroundOwner = {};
     const otherOwner = {};
     store.watch(foregroundOwner, ["agent:main:demo"], { foreground: true });
@@ -789,7 +786,7 @@ describe("session pull request snapshot store", () => {
         rejectFirst = reject;
       }),
     );
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const loadOwner = {};
     const otherOwner = {};
     const loaded = store.load(loadOwner, "agent:main:demo");
@@ -814,7 +811,7 @@ describe("session pull request snapshot store", () => {
 
   it("does not resubscribe when foreground promotion only reorders watched keys", async () => {
     const harness = createGatewayHarness();
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const sidebarOwner = {};
     const hovercardOwner = {};
     store.watch(sidebarOwner, ["agent:main:first", "agent:main:second"]);
@@ -835,7 +832,7 @@ describe("session pull request snapshot store", () => {
 
   it("updates the bounded server union and snapshots when foreground priority changes", async () => {
     const harness = createGatewayHarness();
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const normalOwner = {};
     const foregroundOwner = {};
     const normalKeys = Array.from(
@@ -901,7 +898,7 @@ describe("session pull request snapshot store", () => {
 
   it("refreshes a passive snapshot when a one-shot load immediately replaces its viewer", async () => {
     const harness = createGatewayHarness();
-    const store = sessionPullRequestsForGateway(harness.gateway);
+    const store = harness.repository.store;
     const key = "agent:main:demo";
     const sidebar = {};
     const viewer = {};
@@ -927,5 +924,109 @@ describe("session pull request snapshot store", () => {
   it("scopes global aliases without changing canonical keys", () => {
     expect(scopedSessionArtifactKey("global", "Work")).toBe("agent:work:global");
     expect(scopedSessionArtifactKey("agent:work:main", "main")).toBe("agent:work:main");
+  });
+});
+
+describe("plugin-owned live chat freshness through the native subscription lifecycle", () => {
+  it.each([
+    "duplicate",
+    "burst",
+    "spaced",
+    "history",
+    "hiddenFirst",
+    "stream",
+    "loseWatchBeforeSync",
+    "background",
+    "reconnect",
+    "reset",
+    "historyBetween",
+    "branchSwitch",
+  ] as const)("keeps forced reads scoped across %s", async (mode) => {
+    vi.useFakeTimers();
+    const { harness, store, owner } = createStoreHarness();
+    const key = "agent:main:live";
+    const otherKey = "agent:main:unrelated";
+    const other = {};
+    store.watch(owner, [key], { foreground: true });
+    store.watch(other, [otherKey], { foreground: true });
+    await flushSync();
+    harness.request.mockClear();
+    const message = (text: string) => ({
+      role: "assistant",
+      content: [{ type: "text", text: `${text} https://github.com/openclaw/openclaw/pull/111532` }],
+    });
+    const deliver = (text: string) =>
+      harness.emit(
+        { sessionKey: key, runId: "wire-pr-run", state: "final", message: message(text) },
+        "chat",
+      );
+    // History presentation is not a live chat event and must not consume emission receipts.
+    if (mode === "history") {
+      harness.emit({ sessionKey: key, messages: [message("Opened")] }, "history.loaded");
+    }
+    if (mode === "hiddenFirst") {
+      store.unwatch(owner);
+      deliver("Opened");
+      store.watch(owner, [key], { foreground: true });
+      await flushSync();
+      harness.request.mockClear();
+    }
+    if (mode === "stream") {
+      harness.emit(
+        {
+          sessionKey: key,
+          runId: "wire-pr-run",
+          state: "delta",
+          deltaText: "Opened https://github.com/openclaw/openclaw/pu",
+        },
+        "chat",
+      );
+      harness.emit(
+        { sessionKey: key, runId: "wire-pr-run", state: "delta", deltaText: "ll/111532" },
+        "chat",
+      );
+    }
+    deliver("Opened");
+    if (mode === "loseWatchBeforeSync") {
+      store.unwatch(owner);
+      await flushSync();
+      store.watch(owner, [key], { foreground: true });
+      await flushSync();
+      harness.request.mockClear();
+    }
+    if (mode === "spaced") {
+      await vi.advanceTimersByTimeAsync(5000);
+    }
+    if (mode === "reconnect") {
+      harness.setSnapshot({ ...harness.gateway.snapshot, phase: "reconnecting" });
+      harness.setSnapshot({ ...harness.gateway.snapshot, phase: "connected" });
+    }
+    if (mode === "branchSwitch") {
+      harness.emit(
+        { sessionKey: key, agentId: "main", reason: "branch-switch" },
+        "sessions.changed",
+      );
+    }
+    if (mode === "reset" || mode === "historyBetween") {
+      harness.emit({ sessionKey: key, messages: [message("Opened")] }, "history.loaded");
+    }
+    // Background run IDs remain independent of the pane's selected run.
+    deliver(mode === "burst" || mode === "spaced" ? "Merged" : "Opened");
+    await vi.advanceTimersByTimeAsync(5000);
+    await flushSync();
+    const forced = harness.request.mock.calls.filter(
+      ([method, params]) =>
+        method === SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD &&
+        Array.isArray((params as { refreshSessionKeys?: string[] })?.refreshSessionKeys),
+    );
+    expect(forced).toHaveLength(mode === "spaced" ? 2 : 1);
+    for (const [, params] of forced) {
+      expect(params).toMatchObject({ refreshSessionKeys: [key] });
+      expect((params as { sessionKeys: string[] }).sessionKeys.toSorted()).toEqual(
+        [key, otherKey].toSorted(),
+      );
+    }
+    store.unwatch(owner);
+    store.unwatch(other);
   });
 });

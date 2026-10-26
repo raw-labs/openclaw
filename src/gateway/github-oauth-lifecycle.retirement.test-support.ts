@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { expect, it, type Mock } from "vitest";
+import type { createGitHubOAuthLifecycle } from "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
+import { resolveConfiguredGitHubToolIdentity } from "../../extensions/github-repositories/tool-identity-api.js";
 import { listGitHubDeviceAuthorizationRecords } from "../agents/github-oauth-records.js";
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   beginAgentDeletionJournal,
   removeAgentDeletionJournal,
 } from "../test-utils/agent-deletion-journal.js";
 import { seedAgentProvenance } from "../test-utils/agent-provenance.js";
-import type { createGitHubOAuthLifecycle } from "./github-oauth-lifecycle.js";
 import { NOW } from "./github-oauth-lifecycle.test-support.js";
 
 export function registerGitHubOAuthRetirementTests(params: {

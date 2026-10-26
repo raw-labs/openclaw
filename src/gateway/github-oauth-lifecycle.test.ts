@@ -1,5 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import type { GitHubToolIdentityConfig } from "../../extensions/github-repositories/config-api.js";
+import {
+  GitHubAccountMismatchError,
+  resolveConfiguredGitHubToolIdentity,
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import {
@@ -12,12 +18,7 @@ import {
   type GitHubOAuthRecord,
   type GitHubIdentityScope,
 } from "../agents/github-oauth-records.js";
-import {
-  GitHubAccountMismatchError,
-  resolveConfiguredGitHubToolIdentity,
-} from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { writeHiddenGitHubSecretRecord } from "../secrets/store/secret-store.js";
 import { createDeferredCore as deferred } from "../shared/deferred.js";
 import { writeConfigMachineState } from "../state/config-machine-state-write.js";
@@ -53,8 +54,8 @@ const mocks = vi.hoisted(() => ({
   resolveStatus: vi.fn(),
   updateConfig: vi.fn(),
 }));
-
-vi.mock("../agents/github-oauth-client.js", () => ({
+// mock-isolation: Keep OAuth HTTP synthetic while exercising real record persistence and lifecycle scheduling.
+vi.mock("../../extensions/github-repositories/oauth-api.js", () => ({
   clearGitHubCredentialVerificationCache: mocks.clearVerificationCache,
   verifyGitHubCredential: mocks.verifyCredential,
   requestGitHubOAuthDeviceCode: mocks.requestDeviceCode,
@@ -72,8 +73,11 @@ vi.mock("../agents/github-oauth-records.js", async (importOriginal) => {
   };
 });
 
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/github-tool-identity.js")>();
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-api.js")
+    >();
   return {
     ...actual,
     createManagedGitHubProfileId: mocks.createProfileId,
@@ -84,27 +88,33 @@ vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
   };
 });
 
-vi.mock("./github-tool-identity-config.js", () => ({
-  updateGitHubToolIdentityConfig: mocks.updateConfig,
-}));
+vi.mock(
+  "../../extensions/github-repositories/tool-identity-config-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../extensions/github-repositories/tool-identity-config-api.js")
+    >()),
+    updateGitHubToolIdentityConfig: mocks.updateConfig,
+  }),
+);
 
-vi.mock("./github-cli-preflight.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./github-cli-preflight.js")>();
+vi.mock("../../extensions/github-repositories/cli-preflight-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/cli-preflight-api.js")
+    >();
   return { ...actual, assertGitHubCliAvailable: mocks.assertCli };
 });
 
-import { GitHubCliUnavailableError } from "./github-cli-preflight.js";
-import { createGitHubOAuthInventoryReader } from "./github-oauth-lifecycle-helpers.js";
-import {
-  createGitHubOAuthLifecycle,
-  installActiveGitHubOAuthLifecycle,
-  requestCurrentGitHubOAuthRefresh,
-} from "./github-oauth-lifecycle.js";
+import { GitHubCliUnavailableError } from "../../extensions/github-repositories/cli-preflight-api.js";
+import { createGitHubOAuthLifecycle } from "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
 import { registerGitHubOAuthRetirementTests } from "./github-oauth-lifecycle.retirement.test-support.js";
 import {
   ACCOUNT,
   configForScope,
   configWithSelectedIdentity,
+  createGitHubOAuthInventoryReader,
+  expectStoredOAuth,
   identity,
   NEW_PROFILE,
   NOW,
@@ -144,13 +154,16 @@ function setSelectedIdentity(
 }
 
 function createLifecycle(
-  options: { getPersistedConfig?: () => Promise<OpenClawConfig> } = {},
+  options: {
+    getPersistedConfig?: () => Promise<OpenClawConfig>;
+    scheduler?: Parameters<typeof createGitHubOAuthLifecycle>[0]["scheduler"];
+  } = {},
 ): GitHubOAuthLifecycle {
   const lifecycle = createGitHubOAuthLifecycle({
     getConfig: () => currentConfig,
     getPersistedConfig: options.getPersistedConfig ?? (async () => currentConfig),
     warn: vi.fn(),
-    scheduler: createTestGatewayScheduler(time.clock),
+    scheduler: options.scheduler ?? createTestGatewayScheduler(time.clock),
   });
   lifecycleInstances.push(lifecycle);
   return lifecycle;
@@ -165,10 +178,6 @@ async function selectRefreshIdentity(author = true) {
   currentConfig = configForScope("system", configured);
   await writeGitHubOAuthRecord(oauthRecord(OLD_PROFILE));
   return configured;
-}
-
-async function expectStoredOAuth(profileId: string, record: Record<string, unknown>) {
-  expect(await inspectGitHubOAuthRecord(profileId)).toMatchObject({ state: "valid", record });
 }
 
 async function advanceToPoll(requestId: string): Promise<void> {
@@ -630,7 +639,7 @@ describe("GitHub OAuth authorization lifecycle", () => {
     mocks.updateConfig.mockImplementationOnce(async (params) => {
       const next = structuredClone(runtimeBefore);
       next.tools ??= {};
-      next.tools.github = params.identity;
+      readGitHubConfig(next).system = params.identity;
       persisted = next;
       throw new Error("persisted write completed but response was lost");
     });
@@ -707,7 +716,7 @@ describe("GitHub OAuth authorization lifecycle", () => {
           setSelectedIdentity("system", "main", identity(OTHER_PROFILE, { oauth: true }));
         } else if (change === "in-place config") {
           currentConfig.tools ??= {};
-          currentConfig.tools.github = identity(OTHER_PROFILE, { oauth: true });
+          readGitHubConfig(currentConfig).system = identity(OTHER_PROFILE, { oauth: true });
         } else {
           const current = await inspectGitHubOAuthRecord(NEW_PROFILE);
           if (current.state !== "valid" || !current.record.pendingInitial) {
@@ -900,7 +909,7 @@ describe("GitHub OAuth refresh and maintenance", () => {
     await expectStoredOAuth(OLD_PROFILE, { refreshToken: TOKENS.refreshToken });
   });
 
-  it("singleflights refresh and ignores calls after the active lifecycle disconnects", async () => {
+  it("singleflights refresh and ignores calls after its lifecycle stops", async () => {
     await selectRefreshIdentity(false);
     const upstream = deferred<{ status: "error"; code: "bad_refresh_token" }>();
     const refreshStarted = deferred();
@@ -909,10 +918,9 @@ describe("GitHub OAuth refresh and maintenance", () => {
       return upstream.promise;
     });
     const lifecycle = createLifecycle();
-    const uninstall = installActiveGitHubOAuthLifecycle(lifecycle);
 
-    const first = requestCurrentGitHubOAuthRefresh("main");
-    const second = requestCurrentGitHubOAuthRefresh("main");
+    const first = lifecycle.refreshEffectiveIdentity("main");
+    const second = lifecycle.refreshEffectiveIdentity("main");
     await awaitGateBeforeSettlement(
       refreshStarted.promise,
       first,
@@ -922,8 +930,8 @@ describe("GitHub OAuth refresh and maintenance", () => {
     upstream.resolve({ status: "error", code: "bad_refresh_token" });
     await Promise.all([first, second]);
 
-    uninstall();
-    await requestCurrentGitHubOAuthRefresh("main");
+    await lifecycle.stop();
+    await lifecycle.refreshEffectiveIdentity("main");
     expect(mocks.refreshToken).toHaveBeenCalledOnce();
   });
 
@@ -995,6 +1003,50 @@ describe("GitHub OAuth refresh and maintenance", () => {
       "Refresh settled before exchange",
     );
     expect(mocks.refreshToken).toHaveBeenCalledOnce();
+    let stopped = false;
+    const stop = lifecycle.stop().then(() => {
+      stopped = true;
+    });
+    await Promise.resolve();
+    expect(stopped).toBe(false);
+    upstream.resolve({ status: "refreshed", tokens: TOKENS });
+    await Promise.all([refresh, stop]);
+
+    expect(stopped).toBe(true);
+    expect(mocks.clearVerificationCache).toHaveBeenCalledOnce();
+    expect(mocks.refreshProfile).toHaveBeenCalledOnce();
+    expect(mocks.refreshProfile).toHaveBeenCalledWith({
+      profileDir: expect.stringContaining(OLD_PROFILE),
+      token: TOKENS.accessToken,
+      expectedAccountId: ACCOUNT.accountId,
+    });
+    expect(selectedIdentity("system")).toEqual(configured);
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+    expect(mocks.createProfileId).not.toHaveBeenCalled();
+    expect(refreshedTokens).toEqual([TOKENS.accessToken]);
+    await expectStoredOAuth(OLD_PROFILE, { refreshToken: TOKENS.refreshToken });
+  });
+
+  it("drains a non-idempotent refresh after its service scheduler closes", async () => {
+    const configured = await selectRefreshIdentity();
+    const upstream = deferred<{ status: "refreshed"; tokens: typeof TOKENS }>();
+    const refreshStarted = deferred();
+    mocks.refreshToken.mockImplementation(() => {
+      refreshStarted.resolve();
+      return upstream.promise;
+    });
+    const scheduler = createTestGatewayScheduler(time.clock);
+    const lifecycle = createLifecycle({ scheduler });
+
+    const refresh = lifecycle.refreshEffectiveIdentity("main");
+    await awaitGateBeforeSettlement(
+      refreshStarted.promise,
+      refresh,
+      "Refresh settled before exchange",
+    );
+    expect(mocks.refreshToken).toHaveBeenCalledOnce();
+    // Plugin teardown closes scheduling before invoking the service stop hook.
+    scheduler.beginClose();
     let stopped = false;
     const stop = lifecycle.stop().then(() => {
       stopped = true;

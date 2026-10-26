@@ -248,10 +248,7 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       detailsEnabled: !catalog && !this.compact,
       detailsWorkspace: {
         ...workspace,
-        branch:
-          selectedSession?.repository?.branch ??
-          selectedSession?.worktree?.branch ??
-          chatProps.pullRequestsBranch?.branch,
+        branch: selectedSession?.repository?.branch ?? selectedSession?.worktree?.branch,
       },
       onOpenSidebar: chatProps.onOpenSidebar
         ? (content) => {
@@ -484,7 +481,6 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       },
       digest: observerDigest,
       activeRunId: observerRunId,
-      pullRequests: this.sessionPullRequests,
       companion: companionThread,
       companionModelControls: createSideChatModelControlProps({
         state,
@@ -633,9 +629,6 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
         !conversationVisible && chatProps.error
           ? { error: chatProps.error, onDismissError: chatProps.onDismissError }
           : undefined,
-      sessionKey: state.sessionKey,
-      agentId: currentAgentId,
-      presentation: headerPresentation,
     };
     const externalPanelsToggle = this.sessionPresentation === "desktop" && header !== null;
     if (header) {

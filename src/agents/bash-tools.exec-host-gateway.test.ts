@@ -3,14 +3,15 @@
  * Covers allowlist misses, auto-review, strict inline eval, diagnostics
  * follow-ups, and gateway approval result routing.
  */
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../extensions/github-repositories/exec-launch-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { onAgentEvent } from "../infra/agent-events.js";
+import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
@@ -80,10 +81,6 @@ const INLINE_EVAL_HIT = {
   flag: "-c",
   argv: ["python3", "-c", "print(1)"],
 };
-
-function exactCommandMarker(command: string): string {
-  return `=command:${crypto.createHash("sha256").update(command.trim()).digest("hex").slice(0, 16)}`;
-}
 
 const buildExecApprovalPendingToolResultMock = vi.hoisted(() => vi.fn());
 const evaluateShellAllowlistWithAuthorizationMock = vi.hoisted(() =>
@@ -368,11 +365,12 @@ describe("processGatewayAllowlist", () => {
   }
 
   function mockExactTrust(command: string, entries: ExecAllowlistEntry[] = []) {
+    const pattern = `=command:${sha256HexPrefixCore(command.trim(), 16)}`;
     hasDurableExecApprovalMock.mockReturnValue(true);
     hasExactCommandDurableExecApprovalMock.mockReturnValue(true);
     mockHostPolicy({
       approvals: {
-        allowlist: [...entries, { pattern: exactCommandMarker(command), source: "allow-always" }],
+        allowlist: [...entries, { pattern, source: "allow-always" }],
         file: { version: 1, agents: {} },
       },
     });
@@ -1491,7 +1489,7 @@ describe("processGatewayAllowlist", () => {
           approvalFollowupMode: "agent",
           env,
           requestedEnv: env,
-          githubProfileDir: profileDir,
+          wrapLocalLaunch: (argv) => buildGitHubExecLaunchArgv([...argv], profileDir),
         });
         expect(result.pendingResult?.details.status).toBe("approval-pending");
         await vi.waitFor(() => expect(approvalDecisionMock).toHaveBeenCalledOnce());

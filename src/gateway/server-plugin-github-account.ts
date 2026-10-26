@@ -1,6 +1,9 @@
+import {
+  gitHubPublicApi,
+  githubApiToken,
+} from "../../extensions/github-repositories/public-api.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import type { PluginRuntime } from "../plugins/runtime/types.js";
-import { gitHubPublicApi, githubApiToken } from "./github-public-api.js";
 import { resolveGitHubUserIdentityByLogin } from "./github-user-identity.js";
 import type { GatewayContextResolver } from "./server-methods/types.js";
 import { withInProcessGatewayRead } from "./server-plugin-in-process-dispatch.js";

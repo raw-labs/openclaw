@@ -1,6 +1,6 @@
 import type { PluginControlUiDiagnostic } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import type {
-  ControlUiAction,
+  ControlUiActionV2 as ControlUiAction,
   ControlUiAccessory,
   ControlUiSessionAccessory,
   ControlUiDisposer,

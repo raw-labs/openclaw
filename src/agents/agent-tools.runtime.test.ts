@@ -14,6 +14,7 @@ import {
   getInternalToolExecutionPreparer,
 } from "./runtime/internal-hooks.js";
 import { stubTool } from "./test-helpers/fast-tool-stubs.js";
+import { recordSessionToolHandoffYield } from "./tools/session-tool-handoff-settlement.js";
 import { createSessionsYieldTool } from "./tools/sessions-yield-tool.js";
 
 const abortError = { name: "AbortError", message: "Aborted" };
@@ -47,6 +48,49 @@ function yieldTool(runAbort: AbortController, onYield = () => runAbort.abort(han
 }
 
 describe("wrapToolWithAbortSignal", () => {
+  it.each(["direct", "prepared"] as const)(
+    "preserves an initiating host handoff for any plugin tool name, not its sibling (%s)",
+    async (mode) => {
+      const runAbort = new AbortController();
+      const sibling = wrapToolWithAbortSignal(
+        tool(() => new Promise<never>(() => {})),
+        runAbort.signal,
+      );
+      const aborted = expect(sibling.execute("sibling", {})).rejects.toMatchObject(abortError);
+      const result = emptyResult();
+      const execute = async () => {
+        recordSessionToolHandoffYield();
+        runAbort.abort(handoffReason);
+        return result;
+      };
+      const source = tool(execute, "repository_prepare");
+      if (mode === "prepared") {
+        attachInternalToolExecutionPreparer(source, async ({ args }) => ({
+          kind: "ready",
+          args,
+          execute,
+          dispose() {},
+        }));
+      }
+      const wrapped = wrapToolWithAbortSignal(source, runAbort.signal);
+      if (mode === "direct") {
+        await expect(wrapped.execute("prepare", {})).resolves.toBe(result);
+      } else {
+        const prepare = expectDefined(getInternalToolExecutionPreparer(wrapped), "preparer");
+        const prepared = await prepare({ toolCallId: "prepare", args: {} });
+        if (prepared.kind !== "ready") {
+          throw new Error("Expected ready execution");
+        }
+        try {
+          await expect(prepared.execute()).resolves.toBe(result);
+        } finally {
+          prepared.dispose();
+        }
+      }
+      await aborted;
+    },
+  );
+
   it("handles a tool rejection when execute aborts the run synchronously", async () => {
     const runAbort = new AbortController();
     const pending = deferred<never>();

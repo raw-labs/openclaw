@@ -1284,10 +1284,12 @@ describe("plugin sdk alias helpers", () => {
     ]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["@openclaw/gateway-client", "gateway-client", "index"],
+      ["@openclaw/gateway-client/browser", "gateway-client", "browser"],
       ["@openclaw/gateway-client/timeouts", "gateway-client", "timeouts"],
       ["@openclaw/gateway-client/websocket-data", "gateway-client", "websocket-data"],
       ["@openclaw/gateway-protocol", "gateway-protocol", "index"],
       ["@openclaw/gateway-protocol/schema", "gateway-protocol", "schema"],
+      ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
       ["@openclaw/gateway-protocol/frame-guards", "gateway-protocol", "frame-guards"],
       [
         "@openclaw/gateway-protocol/gateway-error-details",
@@ -1347,6 +1349,8 @@ describe("plugin sdk alias helpers", () => {
     writeWorkspacePackageExports(fixture.root, "normalization-core", ["record-coerce"]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["@openclaw/gateway-client/readiness", "gateway-client", "readiness"],
+      ["@openclaw/gateway-client/browser", "gateway-client", "browser"],
+      ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
       [
         "@openclaw/gateway-protocol/connect-error-details",
         "gateway-protocol",

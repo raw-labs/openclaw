@@ -49,3 +49,19 @@ export async function dispatchGatewayMethod(
     ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   });
 }
+
+export { resolveAgentIdOrRespondError } from "../gateway/server-methods/agent-id-shared.js";
+export {
+  defineValidatedGatewayHandler,
+  defineValidatedGatewayMethod,
+} from "../gateway/server-methods/validation.js";
+
+/** Borrow the active plugin tool invocation without exposing raw caller authority. */
+export async function captureGatewayAgentToolInvocation(
+  ...args: Parameters<
+    typeof import("../gateway/agent-tool-request-invocation.js").captureGatewayAgentToolInvocation
+  >
+) {
+  const runtime = await import("../gateway/agent-tool-request-invocation.js");
+  return runtime.captureGatewayAgentToolInvocation(...args);
+}

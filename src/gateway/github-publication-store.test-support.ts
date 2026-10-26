@@ -7,10 +7,6 @@ import {
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import {
-  githubPublicationEffectFacts,
-  type GitHubPublicationEffectTransition,
-} from "./github-publication-execution-effects.js";
-import {
   claimGitHubPublicationExecutionInDatabase,
   createGitHubPublicationExecutionStoreInDatabase,
   deferGitHubPublicationRequestsInDatabase,
@@ -24,6 +20,10 @@ import {
   readRepositoryGitHubPublicationInDatabase,
   writeRepositoryGitHubPublicationInDatabase as writeRepository,
 } from "./github-repository-publication-store.worker.js";
+import {
+  githubPublicationEffectFacts,
+  type GitHubPublicationEffectTransition,
+} from "./repository-publication-effects.js";
 
 // These fixtures exercise transaction publication directly; runtime callers use worker commands.
 function transaction<Args extends unknown[], Result>(

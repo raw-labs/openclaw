@@ -5,7 +5,7 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests } from "./control-ui-contract.js";
-import type { ControlUiSessionPrTarget } from "./control-ui-session-pr-read.js";
+import type { TestSessionPrTarget as ControlUiSessionPrTarget } from "./control-ui-session-pr-subscriptions.test-support.js";
 import {
   createTestControlUiSessionPrSubscriptions,
   createTestSessionPrReadSource,

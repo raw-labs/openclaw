@@ -61,6 +61,7 @@ export type {
   OpenClawPluginServiceV2,
   OpenClawPluginToolContext,
   OpenClawPluginToolFactory,
+  OpenClawPluginToolGateway,
   PluginAgentEventEmitParams,
   PluginAgentEventEmitResult,
   PluginAgentEventSubscriptionRegistration,

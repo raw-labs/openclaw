@@ -95,6 +95,7 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
     fileSearchMatches,
     closeFileSearch,
     toggleFileSearch,
+    toggleHtmlSource,
     toggleFileWrap,
     updateFileSearch,
     moveFileSearch,
@@ -244,11 +245,6 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
       (visibleContent?.kind === "file" ? visibleContent.content : "")
     );
   }
-
-  const toggleHtmlSource = () => {
-    presentation.fileSearchOpen = false;
-    htmlPreview.toggle();
-  };
 
   function scrollToFileLine(content: FileSidebarContent) {
     const line = props.fileNavigation?.line ?? content.line;

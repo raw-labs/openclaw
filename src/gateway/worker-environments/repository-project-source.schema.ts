@@ -1,6 +1,6 @@
 import { normalizeAgentIdStrict } from "@openclaw/normalization-core/agent-id";
 import { z } from "zod";
-import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "../../config/github-identity-profile-id.js";
+import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "../../../extensions/github-repositories/profile-id-api.js";
 
 const AgentId = z
   .string()
@@ -47,6 +47,7 @@ export const RepositoryWorkerProjectSchema = z.object({
       url: z.string().max(2048),
       repositorySourceId: z
         .string()
+        .max(257)
         .regex(/^[a-z0-9][a-z0-9._-]{0,127}\/[a-z0-9][a-z0-9._-]{0,127}$/u)
         .optional(),
       repositoryId: z

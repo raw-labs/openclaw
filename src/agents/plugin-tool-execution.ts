@@ -20,7 +20,7 @@ import { canonicalizePath } from "./utils/paths.js";
 
 export type PluginToolExecutionCapabilities = Pick<
   OpenClawPluginToolContext,
-  "sandbox" | "modelExecution" | "assertCompleteResult"
+  "sandbox" | "modelExecution" | "assertCompleteResult" | "gateway"
 >;
 
 /** Capture once at assembly; a retained plugin never resolves a later run's sandbox or identity. */

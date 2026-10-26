@@ -75,6 +75,8 @@ export function createPluginGatewayMethodDescriptor(
     scope?: OperatorScope;
     startup?: GatewayMethodStartupAvailability;
     controlPlaneWrite?: boolean;
+    advertise?: boolean;
+    description?: string;
     since?: string;
     profileAccess?: GatewayMethodProfileAccess;
     sessionAccess?: GatewayMethodSessionAccess;
@@ -87,6 +89,8 @@ export function createPluginGatewayMethodDescriptor(
     owner: { kind: "plugin", pluginId: params.pluginId },
     ...(params.startup ? { startup: params.startup } : {}),
     ...(params.controlPlaneWrite ? { controlPlaneWrite: true } : {}),
+    ...(params.advertise === false ? { advertise: false } : {}),
+    ...(params.description ? { description: params.description } : {}),
     ...(params.since ? { since: params.since } : {}),
     profileAccess: params.profileAccess ?? "required",
     ...(params.sessionAccess ? { sessionAccess: params.sessionAccess } : {}),

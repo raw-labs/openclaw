@@ -44,12 +44,7 @@ type SessionOrganizerOperations = typeof import("./session-organizer-operations.
 type SidebarSessionAction = Exclude<
   SessionMenuAction,
   {
-    kind:
-      | "open-pr"
-      | Parameters<typeof runSessionNavigationAction>[0]
-      | "open-in"
-      | "move-session"
-      | "plugin";
+    kind: Parameters<typeof runSessionNavigationAction>[0] | "open-in" | "move-session" | "plugin";
   }
 >;
 

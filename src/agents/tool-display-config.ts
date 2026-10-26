@@ -201,8 +201,6 @@ export const TOOL_DISPLAY_CONFIG: ToolDisplayConfig = {
     dispatch_action: displayTool("wrench", "Tool Call", []),
     tool_call_update: displayTool("wrench", "Tool Call", []),
     session_status: displayTool("barChart", "Session Status", ["sessionKey", "model"]),
-    github_publish: displayTool("github", "GitHub Publish", ["title"]),
-    github_identity_status: displayTool("settings", "GitHub Identity Status", []),
     sessions: {
       icon: "layers",
       title: "Session Settings",

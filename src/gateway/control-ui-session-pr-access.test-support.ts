@@ -1,4 +1,7 @@
 import { expect, vi } from "vitest";
+import { repositorySessionPrTarget } from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
+import repositoryPlugin from "../../extensions/github-repositories/index.js";
+import repositoryManifest from "../../extensions/github-repositories/openclaw.plugin.json" with { type: "json" };
 import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { deleteSessionEntryLifecycle } from "../config/sessions.js";
@@ -8,6 +11,14 @@ import {
 } from "../config/sessions/session-accessor.js";
 import type { SessionEntry } from "../config/sessions/types.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import {
+  createPluginRegistryFixture,
+  registerTestPlugin,
+} from "../plugin-sdk/plugin-test-contracts.js";
+import { setActivePluginRegistry, resetPluginRuntimeStateForTest } from "../plugins/runtime.js";
+import { withPluginRuntimeGatewayContextResolver } from "../plugins/runtime/gateway-request-scope.js";
+import { startPluginServices } from "../plugins/services.js";
+import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { linkEmail, setUserProfileRole } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
@@ -16,14 +27,14 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests } from "./control-ui-contract.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
-import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
 import {
   spyOnSessionPrLoader,
   type SessionPrLoader,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { OperatorScope } from "./operator-scopes.js";
+import { createRepositorySessionReadHost } from "./repository-session-read-host.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import {
@@ -81,6 +92,17 @@ export async function createFixture(
   };
   setUserProfileRole(profile.id, "reader");
   setRuntimeConfigSnapshot(cfg);
+  const pluginFixture = createPluginRegistryFixture(cfg);
+  registerTestPlugin({
+    ...pluginFixture,
+    record: createPluginRecord({
+      id: "github-repositories",
+      name: "GitHub repositories",
+      repositorySources: repositoryManifest.repositorySources,
+    }),
+    register: repositoryPlugin.register,
+  });
+  setActivePluginRegistry(pluginFixture.registry.registry);
   const seed = async (key: string, creator = profile.id, patch: Partial<SessionEntry> = {}) => {
     if (!seeded.has(key)) {
       expect(loadSessionEntryReadOnly({ agentId: "main", sessionKey: key })).toBeUndefined();
@@ -127,28 +149,46 @@ export async function createFixture(
   if (!useDefaultLoader) {
     spyOnSessionPrLoader(load);
   }
-  const subscriptions = createControlUiSessionPullRequestSubscriptions({
-    scheduler,
-    getSessionRowProjection: () => getSessionRowProjection(context),
-    broadcastToConnIds: connections.broadcastToConnIds,
-    isConnectionActive: connections.isConnectionActive,
-    prepareRead: async (connId, session) => {
-      const client = connections.clients.getByConnectionId(connId);
-      return client
-        ? createControlUiSessionPrRead({
-            allowOwnImportedPullRequest: true,
-            client,
-            ...session,
-            getRuntimeConfig,
-            getSessionRowProjection: () => getSessionRowProjection(context),
-            isCurrentClient: () => connections.clients.getByConnectionId(connId) === client,
-          })
-        : undefined;
-    },
-  });
-  const context = createGatewayRequestContext(makeContextParams(connections));
+  const contextParams = makeContextParams(connections);
+  const context = createGatewayRequestContext(contextParams);
   context.getRuntimeConfig = getRuntimeConfig;
-  context.controlUiSessionPullRequests = subscriptions;
+  const resolveGatewayContext = () => context;
+  context.resolveGatewayContext = resolveGatewayContext;
+  context.repositorySources = createRepositorySources(
+    scheduler.signal,
+    pluginFixture.registry.registry,
+  );
+  const readHost = createRepositorySessionReadHost({
+    signal: scheduler.signal,
+    getRuntimeConfig,
+    getSessionRowProjection: () => getSessionRowProjection(context),
+    getClient: (connId) => connections.clients.getByConnectionId(connId),
+    resolveGatewayContext,
+    broadcastToConnIds: connections.broadcastToConnIds,
+  });
+  contextParams.runtime.runtimeState.repositorySessions = readHost;
+  const binding = vi.spyOn(readHost, "bindService");
+  const services = await withPluginRuntimeGatewayContextResolver(resolveGatewayContext, () =>
+    startPluginServices({ scheduler, registry: pluginFixture.registry.registry, config: cfg }),
+  );
+  const selectedBinding = binding.mock.results.find((result) => result.type === "return");
+  binding.mockRestore();
+  if (!selectedBinding || selectedBinding.type !== "return" || !readHost.presentation) {
+    await services.stop();
+    throw new Error("The actual GitHub presentation service did not start");
+  }
+  const reads = selectedBinding.value;
+  const presentation = readHost.presentation;
+  const subscriptions = {
+    ...presentation,
+    readPrepared: (
+      target:
+        | Parameters<typeof repositorySessionPrTarget>[0]
+        | ReturnType<typeof repositorySessionPrTarget>,
+      admitLoad?: () => boolean,
+    ) =>
+      presentation.readPrepared("observation" in target ? target.observation : target, admitLoad),
+  };
   await initializeSessionReadContext(context);
   const reader = addReader("guest-publication-reader");
   const projection = getSessionRowProjection(context);
@@ -168,6 +208,10 @@ export async function createFixture(
     seed,
     load,
     subscriptions,
+    sessionReads: reads,
+    presentation,
+    readHost,
+    services,
     context,
     async changeReader(change: (typeof readerChanges)[number], key = sessionKey) {
       if (change === "role") {
@@ -217,11 +261,12 @@ export async function createFixture(
       expect(respond).toHaveBeenCalledWith(true, { subscribed: keys.length > 0 }, undefined);
     },
     async close() {
-      await subscriptions.stop();
+      await services.stop();
       await scheduler.stop();
       connections.clients.clear();
       detachProjection();
       await disposeSessionReadContexts();
+      resetPluginRuntimeStateForTest();
     },
     async removeSessions() {
       for (const key of seeded) {

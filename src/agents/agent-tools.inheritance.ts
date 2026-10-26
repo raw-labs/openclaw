@@ -1,3 +1,4 @@
+import { githubPublishToolDefinition } from "../../extensions/github-repositories/tool-schema-api.js";
 import { filterToolsByMessageProvider } from "./agent-tools.message-provider-policy.js";
 import type { InternalCodingToolsOptions } from "./agent-tools.options.js";
 import type { AnyAgentTool } from "./agent-tools.types.js";
@@ -5,7 +6,6 @@ import type { ResolvedConversationCapabilityProfile } from "./conversation-capab
 import { isConversationToolAllowed } from "./conversation-tool-policy-pipeline.js";
 import { applyGatewayToolPolicy } from "./gateway-tool-policy.js";
 import { hasRestrictiveAllowPolicy, replaceWithEffectiveToolAllowlist } from "./tool-policy.js";
-import { githubPublishToolDefinition } from "./tools/github-publish-tool.js";
 
 /** Record parent restrictions for future children without adding callable parent tools. */
 export function captureChildToolAllowlist(params: {

@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { HelloOk, MessageReactionSummary } from "@openclaw/gateway-protocol";
 import { normalizeAgentId } from "@openclaw/normalization-core/agent-id";
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { buildControlUiSessionPath } from "@openclaw/session-url-contract";
 import type { Locator, Page } from "playwright";
 import type { InlineConfig, Plugin, PreviewServer, ViteDevServer } from "vite";
@@ -2636,6 +2637,23 @@ export async function prepareControlUiMockGatewayScenario(
   const { catalog, assets } = await prepareNativeControlUiPluginFixtures(
     scenario.nativePlugins ?? [],
   );
+  const suppliedCatalog = asNullableRecord(scenario.methodResponses?.["plugins.controlUi.list"]);
+  const combinedCatalog = suppliedCatalog
+    ? {
+        ...catalog,
+        ...suppliedCatalog,
+        plugins: [
+          ...catalog.plugins,
+          ...(Array.isArray(suppliedCatalog.plugins) ? suppliedCatalog.plugins : []),
+        ],
+        repositorySources: [
+          ...catalog.repositorySources,
+          ...(Array.isArray(suppliedCatalog.repositorySources)
+            ? suppliedCatalog.repositorySources
+            : []),
+        ],
+      }
+    : catalog;
   const preparedScenario = catalog.plugins.length
     ? {
         ...scenario,
@@ -2648,7 +2666,7 @@ export async function prepareControlUiMockGatewayScenario(
         ],
         methodResponses: {
           ...scenario.methodResponses,
-          "plugins.controlUi.list": catalog,
+          "plugins.controlUi.list": combinedCatalog,
           "plugins.controlUi.report": { ok: true },
         },
       }
@@ -2667,7 +2685,11 @@ export async function installMockGateway(
   if (prepared.assets.size) {
     await page.route(`**${controlUiPluginAssetRoot()}**`, async (route) => {
       const asset = prepared.assets.get(new URL(route.request().url()).pathname);
-      await route.fulfill(asset ? { status: 200, ...asset } : { status: 404 });
+      if (asset) {
+        await route.fulfill({ status: 200, ...asset });
+      } else {
+        await route.fallback();
+      }
     });
   }
   const normalizedScenario = normalizeScenario(prepared.scenario);

@@ -1,5 +1,7 @@
 import { getEventListeners } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "../../extensions/github-repositories/control-ui-session-pr-subscription-params-api.js";
+import type { ControlUiSessionPullRequestsParams as LoadParams } from "../../extensions/github-repositories/control-ui-session-prs-api.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { createRetainedCache } from "../infra/retained-cache.js";
 import {
@@ -7,12 +9,10 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests as Snapshot } from "./control-ui-contract.js";
-import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "./control-ui-session-pr-subscriptions.js";
 import {
   createTestControlUiSessionPrSubscriptions,
   createTestSessionPrReadSource,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
-import type { ControlUiSessionPullRequestsParams as LoadParams } from "./control-ui-session-prs.js";
 
 const CHANGED_EVENT = "controlUi.sessionPullRequests.changed";
 
@@ -192,8 +192,8 @@ describe("control UI session PR subscriptions", () => {
     const signals = new Map<string, AbortSignal | undefined>();
     const load = vi.fn<NonNullable<Options["load"]>>(async (_params, signal, read) => {
       read.assertCurrent();
-      signals.set(read.target.identity, signal);
-      return { ...READY, rateLimited: read.target.identity === "private" };
+      signals.set(read.target.observation.identity, signal);
+      return { ...READY, rateLimited: read.target.observation.identity === "private" };
     });
     const active = start({
       load,

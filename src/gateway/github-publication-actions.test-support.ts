@@ -7,10 +7,15 @@ import {
 } from "./github-publication.test-support.js";
 import { randomUUID } from "node:crypto";
 import { expect, vi } from "vitest";
+import { readRepositoryServices } from "../../extensions/github-repositories/account-runtime-api.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
+import {
+  installPublicationRpcFixture,
+  startTestRegisteredPublicationProvider,
+} from "./github-account-service.test-support.js";
 import {
   createGitHubPublicationRequesterFixture,
   createRequesterPublicationFixture,
@@ -188,6 +193,7 @@ export function createPublicationActionInvoker(
   f: Awaited<ReturnType<typeof createRequesterPublicationFixture>>,
   writerSource = f.maintainerSource,
 ) {
+  let registered: ReturnType<typeof startTestRegisteredPublicationProvider> | undefined;
   return async (
     actor: "guest" | "admin" | "writer",
     args: Record<string, unknown>,
@@ -198,8 +204,16 @@ export function createPublicationActionInvoker(
       sandbox?: SandboxContext;
     } = {},
   ) => {
+    registered ??= startTestRegisteredPublicationProvider();
+    const provider = await registered;
+    Object.assign(f.coordinator, {
+      performPullRequestAction: provider.api.performPullRequestAction,
+    });
     const principal =
       actor === "guest" ? f.guestSource : actor === "writer" ? writerSource : f.maintainerSource;
+    if (!readRepositoryServices(principal.context)) {
+      await installPublicationRpcFixture(principal.context, f.coordinator);
+    }
     const callGateway: InProcessGatewayCaller = async <T>(
       method: string,
       params: Record<string, unknown>,

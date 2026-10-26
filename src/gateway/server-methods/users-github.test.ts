@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 // Install synthetic OAuth and subprocess transport before RPC modules load.
 // oxfmt-ignore
 import { createGitHubTestClient, network, resetPersonalGitHubNetwork, tokens } from "./users-github.test-support.js";
@@ -6,6 +7,15 @@ import path from "node:path";
 import { StatementSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parse as parseYaml } from "yaml";
+import { GitHubCliUnavailableError } from "../../../extensions/github-repositories/cli-preflight-api.js";
+import { createGitHubOAuthLifecycle } from "../../../extensions/github-repositories/oauth-lifecycle-runtime-api.js";
+import { bindPersonalGitHubPublicationSelection } from "../../../extensions/github-repositories/personal-publication-api.js";
+import {
+  prepareGitHubToolEnvironment,
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+} from "../../../extensions/github-repositories/tool-identity-api.js";
+import { cleanupRetiredManagedGitHubProfiles } from "../../../extensions/github-repositories/tool-profile-cleanup-api.js";
 import type { UsersGitHubAuthorizeStartResult } from "../../../packages/gateway-protocol/src/schema/users.js";
 import { observeSqliteReadSql } from "../../../test/helpers/sqlite-statement-execution-counter.js";
 import {
@@ -14,12 +24,6 @@ import {
   readGitHubDeviceAuthorizationRecord,
   writeGitHubDeviceAuthorizationRecord,
 } from "../../agents/github-oauth-records.js";
-import {
-  prepareGitHubToolEnvironment,
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
-import { cleanupRetiredManagedGitHubProfiles } from "../../agents/github-tool-profile-cleanup.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -61,11 +65,12 @@ import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { GitHubCliUnavailableError } from "../github-cli-preflight.js";
-import { createGitHubOAuthLifecycle } from "../github-oauth-lifecycle.js";
-import { bindPersonalGitHubPublicationSelection } from "../github-personal-publication.js";
+import {
+  callGitHubAccountFixtureRpc,
+  installGitHubAccountFixture,
+  installGitHubAccountRpcFixture,
+} from "../github-account-service.test-support.js";
 import { invalidateOperatorRolePolicy } from "../operator-role-policy.js";
-import { handleGatewayRequest } from "../server-methods.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 import {
   expectReceiptBackedPersonalGitHubAuthority,
@@ -91,25 +96,15 @@ function user(email: string, scopes = ["operator.read"]): GatewayClient {
 const owner = (client = alice): string => client.authenticatedUserProfile!.profileId;
 const resolveOwner = (profile: string, db = openOpenClawStateDatabase().db) =>
   resolvePersonalGitHubOwnerInDatabase(profile, db);
-async function rpc(client: GatewayClient, method: string, params: Record<string, unknown> = {}) {
-  const respond = vi.fn();
-  await handleGatewayRequest({
-    req: { type: "req", id: `rpc-${method}`, method, params },
-    client,
-    context,
-    respond,
-    isWebchatConnect: () => false,
-  });
-  return respond;
-}
+const rpc = (client: GatewayClient, method: string, params: Record<string, unknown> = {}) =>
+  callGitHubAccountFixtureRpc(context, client, method, params);
+
 async function start(client = alice): Promise<UsersGitHubAuthorizeStartResult> {
   const respond = await rpc(client, "users.github.authorize.start");
   expect(respond.mock.calls[0]?.[0]).toBe(true);
   return respond.mock.calls[0]![1] as UsersGitHubAuthorizeStartResult;
 }
-function preparePoll(client = alice) {
-  preparePersonalGitHubPoll(owner(client));
-}
+const preparePoll = (client = alice) => preparePersonalGitHubPoll(owner(client));
 async function connect(client = alice) {
   const started = await start(client);
   preparePoll(client);
@@ -142,7 +137,10 @@ async function pendingRefresh() {
 
 beforeEach(async () => {
   state = await createOpenClawTestState({ scenario: "minimal", applyEnv: true });
-  config = { agents: { entries: { main: { workspace: state.workspaceDir } } } };
+  config = {
+    agents: { entries: { main: { workspace: state.workspaceDir } } },
+    plugins: { entries: { "github-repositories": { config: {} } } },
+  };
   setRuntimeConfigSnapshot(config);
   clients = new Set();
   alice = user("alice@example.test");
@@ -157,13 +155,14 @@ beforeEach(async () => {
   });
   context = {
     getRuntimeConfig: () => config,
-    githubOAuthService: lifecycle,
     getClientConnIds: (filter?: (client: GatewayClient) => boolean) =>
       new Set(
         [...clients].filter((client) => !filter || filter(client)).map((client) => client.connId!),
       ),
     logGateway: { warn: vi.fn() },
   } as unknown as GatewayRequestContext;
+  installGitHubAccountFixture(context, lifecycle);
+  installGitHubAccountRpcFixture(config);
 });
 afterEach(async () => {
   await lifecycle.stop();
@@ -189,10 +188,6 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       {
         owner: owner(),
         assertCurrent() {},
-        sessionId: "publication-session",
-        sessionKey: "agent:main:publication",
-        agentId: "main",
-        lifecycleRevision: null,
       },
       { generation: connection.generation, account: connection.selection },
     );
@@ -200,9 +195,14 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     try {
       expect(bound.assertCurrent().accountId).toBe(101);
       expect(reads.queries).toEqual([]);
-      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-        disconnected: true,
-      });
+      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+        true,
+        {
+          disconnected: true,
+        },
+        undefined,
+        undefined,
+      );
       // Disconnect also retires profile files under a native SQLite lease.
       reads.queries.length = 0;
       expect(() => bound.assertCurrent()).toThrow();
@@ -215,18 +215,11 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
   it.each(["users.github.status", "tools.github.status"])(
     "%s reports execution authentication instead of a resolved preview credential",
     async (method) => {
-      const sourceConfig: OpenClawConfig = {
-        ...config,
-        gateway: {
-          controlUi: {
-            github: { token: { source: "env", provider: "default", id: "GH_TOKEN" } },
-          },
-        },
+      const sourceConfig = structuredClone(config);
+      readGitHubConfig(sourceConfig).service = {
+        token: { source: "env", provider: "default", id: "GH_TOKEN" },
       };
-      config = {
-        ...config,
-        gateway: { controlUi: { github: { token: "synthetic-preview" } } },
-      };
+      readGitHubConfig(config).service = { token: "synthetic-preview" };
       setRuntimeConfigSnapshot(config, sourceConfig);
       const snapshot = vi
         .spyOn(secretsRuntime, "getActiveSecretsRuntimeConfigSnapshot")
@@ -273,15 +266,15 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const profileId = "ghp_12121212121212121212121212121212";
       config.agents = {
         entries: {
-          alpha: {
-            workspace: state.path("alpha-workspace"),
-            tools: { github: { profileId: "ghp_34343434343434343434343434343434" } },
-          },
+          alpha: { workspace: state.path("alpha-workspace") },
           beta: { workspace: state.path("beta-workspace") },
         },
       };
+      readGitHubConfig(config).agents = {
+        alpha: { profileId: "ghp_34343434343434343434343434343434" },
+      };
       if (systemKind === "managed") {
-        config.tools = { github: { profileId } };
+        readGitHubConfig(config).system = { profileId };
         await writeManagedGitHubProfileFiles(
           resolveManagedGitHubProfileDir({ scope: "system", agentId: "", profileId }),
           { login: "system-bot", token: "synthetic-native" },
@@ -316,7 +309,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const pending = await start();
       expect(
         await rpc(alice, "users.github.authorize.cancel", { requestId: pending.requestId }),
-      ).toHaveBeenCalledWith(true, { cancelled: true });
+      ).toHaveBeenCalledWith(true, { cancelled: true }, undefined, undefined);
       expect(writes).not.toHaveBeenCalled();
     } finally {
       writes.mockRestore();
@@ -479,7 +472,9 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       config = JSON.parse(await fs.readFile(state.configPath, "utf8")) as OpenClawConfig;
       setRuntimeConfigSnapshot(config);
       const identity =
-        scope === "system" ? config.tools?.github : config.agents?.entries?.main?.tools?.github;
+        scope === "system"
+          ? readGitHubConfig(config).system
+          : readGitHubConfig(config).agents?.["main"];
       if (!identity) {
         throw new Error("Expected configured shared GitHub identity");
       }
@@ -515,7 +510,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       system: { source: "system-detected", account: { login: "system-bot" } },
     });
     expect(getUserProfileListItem(owner())).toEqual(before);
-    expect(config.tools?.github).toBeUndefined();
+    expect(readGitHubConfig(config).system).toBeUndefined();
     expect(prepareGitHubToolEnvironment({ config, agentId: "main" }).localIdentityEnv).toEqual({});
     expect(await rpc(alice, "users.self")).toHaveBeenCalledWith(true, { profile: before });
     for (const [method, missingScope] of [
@@ -545,10 +540,15 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect((await readConnection(owner()))?.generation).toBe(connection.generation);
     expect(
       await rpc(alice, "users.github.authorize.cancel", { requestId: restarted.requestId }),
-    ).toHaveBeenCalledWith(true, { cancelled: true });
-    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-      disconnected: true,
-    });
+    ).toHaveBeenCalledWith(true, { cancelled: true }, undefined, undefined);
+    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+      true,
+      {
+        disconnected: true,
+      },
+      undefined,
+      undefined,
+    );
     expect((await readConnection(owner()))?.selection.kind).toBe("disconnected");
     expect((await readConnection(owner()))?.generation).not.toBe(connection.generation);
   });
@@ -573,9 +573,14 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     await expect(lifecycle.personal.refresh(owner())).rejects.toThrow(
       "Personal GitHub state is invalid",
     );
-    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-      disconnected: true,
-    });
+    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+      true,
+      {
+        disconnected: true,
+      },
+      undefined,
+      undefined,
+    );
     expect((await readConnection(owner()))?.selection).toEqual({
       kind: "disconnected",
     });
@@ -590,10 +595,10 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     await vi.waitFor(() => expect(network.poll).toHaveBeenCalledOnce());
     expect(
       await rpc(bob, "users.github.authorize.poll", { requestId: started.requestId }),
-    ).toHaveBeenCalledWith(true, { status: "expired" });
+    ).toHaveBeenCalledWith(true, { status: "expired" }, undefined, undefined);
     expect(
       await rpc(bob, "users.github.authorize.cancel", { requestId: started.requestId }),
-    ).toHaveBeenCalledWith(true, { cancelled: false });
+    ).toHaveBeenCalledWith(true, { cancelled: false }, undefined, undefined);
     expect((await rpc(bob, "users.github.status")).mock.calls[0]?.[1]).toMatchObject({
       personal: { pending: null, account: null },
     });
@@ -616,6 +621,8 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect(await rpc(alice, "users.github.status")).toHaveBeenCalledWith(
       true,
       expect.objectContaining({ personal: expect.objectContaining({ state: "disconnected" }) }),
+      undefined,
+      undefined,
     );
     const started = await start(alice);
     expect((await readConnection(profile.id))?.pending?.requestId).toBe(started.requestId);

@@ -136,6 +136,9 @@ async function seedSemanticState(config: OpenClawConfig, sourceConfig = config) 
 
 function useDirectChecks() {
   vi.spyOn(bundledHealthChecks, "registerBundledHealthChecks").mockImplementation(() => []);
+  vi.spyOn(bundledHealthChecks, "collectDeclaredPluginDoctorHealthChecks").mockImplementation(
+    () => ({ checks: [], findings: [] }),
+  );
   vi.spyOn(bundledHealthChecks, "resolveBundledHealthCheckPluginStateMode").mockReturnValue(
     "direct",
   );
@@ -583,12 +586,18 @@ describe("runDoctorLintCli", () => {
       memory: { search: { provider: "local", fallback: "none" } },
     } satisfies OpenClawConfig;
     const { databasePath: pluginDatabasePath } = await seedSemanticState(config);
+    const failSnapshotPreparation = vi.fn(() => {
+      throw new Error("shared state did not stabilize");
+    });
     mocks.prepareSqliteReadOnlyLocationSync.mockImplementation((...args: unknown[]) => {
       if (args[0] === pluginDatabasePath) {
-        throw new Error("shared state did not stabilize");
+        return failSnapshotPreparation();
       }
       return mocks.actualPrepareSqliteReadOnlyLocationSync(...args);
     });
+    vi.spyOn(snapshotSource, "forkSqlitePrivateSnapshot").mockImplementation(async () =>
+      failSnapshotPreparation(),
+    );
 
     const exitCode = await runDoctorLintCli(runtime, {
       json: true,
@@ -611,7 +620,7 @@ describe("runDoctorLintCli", () => {
       ],
     });
     expect(mocks.readConfigFileSnapshot).not.toHaveBeenCalled();
-    expect(mocks.prepareSqliteReadOnlyLocationSync).toHaveBeenCalledWith(pluginDatabasePath);
+    expect(failSnapshotPreparation).toHaveBeenCalled();
   });
 
   it("rejects registered checks that claim reserved core doctor ids", async () => {

@@ -4,6 +4,8 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import vm from "node:vm";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { createGitHubReadIdentity } from "../../../extensions/github-repositories/read-identity-api.js";
+import type { prepareGitHubReadIdentity } from "../../../extensions/github-repositories/tool-identity-api.js";
 import {
   GATEWAY_CLIENT_IDS,
   GATEWAY_CLIENT_MODES,
@@ -13,7 +15,6 @@ import {
   WORKER_EXECUTION_CONTEXT_PROTOCOL_FEATURE,
 } from "../../../packages/gateway-protocol/src/schema/worker-admission.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import { createGitHubReadIdentity } from "../../agents/github-read-identity.js";
 import { getRuntimeConfig } from "../../config/config.js";
 import {
   areDiagnosticsEnabledForProcess,
@@ -43,7 +44,6 @@ import type { WorkerPlacementExecutionMode } from "./placement-record.js";
 import { createWorkerSessionPlacementStore } from "./placement-store.js";
 import type { WorkerProviderPreparedIntent } from "./preparation-identity.js";
 import type { WorkerProjectPreparationIdentity } from "./preparation-identity.schema.js";
-import { prepareRepositoryGitHubIdentity } from "./repository-github-identity.js";
 import * as support from "./service.test-support.js";
 import {
   readSessionRepositoryArtifacts,
@@ -54,8 +54,22 @@ import { captureWorkspaceManifest } from "./workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./workspace-manifest.js";
 import { requireWorkspaceResultGit } from "./workspace-result-git.js";
 
+// The worker source explicitly requests allowAnonymous; mock that source-read overload.
+const prepareSourceIdentity = vi.hoisted(() =>
+  vi.fn<
+    (
+      params: Parameters<typeof prepareGitHubReadIdentity>[0] & { allowAnonymous: true },
+    ) => Promise<ReturnType<typeof createGitHubReadIdentity>>
+  >(),
+);
+
 // mock-isolation: Workspace startup supplies a synthetic identity without credential discovery.
-vi.mock("./repository-github-identity.js", () => ({ prepareRepositoryGitHubIdentity: vi.fn() }));
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: prepareSourceIdentity,
+}));
 
 vi.mock("../../config/config.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../config/config.js")>()),
@@ -756,7 +770,7 @@ describe("prepared worker dispatch", () => {
       onTestFinished(() => {
         vi.unstubAllEnvs();
       });
-      vi.mocked(prepareRepositoryGitHubIdentity).mockResolvedValue(
+      prepareSourceIdentity.mockResolvedValue(
         createGitHubReadIdentity({
           token: undefined,
           selection: { source: "anonymous" },

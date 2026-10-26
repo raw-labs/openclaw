@@ -38,10 +38,7 @@ import * as fx from "./worker-turn-launcher.test-support.js";
 afterAll(closeStateDatabaseForTest);
 
 const readGitHubFact = vi.hoisted(() => vi.fn());
-// mock-isolation: Worker launches consume facts without starting identity discovery.
-vi.mock("../github-publication-discovery.js", () => ({
-  readGitHubPublicationFact: readGitHubFact,
-}));
+// Discovery stays outside launch-envelope and prepared-grant fence tests.
 
 const primaryModes = [
   "provider",
@@ -151,7 +148,7 @@ describe("worker launch capabilities", () => {
           return tools;
         },
       });
-      const provider = createLauncher({ environments });
+      const provider = createLauncher({ environments, readWorkerPublicationFact: readGitHubFact });
       const execution = executeTurn(provider, "run-github", vi.fn());
       if (revoked) {
         await expect(execution).rejects.toBe(revokedError);

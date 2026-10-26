@@ -56,13 +56,13 @@ if (isMainThread) {
   Object.defineProperty(globalThis, Symbol.for(symbol), { value: tracker });
   const access = `globalThis[Symbol.for(${JSON.stringify(symbol)})]`;
   const sourceUrl = (file: string) => new URL(`../../src/${file}`, import.meta.url).href;
-  const ownerUrl = sourceUrl("gateway/github-publication-shared-read.ts");
+  const ownerUrl = sourceUrl("gateway/repository-publication-shared-read.ts");
   const override = process.env.OPENCLAW_BENCH_GITHUB_OBSERVATION_OWNER;
   const selectedOwnerUrl = override ? pathToFileURL(resolve(override)).href : ownerUrl;
   if (dirname(fileURLToPath(selectedOwnerUrl)) !== dirname(fileURLToPath(ownerUrl))) {
     throw new Error("GitHub observation override must be adjacent to its source owner");
   }
-  const availabilityOwnerUrl = sourceUrl("gateway/github-publication-availability.ts");
+  const availabilityOwnerUrl = sourceUrl("gateway/repository-publication-workspace-authority.ts");
   const availabilityOverride = process.env.OPENCLAW_BENCH_GITHUB_AVAILABILITY_OWNER;
   const selectedAvailabilityUrl = availabilityOverride
     ? pathToFileURL(resolve(availabilityOverride)).href
@@ -71,6 +71,17 @@ if (isMainThread) {
     dirname(fileURLToPath(selectedAvailabilityUrl)) !== dirname(fileURLToPath(availabilityOwnerUrl))
   ) {
     throw new Error("GitHub availability override must be adjacent to its source owner");
+  }
+  const identityOwnerUrl = new URL(
+    "../../extensions/github-repositories/publication-availability-api.ts",
+    import.meta.url,
+  ).href;
+  const identityOverride = process.env.OPENCLAW_BENCH_GITHUB_IDENTITY_OWNER;
+  const selectedIdentityUrl = identityOverride
+    ? pathToFileURL(resolve(identityOverride)).href
+    : identityOwnerUrl;
+  if (dirname(fileURLToPath(selectedIdentityUrl)) !== dirname(fileURLToPath(identityOwnerUrl))) {
+    throw new Error("GitHub identity override must be adjacent to its source owner");
   }
   const targets = new Map<string, Record<string, string>>([
     [
@@ -87,24 +98,31 @@ if (isMainThread) {
     [
       selectedAvailabilityUrl,
       {
-        prepareCurrentGitHubPublicationOptionsIdentity: "identity",
         hasSupportedGitHubPublicationTarget: "target",
-        prepareGitHubPublicationSession: "publication-session",
+        prepareRepositoryPublicationSession: "publication-session",
       },
     ],
-    [sourceUrl("agents/github-read-identity.ts"), { readNativeGitHubToken: "native-token" }],
     [
-      sourceUrl("agents/github-oauth-client.ts"),
+      new URL("../../extensions/github-repositories/read-identity-api.ts", import.meta.url).href,
+      { readNativeGitHubToken: "native-token" },
+    ],
+    [
+      new URL("../../extensions/github-repositories/oauth-api.ts", import.meta.url).href,
       { verifyGitHubCredential: "credential-verification" },
     ],
+    [selectedIdentityUrl, { prepareCurrentGitHubPublicationOptionsIdentity: "identity" }],
     [selectedOwnerUrl, { readSharedGitHubPublication: "receipt" }],
     [sourceUrl("gateway/serialized-json.ts"), { serializeGatewayFrame: "serialization" }],
   ]);
   let ownerLoaded = false;
   let availabilityLoaded = false;
+  let identityLoaded = false;
   registerHooks({
     resolve(specifier, context, nextResolve) {
       const result = nextResolve(specifier, context);
+      if (result.url === identityOwnerUrl) {
+        return { ...result, url: selectedIdentityUrl };
+      }
       if (result.url === availabilityOwnerUrl) {
         return { ...result, url: selectedAvailabilityUrl };
       }
@@ -199,6 +217,14 @@ if (isMainThread) {
           channel: "github-options-availability-loaded",
           path: fileURLToPath(url),
           override: Boolean(availabilityOverride),
+        });
+      }
+      if (url === selectedIdentityUrl && !identityLoaded) {
+        identityLoaded = true;
+        process.send?.({
+          channel: "github-options-identity-loaded",
+          path: fileURLToPath(url),
+          override: Boolean(identityOverride),
         });
       }
       return { ...result, source: transformed };

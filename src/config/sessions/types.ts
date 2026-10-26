@@ -678,6 +678,8 @@ export type InternalSessionEntryCore = SessionEntryCore & {
   activeWriterRunId?: string;
   /** Canonical remote repository awaiting preparation by this exact session generation. */
   pendingProjectGitUrl?: string;
+  /** Admitted repository contribution; never redirects to another owner during recovery. */
+  repositorySourceId?: string;
   /** Authorized worktree intent awaiting preparation by an admitted turn. */
   pendingWorktree?: PendingSessionWorktree;
   /** Suppresses repeated byte-triggered compaction after an oversized successor was observed. */

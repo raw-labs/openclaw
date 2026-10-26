@@ -1,0 +1,81 @@
+import { pluginInstanceInvocation } from "../plugins/plugin-instance-invocation.js";
+import {
+  hasCurrentPluginInstanceAuthority,
+  wrapCurrentPluginInstance,
+} from "../plugins/plugin-instance-scope.js";
+import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
+import { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
+import { getPluginServiceSchedulerBinding } from "../plugins/service-scheduler-binding.js";
+export type {
+  PreparedRepositorySessionRead,
+  RepositorySessionObservation,
+  RepositorySessionIdentity,
+  RepositorySessionSourceScope,
+  RepositoryTaskPublications,
+} from "../gateway/repository-session-read.types.js";
+export type {
+  RepositorySessionReads,
+  RepositorySessionReadChange,
+  RepositorySessionPresentation,
+} from "../gateway/repository-session-read-host.js";
+
+/** Create once in an admitted service; request and scheduler calls borrow this actual owner. */
+export function createRepositorySessionReads() {
+  const scheduler = getPluginServiceSchedulerBinding()?.();
+  const resolveGatewayContext = getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
+  const context = resolveGatewayContext?.();
+  const instance = pluginInstanceInvocation.getStore()?.instance;
+  const pluginId = instance?.pluginId;
+  if (
+    !scheduler ||
+    !resolveGatewayContext ||
+    !context?.repositorySessions ||
+    !instance ||
+    !pluginId ||
+    !hasCurrentPluginInstanceAuthority(pluginId)
+  ) {
+    throw new Error("Repository session reads require a bound Gateway plugin service");
+  }
+  const gateway = getGatewayServiceLifetime({ resolveGatewayContext });
+  const serviceSignal = AbortSignal.any([scheduler.signal, gateway, instance.lifecycle.signal]);
+  const assertCurrent = () => {
+    serviceSignal.throwIfAborted();
+    if (getGatewayServiceLifetime({ resolveGatewayContext }) !== gateway) {
+      throw new Error("Repository session Gateway owner changed");
+    }
+  };
+  const host = context.repositorySessions.bindService(serviceSignal, assertCurrent);
+  const { withRequestRead: _withRequestRead, ...reads } = host;
+  return Object.freeze({
+    ...reads,
+    installPresentation: (
+      provider: import("../gateway/repository-session-read-host.js").RepositorySessionPresentation,
+    ) => host.installPresentation(wrapCurrentPluginInstance(provider)),
+  });
+}
+
+export type {
+  ControlUiSessionBranch,
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestCheck,
+  ControlUiSessionPullRequestCheckStep,
+  ControlUiSessionPullRequestCheckDetails,
+  ControlUiSessionPullRequestSnapshot,
+  ControlUiSessionPullRequests,
+  ControlUiSessionPullRequestsChanged,
+} from "../gateway/control-ui-contract.js";
+export {
+  CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
+  CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
+} from "../shared/control-ui-session-pull-request-contract.js";
+
+export { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../../packages/gateway-protocol/src/schema/primitives.js";
+export type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
+
+/** Borrow only the current admitted request; client and Factory proof issuance stay host-owned. */
+export async function captureRepositorySessionRequestRead() {
+  const runtime = await import("../gateway/repository-session-request-read.js");
+  return runtime.captureRepositorySessionRequestRead();
+}
+
+export type { RepositoryReadCredentialPreparation } from "../gateway/repository-session-request-read.js";

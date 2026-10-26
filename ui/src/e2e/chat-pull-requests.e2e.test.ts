@@ -3,22 +3,22 @@ import path from "node:path";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type { BrowserContextOptions, Locator, Page } from "playwright";
 import { beforeEach, expect, it } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import {
   CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
   type ControlUiSessionPullRequest,
 } from "../../../src/gateway/control-ui-contract.js";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
 import { finishElementAnimations } from "../test-helpers/animations.ts";
 import { createControlUiE2eArtifactDir } from "../test-helpers/control-ui-e2e-artifacts.ts";
 import { takeControlUiViewportScreenshot } from "../test-helpers/control-ui-e2e-screenshot.ts";
 import {
   controlUiBundledSettingsStorageKey,
   controlUiSessionUrl,
-  installMockGateway,
   navigateToControlUiSession,
   type ControlUiMockGatewayScenario,
   type MockGatewayControls,
 } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -151,7 +151,11 @@ async function capturePublication(page: Page, name: string) {
 
 suite.define(() => {
   it("shows detected PRs in Details with rate-limit staleness", async () => {
-    const context = await newBrowserContext();
+    const context = await newBrowserContext(
+      captureUiProof
+        ? { recordVideo: { dir: stackingProofDir, size: { width: 1180, height: 800 } } }
+        : {},
+    );
     const page = await context.newPage();
     const gateway = await installMockGateway(page, {
       featureMethods: subscriptionMethods,
@@ -215,6 +219,8 @@ suite.define(() => {
     );
     if (captureUiProof) {
       await page.screenshot({ path: path.join(stackingProofDir, "ci-open.png") });
+      // Capture-only dwell keeps the actual opened Checks controls legible in the recording.
+      await page.waitForTimeout(750);
     }
     await page.locator(".agent-chat__input textarea").click();
     await expect.poll(() => menu.isVisible()).toBe(false);
@@ -246,6 +252,7 @@ suite.define(() => {
     expect(detailsBox!.y + detailsBox!.height).toBeLessThanOrEqual(composerBox!.y);
     if (captureUiProof) {
       await page.screenshot({ path: path.join(stackingProofDir, "after-pr-discovery.png") });
+      await page.waitForTimeout(750);
     }
 
     await mergedChip
@@ -303,22 +310,27 @@ suite.define(() => {
         await openDetailsPullRequests(page);
         await pollCount(chips).toBe(count);
         await page.locator(".chat").evaluate(finishElementAnimations);
-        const bounds = await stack.evaluate((element) => {
-          const detailsBounds = element
-            .closest(".chat-mobile-host, .chat-details")!
-            .getBoundingClientRect();
-          const stackBounds = element.getBoundingClientRect();
-          return {
-            detailsBottom: detailsBounds.bottom,
-            stackLeft: stackBounds.left,
-            stackWidth: stackBounds.width,
-            fitsHorizontally: element.scrollWidth <= element.clientWidth + 1,
-            rows: [...element.children].map((row) => {
-              const rect = row.getBoundingClientRect();
-              return { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width };
-            }),
-          };
-        });
+        const bounds = await stack.evaluate(
+          (element, rowSelector) => {
+            const detailsBounds = element
+              .closest(".chat-mobile-host, .chat-details")!
+              .getBoundingClientRect();
+            const stackBounds = element.getBoundingClientRect();
+            return {
+              detailsBottom: detailsBounds.bottom,
+              stackLeft: stackBounds.left,
+              stackWidth: stackBounds.width,
+              fitsHorizontally: element.scrollWidth <= element.clientWidth + 1,
+              // Foreign read mounts add display:contents hosts; measure every actual row,
+              // not the zero-box bridge container. All geometry assertions remain below.
+              rows: [...element.querySelectorAll(rowSelector)].map((row) => {
+                const rect = row.getBoundingClientRect();
+                return { top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width };
+              }),
+            };
+          },
+          mobile ? ".chat-pr-mobile__row" : ".chat-pr",
+        );
         expect(bounds.fitsHorizontally).toBe(true);
         let previousBottom = 0;
         for (const row of bounds.rows) {
@@ -340,7 +352,7 @@ suite.define(() => {
           if (mobile) {
             await chip.click();
             const detail = page.locator(
-              '.chat-mobile-details-page[data-details-page="pull-request"]:visible',
+              '[data-repository-page="pull-request"]:not([hidden]):visible',
             );
             const link = detail.getByRole("link", { name: "Open on GitHub", exact: true });
             await pollAttr(link, "href").toBe(expectedUrl);
@@ -370,9 +382,7 @@ suite.define(() => {
       if (mobile) {
         await closeChatDetails(page);
         await page.locator('.activity-pill[data-family="pull-request"]').first().click();
-        await page
-          .locator('.chat-mobile-details-page[data-details-page="pull-request"]:visible')
-          .waitFor();
+        await page.locator('[data-repository-page="pull-request"]:not([hidden]):visible').waitFor();
         expect(
           await page
             .locator(".chat-mobile-host__header")

@@ -1,8 +1,15 @@
+import { expect } from "vitest";
+import {
+  readGitHubConfig,
+  type GitHubToolIdentityConfig,
+} from "../../extensions/github-repositories/config-api.js";
+import { createGitHubOAuthLifecycleHost } from "../../extensions/github-repositories/oauth-lifecycle-host-api.js";
+import { createGitHubOAuthLifecyclePolicy } from "../../extensions/github-repositories/oauth-lifecycle-policy-api.js";
+import type { GitHubToolAccount } from "../../extensions/github-repositories/tool-account-api.js";
 import type { ToolsGitHubStatusResult } from "../../packages/gateway-protocol/src/index.js";
+import { inspectGitHubOAuthRecord } from "../agents/github-oauth-records.js";
 import type { GitHubIdentityScope, GitHubOAuthRecord } from "../agents/github-oauth-records.js";
-import type { GitHubToolAccount } from "../agents/github-tool-account.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 
 export const NOW = Date.parse("2026-08-19T12:00:00.000Z");
 export const OLD_PROFILE = `ghp_${"1".repeat(32)}`;
@@ -33,10 +40,18 @@ export function configForScope(
   scope: GitHubIdentityScope,
   selected?: GitHubToolIdentityConfig,
 ): OpenClawConfig {
-  const tools = selected ? { github: selected } : {};
   return {
-    tools: scope === "system" ? tools : { github: identity(OTHER_PROFILE) },
-    agents: { entries: { main: scope === "system" ? {} : { tools } } },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            system: scope === "system" ? selected : identity(OTHER_PROFILE),
+            ...(scope === "agent" && selected ? { agents: { main: selected } } : {}),
+          },
+        },
+      },
+    },
+    agents: { entries: { main: {} } },
   };
 }
 
@@ -47,8 +62,12 @@ export function configWithSelectedIdentity(
   nextIdentity: GitHubToolIdentityConfig,
 ): OpenClawConfig {
   const next = structuredClone(config);
-  const owner = scope === "system" ? next : (((next.agents ??= {}).entries ??= {})[agentId] ??= {});
-  (owner.tools ??= {}).github = structuredClone(nextIdentity);
+  const owner = readGitHubConfig(next);
+  if (scope === "system") {
+    owner.system = structuredClone(nextIdentity);
+  } else {
+    (owner.agents ??= {})[agentId] = structuredClone(nextIdentity);
+  }
   return next;
 }
 
@@ -90,4 +109,12 @@ export function oauthRecord(
     createdAtMs: NOW - 60_000,
     ...overrides,
   };
+}
+
+export const { createGitHubOAuthInventoryReader } = createGitHubOAuthLifecyclePolicy(
+  createGitHubOAuthLifecycleHost(new AbortController().signal),
+);
+
+export async function expectStoredOAuth(profileId: string, record: Record<string, unknown>) {
+  expect(await inspectGitHubOAuthRecord(profileId)).toMatchObject({ state: "valid", record });
 }

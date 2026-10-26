@@ -4,19 +4,16 @@ import { patchSettings } from "../../app/settings.ts";
 import { readPresenceEntries, resolveCurrentSelfUser } from "../../app/user-profile.ts";
 import { navigateMarkdownSession } from "../../components/markdown-session-links.ts";
 import { personActivityRouting } from "../../components/person-activity-link.ts";
-import { isCloudWorkerPlacementState } from "../../components/session-row-badges.ts";
 import { t } from "../../i18n/index.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
-import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
+import { isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
 import {
   pickFreshestObserverDigest,
   projectSessionObserverDigest,
   resolveChatPaneObserverRunId,
 } from "../../lib/observer-digest.ts";
 import { hasSessionPresenceViewers } from "../../lib/presence-users.ts";
-import { projectsForGateway } from "../../lib/projects.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
-import { GitHubPublicationOwner } from "../../lib/sessions/github-publication-owner.ts";
 import { scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
 import { resolveUiConfiguredMainKey } from "../../lib/sessions/session-key.ts";
 import { navigateToModelProvider } from "../model-providers/navigation.ts";
@@ -32,7 +29,6 @@ import {
   createChatPaneSessionActionCallbacks,
   readChatPaneComposerAccess,
   readChatPaneMutationAccess,
-  readChatPublicationAccess,
   renderChatPaneComposerControls,
 } from "./chat-pane-session-controls.ts";
 import {
@@ -266,62 +262,25 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
             navigateToModelProvider(this.context, currentAgentId, provider),
           onModelAccounts: () => this.context.navigate("profile"),
         });
-    const projectCatalog = projectsForGateway(this.context.gateway).snapshot;
-    const publicationScope = this.captureConnectionScope();
-    const readPublicationRow = () => {
+    const operationScope = this.captureConnectionScope();
+    const readOperationRow = () => {
       const row = selectedChatSessionRow(state);
-      return (
-        row && {
-          ...row,
-          agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
-          archived: this.isCurrentSessionArchived(state),
-        }
-      );
+      return row
+        ? {
+            ...row,
+            agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
+            archived: this.isCurrentSessionArchived(state),
+          }
+        : undefined;
     };
-    const publicationRow = readPublicationRow();
     const sessionHeaderFacts = this.captureSessionHeaderFacts(
       state,
       selectedSession,
-      readPublicationRow,
-      publicationScope,
+      readOperationRow,
+      operationScope,
       sessionParticipationBlocked,
       Boolean(workspaceConflict),
     );
-    if (
-      !publicationScope ||
-      !publicationRow ||
-      isGatewayMethodAdvertised(gatewaySnapshot, "sessions.github.publish") !== true ||
-      !canCallGatewayMethod(gatewaySnapshot, "sessions.github.options", "operator.read")
-    ) {
-      this.publication.binding?.detach();
-      this.publication.binding = null;
-    } else {
-      if (!this.publication.binding?.matches(publicationRow)) {
-        this.publication.binding?.detach();
-        this.publication.binding = this.context.sessions.githubPublication.attach(
-          publicationRow,
-          GitHubPublicationOwner,
-        );
-      }
-      const publication = this.publication.binding;
-      publication?.sync({
-        ...readChatPublicationAccess(gatewaySnapshot, publicationRow, sessionParticipationBlocked),
-        personalReady:
-          !hasAbortableSessionRun(state) &&
-          (!isCloudWorkerPlacementState(placement?.state) ||
-            (Boolean(publicationRow.repositoryWorkspaceId) && placement?.state === "active")) &&
-          !workspaceConflict,
-        isPresented: () => this.presented,
-        isCurrent: () => {
-          const row = readPublicationRow();
-          return (
-            this.isConnectionScopeCurrent(publicationScope) &&
-            row !== undefined &&
-            publication?.matches(row)
-          );
-        },
-      });
-    }
     const sessionDisabledBanner = this.sessionDisabledBanner({
       catalogDisabledReason,
       modelSetupRequired,
@@ -382,7 +341,6 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         : undefined;
     const props: ChatProps = {
       applicationContext: this.context,
-      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       onHistorySentinelRef: this.registerHistorySentinel,
@@ -564,21 +522,9 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       ...this.suggestionChatProps(state.connected, selectedSessionArchived, multiIdentity),
       messageReactions: this.collaboration.reactions,
       onReact: this.canReactToCurrentSession() ? this.handleMessageReaction : undefined,
-      pullRequests: this.visibleSessionPullRequests,
-      pullRequestsGateway: this.context.gateway,
-      pullRequestsSessionId: selectedSession?.sessionId,
-      pullRequestsBranch: this.sessionPullRequestsBranch,
-      pullRequestsBranchDismissed: this.sessionPullRequestsBranchDismissed,
-      pullRequestsStatus: this.sessionPullRequestsStatus,
-      onDismissPullRequest: this.dismissSessionPullRequest,
-      onDismissPullRequestsBranch: this.dismissSessionPullRequestsBranch,
-      // Until catalog success, a lowercase name may be a hidden/ambiguous alias.
-      // Do not mint a checkout link that can prefetch the wrong repository.
-      githubRepo: projectCatalog.result ? this.githubRepo : null,
-      githubRepositories: projectCatalog.repositories,
-
+      gateway: this.context.gateway,
       onOpenSessionDiff: sessionWorkspace.onOpenDiff,
-      githubPublication: this.publication.binding?.view(),
+      sessionHeaderFacts,
       onOpenWorkspaceFile: (target) => void openSessionWorkspaceFile(state, target),
       onOpenSessionLink: (target) => navigateMarkdownSession(this.context, target),
       onNavigate: (routeId, options) => this.context.navigate(routeId, options),

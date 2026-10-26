@@ -49,10 +49,10 @@ describe("tool-catalog", () => {
 
   it("lets operators configure run-dependent tools without granting restricted profiles", () => {
     const ids = listCoreToolSections().flatMap((section) => section.tools.map((tool) => tool.id));
-    expect(ids).toEqual(
-      expect.arrayContaining(["github_publish", "github_identity_status", "transcripts"]),
-    );
+    expect(ids).toEqual(expect.arrayContaining(["transcripts"]));
     expect(resolveCoreToolProfiles("transcripts")).toEqual([]);
+    expect(ids).not.toContain("github_publish");
+    expect(ids).not.toContain("github_identity_status");
   });
 
   it.each(["group:media", "group:openclaw"])("preserves saved %s transcript policy", (group) => {

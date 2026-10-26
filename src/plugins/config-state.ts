@@ -229,6 +229,20 @@ function toEnableStateResult(state: PluginActivationState): { enabled: boolean; 
   return state.enabled ? { enabled: true } : { enabled: false, reason: state.reason };
 }
 
+export function isBundledPluginEnabled(
+  config: OpenClawConfig,
+  id: string,
+  enabledByDefault = true,
+): boolean {
+  return resolveEffectivePluginActivationState({
+    id,
+    origin: "bundled",
+    config: normalizePluginsConfig(config.plugins),
+    rootConfig: config,
+    enabledByDefault,
+  }).enabled;
+}
+
 export const resolveEnableState = (
   id: string,
   origin: PluginOrigin,

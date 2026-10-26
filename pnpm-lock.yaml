@@ -1342,17 +1342,51 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
-  extensions/github:
-    devDependencies:
-      '@openclaw/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
-
   extensions/github-copilot:
     devDependencies:
       '@openclaw/plugin-sdk':
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
+
+  extensions/github-repositories:
+    dependencies:
+      '@openclaw/fs-safe':
+        specifier: 0.26.8
+        version: 0.26.8
+      '@openclaw/gateway-client':
+        specifier: workspace:*
+        version: link:../../packages/gateway-client
+      '@openclaw/gateway-protocol':
+        specifier: workspace:*
+        version: link:../../packages/gateway-protocol
+      '@openclaw/normalization-core':
+        specifier: workspace:*
+        version: link:../../packages/normalization-core
+      '@solidjs/web':
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16(solid-js@2.0.0-rc.16)
+      solid-js:
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16
+      typebox:
+        specifier: 1.3.37
+        version: 1.3.37
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@openclaw/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@solidjs/compiler':
+        specifier: 2.0.0-rc.16
+        version: 2.0.0-rc.16
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
 
   extensions/gmi:
     devDependencies:

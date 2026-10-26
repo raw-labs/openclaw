@@ -430,7 +430,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   // advertised method indices stay stable for older clients; new methods append.
   ["terminal.attach", "terminal", "operator.admin", "2026.7"],
   ["terminal.list", "terminal", "operator.admin", "2026.7"],
-  ["controlUi.githubPreview", "control-ui", "operator.read", "<=2026.7"],
   ["system.info", "system", "operator.read", "<=2026.7"],
   // Workspace contents stay in the documented trusted operator domain, like session and log
   // reads. Strong user/tenant isolation requires separate Gateways; see operator-scopes.md.
@@ -445,7 +444,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["plugins.refresh", "plugins-mutations", "operator.admin", "<=2026.7", CONTROL_PLANE_WRITE],
   // Session PR chips read the session's own checkout metadata, matching the
   // sessions.files.* trusted-operator read domain.
-  ["controlUi.sessionPullRequests.subscribe", "control-ui", "operator.read", "2026.7"],
   ["controlUi.sessionPreview", "control-ui", "operator.read", "2026.8"],
   ["gateway.suspend.prepare", "suspend", "operator.admin", "2026.7", SIDECAR_CONTROL_PLANE_WRITE],
   ["gateway.suspend.status", "suspend", "operator.read", "2026.7"],
@@ -533,14 +531,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["secrets.store.delete", null, "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
   ["users.prefs.get", "users", "operator.read", "2026.8"],
   ["users.prefs.set", "users", "operator.read", "2026.8"],
-  ["projects.add", "projects", "operator.write", "2026.8", CONTROL_PLANE_WRITE],
-  [
-    "projects.searchRemote",
-    "projects",
-    "operator.read",
-    "2026.8",
-    { description: "Search GitHub repositories that can be cloned as managed projects." },
-  ],
   ["desktop.observe", "environments", "operator.admin", "2026.8", { startup: true }],
   ["desktop.launch", "environments", "operator.admin", "2026.8", { startup: true }],
   ["device.scopes.requestUpgrade", "devices", "operator.read", "2026.8"],
@@ -552,17 +542,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["sessions.assignOwner", "sessions-mutations", "operator.write", "2026.8"],
   ["progressCard.get", "progress-card", "operator.read", "2026.8"],
   ["progressCard.put", "progress-card", "operator.write", "2026.8"],
-  ["tools.github.status", "tools-github", "operator.read", "2026.8"],
-  ["tools.github.configure", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  ["tools.github.authorize.start", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  ["tools.github.authorize.poll", "tools-github", "operator.admin", "2026.8", CONTROL_PLANE_WRITE],
-  [
-    "tools.github.authorize.cancel",
-    "tools-github",
-    "operator.admin",
-    "2026.8",
-    CONTROL_PLANE_WRITE,
-  ],
   [
     "sessions.github.publish",
     "sessions-github",
@@ -582,17 +561,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   // its required `addedBy` response contract remain unchanged.
   ["session.members.listEvidence", "sessions-sharing", "operator.read", "2026.8"],
   ["plugins.inspect", "plugins", "operator.read", "2026.8"],
-  ["users.github.status", "users", "operator.read", "2026.8", { startup: true }],
-  ["users.github.authorize.start", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
-  ["users.github.authorize.poll", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
-  [
-    "users.github.authorize.cancel",
-    "users",
-    "operator.read",
-    "2026.8",
-    SIDECAR_CONTROL_PLANE_WRITE,
-  ],
-  ["users.github.disconnect", "users", "operator.read", "2026.8", SIDECAR_CONTROL_PLANE_WRITE],
   ["sessions.github.options", "sessions-github", "operator.read", "2026.8", { startup: true }],
   ["sessions.github.status", "sessions-github", "operator.read", "2026.8", { startup: true }],
   [
@@ -645,7 +613,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["computer.status", "computer", "operator.read", "2026.9"],
   ["computer.invoke", "computer", "operator.write", "2026.9"],
   ["sessions.activitySummary.ensure", "session-activity-summary", "operator.write", "2026.9"],
-  ["controlUi.sessionPullRequests.checks", "control-ui", "operator.read", "2026.9"],
   ["diagnostics.cpuProfile", "diagnostics", "operator.admin", "2026.9"],
   // Voice catalogs authorize participation in the call's chat.
   ["talk.voice.get", "talk", "operator.talk", "2026.9", PROFILE_DEPENDENT],
@@ -667,7 +634,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["themes.get", "themes", "operator.read", "2026.9"],
   ["themes.set", "themes", "operator.write", "2026.9"],
   ["themes.import", "themes", "operator.write", "2026.9"],
-  ["controlUi.githubDetail", "control-ui", "operator.read", "2026.9"],
   ["progressCard.refresh", "progress-card", "operator.write", "2026.9"],
   ["webSearch.status", "web-search", "operator.read", "2026.9", PROFILE_DEPENDENT],
   ["webSearch.test", "web-search", "operator.admin", "2026.9", PROFILE_DEPENDENT],
@@ -750,8 +716,6 @@ export const CORE_GATEWAY_METHOD_SPECS = [
   ["projects.checkoutOptions", "projects", "operator.read", "2026.10"],
   // Inference spends tokens, even though its result never changes the conversation.
   ["chat.predict", "chat", "operator.write", "2026.10", OWN_SESSION_WRITE],
-  ["tools.github.read", "tools-github", "operator.sessions.read", "2026.10", UNADVERTISED],
-  ["tools.github.search", "tools-github", "operator.sessions.read", "2026.10", UNADVERTISED],
   ["openclaw.setup.runtime.start", "system-agent", "operator.admin", "2026.10"],
   ["sessions.github.action", "sessions-github", "dynamic", "2026.10", CONTROL_PLANE_WRITE],
   ["update.handoffSentinel", "update-handoff-sentinel", "operator.admin", "2026.10", UNADVERTISED],

@@ -4,8 +4,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
+import { prepareGitHubPublisher } from "../../extensions/github-repositories/publication-publisher-api.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { readRuntimeConfig, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import * as backoff from "../infra/backoff.js";
 import { registerClonedProjectRegistry } from "../projects/project-registry.test-support.js";
@@ -18,7 +20,6 @@ import {
 import { OpenClawStateLeaseError } from "../state/openclaw-state-lease.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { executeGitHubPublication } from "./github-publication-executor.js";
 import { restoreGitHubPublicationRequester } from "./github-publication-requester.js";
 import {
   ensureGitHubPublicationStoreFixture as ensureGitHubPublicationStore,
@@ -29,27 +30,47 @@ import {
   readRepositoryGitHubPublicationFixture as readRepositoryGitHubPublication,
 } from "./github-publication-store.test-support.js";
 import { insertGitHubPublicationRequest } from "./github-publication-store.worker.js";
-import { assertGitHubPublicationWorkflowChangesAllowed } from "./github-publication-workflows.js";
-import { REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS } from "./github-repository-publication-snapshot.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication-store.js";
+import { executeGitHubPublication } from "./repository-publication-local-execution.js";
 import {
   assertReceiptOwner,
   prepareReceiptOwner,
-} from "./github-repository-publication-workspace.js";
-import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
+} from "./repository-publication-object-workspace.js";
+import { assertPublicationChangePermission } from "./repository-publication-policy.js";
+import { REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS } from "./repository-publication-snapshot.js";
+import { materializeSessionRepositoryWorkspaceOnGateway as invokeMaterialization } from "./session-repository-materialization.js";
+import { withRepositorySourceGatewayFixture } from "./worker-environments/repository-source.test-support.js";
 import { stageSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
+function materializeSessionRepositoryWorkspaceOnGateway(
+  params: Parameters<typeof invokeMaterialization>[0],
+) {
+  return withRepositorySourceGatewayFixture(readRuntimeConfig, (sources) =>
+    invokeMaterialization({ ...params, getRepositorySources: () => sources }),
+  );
+}
 const mocked = vi.hoisted(() => ({ run: vi.fn(), timed: vi.fn() }));
 const readFile = (root: string, name: string) => fs.readFile(path.join(root, name), "utf8");
+vi.mock("openclaw/plugin-sdk/process-runtime", async (original) => ({
+  ...(await original<typeof import("openclaw/plugin-sdk/process-runtime")>()),
+  runCommandBuffered: mocked.run,
+}));
 vi.mock("../process/exec.js", async (original) => ({
   ...(await original<typeof import("../process/exec.js")>()),
   runCommandBuffered: mocked.run,
   runCommandWithTimeout: mocked.timed,
 }));
 // mock-isolation: Publication handoff clones a local origin without GitHub credentials.
-vi.mock("./worker-environments/repository-github-identity.js", () => ({
-  prepareRepositoryGitHubIdentity: async (_agentId: string, assertCurrent: () => void) => ({
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: async ({
+    assertActive: assertCurrent = () => {},
+  }: {
+    assertActive?: () => void;
+  }) => ({
     token: undefined,
     assertSelected: assertCurrent,
     start: async (start: () => Promise<unknown>) => await start(),
@@ -132,7 +153,7 @@ it.each([
         const current = await captureWorkspaceManifest({ root: cloud, baseCommit });
         const digest = execFileSync(
           process.execPath,
-          ["-e", REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS, cloud, baseCommit, publication],
+          ["-e", REMOTE_REPOSITORY_PUBLICATION_SNAPSHOT_JS, cloud, baseCommit, publication],
           { env, encoding: "utf8" },
         ).trim();
         const staged = await stageSessionRepositoryCheckpoint({
@@ -274,6 +295,12 @@ it.each([
               createdBase = JSON.parse(String(options?.input)).base;
               return result({ html_url: "https://github.com/example/handoff-fixture/pull/2" });
             }
+            if (argv.some((x) => x.includes("/git/matching-refs/heads/"))) {
+              const observed = git(bare, "rev-parse", "refs/heads/" + repository.branch);
+              return result([
+                { ref: "refs/heads/" + repository.branch, object: { sha: observed } },
+              ]);
+            }
             if (argv.includes("state=all")) {
               return result([]);
             }
@@ -406,14 +433,28 @@ it.each([
       const published = await executeGitHubPublication({
         initial,
         ...execution,
-        identity: { prepare: async () => identity, isCurrent: () => true },
+        config: cfg,
+        provider: createGitHubPublicationProvider({
+          getConfig: () => cfg,
+          refreshIdentity: async () => {},
+          refreshPersonal: async () => {},
+          assertCurrent: () => {},
+          signal: new AbortController().signal,
+        }),
+        publisher: () =>
+          prepareGitHubPublisher(scope.agentId, undefined, {
+            prepare: async () => ({
+              ...identity,
+              env: { ...identity.env, GH_TOKEN: "synthetic-local-handoff-token" },
+            }),
+            isCurrent: () => true,
+          }),
         validateCustody: () => currentOwner,
         validateAuthority: () => {
           requester.assertCurrent();
           return true;
         },
-        assertWorkflowChangesAllowed: () =>
-          assertGitHubPublicationWorkflowChangesAllowed(requester),
+        assertWorkflowChangesAllowed: () => assertPublicationChangePermission(requester),
       }).finally(requester.release);
       const localHead = git(worktree.path, "rev-parse", "HEAD");
       expect(published).toMatchObject({ status: "published", repository: prRepository });

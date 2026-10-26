@@ -1,7 +1,18 @@
 import { Buffer } from "node:buffer";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
 import { gatewayOriginScope } from "@openclaw/gateway-client/browser";
 import type { Page } from "playwright";
 import { expect, it } from "vitest";
+import repositoryManifest from "../../../extensions/github-repositories/openclaw.plugin.json" with { type: "json" };
+import { takeControlUiScreenshotFrame } from "../test-helpers/control-ui-e2e-screenshot.ts";
+const nativeRepositoryPlugins = [
+  {
+    pluginId: "github-repositories",
+    rootDir: new URL("../../../extensions/github-repositories/", import.meta.url).pathname,
+    source: "browser/index.tsx",
+  },
+];
 import { controlUiE2eBuiltModuleRequest } from "./control-ui-built-module.test-support.ts";
 import {
   WORKSPACE,
@@ -23,8 +34,14 @@ import { environmentProfiles, pollVisible } from "./new-session-shard.test-suppo
 
 const suite = createNewSessionPageE2eSuite();
 const viewport = { height: 900, width: 1280 };
-const projectMethods = ["projects.list", "projects.add", "sessions.create"];
+const projectMethods = [
+  "projects.list",
+  "projects.add",
+  "sessions.create",
+  "projects.searchRemote",
+];
 const localRepository = {
+  nativePlugins: nativeRepositoryPlugins,
   workspace: WORKSPACE,
   workspaceGit: false,
   agentModel: "openai/gpt-4.1",
@@ -53,7 +70,7 @@ const remoteSearchResult = {
 };
 
 suite.define(() => {
-  it("adds plugin repository sources without replacing native search or legacy plugin activation", async () => {
+  it("adds independent repository sources without replacing GitHub search or legacy plugin activation", async () => {
     await suite.withPage(
       { locale: "en-US", serviceWorkers: "block", viewport },
       async ({ page }) => {
@@ -123,7 +140,13 @@ suite.define(() => {
         await gateway.setMethodResponse("plugins.controlUi.list", {
           ...initialCatalog,
           revision: "plugin-source",
-          repositorySources: [source],
+          repositorySources: [
+            ...repositoryManifest.repositorySources.map((entry) => ({
+              pluginId: "github-repositories",
+              ...entry,
+            })),
+            source,
+          ],
         });
         const catalogs = (await gateway.getRequests("plugins.controlUi.list")).length;
         await gateway.emitGatewayEvent("plugins.controlUi.changed", { revision: "plugin-source" });
@@ -185,6 +208,7 @@ suite.define(() => {
           const gateway = await installMockGateway(page, {
             ...localRepository,
             featureMethods: [
+              "projects.searchRemote",
               "projects.list",
               "environments.list",
               "sessions.create",
@@ -194,7 +218,6 @@ suite.define(() => {
             methodResponses: {
               "projects.list": {
                 projects: [],
-                githubHost: "ghe.example.test",
                 defaultRepository: {
                   identity: "acme/private-repo",
                   url: "https://ghe.example.test/acme/private-repo.git",
@@ -255,11 +278,24 @@ suite.define(() => {
     await suite.withPage({ locale: "en-US", serviceWorkers: "block" }, async ({ page }) => {
       const cloneUrl = "git@ghe.example.test:acme/private-repo.git";
       const gateway = await installMockGateway(page, {
+        nativePlugins: nativeRepositoryPlugins,
         workspace: WORKSPACE,
         workspaceGit: false,
         featureMethods: projectMethods,
         methodResponses: {
-          "projects.list": { projects: [], githubHost: "ghe.example.test" },
+          "projects.list": { projects: [] },
+          "projects.searchRemote": {
+            credential: "configured",
+            projects: [
+              {
+                name: "private-repo",
+                fullName: "acme/private-repo",
+                cloneUrl,
+                webUrl: "https://ghe.example.test/acme/private-repo",
+                private: true,
+              },
+            ],
+          },
           "sessions.create": { key: "agent:main:scp-repository" },
         },
       });
@@ -271,8 +307,10 @@ suite.define(() => {
       await picker
         .getByRole("searchbox", { name: "Search projects or paste a Git URL" })
         .fill(cloneUrl);
-      await picker.locator('[data-value="project-clone-url"]').click();
-      await pollLocatorText(project).toContain(cloneUrl);
+      await picker
+        .locator(`[data-value="remote-project:github-repositories/repositories:${cloneUrl}"]`)
+        .click();
+      await pollLocatorText(project).toContain("acme/private-repo");
       const requests = (await gateway.getRequests("projects.list")).length;
       await gateway.emitGatewayEvent("config.changed", {});
       await gateway.waitForRequest("projects.list", { after: requests });
@@ -280,19 +318,36 @@ suite.define(() => {
       await page.getByRole("button", { name: "Start session" }).click();
       const created = await gateway.waitForRequest("sessions.create");
       expect(created.params).toHaveProperty("projectGitUrl", cloneUrl);
+      expect(created.params).toHaveProperty("repositorySource", "github-repositories/repositories");
       expect(await gateway.getRequests("projects.add")).toHaveLength(0);
     });
   });
 
-  it("retires a selected remote repository after a live GitHub host change", async () => {
+  it("uses a headless repository source and retains its selection when disabled", async () => {
     await suite.withPage(
-      { locale: "en-US", serviceWorkers: "block", viewport: { height: 900, width: 1280 } },
+      {
+        locale: "en-US",
+        serviceWorkers: "block",
+        viewport: { height: 900, width: 1280 },
+        ...(process.env.OPENCLAW_CAPTURE_UI_PROOF === "1"
+          ? { recordVideo: { dir: suite.artifactDir, size: viewport } }
+          : {}),
+      },
       async ({ page }) => {
         const gateway = await installMockGateway(page, {
           ...localRepository,
-          featureMethods: [...projectMethods, "projects.searchRemote"],
+          nativePlugins: [],
+          featureMethods: [...projectMethods, "plugins.controlUi.list"],
           methodResponses: {
-            "projects.list": { projects: [], githubHost: "a.ghe.example.test" },
+            "plugins.controlUi.list": {
+              revision: "headless",
+              plugins: [],
+              repositorySources: repositoryManifest.repositorySources.map((source) =>
+                Object.assign({ pluginId: repositoryManifest.id }, source),
+              ),
+              diagnostics: [],
+            },
+            "projects.list": { projects: [] },
             "projects.searchRemote": {
               credential: "configured",
               projects: [
@@ -315,21 +370,70 @@ suite.define(() => {
         const selected = page.locator("#new-session-project-trigger");
         await pollLocatorText(selected).toContain("acme/private-repo");
         await page.locator(".new-session-page__message").fill("keep the draft message");
-        const requests = (await gateway.getRequests("projects.list")).length;
-        await gateway.setMethodResponse("projects.list", {
-          projects: [],
-          githubHost: "b.ghe.example.test",
+        if (process.env.OPENCLAW_CAPTURE_UI_PROOF === "1") {
+          const frame = await takeControlUiScreenshotFrame(page, selected, [selected], {
+            animations: "disabled",
+          });
+          await writeFile(path.join(suite.artifactDir, "repository-source-enabled.png"), frame.png);
+          await selected.click();
+          const sourcePicker = page.locator(".oc-popover.new-session-page__project-popover");
+          await sourcePicker.getByRole("searchbox").fill("acme");
+          await sourcePicker.getByRole("button", { name: /acme\/private-repo/u }).waitFor();
+          const pickerFrame = await takeControlUiScreenshotFrame(
+            page,
+            sourcePicker,
+            [sourcePicker],
+            { animations: "disabled" },
+          );
+          await writeFile(
+            path.join(suite.artifactDir, "source-only-repository-picker.png"),
+            pickerFrame.png,
+          );
+          await page.keyboard.press("Escape");
+        }
+        const searchesBeforeDisable = (await gateway.getRequests("projects.searchRemote")).length;
+        await gateway.setMethodResponse("plugins.controlUi.list", {
+          revision: "disabled",
+          plugins: [],
+          repositorySources: [],
+          diagnostics: [],
         });
-        await gateway.emitGatewayEvent("config.changed", {});
-        await gateway.waitForRequest("projects.list", { after: requests });
-        await pollLocatorText(selected).not.toContain("acme/private-repo");
+        await gateway.emitGatewayEvent("plugins.controlUi.changed", { revision: "disabled" });
+        await page.locator("#new-session-checkout-trigger").click();
+        await page
+          .getByText(
+            "This repository source is unavailable. Re-enable its plugin or choose another repository or local folder. Your selection has been kept.",
+            { exact: true },
+          )
+          .filter({ visible: true })
+          .waitFor();
+        await pollLocatorText(selected).toContain("acme/private-repo");
         expect(await page.locator(".new-session-page__message").inputValue()).toBe(
           "keep the draft message",
         );
-        await page.getByRole("button", { name: "Start session" }).click();
-        const created = await gateway.waitForRequest("sessions.create");
-        expect(created.params).not.toHaveProperty("projectGitUrl");
-        expect(created.params).not.toHaveProperty("repository");
+        expect(await page.getByRole("button", { name: "Start session" }).isDisabled()).toBe(true);
+        expect(await gateway.getRequests("sessions.create")).toHaveLength(0);
+        expect(await gateway.getRequests("projects.searchRemote")).toHaveLength(
+          searchesBeforeDisable,
+        );
+        expect(
+          await page.evaluate(() =>
+            performance
+              .getEntriesByType("resource")
+              .filter((entry) => entry.name.includes("/plugins/control-ui/github-repositories/"))
+              .map((entry) => entry.name),
+          ),
+        ).toEqual([]);
+        if (process.env.OPENCLAW_CAPTURE_UI_PROOF === "1") {
+          const picker = page.locator(".oc-popover.new-session-page__checkout-popover");
+          const frame = await takeControlUiScreenshotFrame(page, picker, [picker], {
+            animations: "disabled",
+          });
+          await writeFile(
+            path.join(suite.artifactDir, "repository-source-disabled-selection-retained.png"),
+            frame.png,
+          );
+        }
       },
     );
   });
@@ -437,6 +541,7 @@ suite.define(() => {
       },
     };
     const gateway = await installMockGateway(page, {
+      nativePlugins: nativeRepositoryPlugins,
       deferredMethods: ["chat.startup"],
       workspace: WORKSPACE,
       workspaceGit: !missingCheckout,
@@ -450,7 +555,6 @@ suite.define(() => {
         "chat.metadata",
         "chat.send",
         "chat.startup",
-        "projects.searchRemote",
         ...(missingCheckout ? [] : ["worktrees.branches"]),
       ],
       methodResponses: {
@@ -482,7 +586,7 @@ suite.define(() => {
       expect(searchRequest.params).toEqual({ query: "openclaw" });
       await place
         .getByText(
-          "No Control UI GitHub credential or shared Gateway environment token is configured; public GitHub results only.",
+          "Searching public GitHub repositories. Connect an account for private repository access.",
         )
         .waitFor();
       await place.getByRole("button", { name: /openclaw\/openclaw/u }).click();
@@ -536,6 +640,7 @@ suite.define(() => {
         attachments: [{ type: "image", mimeType: "image/png", content: ONE_PIXEL_PNG_B64 }],
         permissionMode: "read-only",
         projectGitUrl: "https://github.com/openclaw/openclaw.git",
+        repositorySource: "github-repositories/repositories",
         ...(worktree ? { worktree: true } : {}),
       });
       if (missingCheckout) {

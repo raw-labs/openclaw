@@ -16,7 +16,9 @@ function owner() {
   builder.registry.plugins.push(record);
   const api = builder.createApi(record, { config: {} });
   const instance = getPluginInstance(record)!;
-  onTestFinished(() => instance.dispose());
+  onTestFinished(async () => {
+    await instance.dispose();
+  });
   return { builder, api, instance };
 }
 

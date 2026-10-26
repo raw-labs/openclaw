@@ -6,8 +6,8 @@ import {
   setupCronRegressionFixtures,
 } from "../../../test/helpers/cron/service-regression-fixtures.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
+import { createGitHubIdentityStatusTool } from "../../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
-import { createGitHubIdentityStatusTool } from "../../agents/tools/github-identity-status-tool.js";
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { createScheduledGatewayRunner } from "../../gateway/scheduled-run-gateway-context.js";
 import { cronHandlers } from "../../gateway/server-methods/cron.js";

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { GITHUB_ACTIONS_GRANT_PREFIX } from "../../extensions/github-repositories/board-capabilities-api.js";
 import type {
   BoardMcpAppDescriptor,
   BoardOp,
@@ -20,7 +21,6 @@ import {
 } from "./board-layout.js";
 import { BOARD_REPORT_WIDGET_KIND, parseBoardReport } from "./board-report.js";
 import { BOARD_WEBSITE_WIDGET_KIND, parseBoardWebsite } from "./board-website.js";
-import { GITHUB_ACTIONS_GRANT_PREFIX } from "./github-actions-capability.js";
 
 type BoardWidgetHtmlDocument = {
   html: string;

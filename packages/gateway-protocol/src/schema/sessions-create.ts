@@ -99,13 +99,14 @@ export const SessionsCreateParamsSchema = closedObject({
       description: "Prepare a remote project before the initial agent turn; operator.write.",
     }),
   ),
-  /** Remote-owned source; create, dispatch, then send the initial turn. */
   repositorySource: Type.Optional(
     Type.String({
       pattern: "^[a-z0-9][a-z0-9._-]{0,127}/[a-z0-9][a-z0-9._-]{0,127}$",
-      description: "Explicit plugin/source contribution for projectGitUrl or repository.",
+      description:
+        "Admitted plugin/source ID for projectGitUrl or repository; the source revalidates the URL and current authority.",
     }),
   ),
+  /** Remote-owned source; create, dispatch, then send the initial turn. */
   repository: Type.Optional(SessionRepositorySourceSchema),
   deviceFolder: Type.Optional(SessionDeviceFolderSchema),
   worktree: Type.Optional(Type.Boolean()),

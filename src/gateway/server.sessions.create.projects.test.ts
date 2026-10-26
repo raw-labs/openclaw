@@ -3,6 +3,8 @@ import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
 import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
 import { captureMethodCall } from "../../test/helpers/capture-method-call.js";
 import {
   fixtureReceiptClientSource,
@@ -18,6 +20,7 @@ import { ManagedWorktreeService, managedWorktrees } from "../agents/worktrees/se
 import { materializeManagedWorktreeFixtures } from "../agents/worktrees/service.test-support.js";
 import type { dispatchInboundMessage } from "../auto-reply/dispatch.js";
 import { getRuntimeConfig } from "../config/io.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import {
   listSessionPendingInputs,
   loadTranscriptEventsSync,
@@ -28,7 +31,6 @@ import type { SessionEntry } from "../config/sessions/types.js";
 import { onAgentEvent, type AgentEventPayload } from "../infra/agent-events.js";
 import { readPersistedMediaFacts } from "../media/media-facts.js";
 import { resolveMediaReferenceLocalPath } from "../media/media-reference.js";
-import { ProjectCloneError } from "../projects/project-clone-runtime.js";
 import { registerProjectRegistry } from "../projects/project-registry.js";
 import { captureSessionControllerSettlement } from "../sessions/session-controller.lifecycle.js";
 import { rpcSourceTesting } from "../sessions/session-lifecycle-admission.test-support.js";
@@ -37,6 +39,7 @@ import {
   closeOpenClawStateDatabaseAsync,
   closeOpenClawStateDatabaseForTest,
 } from "../state/openclaw-state-db.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createChatRunState } from "./server-chat-state.js";
 import {
   controlUiClient,
@@ -60,12 +63,18 @@ vi.mock("../auto-reply/reply/conversation-label-generator.js", () => ({
   generateConversationLabelWithFallback: titleMocks.generate,
 }));
 
-vi.mock("../projects/project-clone.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../projects/project-clone.js")>();
+vi.mock("../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/project-clone-api.js")
+    >();
   return { ...actual, materializeProjectClone: projectCloneMocks.materialize };
 });
-vi.mock("./project-github-identity.js", () => ({
-  prepareGatewayProjectGitHubIdentity: projectCloneMocks.prepareIdentity,
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  prepareGitHubReadIdentity: projectCloneMocks.prepareIdentity,
 }));
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -138,6 +147,28 @@ async function remoteProjectFixture<T = Awaited<ReturnType<typeof registerProjec
   const materialization = createDeferredCore<T>();
   projectCloneMocks.materialize.mockReturnValueOnce(materialization.promise);
   if (options.recordInput) {
+    const config = getRuntimeConfig();
+    setRuntimeConfigSnapshot({
+      ...config,
+      gateway: {
+        ...config.gateway,
+        projects: {
+          ...config.gateway?.projects,
+        },
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(config),
+              repositorySearch: {
+                useNativeCredentials: true,
+              },
+            },
+          },
+        },
+      },
+    });
     projectCloneMocks.prepareIdentity.mockResolvedValue({
       token: "protected-native-token",
       assertSelected: projectCloneMocks.assertSelected,
@@ -859,4 +890,33 @@ test("sessions.create reports an unavailable registered project with truthful re
   expect(created.error?.message).toMatch(
     /; update the agent workspace path or re-register the project$/u,
   );
+});
+
+test("sessions.create refuses an unavailable selected source while local sessions remain usable", async () => {
+  const root = tempDirs.make("openclaw-session-source-disabled-");
+  testState.agentConfig = { workspace: await initializeRepository(root, "workspace") };
+  await createSessionStoreDir();
+  const lifetime = new AbortController();
+  const sources = createRepositorySources(lifetime.signal);
+  const selected = await directSessionReq(
+    "sessions.create",
+    {
+      agentId: "main",
+      repository: { url: "https://github.com/openclaw/openclaw.git" },
+      repositorySource: "github-repositories/repositories",
+    },
+    { ...controlUiClient, context: { repositorySources: sources } },
+  );
+  expect(selected).toMatchObject({ ok: false, error: { code: "UNAVAILABLE" } });
+  expect(projectCloneMocks.materialize).not.toHaveBeenCalled();
+  const local = await directSessionReq(
+    "sessions.create",
+    { agentId: "main" },
+    {
+      ...controlUiClient,
+      context: { repositorySources: sources },
+    },
+  );
+  expect(local.ok, JSON.stringify(local.error)).toBe(true);
+  lifetime.abort();
 });

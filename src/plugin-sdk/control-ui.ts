@@ -414,6 +414,12 @@ export type ControlUiHost = {
   };
 };
 
+export type ControlUiActionV2 = Omit<ControlUiAction, "run"> & {
+  run: (
+    context: Omit<Parameters<ControlUiAction["run"]>[0], "host"> & { host: ControlUiHostV2 },
+  ) => void | Promise<void>;
+};
+
 export type ControlUiPageV2 = Omit<ControlUiPage, "mount"> & { mount: ControlUiViewV2 };
 export type ControlUiPanelV2 = Omit<ControlUiPanel, "mount"> & {
   mount: ControlUiViewV2<BoardGetParams>;
@@ -472,7 +478,9 @@ export type ControlUiHostV2 = Omit<ControlUiHost, "sessions" | "navigation" | "u
     | "registerWidget"
     | "registerReplacement"
     | "registerAccessory"
+    | "registerAction"
   > & {
+    registerAction: (action: ControlUiActionV2) => ControlUiDisposer;
     registerPage: (page: ControlUiPageV2) => ControlUiDisposer;
     registerPanel: (panel: ControlUiPanelV2) => ControlUiDisposer;
     registerWidget: (widget: ControlUiWidgetV2) => ControlUiDisposer;
@@ -490,7 +498,11 @@ export type ControlUiViewContextV2<T = Readonly<Record<string, string>>> = Omit<
 export type ControlUiViewV2<T = Readonly<Record<string, string>>> = (
   container: HTMLElement,
   context: ControlUiViewContextV2<T>,
-) => ReturnType<ControlUiView<T>>;
+) => {
+  update?: (context: ControlUiViewContextV2<T>) => void;
+  focus?: () => void;
+  dispose?: ControlUiDisposer;
+} | void;
 
 export type ControlUiPlugin = {
   id: string;

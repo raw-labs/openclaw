@@ -989,6 +989,27 @@
       ],
       "openclaw/plugin-sdk/mcp-enterprise-test-runtime": [
         "../../packages/plugin-sdk/dist/src/plugin-sdk/mcp-enterprise-test-runtime.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-identity-host": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-identity-host.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-oauth-host": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-oauth-host.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-session-host": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-session-host.d.ts"
+      ],
+      "openclaw/plugin-sdk/worker-github-credentials": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/worker-github-credentials.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-publication-content": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-publication-content.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-session-read": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-session-read.d.ts"
+      ],
+      "openclaw/plugin-sdk/repository-publication-engine": [
+        "../../packages/plugin-sdk/dist/src/plugin-sdk/repository-publication-engine.d.ts"
       ]
     }
   }

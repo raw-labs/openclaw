@@ -3,6 +3,10 @@
   "description": "Self-hosted gateway that connects Discord, Google Chat, iMessage, Matrix, Microsoft Teams, Signal, Slack, Telegram, WhatsApp, Zalo, and more to AI coding agents. Run one Gateway process on your own machine and message your AI assistant from anywhere.",
   "redirects": [
     {
+      "source": "/plugins/reference/github",
+      "destination": "/plugins/reference/github-repositories"
+    },
+    {
       "source": "/cli/commitments",
       "destination": "/automation#retired-inferred-commitments"
     },
@@ -1858,6 +1862,8 @@
                       "plugins/beam",
                       "plugins/cloudflare",
                       "plugins/geolocation",
+                      "plugins/github",
+                      "plugins/github-configuration",
                       "plugins/logbook",
                       "plugins/mcp-relay",
                       "plugins/oc-path",
@@ -1873,6 +1879,7 @@
                 "pages": [
                   "plugins/building-plugins",
                   "plugins/feature-plugins",
+                  "plugins/github-publication",
                   "plugins/tool-plugins",
                   "plugins/sdk-channel-plugins",
                   {
@@ -3060,6 +3067,8 @@
                     ]
                   },
                   "plugins/sdk-agent-harness",
+                  "plugins/sdk-execution-environments",
+                  "plugins/sdk-repository-sources",
                   {
                     "group": "Agent harness plugins",
                     "pages": [

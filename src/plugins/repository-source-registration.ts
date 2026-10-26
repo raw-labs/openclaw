@@ -31,6 +31,9 @@ export function createRepositorySourceRegistrar(state: PluginRegistryState) {
     }
     instance.admitFactory(source.prepare, ["assertCurrent", "refresh"]);
     if (source.worker) {
+      if (source.worker.restore) {
+        instance.admitFactory(source.worker.restore, ["assertCurrent", "readRemoteHead"]);
+      }
       instance.admitFactory(source.worker.prepare, [
         "assertCurrent",
         "confirmAdmission",

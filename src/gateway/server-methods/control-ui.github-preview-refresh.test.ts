@@ -1,8 +1,9 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, expect, it, vi } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../../extensions/github-repositories/read-identity-api.js";
+import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
 import { createDeferred, withinTest } from "../../../test/helpers/promise.js";
-import { clearGitHubCredentialVerificationCache } from "../../agents/github-oauth-client.js";
-import * as githubIdentity from "../../agents/github-tool-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -30,6 +31,7 @@ it.for(["unchanged", "removed", "rotated"] as const)(
     await withOpenClawTestState(
       { layout: "state-only", label: `preview-refresh-${change}` },
       async () => {
+        clearNativeGitHubTokenCache();
         clearGitHubCredentialVerificationCache();
         vi.stubEnv("GH_TOKEN", "");
         vi.stubEnv("GITHUB_TOKEN", "");
@@ -37,7 +39,24 @@ it.for(["unchanged", "removed", "rotated"] as const)(
         vi.spyOn(Date, "now").mockImplementation(() => now);
         const profileId = `ghp_${"9".repeat(32)}`;
         const cfg: OpenClawConfig = {
-          agents: { entries: { main: { tools: { github: { profileId } } } } },
+          agents: {
+            entries: {
+              main: {
+                tools: {},
+              },
+            },
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  agents: {
+                    main: { profileId },
+                  },
+                },
+              },
+            },
+          },
         };
         setRuntimeConfigSnapshot(cfg);
         const profileDir = githubIdentity.resolveManagedGitHubProfileDir({
@@ -195,6 +214,7 @@ it.for(["unchanged", "removed", "rotated"] as const)(
           }
         } finally {
           release.resolve();
+          clearNativeGitHubTokenCache();
           clearGitHubCredentialVerificationCache();
         }
       },

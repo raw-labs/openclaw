@@ -5,6 +5,7 @@ import {
 } from "openclaw/plugin-sdk/plugin-test-contracts";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { WebSocket } from "ws";
+import { gitHubPublicApi } from "../../extensions/github-repositories/public-api.js";
 import {
   buildGatewayConnectAuth,
   selectGatewayConnectAuth,
@@ -27,7 +28,6 @@ import {
   setUserProfileRole,
 } from "../state/user-profile-writes.worker.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
-import { gitHubPublicApi } from "./github-public-api.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import type { GatewayServer } from "./server-public.js";

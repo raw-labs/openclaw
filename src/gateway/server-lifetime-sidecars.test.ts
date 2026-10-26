@@ -11,7 +11,6 @@ import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
-import { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import {
   getProcessCleanupBudget,
   runWithProcessCleanupBudget,
@@ -39,18 +38,17 @@ import { createGatewaySidecarStopOwner } from "./server-sidecar-owners.js";
 import { bindSessionRowProjection } from "./session-row-projection-access.js";
 import { createSessionRowProjectionFixture } from "./session-row-projection.test-support.js";
 
-const oauth = vi.hoisted(() => ({
-  create: vi.fn(),
-  install: vi.fn(),
-  start: vi.fn(),
-  stop: vi.fn(),
-  uninstall: vi.fn(),
-}));
+const oauth = vi.hoisted(() => ({ create: vi.fn() }));
 
-vi.mock("./github-oauth-lifecycle.js", () => ({
-  createGitHubOAuthLifecycle: oauth.create,
-  installActiveGitHubOAuthLifecycle: oauth.install,
-}));
+vi.mock(
+  "../../extensions/github-repositories/oauth-lifecycle-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../extensions/github-repositories/oauth-lifecycle-runtime-api.js")
+    >()),
+    createGitHubOAuthLifecycle: oauth.create,
+  }),
+);
 
 // mock-isolation: Prevent unrelated backfill; real lifetime/worker proof covers publication.
 vi.mock("./session-cost-usage-lifetime.js", () => ({
@@ -117,11 +115,7 @@ afterEach(async () => {
 
 describe("gateway lifetime sidecars", () => {
   beforeEach(() => {
-    oauth.start.mockReset();
-    oauth.stop.mockReset().mockResolvedValue(undefined);
-    oauth.uninstall.mockReset();
-    oauth.create.mockReset().mockReturnValue({ start: oauth.start, stop: oauth.stop });
-    oauth.install.mockReset().mockReturnValue(oauth.uninstall);
+    oauth.create.mockReset();
   });
 
   test("parks empty expiry, resumes on writes, and joins responsive worker sweeps on shutdown", async () => {
@@ -367,12 +361,10 @@ describe("gateway lifetime sidecars", () => {
 
   test("attaches and retires authorization lifecycles with the Gateway", async () => {
     const { owner, attach } = sidecarFixture();
-    const context: Pick<
-      GatewayRequestContext,
-      "getRuntimeConfig" | "githubOAuthService" | "modelAccountConnectService"
-    > = {
-      getRuntimeConfig: vi.fn(() => ({})),
-    };
+    const context: Pick<GatewayRequestContext, "getRuntimeConfig" | "modelAccountConnectService"> =
+      {
+        getRuntimeConfig: vi.fn(() => ({})),
+      };
     const warn = vi.fn();
 
     await attach({
@@ -381,22 +373,13 @@ describe("gateway lifetime sidecars", () => {
       logWarning: warn,
     });
 
-    expect(oauth.create).toHaveBeenCalledWith({
-      scheduler: expect.any(GatewayScheduler),
-      getConfig: context.getRuntimeConfig,
-      getPersistedConfig: expect.any(Function),
-      warn,
-    });
-    expect(oauth.install).toHaveBeenCalledWith(context.githubOAuthService);
-    expect(oauth.start).toHaveBeenCalledOnce();
-    expect(context.githubOAuthService).toBeDefined();
+    expect(oauth.create).not.toHaveBeenCalled();
+    expect(context).not.toHaveProperty("githubOAuthService");
     expect(context.modelAccountConnectService).toBeDefined();
     const modelAccounts = context.modelAccountConnectService;
 
     await owner.stop();
-    expect(oauth.uninstall).toHaveBeenCalledOnce();
-    expect(oauth.stop).toHaveBeenCalledOnce();
-    expect(context.githubOAuthService).toBeUndefined();
+    expect(context).not.toHaveProperty("githubOAuthService");
     expect(context.modelAccountConnectService).toBeUndefined();
     await expect(
       modelAccounts?.statusAsync({ owner: "profile-1", assertCurrent: () => {} }, "stale-flow"),

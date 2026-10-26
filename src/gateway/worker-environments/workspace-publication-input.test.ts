@@ -5,8 +5,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import * as gitWorker from "../../infra/git-worker.js";
 import { runUtf8CommandWithTimeout } from "../../process/exec.js";
-import * as publicationSnapshot from "../github-repository-publication-snapshot.js";
-import type { GitHubRepositoryPublicationSnapshot } from "../github-repository-publication-snapshot.js";
+import * as publicationSnapshot from "../repository-publication-snapshot.js";
+import type { RepositoryPublicationObjectSnapshot } from "../repository-publication-snapshot.js";
 import {
   captureWorkspaceSnapshot,
   prepareWorkspaceStageInput,
@@ -36,7 +36,7 @@ const emptyManifestRaw = serializeWorkerWorkspaceManifest({
   baseCommit: null,
   entries: [],
 });
-type PublicationEntry = GitHubRepositoryPublicationSnapshot["entries"][number];
+type PublicationEntry = RepositoryPublicationObjectSnapshot["entries"][number];
 const binding = (publication: { currentManifestRef: string; publicationDigest: string }) =>
   JSON.stringify({
     currentManifestRef: publication.currentManifestRef,
@@ -289,7 +289,7 @@ it.for<InvalidPublicationCase>([
       await fs.link(alias.path, target);
     }
   } else {
-    const snapshot: GitHubRepositoryPublicationSnapshot = JSON.parse(publication.metadata);
+    const snapshot: RepositoryPublicationObjectSnapshot = JSON.parse(publication.metadata);
     if (test.entry || test.duplicate) {
       const entry = { ...snapshot.entries[0], ...test.entry };
       publication.metadata = JSON.stringify({
@@ -325,11 +325,11 @@ it.each(["same-size", "removed"] as const)(
     const f = await fixture("mixed");
     const [sha, bytes] = [...f.blobs][0]!;
     const target = blobPath(f.stagingRoot, sha);
-    const read = publicationSnapshot.readGitHubRepositoryPublicationBlob;
+    const read = publicationSnapshot.readRepositoryPublicationBlob;
     let reads = 0;
     // Only this race uses the native helper: the spy changes real on-disk bytes,
     // while both passes still use the production fs-safe/SHA-1 verifier.
-    vi.spyOn(publicationSnapshot, "readGitHubRepositoryPublicationBlob").mockImplementation(
+    vi.spyOn(publicationSnapshot, "readRepositoryPublicationBlob").mockImplementation(
       async (root, id) => {
         if (id === sha && ++reads === 2) {
           if (fault === "removed") {

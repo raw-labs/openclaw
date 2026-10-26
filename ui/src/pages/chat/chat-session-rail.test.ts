@@ -6,6 +6,10 @@ import type { SessionObserverDigest } from "../../../../packages/gateway-protoco
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import { currentThemeBranding, setCurrentThemeBranding } from "../../app/theme-branding.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
+import { disposeSidebarContextLifecycles } from "../../test-helpers/app-sidebar-context-lifecycle.ts";
+import { createContext, createSessions } from "../../test-helpers/app-sidebar.ts";
+import { createApplicationGateway } from "../../test-helpers/application-context-fixtures.ts";
+import { createApplicationContextProvider } from "../../test-helpers/application-context.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { waitForSolid } from "../../test-helpers/solid-settle.ts";
 import {
@@ -305,6 +309,7 @@ describe("ChatSessionRailElement", () => {
 
   afterEach(() => {
     document.body.replaceChildren();
+    disposeSidebarContextLifecycles();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -318,7 +323,16 @@ describe("ChatSessionRailElement", () => {
     element.activeRunId = "run-1";
     element.connected = true;
     Object.assign(element, overrides);
-    document.body.append(element);
+    const branding = currentThemeBranding();
+    const context = createContext(
+      createApplicationGateway().gateway,
+      createSessions("main", [element.sessionKey]),
+    );
+    // Context setup must not replace this leaf's explicitly published branding fixture.
+    setCurrentThemeBranding(branding);
+    const provider = createApplicationContextProvider(context);
+    provider.append(element);
+    document.body.append(provider);
     await element.updateComplete;
     return element;
   }

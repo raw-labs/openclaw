@@ -1,0 +1,89 @@
+/** @jsxImportSource @solidjs/web */
+
+import type { JSX } from "@solidjs/web";
+import { createEffect, createUniqueId, onSettled, useContext } from "solid-js";
+import { NativeContext } from "./native-context.tsx";
+import { Icon } from "./presentation-components.tsx";
+import { presentationTranslator } from "./presentation-context.ts";
+
+export function ChatPullRequestChecks(props: {
+  label: string;
+  showLabel?: boolean;
+  checksState: string;
+  presented: boolean;
+  dismissed?: boolean;
+  children: JSX.Element;
+}) {
+  const native = useContext(NativeContext);
+  const t = presentationTranslator();
+  let details!: HTMLDetailsElement;
+  let trigger!: HTMLElement;
+  let surface!: HTMLElement;
+  let mounted = false;
+  let presented = false;
+  const overlay = native.createDisclosureOverlay(
+    `chat-pr-checks-${createUniqueId()}`,
+    () => details,
+  );
+  const sync = (nextPresented: boolean, dismissed?: boolean) => {
+    presented = nextPresented;
+    if (mounted) {
+      // Explicit Details dismissal clears intent; parking only hides the surface.
+      if (dismissed) {
+        details.open = false;
+      }
+      overlay.request(presented && details.open);
+    }
+  };
+  // Synchronize the native disclosure with the pane presentation and overlay owner.
+  createEffect(
+    () => ({ presented: props.presented, dismissed: props.dismissed }),
+    (next) => sync(next.presented, next.dismissed),
+  );
+  onSettled(() => {
+    const stopAnchor = overlay.bind(surface, trigger);
+    // Apply each native close edge synchronously; parking preserves disclosure intent.
+    const stop = overlay.subscribe((open) => {
+      if (presented) {
+        details.open = open;
+      }
+    });
+    mounted = true;
+    sync(props.presented, props.dismissed);
+    return () => {
+      mounted = false;
+      stop();
+      stopAnchor();
+      overlay.dispose();
+    };
+  });
+  return (
+    <details
+      ref={(node) => (details = node)}
+      class="chat-pr__checks"
+      data-checks={props.checksState}
+      onToggle={() => sync(props.presented, props.dismissed)}
+    >
+      <summary
+        ref={(node) => (trigger = node)}
+        class="chat-pr__checks-pill"
+        aria-label={props.label}
+        title={props.label}
+      >
+        <span class="chat-pr__checks-dot" aria-hidden="true" />
+        {props.showLabel ? props.label : t("chat.pullRequests.checks")}
+        <span class="chat-pr__checks-chevron" aria-hidden="true">
+          <Icon name="chevronDown" />
+        </span>
+      </summary>
+      <div
+        ref={(node) => (surface = node)}
+        class="oc-overlay chat-pr__checks-overlay"
+        data-anchored-overlay
+        popover="manual"
+      >
+        {props.children}
+      </div>
+    </details>
+  );
+}

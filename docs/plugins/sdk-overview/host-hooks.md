@@ -156,6 +156,14 @@ their plugin is active; invalid, reserved, or duplicate kinds fail plugin load.
 Use `dashboard.dataBindings` and `dashboard.actionVerbs` for host capabilities,
 not for renderer registration.
 
+For a manifest-declared data binding with scoped grants or save-time credential
+preflight, use `registerDashboardDataBinding(...)`. The optional runtime policy
+narrows its own binding's grant and prepares plugin-owned identity guards; the
+Board owns exact stored-grant, caller, and session authorization. Its read RPC
+uses `captureDashboardDataBindingRead()` from `openclaw/plugin-sdk/dashboard`;
+without an admitted widget read, the capture fails. See the
+[dashboard manifest reference](/plugins/manifest/surfaces#dashboard-reference).
+
 For inline rendering, `resources.readPublicResource(path)` can optionally return
 `{ body: Uint8Array, contentType: string }` for the registered resource paths.
 These bytes are public: the isolated sandbox listener serves them with no

@@ -23,7 +23,6 @@ import type { ChatProps } from "./chat-view.tsx";
 import type { ChatDetailsProps } from "./components/chat-details-types.ts";
 import type { ChatDetailsElements, ChatDetailsViewProps } from "./components/chat-details.tsx";
 import type { ChatPaneHeaderProps } from "./components/chat-pane-header.types.ts";
-import { chatPullRequestId } from "./components/chat-pull-requests.ts";
 import {
   getSessionWorkspace,
   isCurrentSessionWorkspace,
@@ -108,12 +107,8 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
             : {}),
           page: {
             key:
-              details.kind === "contribution"
-                ? `${details.pluginId}:${details.id}`
-                : details.kind === "pull-request"
-                  ? details.id
-                  : details.kind,
-            title: details.kind === "publication" ? t("chat.pullRequests.publishPr") : title,
+              details.kind === "contribution" ? `${details.pluginId}:${details.id}` : details.kind,
+            title,
             details,
           },
         },
@@ -136,19 +131,6 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
         openDetailsPage({ kind: "task-progress" }, t("sessionProgressCard.composerTitle"), source),
       onOpenDetailsPage: (pluginId, page, source) =>
         openDetailsPage({ kind: "contribution", pluginId, id: page.id }, page.title, source),
-      onOpenPullRequest: (request) =>
-        openDetailsPage({ kind: "pull-request", id: chatPullRequestId(request) }, request.title),
-      publication: chatProps.githubPublication
-        ? {
-            eligible: true,
-            onOpen: (source) =>
-              openDetailsPage(
-                { kind: "publication" },
-                t("chat.activityPills.publication.review"),
-                source,
-              ),
-          }
-        : undefined,
     };
   }
 
@@ -404,13 +386,6 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
               onGoalSubmit: chatProps.onGoalSubmit,
               getGoalSubmitError: () => state.chatError,
             },
-            pullRequests: this.repository.target
-              ? {
-                  snapshot: this.repository.target.store.get(this.repository.target.key),
-                  requestRefresh: () =>
-                    this.repository.target?.store.refresh(this.repository.target.key) ?? false,
-                }
-              : undefined,
           },
           mobile: this.mergedChrome && !this.onBackToSubagents,
           nativePresentation: this.sessionPresentation,

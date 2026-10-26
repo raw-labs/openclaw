@@ -1,30 +1,47 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
+import * as checkDetails from "../../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
+import { controlUiGitHubHandlers } from "../../../extensions/github-repositories/runtime-api.js";
+import * as githubIdentity from "../../../extensions/github-repositories/tool-identity-api.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import * as githubIdentity from "../../agents/github-tool-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.js";
+import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import {
   SecretSurfaceUnavailableError,
   setActiveDegradedSecretOwners,
 } from "../../secrets/runtime-degraded-state.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import * as checkDetails from "../control-ui-session-pr-check-details.js";
-import { createControlUiSessionPullRequestSubscriptions } from "../control-ui-session-pr-subscriptions.js";
-import { gitHubPublicApi } from "../github-public-api.js";
+import { createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions } from "../control-ui-session-pr-subscriptions.test-support.js";
+import { startTestRepositorySessionPresentation } from "../github-account-service.test-support.js";
 import { createControlUiRequestOptions } from "./control-ui-request.test-support.js";
-import { controlUiHandlers } from "./control-ui.js";
+import { controlUiHandlers as coreControlUiHandlers } from "./control-ui.js";
 import { identifiedClient } from "./sessions-sharing.test-support.js";
 import type { GatewayClient, GatewayRequestHandlerOptions, RespondFn } from "./types.js";
 
+const controlUiHandlers = { ...coreControlUiHandlers, ...controlUiGitHubHandlers };
+
 const requestOptions = createControlUiRequestOptions(() => ({
   agents: { entries: { main: {} } },
-  gateway: { controlUi: { github: { token: "preview-service-token" } } },
+  gateway: {
+    controlUi: {},
+  },
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          service: { token: "preview-service-token" },
+        },
+      },
+    },
+  },
 }));
 
 type RequestExtras = Parameters<typeof requestOptions>[2] &
@@ -34,12 +51,40 @@ function fixture(method: string) {
   const respond = vi.fn<RespondFn>();
   return {
     respond,
-    send: (params: Record<string, unknown>, extra?: RequestExtras) =>
-      handler({
+    send: async (params: Record<string, unknown>, extra?: RequestExtras) => {
+      const options: GatewayRequestHandlerOptions = {
         ...requestOptions(params, respond, extra),
         signal: extra?.signal,
         hasCurrentClientAuthority: extra?.hasCurrentClientAuthority,
-      }),
+      };
+      const invoke = () =>
+        withPluginRuntimeGatewayRequestScope(
+          {
+            context: options.context,
+            client: options.client,
+            signal: options.signal,
+            hasCurrentClientAuthority:
+              options.hasCurrentClientAuthority ?? (() => !options.client?.invalidated),
+            isWebchatConnect: options.isWebchatConnect,
+          },
+          () => handler(options),
+        );
+      if (method !== "sessionPullRequests.checks" || options.context.repositorySessions) {
+        return await invoke();
+      }
+      const scheduler = createTestGatewayScheduler();
+      const services = await startTestRepositorySessionPresentation(
+        options.context,
+        scheduler,
+        options.client ?? undefined,
+      );
+      try {
+        return await invoke();
+      } finally {
+        await services.stop();
+        await scheduler.stop();
+      }
+    },
   };
 }
 
@@ -52,7 +97,21 @@ function githubTarget(number: number, repo = "openclaw", owner = "openclaw") {
 }
 
 function configuredGitHub(token: string): OpenClawConfig {
-  return { agents: { entries: { main: {} } }, gateway: { controlUi: { github: { token } } } };
+  return {
+    agents: { entries: { main: {} } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token },
+          },
+        },
+      },
+    },
+  };
 }
 
 const json = (value: unknown) => new Response(JSON.stringify(value));
@@ -172,12 +231,9 @@ describe("controlUi.githubPreview", () => {
             mode === "managed" ? "old-preview-service-token" : "configured-reader-token",
           );
     if (mode === "managed") {
-      cfg.agents = {
-        entries: {
-          main: {},
-          alternate: { tools: { github: { profileId: identity.selection.profileId } } },
-        },
-      };
+      cfg.agents = { entries: { main: {}, alternate: {} } };
+      const plugin = cfg.plugins!.entries!["github-repositories"]!.config!;
+      plugin.agents = { alternate: { profileId: identity.selection.profileId } };
     }
     if (mode !== "anonymous") {
       setRuntimeConfigSnapshot(cfg);
@@ -256,9 +312,17 @@ describe("controlUi.githubPreview", () => {
       const cfg: OpenClawConfig = {
         agents: { entries: { main: {} } },
         gateway: {
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: {
-            github: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+              },
+            },
           },
         },
       };
@@ -304,10 +368,10 @@ describe("controlUi.githubPreview", () => {
     setActiveDegradedSecretOwners([
       {
         ownerKind: "capability",
-        ownerId: "control-ui-github",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
         state: "unavailable",
         degradationState: "cold",
-        paths: ["gateway.controlUi.github.token"],
+        paths: ["plugins.entries.github-repositories.config.service.token"],
         refKeys: ["store:default:PREVIEW_TOKEN"],
         reason: "secret reference was not found",
       },
@@ -320,7 +384,7 @@ describe("controlUi.githubPreview", () => {
     expectError(respond, {
       code: "UNAVAILABLE",
       message:
-        "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.",
+        "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.",
       retryable: false,
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -343,12 +407,18 @@ describe("controlUi.githubPreview", () => {
         runtime(() => cfg),
       );
       await started.promise;
-      const tools = { github: { profileId: `ghp_${"c".repeat(32)}` } };
-      if (selection === "agent") {
-        cfg = { agents: { entries: { main: { tools } } } };
-      } else if (selection === "system") {
-        cfg = { ...cfg, tools };
-      }
+      const replacement = { profileId: `ghp_${"c".repeat(32)}` };
+      cfg = {
+        ...cfg,
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config:
+                selection === "agent" ? { agents: { main: replacement } } : { system: replacement },
+            },
+          },
+        },
+      };
       pending.resolve(preview);
       await request;
 
@@ -428,13 +498,13 @@ describe("controlUi.githubPreview", () => {
       false,
       new SecretSurfaceUnavailableError({
         ownerKind: "capability",
-        ownerId: "control-ui-github",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
         state: "unavailable",
-        paths: ["gateway.controlUi.github.token"],
+        paths: ["plugins.entries.github-repositories.config.service.token"],
         refKeys: [],
         reason: "secret reference was not found",
       }),
-      "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.",
+      "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.",
       false,
     ],
   ] as const)(
@@ -458,7 +528,17 @@ describe("controlUi.githubPreview", () => {
         managed
           ? runtime(() => ({
               ...configuredGitHub("existing-preview-service-token"),
-              tools: { github: { profileId: `ghp_${"b".repeat(32)}` } },
+              tools: {},
+              plugins: {
+                entries: {
+                  "github-repositories": {
+                    config: {
+                      ...readGitHubConfig(configuredGitHub("existing-preview-service-token")),
+                      system: { profileId: `ghp_${"b".repeat(32)}` },
+                    },
+                  },
+                },
+              },
             }))
           : {},
       );
@@ -492,7 +572,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
         {
           client: { connId: "conn-control-ui" },
           context: {
-            controlUiSessionPullRequests: subscriptions,
+            repositorySessions: { presentation: subscriptions },
             logGateway: { warn },
           },
         },
@@ -518,6 +598,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
     "validates subscriptions: $sessionKeys",
     async ({ sessionKeys, expected, subscribed, valid }) => {
       const { promise: hydration, resolve: finishHydration } = createDeferred();
+      const admitted = createDeferred();
       const replace = valid
         ? vi.fn(
             (
@@ -527,6 +608,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
               onAdmitted: (() => void) | undefined,
             ) => {
               onAdmitted?.();
+              admitted.resolve();
               return hydration;
             },
           )
@@ -536,7 +618,7 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
         { sessionKeys },
         {
           client: { connId: "conn-control-ui" },
-          context: { controlUiSessionPullRequests: { replace } },
+          context: { repositorySessions: { presentation: { replace } } },
         },
       );
       if (!valid) {
@@ -548,7 +630,12 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
         });
         return;
       }
-      await Promise.resolve();
+      await Promise.race([
+        admitted.promise,
+        request.then(() => {
+          throw new Error("Subscription request completed without admission");
+        }),
+      ]);
       expect(replace).toHaveBeenCalledWith(
         "conn-control-ui",
         expected,

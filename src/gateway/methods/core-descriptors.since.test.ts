@@ -22,7 +22,6 @@ const TRAIN_2026_7_METHODS = `
   ui.command device.pair.rename sessions.observer.visibility
   sessions.companion.ask sessions.companion.state sessions.companion.reset
   channels.pairing.list channels.pairing.approve channels.pairing.dismiss
-  controlUi.sessionPullRequests.subscribe
   cron.scratch.get cron.scratch.set memory.search
   skills.proposals.evaluate skills.proposals.events.list hooks.status
 `
@@ -36,10 +35,8 @@ const TRAIN_2026_8_METHODS = `
   sessions.groups.update sessions.groups.defaults sessions.recover
   update.hold sessions.catalog.startTerminal
   sessions.github.publish sessions.github.options sessions.github.status sessions.github.confirm
-  users.github.status users.github.authorize.start users.github.authorize.poll
-  users.github.authorize.cancel users.github.disconnect
   worker.desktop.observe worker.desktop.launch
-  projects.list projects.register projects.remove projects.add projects.searchRemote
+  projects.list projects.register projects.remove
   secrets.store.list secrets.store.set secrets.store.delete
   users.authConnect.answer users.authConnect.cancel users.authConnect.status
   users.authConnect.start users.authConnect.catalog
@@ -49,9 +46,7 @@ const TRAIN_2026_8_METHODS = `
   desktop.observe desktop.launch device.scopes.requestUpgrade device.scopes.waitUpgrade
   node.runnerInventory.update portal.list portal.open portal.close
   sessions.move sessions.assignOwner controlUi.sessionPreview
-  progressCard.get progressCard.put tools.github.status tools.github.configure
-  tools.github.authorize.start tools.github.authorize.poll tools.github.authorize.cancel
-  session.members.listEvidence
+  progressCard.get progressCard.put session.members.listEvidence
   skills.library.list skills.library.read skills.library.save skills.library.mutate
   skills.library.activate skills.library.import skills.library.upload
   sessions.title.prepare transcripts.list transcripts.get

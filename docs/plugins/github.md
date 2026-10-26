@@ -14,20 +14,61 @@ The bundled GitHub plugin adds public-repository link previews and a read-only
 reader to the [Control UI](/web/control-ui), plus the `github_read` and `github_search` agent tools. It is separate from the
 [GitHub Copilot model provider](/providers/github-copilot).
 
-## Upgrading with an existing plugin allowlist
+## Plugin ownership
 
-GitHub previews that previously lived in core now belong to the bundled
-`github` plugin. A nonempty `plugins.allow` list remains authoritative: if it
-omits `github`, both hovercards and the reader stay unavailable, and links open
-externally. OpenClaw does **not** add a plugin to an existing allowlist during
-an upgrade or Doctor repair.
+The bundled `github-repositories` plugin owns the repository integration, not only
+the reader. It uses the ordinary plugin loader and the same public contracts
+available to other repository plugins.
 
-To restore previews, append `github` to your **existing** `plugins.allow` list
-without removing its other entries, then enable GitHub in **Plugins**. Keep
-`plugins.deny` and explicit disabled entries consistent with your choice. Doctor
-explains this recovery when an implicit allowlist exclusion blocks the feature.
-To intentionally keep it off and silence that notice, set
-`plugins.entries.github.enabled: false`.
+| Capability                        | Plugin contribution                                                                            | Host responsibility                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Account connections and OAuth     | Registered account Gateway methods, canonical config, managed service                          | Authenticated caller/profile access, secret storage, serialized config writes             |
+| Repository discovery and checkout | Declared search method and `registerRepositorySource`                                          | Picker composition, qualified source binding, managed project leases and registration     |
+| Cloud preparation and recovery    | Immutable source reads, identity key, optional Git pack, checkout and restoration adapters     | Recipe admission, placement, accepted checkpoints, publication receipts                   |
+| Execution identity                | `registerExecutionEnvironment`                                                                 | Tool approval, final launch authority, sandbox/worker transport and secret exclusions     |
+| Agent tools                       | Registered `github_read`, `github_search`, `github_identity_status`, `github_publish`          | Current invocation, tool policy, caller-bound Gateway dispatch and workspace handoff      |
+| Pull requests and publication     | Managed repository presentation and publication providers                                      | Session access, local Git/index custody, idempotency, effect receipts and recovery        |
+| Browser views                     | Explicit Control UI V2 Settings, actions, session accessories and text-reference contributions | Layout, view retirement, captured requests, retained operations and summary publication   |
+| Upgrade, audit and cleanup        | Manifest config/secret/agent-map contracts, Doctor migration and config-only audit artifact    | Include-aware writes/backups, secret materialization, agent lifecycle and audit admission |
+
+GitHub Copilot, Gateway sign-in, verified profile identity, and the existing
+database/worker custody owners are separate responsibilities. Their retained
+GitHub-named wire and storage contracts are not a second repository integration.
+See [configuration and migration](/plugins/github-configuration) and
+[publication lifecycle](/plugins/github-publication) for those boundaries.
+
+## GitHub integration and reader policy
+
+Public reading now belongs to the bundled `github-repositories` integration,
+which also owns account connections and managed execution identity. Its reader
+methods and agent tools keep their existing names and access scopes. The
+[canonical GitHub configuration](/plugins/github-configuration) owns shared and
+per-agent identities, service credentials, endpoint selection, and reader policy.
+
+To disable only previews, the reader, and the `github_read` / `github_search`
+tools, set `plugins.entries.github-repositories.config.reader.enabled` to `false`.
+Account connections and native repository operations remain available. Disabling
+`plugins.entries.github-repositories.enabled` instead disables the whole plugin.
+
+Run `openclaw doctor --fix` to move an old `plugins.entries.github` reader entry
+or existing plugin admission policy into the new reader setting. A nonempty
+plugin allowlist that excluded `github`, or an explicit `github` deny, keeps the
+reader disabled even when no old reader entry exists. These reader restrictions
+do not disable the whole integration. A canonical reader setting wins over the
+retired one. Unknown old reader configuration or extra plugin policy is preserved
+for explicit review instead of being discarded.
+
+The reader transform leaves allow/deny lists and global plugin enablement
+unchanged. Doctor's existing configured-plugin repair may then enable
+`github-repositories` and add it to a nonempty allowlist. An explicit disable of
+the new plugin, a `github-repositories` deny entry, or global plugin disablement
+still prevents activation. The old reader ID is not an alias for the whole
+integration.
+
+Doctor also replaces exact `github` tool-policy entries with `github_read` and
+`github_search` in existing allow, alsoAllow, deny, provider, sandbox, subagent,
+and sender-policy scopes. Explicit per-tool denies remain effective. Unrelated
+plugin data and wildcard patterns are not rewritten.
 
 ## Read an item beside chat
 
@@ -156,7 +197,7 @@ configuration is:
 {
   plugins: {
     entries: {
-      github: { enabled: false },
+      "github-repositories": { enabled: false },
     },
   },
 }
@@ -219,9 +260,36 @@ GitHub uses the generic docked link-reader contribution in the
 requests, caching, and mapping source data into the passive reader model. The
 Control UI owns tabs, layout, safe rendering, and keyboard interaction.
 
+### Session review lifetime
+
+The enabled integration also owns session pull-request snapshots, check details,
+branch caches, and the union of connected viewers' polling subscriptions.
+`reader.enabled` controls public link readers and agent tools, not these
+session-bound reviews. Disabling the whole integration withdraws the review
+service too; it does not change native repository or session access policy.
+
+The managed service starts in
+`extensions/github-repositories/src/lifecycle.ts` and installs its presentation
+through `session-presentation-service-api.ts`. Native
+`src/gateway/repository-session-read-host.ts` admits requests and selects current
+session rows. Its private plugin capability exposes bound checkout operations
+and audience-filtered publication receipts, not a database path or arbitrary
+profile lookup. Native source custody remains in
+`control-ui-session-pr-source.ts`, including private actor retention and physical
+source replacement checks.
+
+The plugin polls each watched source once, while delivery rechecks each viewer.
+Losing one viewer does not cancel a shared read still authorized by another.
+Restricted original-PR inspection borrows only the selected viewer's exact
+linked identity. Public row facts reuse branch-only snapshots; personal task
+receipts do not cross audiences. Service stop withdraws the presentation, cancels
+polling and active requests, clears review caches, and joins retained work before
+shutdown completes. Re-enable the integration and reconnect to create fresh
+subscriptions; a retired service cannot deliver a late snapshot.
+
 ## Session-bound Enterprise previews
 
-When `gateway.github.host` selects an Enterprise host, the plugin also advertises
+When `plugins.entries.github-repositories.config.host` selects an Enterprise host, the plugin also advertises
 an exact-host, session-scoped reader. It uses the foreground session's repository
 and the selected GitHub App identity. Factory requests require the current signed-in
 operator's `session-item-read` proof and existing repository admission; a pasted

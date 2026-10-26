@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { settingsViews } from "../../../../extensions/github-repositories/browser/index.tsx";
 import type {
   UserProfile,
   UsersSelfResult,
@@ -31,7 +32,18 @@ export function createConnectedContext(
   const listeners = new Set<(next: ApplicationGatewaySnapshot) => void>();
   const subscribe = () => () => undefined;
   const baseContext = {
-    plugins: { settingsContributions: [], subscribe },
+    plugins: {
+      settingsContributions: settingsViews.map((view) => ({
+        pluginId: "github-repositories",
+        revision: "test",
+        placement: view.placement,
+      })),
+      subscribe,
+      reportError: vi.fn(),
+      async loadSettingsView(_placement: unknown, signal: AbortSignal) {
+        return { view: settingsViews[0], signal, dispose() {} };
+      },
+    },
     runtimeConfig: { subscribe, state: {}, ensureLoaded: async () => undefined },
     gateway: {
       connect: vi.fn(),
@@ -140,4 +152,37 @@ export function mountProfilePage(context: ApplicationContext): ProfilePageElemen
   const provider = createSolidApplicationContextProvider(context);
   const view = mountSolid(() => <ProfilePage />, { wrapper: provider.wrapper });
   return Object.assign(view.container, { unmount: view.unmount });
+}
+
+export function stubProfileAvatarProcessing(
+  decode = vi.fn<() => Promise<void>>(async () => undefined),
+) {
+  class StubUrl extends URL {
+    static override createObjectURL = vi.fn(() => "blob:avatar");
+    static override revokeObjectURL = vi.fn();
+  }
+  class StubImage {
+    decoding = "auto";
+    src = "";
+    naturalWidth = 512;
+    naturalHeight = 256;
+    decode = decode;
+  }
+  vi.stubGlobal("URL", StubUrl);
+  vi.stubGlobal("Image", StubImage);
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback, type) => {
+    callback(new Blob([new Uint8Array([1, 2, 3])], { type: type ?? "image/png" }));
+  });
+}
+
+export function selectProfileAvatar(page: ParentNode) {
+  const avatarInput = page.querySelector<HTMLInputElement>('input[type="file"]')!;
+  Object.defineProperty(avatarInput, "files", {
+    configurable: true,
+    value: [new File(["avatar"], "avatar.png", { type: "image/png" })],
+  });
+  avatarInput.dispatchEvent(new Event("change", { bubbles: true }));
 }

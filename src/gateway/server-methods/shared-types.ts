@@ -394,9 +394,7 @@ type GatewayTransportContext = {
 /** Resident-owned services bridged into request handling by the server lifecycle. */
 type GatewayResidentBridgeContext = {
   getGatewayMethodRegistry?: () => import("../methods/registry.js").GatewayMethodRegistry;
-  controlUiSessionPullRequests?: ReturnType<
-    typeof import("../control-ui-session-pr-subscriptions.js").createControlUiSessionPullRequestSubscriptions
-  >;
+  repositorySessions?: import("../repository-session-read-host.js").RepositorySessionReadHost;
   sessionViewerPresence?: ReturnType<
     typeof import("../session-viewer-presence.js").createSessionViewerPresenceDeclarations
   >;
@@ -430,10 +428,8 @@ type GatewayResidentBridgeContext = {
   workerRepositoryWorkspaceMutationService?: ReturnType<
     typeof import("../worker-environments/repository-workspace-mutation.js").createRepositoryWorkspaceMutationService
   >;
-  githubPublicationService?: import("../github-publication.js").GitHubPublicationCoordinator;
-  githubOAuthService?: ReturnType<
-    typeof import("../github-oauth-lifecycle.js").createGitHubOAuthLifecycle
-  >;
+  githubPublicationService?: import("../repository-publication-engine.js").GitHubPublicationCoordinator;
+  repositorySources?: import("../repository-sources.js").RepositorySources;
   modelAccountConnectService?: ReturnType<
     typeof import("../model-account-connect.js").createModelAccountConnectService
   >;

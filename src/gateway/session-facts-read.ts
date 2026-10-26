@@ -7,10 +7,9 @@ import { isIncognitoSessionKey } from "../routing/session-key.js";
 import { freezeJsonSnapshot } from "../shared/immutable-data.js";
 import { stripMarkdown } from "../shared/text/strip-markdown.js";
 import type { ControlUiSessionPullRequestSnapshot } from "./control-ui-contract.js";
-import {
-  resolveProjectedControlUiSessionPrTarget,
-  type ControlUiSessionPrTarget,
-} from "./control-ui-session-pr-read.js";
+import type { RepositorySessionPresentation } from "./repository-session-read-host.js";
+import { observeProjectedRepositorySession } from "./repository-session-read-source.js";
+import type { RepositorySessionObservation } from "./repository-session-read.types.js";
 import { createVisibleActiveSessionRunProjector } from "./server-methods/session-active-runs.js";
 import type { ResolvedInProcessGatewayDispatch } from "./server-plugin-in-process-dispatch.types.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "./session-request-agent.js";
@@ -27,7 +26,7 @@ export type SelectedFacts = RuntimeSessionFactsSelectionResult["sessions"][numbe
 export type SelectedPrFacts = {
   generation: MaterializedRow["generation"];
   databaseFactsRevision: number;
-  owner: ResolvedInProcessGatewayDispatch["context"]["controlUiSessionPullRequests"];
+  owner: RepositorySessionPresentation | undefined;
   facts: RuntimeSessionFacts;
   selected: SelectedFacts;
   retry?: { at: number; delayMs: number };
@@ -35,7 +34,7 @@ export type SelectedPrFacts = {
 const rowFacts = new WeakMap<
   GatewaySessionRow,
   {
-    owner: ResolvedInProcessGatewayDispatch["context"]["controlUiSessionPullRequests"];
+    owner: RepositorySessionPresentation | undefined;
     prs: ControlUiSessionPullRequestSnapshot | undefined;
     facts: RuntimeSessionFacts;
     selected: SelectedFacts;
@@ -87,10 +86,10 @@ export function prepareFactsRead(
     read.physicalPaths,
   );
   const currentRows = { ...rowContext, subagentRuns: rowContext.subagentRuns.atTime(now) };
-  const prOwner = resolved.context.controlUiSessionPullRequests;
+  const prOwner = resolved.context.repositorySessions?.presentation;
   let prLoads = 0;
   const admitPrLoad = () => prLoads++ < SESSION_FACTS_PR_LOAD_LIMIT;
-  const prRetries: ControlUiSessionPrTarget[] = [];
+  const prRetries: RepositorySessionObservation[] = [];
   return {
     read(record: MaterializedRow) {
       if (
@@ -138,7 +137,7 @@ export function prepareFactsRead(
         prFacts?.delete(record.key);
       }
       const target = prEligible
-        ? resolveProjectedControlUiSessionPrTarget(read.state.cfg, record)
+        ? observeProjectedRepositorySession(read.state.cfg, record)
         : undefined;
       const cachedPrs = target ? prOwner?.readPrepared(target, () => false) : undefined;
       const retained = prFacts?.get(record.key);

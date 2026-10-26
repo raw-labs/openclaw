@@ -14,8 +14,6 @@ import { ApplicationProvider, useOptionalApplication } from "../../lib/reactive/
 import { connectedElementRef, elementRef } from "../../lib/reactive/element-ref.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { projectPresentation } from "../../lib/reactive/presentation.ts";
-import { orderSessionPullRequests } from "../../lib/session-pull-request-presentation.ts";
-import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
 import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
 import { PluginSurface } from "../../plugins/control-ui-view.solid.tsx";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";
@@ -44,7 +42,6 @@ import { ChatComposer } from "./components/chat-composer.tsx";
 import { ChatConversationHistoryError } from "./components/chat-conversation-history-error.tsx";
 import { ChatConversationMobile } from "./components/chat-conversation-presentation.ts";
 import { isImageLightboxEvent, openInlineChatImage } from "./components/chat-image-lightbox.ts";
-import { ChatPullRequests } from "./components/chat-pull-requests.tsx";
 import { ChatSelectionAnnotations } from "./components/chat-selection-annotations.tsx";
 import { resolveChatSwarmParent } from "./components/chat-swarm-progress-parent.ts";
 import {
@@ -175,23 +172,6 @@ function ChatFooterContent(
           compact={false}
           onOpenSessionDiff={input.props.onOpenSessionDiff}
         />
-        <ChatPullRequests
-          pullRequests={input.activities?.pullRequests ? [] : (input.props.pullRequests ?? [])}
-          gateway={input.props.pullRequestsGateway}
-          sessionId={input.props.pullRequestsSessionId}
-          sessionKey={scopedSessionArtifactKey(
-            input.props.sessionKey,
-            input.props.currentAgentId ?? undefined,
-          )}
-          presented={input.props.presented ?? true}
-          branch={input.activities?.publication ? undefined : input.props.pullRequestsBranch}
-          branchDismissed={input.props.pullRequestsBranchDismissed}
-          status={input.props.pullRequestsStatus ?? "ready"}
-          onDismiss={(pullRequest) => input.props.onDismissPullRequest?.(pullRequest)}
-          onDismissBranch={input.props.onDismissPullRequestsBranch}
-          onOpenSessionDiff={input.props.onOpenSessionDiff}
-          publication={input.activities?.publication ? undefined : input.props.githubPublication}
-        />
       </Show>
       <Show when={input.props.sessionSuggestions?.length}>
         <Loading>
@@ -215,11 +195,11 @@ function ChatFooterContent(
         )}
       </Show>
       <Show when={input.application}>
-        <openclaw-plugin-contributions
-          prop:kind="composer"
-          prop:sessionKey={input.props.sessionKey}
-          prop:agentId={input.props.currentAgentId}
-          prop:presented={input.presented}
+        <PluginContributions
+          kind="composer"
+          sessionKey={input.props.sessionKey}
+          agentId={input.props.currentAgentId}
+          presented={input.presented}
         />
       </Show>
     </>
@@ -266,17 +246,6 @@ function ChatComposerView(input: ChatViewInput) {
             onOpenDetailsPage: destinations?.onOpenDetailsPage,
           }
         : undefined,
-      pullRequests: destinations?.onOpenPullRequest
-        ? {
-            items: orderSessionPullRequests(input.props.pullRequests ?? []),
-            status: input.props.pullRequestsStatus ?? "ready",
-            onOpen: destinations.onOpenPullRequest,
-          }
-        : undefined,
-      publication:
-        input.props.githubPublication && destinations?.publication?.eligible
-          ? { view: input.props.githubPublication, onOpen: destinations.publication.onOpen }
-          : undefined,
     };
   });
   return (
@@ -582,11 +551,11 @@ function ChatContent(input: { props: ChatProps; questions: ComposerQuestions }) 
                   <ChatTopbarNotices {...input.props} />
                 </Show>
                 <Show when={application}>
-                  <openclaw-plugin-contributions
-                    prop:kind="header"
-                    prop:sessionKey={input.props.sessionKey}
-                    prop:agentId={input.props.currentAgentId}
-                    prop:presented={presented()}
+                  <PluginContributions
+                    kind="header"
+                    sessionKey={input.props.sessionKey}
+                    agentId={input.props.currentAgentId}
+                    presented={presented()}
                   />
                 </Show>
                 <TranscriptSearch search={getTranscriptState(input.props.paneId).search} />

@@ -57,10 +57,7 @@ describe("show_widget prompt", () => {
     setActivePluginRegistry(registry);
     const tool = createShowWidgetTool();
     const instructions = JSON.stringify(tool.parameters) + tool.description;
-    expect(instructions).toContain("With a usable connected agent GitHub identity");
-    expect(instructions).toContain("Identity is checked before save");
-    expect(instructions).toContain("github.actions.runs");
-    expect(instructions).toContain("github.actions.runs:owner/repo");
+    expect(instructions).not.toContain("github.actions.runs");
     expect(instructions).toContain("fixture.list");
     expect(instructions).toContain("List fixture items");
     expect(instructions).toContain("fixture.dispatch");
@@ -77,5 +74,41 @@ describe("show_widget prompt", () => {
     setActivePluginRegistry(createEmptyPluginRegistry());
     expect(JSON.stringify(createShowWidgetTool())).not.toContain("fixture.list");
     expect(JSON.stringify(createShowWidgetTool())).not.toContain("fixture.dispatch");
+  });
+
+  it("describes GitHub Actions only while the declaring plugin is active", async () => {
+    const { default: manifest } = await import(
+      "../../extensions/github-repositories/openclaw.plugin.json",
+      { with: { type: "json" } }
+    );
+    const registry = createEmptyPluginRegistry();
+    const declaration = manifest.dashboard.dataBindings[0]!;
+    const handler = () => {};
+    registry.gatewayHandlers[declaration.method] = handler;
+    registry.gatewayMethodDescriptors.push(
+      createPluginGatewayMethodDescriptor({
+        pluginId: manifest.id,
+        name: declaration.method,
+        scope: "operator.read",
+        handler,
+      }),
+    );
+    registerPluginDashboardCapabilities({
+      registry,
+      record: createPluginRecord({
+        id: manifest.id,
+        source: "fixture",
+        origin: "bundled",
+        enabled: true,
+        configSchema: false,
+        dashboard: manifest.dashboard,
+      }),
+    });
+    setActivePluginRegistry(registry);
+    const instructions = JSON.stringify(createShowWidgetTool());
+    expect(instructions).toContain("github.actions.runs:owner/repo");
+    expect(instructions).toContain("Identity is checked before save");
+    setActivePluginRegistry(createEmptyPluginRegistry());
+    expect(JSON.stringify(createShowWidgetTool())).not.toContain("github.actions.runs");
   });
 });

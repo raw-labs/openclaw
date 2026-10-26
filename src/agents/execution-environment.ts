@@ -1,3 +1,4 @@
+import { AGENT_EXEC_GIT_CONFIG_PARAMETERS } from "../infra/host-env-security.js";
 import type {
   ExecutionEnvironmentPreparationV1,
   PreparedExecutionEnvironment,
@@ -5,8 +6,8 @@ import type {
   SandboxExecutionEnvironmentPreparationV1,
 } from "../plugins/execution-environment-types.js";
 import type { PluginRegistry } from "../plugins/registry-types.js";
+import { prepareExecutionEnvironmentExclusions } from "../secrets/runtime-execution-exclusions.js";
 import type { SecretExecutionEnvironmentExclusions } from "../secrets/runtime-shared.js";
-import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
 
 type SharedEnvironmentFacts = Pick<
   PreparedExecutionEnvironment,
@@ -25,12 +26,13 @@ function combine(
   values: readonly Contribution[],
   assertCurrent: () => void,
   exclusions?: SecretExecutionEnvironmentExclusions,
+  defaultGitParameters?: string,
 ): PreparedExecutionEnvironment {
   const credentialScrubEnv: Record<string, string> = {};
   const localIdentityEnv: Record<string, string> = {};
   const owners = new Map<string, string>();
   const excludedStoreNames = new Set(exclusions?.excludedStoreNames);
-  const gitParameters: string[] = [];
+  const gitParameters = defaultGitParameters ? [defaultGitParameters] : [];
   const wrappers: NonNullable<PreparedExecutionEnvironment["wrapLocalLaunch"]>[] = [];
   let hostExecutionRequired = false;
   for (const { owner, environment } of values) {
@@ -86,26 +88,28 @@ function preparationGuard(
   };
 }
 
-/** Compose optional plugin facts without transferring the native identity owner's decisions. */
+/** Capture admitted plugin facts once; the selected runtime owns plugin loading. */
 export function capturePreparedExecutionEnvironment(
   input: ExecutionEnvironmentPreparationV1,
-  native: PreparedGitHubToolEnvironment,
   registry: PluginRegistry | null | undefined,
   exclusions?: SecretExecutionEnvironmentExclusions,
-): PreparedGitHubToolEnvironment & PreparedExecutionEnvironment & CurrentExecutionEnvironment {
+): PreparedExecutionEnvironment & CurrentExecutionEnvironment {
   const assertCurrent = preparationGuard(input, registry?.executionEnvironments ?? []);
   assertCurrent();
-  const prepared: Contribution[] = [{ owner: "native", environment: native }];
+  const prepared: Contribution[] = [];
   for (const { pluginId, provider } of registry?.executionEnvironments ?? []) {
     prepared.push({ owner: `${pluginId}:${provider.id}`, environment: provider.prepare(input) });
     assertCurrent();
   }
   return {
-    ...combine(prepared, assertCurrent, exclusions),
+    ...combine(
+      prepared,
+      assertCurrent,
+      exclusions ??
+        prepareExecutionEnvironmentExclusions({ config: input.sourceConfig ?? input.config }),
+      AGENT_EXEC_GIT_CONFIG_PARAMETERS,
+    ),
     assertCurrent,
-    // This private flag controls native GitHub token inheritance and profile selection.
-    // An unrelated plugin environment must never change that native decision.
-    managedLocalIdentity: native.managedLocalIdentity,
   };
 }
 
@@ -113,7 +117,6 @@ export function capturePreparedExecutionEnvironment(
 export async function prepareSandboxExecutionEnvironment(
   input: SandboxExecutionEnvironmentPreparationV1,
   registry: PluginRegistry | null | undefined,
-  native?: PreparedSandboxExecutionEnvironment,
   exclusions?: SecretExecutionEnvironmentExclusions,
 ): Promise<(PreparedSandboxExecutionEnvironment & CurrentExecutionEnvironment) | undefined> {
   const providers = (registry?.executionEnvironments ?? []).filter(
@@ -122,9 +125,6 @@ export async function prepareSandboxExecutionEnvironment(
   const assertCurrent = preparationGuard(input, providers);
   assertCurrent();
   const prepared: Array<Contribution & { environment: PreparedSandboxExecutionEnvironment }> = [];
-  if (native) {
-    prepared.push({ owner: "native", environment: native });
-  }
   for (const { pluginId, provider } of providers) {
     const environment = await provider.prepareSandbox?.(input);
     assertCurrent();

@@ -148,6 +148,7 @@ export type {
   OpenClawPluginActiveModelContext,
   OpenClawPluginToolContext,
   OpenClawPluginToolFactory,
+  OpenClawPluginToolGateway,
 } from "../plugins/types.js";
 export type {
   OpenClawPluginGatewayEventScope,

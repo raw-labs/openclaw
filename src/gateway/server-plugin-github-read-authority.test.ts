@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { controlUiGitHubHandlers } from "../../extensions/github-repositories/runtime-api.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -14,7 +15,6 @@ import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { loadBundledPluginFacade } from "../test-utils/bundled-plugin-public-surface.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createGatewayMethodRegistry } from "./methods/registry.js";
-import { controlUiHandlers } from "./server-methods/control-ui.js";
 import type { GatewayRequestHandlerOptions, RespondFn } from "./server-methods/types.js";
 import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import {
@@ -25,7 +25,7 @@ import { resetTestPluginRegistry, setTestPluginRegistry } from "./test-helpers.p
 
 const { default: github } = await loadBundledPluginFacade<{
   default: OpenClawPluginDefinition;
-}>({ pluginId: "github", artifactBasename: "index.ts" });
+}>({ pluginId: "github-repositories", artifactBasename: "index.ts" });
 
 let state: Awaited<ReturnType<typeof createOpenClawTestState>> | undefined;
 beforeEach(async () => {
@@ -41,14 +41,25 @@ afterEach(async () => {
 function fixture(method: "preview" | "detail") {
   const cfg = {
     agents: { entries: { main: {} } },
-    gateway: { controlUi: { github: { token: "synthetic-preview-credential" } } },
+    gateway: {
+      controlUi: {},
+    },
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: "synthetic-preview-credential" },
+          },
+        },
+      },
+    },
   };
   setRuntimeConfigSnapshot(cfg);
   const { registry, config } = createPluginRegistryFixture();
   registerVirtualTestPlugin({
     registry,
     config,
-    id: "github",
+    id: "github-repositories",
     name: "GitHub",
     contracts: {
       tools: ["github_read", "github_search"],
@@ -60,26 +71,24 @@ function fixture(method: "preview" | "detail") {
   const context = createContext();
   context.getRuntimeConfig = () => cfg;
   const hostMethod = method === "preview" ? "controlUi.githubPreview" : "controlUi.githubDetail";
-  const handler = expectDefined(controlUiHandlers[hostMethod], "GitHub host reader");
+  const handler = expectDefined(controlUiGitHubHandlers[hostMethod], "GitHub host reader");
   const readResponse = vi.fn<RespondFn>();
   const methods = createGatewayMethodRegistry(
-    [
-      ...registry.registry.gatewayMethodDescriptors,
-      {
-        name: hostMethod,
-        owner: { kind: "core", area: "control-ui" },
-        scope: "operator.read",
-        profileAccess: "independent",
-        handler: (options: GatewayRequestHandlerOptions) =>
-          handler({
-            ...options,
-            respond: (...args) => {
-              readResponse(...args);
-              options.respond(...args);
-            },
-          }),
-      },
-    ],
+    registry.registry.gatewayMethodDescriptors.map((descriptor) =>
+      descriptor.name === hostMethod
+        ? {
+            ...descriptor,
+            handler: (options: GatewayRequestHandlerOptions) =>
+              handler({
+                ...options,
+                respond: (...args) => {
+                  readResponse(...args);
+                  options.respond(...args);
+                },
+              }),
+          }
+        : descriptor,
+    ),
     registry.registry,
   );
   context.getGatewayMethodRegistry = () => methods;

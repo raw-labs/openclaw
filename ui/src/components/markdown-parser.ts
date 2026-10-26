@@ -18,7 +18,6 @@ import {
   parseMarkdownFileLinkTarget,
   splitMarkdownFileLineSuffix,
 } from "./markdown-file-links.ts";
-import { installMarkdownGitHubRefs } from "./markdown-github-refs.ts";
 import { installMarkdownHexColors } from "./markdown-hex-colors.ts";
 import { installMarkdownHumanMentions } from "./markdown-human-mentions.ts";
 import { hasMarkdownLinkBoundaries } from "./markdown-link-boundary.ts";
@@ -505,7 +504,6 @@ export function createMarkdownParser(): MarkdownItParser {
     }
   });
 
-  installMarkdownGitHubRefs(markdownParser);
   installMarkdownTextReferences(markdownParser);
 
   markdownParser.core.ruler.after("inline", "task-lists", (state) => {

@@ -1,3 +1,8 @@
+import type {
+  PersonalGitHubAction,
+  PersonalGitHubActionV2,
+} from "../../../extensions/github-repositories/personal-oauth-api.js";
+import { currentGitHubPublicationConfig } from "../../../extensions/github-repositories/publication-availability-api.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
@@ -8,13 +13,6 @@ import {
 } from "../../shared/operator-scope-compat.js";
 import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-identity-operations.js";
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
-import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
-import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
-import {
-  currentGitHubPublicationConfig,
-  prepareGitHubPublicationSession,
-} from "../github-publication-availability.js";
-import { GitHubPublicationSessionChangedError } from "../github-publication-failure.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { hasCurrentGatewayOperatorAccess } from "../operator-access-policy.js";
 import {
@@ -22,6 +20,9 @@ import {
   resolveOperatorRolePolicyForProfile,
   resolveOperatorRolePolicyForAssignment,
 } from "../operator-role-policy.js";
+import { RepositoryPublicationSessionChangedError } from "../repository-publication-errors.js";
+import type { PersonalGitHubSessionActionV2 } from "../repository-publication-personal.js";
+import { prepareRepositoryPublicationSession } from "../repository-publication-workspace-authority.js";
 import type { SessionMutationTarget } from "../session-mutation-authorization-error.js";
 import { resolveSessionMutationAuthorizationAsync } from "../session-sharing-authorization-async.js";
 import { createSessionListEntryFilter } from "../session-sharing.js";
@@ -100,7 +101,7 @@ type PersonalEligibility =
   | { kind: "absent" | "ineligible" };
 
 type OptionsSessionFlight = {
-  pending: ReturnType<typeof prepareGitHubPublicationSession>;
+  pending: ReturnType<typeof prepareRepositoryPublicationSession>;
   readers: number;
 };
 const optionsSessionFlights = new WeakMap<OpenClawConfig, Map<string, OptionsSessionFlight>>();
@@ -115,7 +116,7 @@ async function prepareOptionsSession(
   const cfg = currentGitHubPublicationConfig();
   // Memory actors belong to the caller's storage context.
   if (isIncognitoSessionKey(sessionKey)) {
-    return prepareGitHubPublicationSession(sessionKey, { agentId, cfg, assertCurrent });
+    return prepareRepositoryPublicationSession(sessionKey, { agentId, cfg, assertCurrent });
   }
   let flights = optionsSessionFlights.get(cfg);
   if (!flights) {
@@ -126,7 +127,7 @@ async function prepareOptionsSession(
   let flight = flights.get(key);
   if (!flight) {
     flight = {
-      pending: prepareGitHubPublicationSession(sessionKey, { agentId, cfg }).finally(() => {
+      pending: prepareRepositoryPublicationSession(sessionKey, { agentId, cfg }).finally(() => {
         flights.delete(key);
       }),
       readers: 0,
@@ -152,7 +153,7 @@ async function prepareOptionsSession(
       readCurrent: () => {
         assertCurrent();
         if (!active) {
-          throw new GitHubPublicationSessionChangedError();
+          throw new RepositoryPublicationSessionChangedError();
         }
         return session.readCurrent();
       },
@@ -365,7 +366,7 @@ async function bindPersonalGitHubSessionAction(
   action: PersonalGitHubAction,
   target: SessionMutationTarget,
 ) {
-  const prepared = await prepareGitHubPublicationSession(target.sessionKey, {
+  const prepared = await prepareRepositoryPublicationSession(target.sessionKey, {
     agentId: target.agentId,
     assertCurrent: action.assertCurrent,
     fields: [
@@ -400,7 +401,7 @@ async function bindPersonalGitHubSessionAction(
       currentGitHubClient(options, "operator.write", action.owner);
       const current = prepared.readCurrent();
       if (current.entry?.archivedAt !== undefined) {
-        throw new GitHubPublicationSessionChangedError();
+        throw new RepositoryPublicationSessionChangedError();
       }
       authorization?.assertCurrent();
     };

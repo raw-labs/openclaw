@@ -1,37 +1,54 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import {
+  assertPreparedSessionSourceCurrent,
+  prepareSessionSourceAuthority,
+} from "../config/sessions/session-source-authority.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveExecutablePath } from "../infra/executable-path.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getOrCreatePromise } from "../shared/lazy-promise.js";
 import { withMockedPlatform } from "../test-utils/vitest-spies.js";
 import { commandResult } from "./github-identity.test-support.js";
-import { clearGitHubCredentialVerificationCache } from "./github-oauth-client.js";
 
 const { run } = vi.hoisted(() => ({ run: vi.fn() }));
 // mock-isolation: Capture credential subprocess requests without executing host Git or gh.
 vi.mock("../process/exec.js", () => ({ runCommandBuffered: run }));
 
 import {
-  clearRuntimeConfigSnapshot,
-  setRuntimeConfigSnapshot,
-} from "../config/runtime-snapshot.js";
-import {
+  clearNativeGitHubTokenCache,
   createGitHubReadIdentity,
   readCachedNativeGitHubToken,
   readNativeGitHubToken,
-} from "./github-read-identity.js";
+} from "../../extensions/github-repositories/read-identity-api.js";
 import {
   prepareGitHubPublicationIdentity,
   prepareGitHubReadIdentity as prepareRead,
   resolveManagedGitHubProfileDir,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import {
+  clearRuntimeConfigSnapshot,
+  setRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 
 const tempDirs = useAutoCleanupTempDirTracker(afterEach);
 const native = (env: NodeJS.ProcessEnv) => readNativeGitHubToken(env, true);
-const enterprise = (host: string) => ({ gateway: { github: { host } } });
+const enterprise = (host: string) => ({
+  gateway: {},
+  plugins: {
+    entries: {
+      "github-repositories": {
+        config: {
+          host,
+          apiBaseUrl: host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+        },
+      },
+    },
+  },
+});
 const account = (id = 101, login = "native-user") => Response.json({ id, login, avatar_url: null });
 
 beforeEach(() => {
@@ -285,6 +302,7 @@ describe("native GitHub identity absence", () => {
 
 describe("prepared GitHub read authority", () => {
   beforeEach(() => {
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
       const isNative = new Headers(init?.headers).get("Authorization")?.includes("native");
@@ -306,8 +324,16 @@ describe("prepared GitHub read authority", () => {
 
   it("keeps default read preparation bound to the configured Enterprise issuer", async () => {
     const config = {
-      gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     };
     const env = {
@@ -364,6 +390,7 @@ describe("prepared GitHub read authority", () => {
     // Let all admitted callers reach the shared pending native read.
     await Promise.resolve();
     expect(run).toHaveBeenCalledOnce();
+    clearNativeGitHubTokenCache();
     clearGitHubCredentialVerificationCache();
     expect((await prepareRead(options)).token).toBe("native-new-generation");
     pending.resolve(commandResult("native-old-generation"));
@@ -444,6 +471,7 @@ describe("prepared GitHub read authority", () => {
           return await start();
         },
       });
+      clearNativeGitHubTokenCache();
       clearGitHubCredentialVerificationCache();
       run.mockClear();
       phase = "before";
@@ -539,7 +567,16 @@ describe("prepared GitHub read authority", () => {
     const profileId = `ghp_${"3".repeat(32)}`;
     const replacementProfileId = `ghp_${"4".repeat(32)}`;
     const configured = (selectedId: string): OpenClawConfig => ({
-      tools: { github: { profileId: selectedId } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: selectedId },
+            },
+          },
+        },
+      },
     });
     let config = configured(profileId);
     const profileDir = resolveManagedGitHubProfileDir({
@@ -561,8 +598,11 @@ describe("prepared GitHub read authority", () => {
     const rotated = await prepare();
     expect(rotated.selection).toEqual(identity.selection);
     expect(rotated.cacheScope).not.toBe(identity.cacheScope);
+    const prepared = await prepareSessionSourceAuthority(rotated.assertSelected);
     config = configured(replacementProfileId);
     expect(() => rotated.assertSelected()).toThrow("identity changed");
+    // Writer preparation must retain the selection check, not classify it as an external callback.
+    expect(() => assertPreparedSessionSourceCurrent(prepared)).toThrow("identity changed");
     expect(run).not.toHaveBeenCalled();
   });
 
@@ -596,7 +636,18 @@ describe("prepared GitHub read authority", () => {
       ...readOptions({ env: { OPENCLAW_STATE_DIR: tempDirs.make("openclaw-github-source-") } }),
       allowAnonymous: true as const,
     };
-    const configured = { tools: { github: { profileId: `ghp_${"1".repeat(32)}` } } };
+    const configured = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: `ghp_${"1".repeat(32)}` },
+            },
+          },
+        },
+      },
+    };
     await expect(
       prepareRead({
         ...options,

@@ -6,13 +6,13 @@ import path from "node:path";
 import { hasErrnoCode, isErrno } from "../infra/errno.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
 import { statIfExists } from "../infra/path-existence.js";
-import { GitHubPublicationWorkspaceChangedError } from "./github-publication-failure.js";
+import { RepositoryPublicationWorkspaceChangedError } from "./repository-publication-errors.js";
 
 type GitCommandOptions = { cwd?: string; env?: NodeJS.ProcessEnv; input?: string };
 
 const HARDENED_GIT = ["git", "-c", `core.hooksPath=${os.devNull}`, "-c", "core.fsmonitor=false"];
 
-class GitHubPublicationRefCasRejectedError extends GitHubPublicationWorkspaceChangedError {}
+class GitHubPublicationRefCasRejectedError extends RepositoryPublicationWorkspaceChangedError {}
 export class GitHubPublicationRecoveryPendingError extends Error {}
 
 export function assertGitHubPublicationRefCasCompleted(result: {
@@ -286,7 +286,7 @@ export async function updateGitHubPublicationBranchAndIndex(params: {
         currentIndexTree !== params.sourceIndexTree &&
         currentIndexTree !== params.workspaceTree
       ) {
-        throw new GitHubPublicationWorkspaceChangedError(
+        throw new RepositoryPublicationWorkspaceChangedError(
           "GitHub publication workspace index changed after its accepted snapshot.",
         );
       }

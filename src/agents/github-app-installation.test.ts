@@ -1,15 +1,16 @@
 import { generateKeyPairSync } from "node:crypto";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
-import type { OpenClawConfig } from "../config/types.openclaw.js";
-import { prepareGitHubAppInstallation } from "./github-app-installation.js";
-import type { GitHubAppSelection } from "./github-credential-reader.js";
+import { prepareGitHubAppInstallation } from "../../extensions/github-repositories/app-installation-api.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import type { GitHubAppSelection } from "../../extensions/github-repositories/credential-reader-api.js";
 import {
   resolveGitHubToolIdentityStatus,
   prepareGitHubPublicationIdentity,
   prepareGitHubReadIdentity,
   prepareGitHubToolEnvironment,
-} from "./github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 
 const key = generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
   type: "pkcs8",
@@ -28,7 +29,13 @@ const installation = {
 let selected: GitHubAppSelection;
 let config: OpenClawConfig;
 function prepare(assertCurrent = () => {}) {
-  return prepareGitHubAppInstallation({ selection: selected, host, apiBaseUrl, assertCurrent });
+  return prepareGitHubAppInstallation({
+    selection: selected,
+    privateKeyPath: "plugins.entries.github-repositories.config.system.app.privateKey",
+    host,
+    apiBaseUrl,
+    assertCurrent,
+  });
 }
 function prepareRead(options: Partial<Parameters<typeof prepareGitHubReadIdentity>[0]> = {}) {
   return prepareGitHubReadIdentity({
@@ -58,8 +65,19 @@ beforeEach(() => {
     },
   };
   config = {
-    gateway: { github: { host, apiBaseUrl } },
-    tools: { github: selected },
+    gateway: {},
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host,
+            apiBaseUrl,
+            system: selected,
+          },
+        },
+      },
+    },
   };
   setRuntimeConfigSnapshot(config);
   vi.useFakeTimers();
@@ -202,7 +220,17 @@ it("retains request-owned App cleanup and retires reads when the selected App ch
   await expect(identity.start(() => "repository read")).resolves.toBe("repository read");
   config = {
     ...config,
-    tools: { github: { ...selected, app: { ...selected.app, keyVersion: "rotated" } } },
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            ...readGitHubConfig(config),
+            system: { ...selected, app: { ...selected.app, keyVersion: "rotated" } },
+          },
+        },
+      },
+    },
   };
   await expect(identity.start(() => "stale read")).rejects.toThrow("changed");
   await identity.revoke?.();

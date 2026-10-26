@@ -1,7 +1,7 @@
 import type { JSX } from "@solidjs/web";
 import { Errored, For, Loading, Show, createMemo, createSignal, onSettled } from "solid-js";
 import type {
-  ControlUiAction,
+  ControlUiActionV2 as ControlUiAction,
   ControlUiAccessoryProps,
   ControlUiSessionHeaderFacts,
 } from "../../../src/plugin-sdk/control-ui.js";

@@ -1,5 +1,15 @@
+import type { ControlUiSessionOperationBinding } from "../../../../src/plugin-sdk/control-ui-session-operation.ts";
+import { formatUiError } from "../format-error.ts";
+import { scopedSessionArtifactKey } from "./session-key.ts";
+type GitHubPublicationBinding =
+  ControlUiSessionOperationBinding<GitHubPublicationPresentationBinding>;
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  createGitHubPublicationOperationFactory,
+  type GitHubPublicationPresentationBinding,
+  type GitHubPublicationOptions,
+} from "../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { GatewayRequestError, type GatewayBrowserClient } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
@@ -7,15 +17,11 @@ import { interrupted as personalReview } from "../../pages/chat/chat-github-publ
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import {
-  GitHubPublicationOwner,
-  type GitHubPublicationOptions,
-} from "./github-publication-owner.ts";
-import {
   createGatewayHarness as baseGateway,
   createTestSessionCapability,
   sessionsResult,
 } from "./session-capability.test-support.ts";
-import type { GitHubPublicationBinding, SessionGateway } from "./session-capability.ts";
+import type { SessionGateway } from "./session-capability.ts";
 import { sessionRetryDelayMs } from "./session-retry.ts";
 
 function createGatewayHarness(client: GatewayBrowserClient) {
@@ -143,6 +149,8 @@ function publicationHarness(responses?: {
     return reply();
   });
   const harness = createGatewayHarness(createTestGatewayClient(request));
+  // Native callers attach only after the required publication method is advertised.
+  harness.gateway.snapshot.hello = gatewayHelloForMethods(["sessions.github.publish"]);
   const sessions = createTestSessionCapability(harness.gateway);
   const row = (id: string): GatewaySessionRow => ({
     key: `agent:main:${id}`,
@@ -152,7 +160,15 @@ function publicationHarness(responses?: {
   });
   const attach = (session = row("publication")) => {
     let changed = createDeferred();
-    const binding = sessions.githubPublication.attach(session, GitHubPublicationOwner)!;
+    const binding = sessions.retainedOperations.attach(
+      session,
+      createGitHubPublicationOperationFactory(
+        formatUiError,
+        () => "32 publications are awaiting review. Choose a new publication to release one.",
+        (target) => scopedSessionArtifactKey(target.sessionKey, target.agentId),
+      ),
+      "github-repositories",
+    )!;
     binding.subscribe(() => {
       const previous = changed;
       changed = createDeferred();

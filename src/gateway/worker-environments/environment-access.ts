@@ -103,6 +103,7 @@ type WorkerEnvironmentAccessOptions = {
   store: WorkerEnvironmentStore;
   getCleanupError: (record: WorkerEnvironmentRecord) => string | undefined;
   getConfig: () => OpenClawConfig;
+  getRepositorySources?: WorkerProviderLifecycleInputOptions["getRepositorySources"];
   projectNamespace?: string;
   prepareCurrentBundle: () => Promise<ExpectedWorkerBuild>;
   bindPreparedWorkspace?: WorkerProviderLifecycleInputOptions["bindPreparedWorkspace"];
@@ -307,6 +308,7 @@ export function createWorkerEnvironmentAccess(options: WorkerEnvironmentAccessOp
         expected: projectSnapshot,
         namespace: options.projectNamespace,
         getConfig: options.getConfig,
+        getRepositorySources: options.getRepositorySources,
         assertCurrent,
         signal: request.signal,
         knownRecipe: () => ({
