@@ -36,7 +36,7 @@ export async function withControlUiSessionGitHubRead<T>(
   ) {
     throw unavailable();
   }
-  const requestRead = await (
+  const requestRead = (
     await import("./control-ui-session-pr-request-read.js")
   ).prepareNativeRepositorySessionRequestRead(options);
   const assertClient = () => {
@@ -92,7 +92,7 @@ export async function withControlUiSessionGitHubRead<T>(
           agentId,
           requestedRepository: `${repository.owner}/${repository.repo}`,
           assertActive: assertCurrent,
-          withCredential: (run) => request.withCredential(requestUrl, run),
+          withCredential: (prepare) => request.withCredential(requestUrl, prepare),
         });
         if (!identity?.token) {
           await identity?.revoke?.();

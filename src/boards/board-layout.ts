@@ -1,11 +1,12 @@
-import { BoardValidationError } from "./board-errors.js";
-export { BoardValidationError } from "./board-errors.js";
 import type {
   BoardOp,
   BoardSnapshot,
   BoardTab,
   BoardWidget,
 } from "../../packages/gateway-protocol/src/index.js";
+import { BoardValidationError } from "./board-errors.js";
+
+export { BoardValidationError } from "./board-errors.js";
 
 export const BOARD_SIZE_PRESETS = {
   sm: { sizeW: 3, sizeH: 3 },

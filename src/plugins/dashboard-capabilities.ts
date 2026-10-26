@@ -123,8 +123,9 @@ export function registerPluginDashboardCapabilities(params: {
         localId: declaration.id,
         maxLength: BOARD_DATA_BINDING_ID_MAX_LENGTH,
       });
-    if (capabilityId.length > BOARD_DATA_BINDING_ID_MAX_LENGTH)
+    if (capabilityId.length > BOARD_DATA_BINDING_ID_MAX_LENGTH) {
       fail(params.record.id, "legacy binding id exceeds maximum length");
+    }
     claimCapabilityId(capabilityId, Boolean(declaration.legacyId));
     dataBindings.push({
       ...declaration,
@@ -228,8 +229,9 @@ export function createPluginDashboardDataBindingRegistrar() {
       throw new Error(`invalid manifest dashboard binding runtime: ${record.id}.${definition.id}`);
     }
     const definitions = (record.dashboardDataBindingRuntimes ??= new Map());
-    if (definitions.has(definition.id))
+    if (definitions.has(definition.id)) {
       throw new Error(`duplicate dashboard binding runtime: ${record.id}.${definition.id}`);
+    }
     // Preflight returns retained authority callbacks, not ordinary data.
     getPluginInstance(record)?.admitFactory(definition.prepare, ["assertCurrent", "start"]);
     definitions.set(definition.id, definition);

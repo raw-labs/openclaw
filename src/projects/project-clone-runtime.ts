@@ -1,5 +1,3 @@
-import { ProjectCloneError } from "./project-clone-contract.js";
-export { ProjectCloneError } from "./project-clone-contract.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -20,6 +18,9 @@ import {
 } from "../process/exec-result.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+import { ProjectCloneError } from "./project-clone-contract.js";
+
+export { ProjectCloneError } from "./project-clone-contract.js";
 
 const PROJECT_CLONE_TIMEOUT_MS = 10 * 60_000;
 type ProjectCloneOptions = {

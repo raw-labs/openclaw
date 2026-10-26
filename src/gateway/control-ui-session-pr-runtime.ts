@@ -12,8 +12,10 @@ import {
   type ControlUiSessionPullRequestsChanged,
   type ControlUiSessionPullRequestSnapshot,
 } from "./control-ui-contract.js";
-import { withRepositoryInternalSessionRead } from "./control-ui-session-pr-read.js";
-import { createRepositoryViewerRead } from "./control-ui-session-pr-read.js";
+import {
+  withRepositoryInternalSessionRead,
+  createRepositoryViewerRead,
+} from "./control-ui-session-pr-read.js";
 import { prepareSelectedRepositorySessionRead } from "./control-ui-session-pr-source.js";
 import { createRepositoryTaskPublicationReader } from "./control-ui-session-task-prs.js";
 import type {

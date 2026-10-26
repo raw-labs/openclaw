@@ -13,7 +13,9 @@ export async function withDashboardDataBindingRead<T>(
 ): Promise<Awaited<T>> {
   let active = true;
   const assertCurrent = () => {
-    if (!active) throw new Error("Dashboard data binding read is closed");
+    if (!active) {
+      throw new Error("Dashboard data binding read is closed");
+    }
     host.assertCurrent();
   };
   const request: PluginDashboardDataBindingHost = Object.freeze({
@@ -27,14 +29,16 @@ export async function withDashboardDataBindingRead<T>(
       assertCurrent();
       return host.getSourceConfig();
     },
-    useCurrent: async <T>(start: () => T): Promise<Awaited<T>> => {
+    useCurrent: async <TValue>(start: () => TValue): Promise<Awaited<TValue>> => {
       assertCurrent();
       return await host.useCurrent(() => {
         assertCurrent();
         return start();
       });
     },
-    trackExecution: async <T>(run: () => T | Promise<T>): Promise<Awaited<T>> => {
+    trackExecution: async <TValue>(
+      run: () => TValue | Promise<TValue>,
+    ): Promise<Awaited<TValue>> => {
       assertCurrent();
       // An admitted cache transport may finish after this widget read, but it cannot
       // start new work through a retained request facade once the read has settled.
@@ -54,7 +58,9 @@ export async function withDashboardDataBindingRead<T>(
 /** A direct Gateway RPC cannot impersonate a widget's stored grant. */
 export function captureDashboardDataBindingRead(): PluginDashboardDataBindingHost {
   const host = scope.getStore();
-  if (!host) throw new Error("Dashboard data reads require an admitted Board widget grant");
+  if (!host) {
+    throw new Error("Dashboard data reads require an admitted Board widget grant");
+  }
   host.assertCurrent();
   return host;
 }

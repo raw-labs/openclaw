@@ -134,7 +134,7 @@ function createDashboardDataBindingHost(
           })
         : await start();
       assertCurrent();
-      return await result;
+      return result;
     },
     trackExecution: async <T>(run: () => T | Promise<T>): Promise<Awaited<T>> => {
       assertCurrent();
@@ -156,7 +156,9 @@ export async function prepareBoardDataBindingGrants(
   const prepared: PreparedPluginDashboardDataBinding[] = [];
   let active = true;
   const assertPreflightCurrent = () => {
-    if (!active) throw new Error("Dashboard data binding preflight is closed");
+    if (!active) {
+      throw new Error("Dashboard data binding preflight is closed");
+    }
     authority.assertActive();
   };
   const registrations = authority.pluginRegistry?.dashboardDataBindings;
@@ -208,7 +210,9 @@ export async function prepareBoardDataBindingGrants(
 
   const assertCurrent = () => {
     assertPreflightCurrent();
-    for (const binding of prepared) binding.assertCurrent();
+    for (const binding of prepared) {
+      binding.assertCurrent();
+    }
   };
   return {
     assertCurrent,

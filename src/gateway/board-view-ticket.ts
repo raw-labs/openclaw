@@ -1,6 +1,5 @@
-import { BoardGatewayUnavailableError } from "../boards/board-errors.js";
-export { BoardGatewayUnavailableError } from "../boards/board-errors.js";
 import { createHmac, randomBytes } from "node:crypto";
+import { BoardGatewayUnavailableError } from "../boards/board-errors.js";
 import {
   capturePluginRegistryLifecycleEpoch,
   isPluginRegistryLifecycleEpochActive,
@@ -11,6 +10,8 @@ import { safeEqualSecret } from "../security/secret-equal.js";
 import { getOrCreateWeakOwnerMap } from "../shared/weak-owner-map.js";
 import type { GatewayContextResolver, GatewayRequestContext } from "./server-methods/types.js";
 import type { RemoteIngressPrincipalSnapshot } from "./server/client-identity-types.js";
+
+export { BoardGatewayUnavailableError } from "../boards/board-errors.js";
 
 export const BOARD_HTTP_PATH_PREFIX = "/__openclaw__/board/";
 // Bounds residual bearer access after the originating client loses its view authority.

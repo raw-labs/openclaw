@@ -1,7 +1,7 @@
 import { resolveGitHubHost } from "../agents/github-host-runtime.js";
 import { githubRepositoryUrl } from "../agents/github-host.js";
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import {
+  resolveConfiguredGitHubToolIdentity,
   prepareGitHubPublicationIdentity,
   matchesPreparedGitHubPublicationIdentity,
 } from "../agents/github-tool-identity.js";

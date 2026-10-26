@@ -12,8 +12,8 @@ import {
   RepositoryPublicationAuthorityLostError,
   RepositoryPublicationFailureError,
   RepositoryPublicationRequesterUnavailableError,
+  RepositoryPublicationWorkspaceChangedError,
 } from "./github-publication-errors.js";
-import { RepositoryPublicationWorkspaceChangedError } from "./github-publication-errors.js";
 import {
   GitHubPublicationRecoveryPendingError,
   assertGitHubPublicationRefCasCompleted,

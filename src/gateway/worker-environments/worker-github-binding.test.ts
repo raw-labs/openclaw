@@ -39,13 +39,17 @@ function preparePublicationFact(params: typeof session & { assertCurrent?: () =>
       signal: service.signal,
     }),
     assertCurrent: () => {
-      if (params.assertCurrent?.() === false) throw new Error("Worker discovery retired");
+      if (params.assertCurrent?.() === false) {
+        throw new Error("Worker discovery retired");
+      }
     },
   });
 }
 async function prepareWorkerGitHubBinding(params: Parameters<typeof preparePublicationFact>[0]) {
   const fact = await preparePublicationFact(params);
-  if (!fact?.identity || !fact.branch) return undefined;
+  if (!fact?.identity || !fact.branch) {
+    return undefined;
+  }
   let binding: ReturnType<typeof parseWorkerGitHubLaunchBinding>;
   await fact.identity.deliver(
     new RepositoryWorkerIdentityTransfer(async (credential, assertCurrent) => {
@@ -281,7 +285,9 @@ async function prepareGrant(assertCurrent = () => {}, accessExpiresAtMs?: number
     });
   }
   const fact = await preparePublicationFact(session);
-  if (!fact?.identity || !fact.workspaceKey) throw new Error("Expected background identity");
+  if (!fact?.identity || !fact.workspaceKey) {
+    throw new Error("Expected background identity");
+  }
   mocks.verify.mockClear();
   return bindPreparedGrant(fact, assertCurrent);
 }

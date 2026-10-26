@@ -20,7 +20,9 @@ export function resolvePluginRepositorySource(
   }
   const matches = (registry?.repositorySources ?? []).flatMap((entry) => {
     const id = `${entry.pluginId}/${entry.provider.id}`;
-    if (sourceId && id !== sourceId) return [];
+    if (sourceId && id !== sourceId) {
+      return [];
+    }
     entry.assertCurrent();
     const resolved = entry.provider.resolve(url);
     return resolved && normalizePluginRepositoryUrl(resolved.url) ? [{ entry, resolved, id }] : [];
@@ -79,7 +81,9 @@ export function resolvePluginRepositorySource(
       identity: { source: string; key?: string };
     }) {
       assertCurrent();
-      if (input.identity.source !== "plugin" || !input.identity.key) return false;
+      if (input.identity.source !== "plugin" || !input.identity.key) {
+        return false;
+      }
       const current = entry.provider.worker?.isIdentityCurrent?.({
         agentId: input.agentId,
         identityKey: input.identity.key,
@@ -95,8 +99,9 @@ export function resolvePluginRepositorySource(
       assertCurrent: () => void;
     }) {
       const restore = entry.provider.worker?.restore;
-      if (!restore)
+      if (!restore) {
         throw new Error("This repository source does not support publication-bearing restoration.");
+      }
       const assertSourceCurrent = () => {
         assertCurrent();
         input.signal?.throwIfAborted();

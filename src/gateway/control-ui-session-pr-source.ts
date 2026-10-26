@@ -14,8 +14,8 @@ import type {
   PreparedRepositorySessionRead,
   RepositorySessionObservation,
   RepositorySessionSourceScope,
+  RepositoryTaskPublications,
 } from "./repository-session-read.types.js";
-import type { RepositoryTaskPublications } from "./repository-session-read.types.js";
 import type { MaterializedRow } from "./session-row-projection-record.js";
 import { resolveSessionWorkspaceRoots } from "./session-workspace-roots.js";
 

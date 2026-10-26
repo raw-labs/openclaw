@@ -1,4 +1,3 @@
-export type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { createHash } from "node:crypto";
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
@@ -9,6 +8,8 @@ import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
 import type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 import type { GitHubToolAccount } from "./github-tool-account.js";
+
+export type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";

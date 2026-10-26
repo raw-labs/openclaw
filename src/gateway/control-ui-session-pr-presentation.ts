@@ -1,7 +1,7 @@
 import type { OpenClawConfig } from "../plugin-sdk/core.js";
-import {
-  type RepositorySessionPresentation,
-  type RepositorySessionReads,
+import type {
+  RepositorySessionPresentation,
+  RepositorySessionReads,
 } from "../plugin-sdk/repository-session-read.js";
 import {
   loadControlUiSessionPullRequestChecks,

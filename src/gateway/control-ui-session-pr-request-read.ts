@@ -103,12 +103,12 @@ function createRepositorySessionRequestRead(
                 if (!presentation || selected !== read) {
                   throw new Error("Repository session review is unavailable");
                 }
-                const result = await presentation.checks(selected, params, () => {
+                const checks = await presentation.checks(selected, params, () => {
                   assertReadCurrent();
                   guard();
                 });
                 assertReadCurrent();
-                return result;
+                return checks;
               },
               withCredential: async (requestUrl, run) => {
                 if (!read) {

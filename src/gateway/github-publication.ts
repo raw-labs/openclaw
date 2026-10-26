@@ -35,14 +35,16 @@ import { executeGitHubPublication } from "./github-publication-executor.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import { assertPublicationChangePermission as assertGitHubPublicationWorkflowChangesAllowed } from "./github-publication-policy.js";
 import { projectGitHubPublicationResult as publicationResult } from "./github-publication-receipt.js";
-import { reconcileGitHubPublication } from "./github-publication-recovery.js";
-import { readGitHubPublicationRequestInWorker } from "./github-publication-recovery.js";
+import {
+  reconcileGitHubPublication,
+  readGitHubPublicationRequestInWorker,
+} from "./github-publication-recovery.js";
 import { isGitHubPublicationRequesterV2 } from "./github-publication-requester-capability.js";
 import type { GitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import { restoreGitHubPublicationRequester } from "./github-publication-requester.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./github-publication-runtime-deps.js";
-import { runGitHubPublicationMaintenanceAsync } from "./github-publication-store-async.js";
 import {
+  runGitHubPublicationMaintenanceAsync,
   claimGitHubPublicationExecutionAsync,
   createGitHubPublicationExecutionStoreAsync,
   deferGitHubPublicationRequestsAsync,

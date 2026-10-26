@@ -144,7 +144,9 @@ it("keeps plugin clones, registration and refresh with the managed checkout owne
 it("binds worker reads and restoration to the initiating source authority", async () => {
   let current = true;
   const assertCurrent = () => {
-    if (!current) throw new Error("Repository caller retired");
+    if (!current) {
+      throw new Error("Repository caller retired");
+    }
   };
   const fixture = createRepositorySourceFixture({
     id: "remote",

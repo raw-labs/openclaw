@@ -254,7 +254,7 @@ export function createGitHubPublicationRuntime(params: {
     }
   };
   return {
-    resolveGitAuthor(agentId: string) {
+    resolveGitAuthor(this: void, agentId: string) {
       return params.provider.resolveGitAuthor?.(agentId);
     },
     ready,

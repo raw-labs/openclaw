@@ -380,7 +380,7 @@ export const controlUiHandlers: GatewayRequestHandlers = {
       return;
     }
     try {
-      const requestRead = await (
+      const requestRead = (
         await import("../control-ui-session-pr-request-read.js")
       ).prepareNativeRepositorySessionRequestRead(options);
       await requestRead.withRead(
@@ -442,7 +442,7 @@ export const controlUiHandlers: GatewayRequestHandlers = {
     }
     let requestRead;
     try {
-      requestRead = await (
+      requestRead = (
         await import("../control-ui-session-pr-request-read.js")
       ).prepareNativeRepositorySessionRequestRead(options);
     } catch {

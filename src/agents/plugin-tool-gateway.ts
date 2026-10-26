@@ -70,7 +70,7 @@ export function preparePluginToolGatewayCapability(
         : undefined;
     const assertOwnedMethod = (method: string) => {
       if (ownedMethods.has(method)) {
-        return;
+        return undefined;
       }
       if (workspacePublicationMethods.has(method) && assertWorkspaceProvider) {
         assertWorkspaceProvider();
