@@ -310,8 +310,7 @@ export function createWorkerPlacementDispatchStartup(options: {
           }
         : {}),
     });
-    params.signal?.throwIfAborted();
-    params.authorize?.();
+    assertRequestCurrent();
     const ownerEpoch = credential.ownerEpoch;
     let activated = false;
     let activationIndeterminate = false;
@@ -328,8 +327,7 @@ export function createWorkerPlacementDispatchStartup(options: {
         ownerEpoch,
         authorize: assertAttachmentCurrent,
       });
-      params.signal?.throwIfAborted();
-      params.authorize?.();
+      assertRequestCurrent();
       const gitAuthor = options.resolveGitAuthor?.(request.agentId);
       const project = readWorkerProjectSnapshot(params.environment.profileSnapshot.project);
       const requireAttachedEnvironment = () => {
@@ -376,7 +374,10 @@ export function createWorkerPlacementDispatchStartup(options: {
         if (project && "source" in project) {
           if (
             params.workspace.kind !== "repository" ||
-            project.source.url !== params.workspace.repository.url
+            project.source.url !== params.workspace.repository.url ||
+            // Automatic selection records the resolved source only in the prepared intent.
+            (params.workspace.repositorySourceId !== undefined &&
+              project.source.repositorySourceId !== params.workspace.repositorySourceId)
           ) {
             throw new Error("Prepared repository does not match this session's source");
           }

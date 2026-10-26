@@ -189,7 +189,6 @@ function createFixture(
 
     getClientConnIds: (filter?: (candidate: GatewayClient) => boolean) =>
       new Set(connected && (!filter || filter(client)) ? [client.connId] : []),
-    githubPublicationService: publication,
   } as unknown as GatewayRequestContext;
   const methods = createRequestGatewayMethodRegistry();
   context.getGatewayMethodRegistry = () => methods;

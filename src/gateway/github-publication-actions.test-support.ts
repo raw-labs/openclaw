@@ -21,7 +21,6 @@ import {
   createRequesterPublicationFixture,
 } from "./github-publication-requester.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 
 const mocks = githubPublicationTestMocks();
 
@@ -222,10 +221,7 @@ export function createPublicationActionInvoker(
       await handleGatewayRequest({
         req: { type: "req", id: randomUUID(), method, params },
         client: invocation.client ?? principal.client,
-        context: {
-          ...principal.context,
-          githubPublicationService: f.coordinator,
-        } as GatewayRequestContext,
+        context: principal.context,
         isWebchatConnect: () => false,
         respond,
       });

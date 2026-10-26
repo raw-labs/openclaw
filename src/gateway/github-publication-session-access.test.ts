@@ -20,7 +20,6 @@ import {
 import type { OperatorScope } from "./operator-scopes.js";
 import { prepareRepositoryPublicationSession } from "./repository-publication-workspace-authority.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "./server/ws-connection/connect-operator-access.js";
@@ -137,10 +136,7 @@ describe("registered session GitHub publication access", () => {
       };
       await handleGatewayRequest({
         req: { type: "req", id: params.idempotencyKey, method: "sessions.github.publish", params },
-        context: {
-          ...f.guestSource.context,
-          githubPublicationService: f.coordinator,
-        } as GatewayRequestContext,
+        context: f.guestSource.context,
         client:
           actor === "system"
             ? createSyntheticPluginRuntimeClient({

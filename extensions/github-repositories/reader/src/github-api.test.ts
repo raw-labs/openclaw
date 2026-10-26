@@ -97,7 +97,7 @@ describe("GitHub API base URL", () => {
     "https://api.ghe.example.test/other",
   ])("rejects unsafe configured API origin %s", (origin) => {
     expect(() => resolveGitHubApiUrls(origin)).toThrow(
-      "gateway.github.apiBaseUrl must be an HTTPS GitHub API base URL",
+      "plugins.entries.github-repositories.config.apiBaseUrl must be an HTTPS GitHub API base URL",
     );
   });
 });

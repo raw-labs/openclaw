@@ -193,7 +193,6 @@ it.each([
     const context = {
       ...createContext(),
       ...source.context,
-      githubPublicationService: f.coordinator,
     };
     if (!readRepositoryServices(context)) {
       await installPublicationRpcFixture(context, f.coordinator);
@@ -329,7 +328,6 @@ it.each(["first", "checkpoint", "merge"])(
     const context = {
       ...createContext(),
       ...f.guestSource.context,
-      githubPublicationService: f.coordinator,
     };
     if (!readRepositoryServices(context)) {
       await installPublicationRpcFixture(context, f.coordinator);

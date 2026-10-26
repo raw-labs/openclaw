@@ -233,7 +233,7 @@ export async function callPersonalPublicationRpc(
 ) {
   const respond = vi.fn();
   const personal = createPersonalGitHubOAuthLifecycle();
-  const rpcContext = { ...context, githubPublicationService: coordinator };
+  const rpcContext = { ...context };
   const uninstall = installGitHubAccountFixture(
     rpcContext,
     {

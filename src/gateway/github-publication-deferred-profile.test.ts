@@ -19,7 +19,6 @@ import {
 import { prepareGatewayLocalUserIngress } from "./local-user-ingress.js";
 import { WEBSOCKET_OPEN_READY_STATE } from "./server-constants.js";
 import { dispatchAuthorizationRequest } from "./server-methods.authorization.test-support.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "./server/ws-connection/connect-operator-access.js";
 import { createGatewayConnectProfileLifecycle } from "./server/ws-connection/connect-user-profile.js";
@@ -96,10 +95,7 @@ it.each(["own", "foreign"] as const)(
       "sessions.github.publish",
       params,
       {
-        context: {
-          ...f.guestSource.context,
-          githubPublicationService: f.coordinator,
-        } as GatewayRequestContext,
+        context: f.guestSource.context,
         client,
       },
       params.idempotencyKey,

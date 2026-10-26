@@ -1,7 +1,6 @@
 import { existsSync, symlinkSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { prepareCurrentGitHubPublicationOptionsIdentity } from "../../extensions/github-repositories/publication-availability-api.js";
 import { observeHostDataSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { resetConfigRuntimeState, setRuntimeConfigSnapshot } from "../config/config.js";
 import { loadCombinedSessionStoreForGatewayCore } from "../config/sessions/combined-store-gateway.native.js";
@@ -47,6 +46,7 @@ import {
 } from "./server-methods/sessions-read-cache.test-support.js";
 import type { GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
+import { createGitHubOptionsLookupContext } from "./session-utils-store-lookup.github.test-support.js";
 import {
   resolveGatewaySessionStoreTargetWithStoreAsync,
   withGatewaySessionStoreTarget,
@@ -58,19 +58,6 @@ import { withStateDirEnv } from "./session-utils.test-support.js";
 import type { GatewaySessionRow } from "./session-utils.types.js";
 
 afterEach(() => memorySessionActorOwners.reset());
-
-vi.mock("./repository-publication-workspace-authority.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("./repository-publication-workspace-authority.js")
-  >("./repository-publication-workspace-authority.js");
-  return {
-    ...actual,
-    prepareCurrentGitHubPublicationOptionsIdentity: vi.fn(async (agentId: string) => ({
-      source: "system",
-      account: { accountId: `account-${agentId}`, login: `synthetic-${agentId}` },
-    })),
-  };
-});
 
 afterEach(() => resetConfigRuntimeState());
 
@@ -279,13 +266,8 @@ describe("global session lookup ownership", () => {
 
   it("routes GitHub options and its access recheck to the qualified alias owner", async () => {
     await withGlobalSessions("main", async (cfg) => {
-      const latestShared = vi.fn<
-        NonNullable<GatewayRequestContext["githubPublicationService"]>["latestShared"]
-      >(async () => null);
-      const context = {
-        getRuntimeConfig: () => cfg,
-        githubPublicationService: { latestShared },
-      } as unknown as GatewayRequestContext;
+      const { context, latestShared, prepareIdentity } =
+        await createGitHubOptionsLookupContext(cfg);
       for (const agentId of ["research", "main", "research"]) {
         const respond = vi.fn<RespondFn>();
         await handleGatewayRequest({
@@ -308,15 +290,12 @@ describe("global session lookup ownership", () => {
           pendingPersonal: null,
           latestShared: null,
           shared: {
-            source: "system",
-            accountId: `account-${agentId}`,
+            source: "system-configured",
+            accountId: agentId === "research" ? 202 : 101,
             login: `synthetic-${agentId}`,
           },
         });
-        expect(prepareCurrentGitHubPublicationOptionsIdentity).toHaveBeenLastCalledWith(
-          agentId,
-          expect.any(Function),
-        );
+        expect(prepareIdentity).toHaveBeenLastCalledWith(agentId, expect.any(Function));
         expect(latestShared).toHaveBeenLastCalledWith(
           expect.objectContaining({
             agentId,

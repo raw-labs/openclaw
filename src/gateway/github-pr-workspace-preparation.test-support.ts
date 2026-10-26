@@ -271,7 +271,6 @@ export async function fixture(
     ) => {
       const respond = vi.fn();
       const context = Object.assign(createRequestContext(), f.guestSource.context, {
-        githubPublicationService: f.coordinator,
         workerSessionPlacementService: f.placements,
       });
       context.resolveGatewayContext = () => context;

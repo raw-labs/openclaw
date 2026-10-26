@@ -278,7 +278,6 @@ it("recovers one guest integration, retains saved data and publishes the resolve
         {
           client: f.guestSource.client,
           context: Object.assign(createRequestContext(), f.guestSource.context, {
-            githubPublicationService: f.coordinator,
             workerSessionPlacementService: f.placements,
           }),
           signal,
