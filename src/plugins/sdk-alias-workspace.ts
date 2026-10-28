@@ -15,6 +15,7 @@ const WORKSPACE_PACKAGE_ALIAS_SUBPATHS = [
       "",
       "client-info",
       "connect-error-details",
+      "cron-list-page-validation",
       "frame-guards",
       "gateway-error-details",
       "restart-unavailable",
