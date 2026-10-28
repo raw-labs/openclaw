@@ -1,5 +1,3 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import type { JSX } from "@solidjs/web";
 import { createComponent, createRoot, createSignal, merge, Show } from "solid-js";
 import type { ControlUiComponentHandle } from "../../../src/plugin-sdk/control-ui-components.js";
@@ -145,7 +143,6 @@ export function createControlUiPresentationHost(
       return stop;
     },
     formatError: formatUiError,
-    declarationDigest: (value) => bytesToHex(sha256(new TextEncoder().encode(value))),
     formatDuration: formatDurationCompact,
     safeExternalUrl: resolveSafeExternalUrl,
     translate(key, params) {

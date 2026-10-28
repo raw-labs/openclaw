@@ -285,8 +285,8 @@ it("keeps prepared binding authority callbacks owned by the registering plugin",
     getSourceConfig: () => ({}),
     cacheScope: {},
     assertCurrent() {},
-    useCurrent: async (start) => await start(),
-    trackExecution: async (run) => await run(),
+    useCurrent: async <T>(start: () => T): Promise<Awaited<T>> => await start(),
+    trackExecution: async <T>(run: () => T | Promise<T>): Promise<Awaited<T>> => await run(),
   });
   expect(await prepared.start(() => "started")).toBe("started");
   await getPluginInstance(record)!.dispose();

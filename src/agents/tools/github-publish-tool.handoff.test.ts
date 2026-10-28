@@ -236,7 +236,10 @@ it.each(["prepared", "failed", "stop", "undelivered", "reset"] as const)(
                                   );
                                 },
                               }),
-                              captureGatewayToolCallerAssertion(),
+                              expectDefined(
+                                captureGatewayToolCallerAssertion(),
+                                "publication caller authority",
+                              ),
                             ),
                             runAbort.signal,
                           ),

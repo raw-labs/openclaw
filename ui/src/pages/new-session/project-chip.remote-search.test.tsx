@@ -43,10 +43,11 @@ function mountSearch() {
     client: context.gateway.snapshot.client,
     connectionEpoch: 1,
   });
+  const methods = ["projects.searchRemote"];
   Object.assign(context.gateway.snapshot, {
     hello: {
       ...context.gateway.snapshot.hello,
-      features: { methods: ["projects.searchRemote"] },
+      features: { methods },
     },
   });
   vi.spyOn(browser, "projects", "get").mockReturnValue(projects);
@@ -99,7 +100,7 @@ function mountSearch() {
     input.dispatchEvent(new Event("input", { bubbles: true }));
     flush();
   };
-  return { ...fixture, view, input, localRow, typeQuery };
+  return { ...fixture, view, input, localRow, typeQuery, methods };
 }
 
 afterEach(() => vi.useRealTimers());
@@ -157,7 +158,7 @@ describe("remote project search slot", () => {
   });
 
   it("renders contributed sources beside native results and retains the source on selection", async () => {
-    const { browser, context, request, view, typeQuery } = mountSearch();
+    const { browser, context, request, view, typeQuery, methods } = mountSearch();
     Object.assign(context, {
       plugins: {
         registryStatus: "complete",
@@ -173,7 +174,7 @@ describe("remote project search slot", () => {
         subscribe: () => () => undefined,
       },
     });
-    context.gateway.snapshot.hello!.features!.methods.push("forge.repositories.search");
+    methods.push("forge.repositories.search");
     const native = createDeferred<ProjectsSearchRemoteResult>();
     const contributed = createDeferred<ProjectsSearchRemoteResult>();
     request.mockImplementation((method) =>

@@ -515,7 +515,7 @@ the selected Settings agent changes. Client, identity, permissions, route, or me
 catalog replacement retires authority; a same-client reconnect preserves drafts but
 rejects earlier replies. `request` accepts a cancellation signal.
 
-Use `readConfig` and `readAgentConfig` to read the existing config owner, and
+Use `readConfig(path)` to read the existing config owner, and
 `runConfigMutation` to delegate serialization and refresh to that same owner. The
 host does not create a second config cache or grant new backend write permissions.
 Accepted configuration work can settle and clean up after its view closes; new
@@ -532,6 +532,10 @@ lifetime changes. `createSetSync` delegates subscription batching, acknowledgeme
 and retries to the native lifecycle; detach it when its observation ends. Scope
 and method checks are presentation facts, never a substitute for Gateway
 authorization at dispatch.
+
+Cron inventory readers are available from
+`@openclaw/gateway-protocol/cron-list-page-validation`. This narrow entrypoint
+shares page validation without loading the protocol's schema runtime in a browser.
 
 The optional `host.presentation` capability mounts existing native controls:
 menus, icons, activity pills, lazy/error states, tooltips, clipped text and marquees.

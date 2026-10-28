@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "@openclaw/gateway-protocol";
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
 import {
   resolveExpiresAtMsFromDurationMs,
   timestampMsToIsoString,

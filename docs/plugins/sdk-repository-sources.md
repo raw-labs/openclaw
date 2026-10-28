@@ -77,6 +77,10 @@ current access and repository identity at the supplied boundaries. The host
 retains the selected source and pinned commit through dispatch, restart, and
 Gateway recovery.
 
+The host revalidates the worker lease before and after `prepareGitPack`. The
+provider keeps current caller and captured credential assertions at each transport
+effect; it does not repeat the host's remote lease revalidation.
+
 Cold checkout uses a host-owned one-use `RepositoryCheckoutTransfer`. Pass it to
 `performRepositoryCheckout` with transport authorization when needed. The transfer
 selects the operation and destination; a plugin does not receive the workspace

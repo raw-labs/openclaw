@@ -164,7 +164,6 @@ export type ControlUiSettingsContextV2 = Omit<ControlUiSettingsContext, "props" 
   readonly components: ControlUiSettingsComponentsV2;
   request: ControlUiSettingsClient["request"];
   readConfig: (path: readonly string[]) => unknown;
-  readAgentConfig: (agentId: string) => { tools?: unknown } | null;
   registerEnglish: (catalog: Record<string, Record<string, string>>) => void;
   copyButton: (
     event: Event,

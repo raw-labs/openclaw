@@ -22,6 +22,10 @@
     "../../src/infra/update-*.test.ts",
     "../../src/infra/update-*.test.tsx",
     "../../src/infra/package-update-*.test.ts",
-    "../../src/infra/package-update-*.test.tsx"
+    "../../src/infra/package-update-*.test.tsx",
+    "../../src/infra/session-cost-usage*.test.ts",
+    "../../src/infra/session-cost-usage*.test.tsx",
+    "../../src/infra/postgres-sync/**/*.test.ts",
+    "../../src/infra/postgres-sync/**/*.test.tsx"
   ]
 }

@@ -13,10 +13,7 @@ import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { hasOperatorReadAccess } from "../app/operator-access.ts";
 import { showConfirmDialog } from "../components/confirm-dialog.ts";
 import { handleCopyButton } from "../components/copy-button-state.ts";
-import {
-  resolveAgentConfigEntryTarget,
-  currentConfigObject,
-} from "../lib/config/config-state-model.ts";
+import { currentConfigObject } from "../lib/config/config-state-model.ts";
 import { formatUiExternalText, formatUiError } from "../lib/format-error.ts";
 import { formatDateTimeMs, formatRelativeTimestamp } from "../lib/format.ts";
 import { t } from "../lib/reactive/i18n.ts";
@@ -149,15 +146,6 @@ export function ControlUiSettingsPresentation(props: {
         current();
         const context: Omit<ControlUiSettingsContextV2, "props"> = {
           apiVersion: 2 as const,
-          readAgentConfig(agentId) {
-            current();
-            return (
-              resolveAgentConfigEntryTarget(
-                currentConfigObject(props.application.runtimeConfig.state),
-                agentId,
-              )?.entry ?? null
-            );
-          },
           readConfig(path: readonly string[]) {
             current();
             let value: unknown = currentConfigObject(props.application.runtimeConfig.state);

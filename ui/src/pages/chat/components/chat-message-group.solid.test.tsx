@@ -1,15 +1,14 @@
 /* @vitest-environment jsdom */
 
 import { createSignal } from "solid-js";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  ControlUiHost,
-  ControlUiReplacement,
-} from "../../../../../src/plugin-sdk/control-ui.js";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import type { ControlUiReplacementV2 as ControlUiReplacement } from "../../../../../src/plugin-sdk/control-ui.js";
+import { bootstrapApplication } from "../../../app/bootstrap.ts";
 import type { ApplicationContext } from "../../../app/context.ts";
 import { ContentPresentation } from "../../../lib/solid/presentation.ts";
 import type { ControlUiPluginCapability } from "../../../plugins/control-ui-capability.ts";
 import "../../../plugins/control-ui-view.solid.tsx";
+import { createTestControlUiPluginHost } from "../../../test-helpers/control-ui-plugin-host.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../../../test-helpers/solid-application-context.tsx";
 import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
@@ -263,20 +262,14 @@ it("retains aggregate disclosure and legacy card focus when options refresh", as
 
 it("mounts only selected tool replacements and keeps their context, projection, and disposal current", async () => {
   const listeners = new Set<() => void>();
-  const abort = new AbortController();
-  // SAFETY: This mounted-view fixture supplies the service objects scoped by the host; it never calls their methods.
-  const pluginHost = {
-    signal: abort.signal,
-    sessions: {},
-    agents: {},
-    navigation: {},
-    ui: {},
-    components: {},
-  } as ControlUiHost;
+  const application = bootstrapApplication();
+  onTestFinished(() => application.stop());
   let selected: ControlUiReplacement | undefined;
   const reportError = vi.fn();
   const plugins: ControlUiPluginCapability = {
     errors: [],
+    settingsContributions: [],
+    repositorySources: [],
     hasPlugins: true,
     revision: 0,
     registryStatus: "complete",
@@ -296,7 +289,7 @@ it("mounts only selected tool replacements and keeps their context, projection, 
             pluginId: "fixture",
             value: selected,
             host: pluginHost,
-            signal: abort.signal,
+            signal: pluginHost.signal,
           }
         : undefined,
     subscribe: (listener: () => void) => {
@@ -305,8 +298,8 @@ it("mounts only selected tool replacements and keeps their context, projection, 
     },
     reportError,
   };
-  // SAFETY: This grouped-renderer fixture consumes only the complete plugin capability.
-  const context = { plugins } as ApplicationContext;
+  const context: ApplicationContext = { ...application.context, plugins };
+  const pluginHost = createTestControlUiPluginHost(context, "fixture");
   const provider = createSolidApplicationContextProvider(context);
   const [group, setGroup] = createSignal(
     createMessageGroup(

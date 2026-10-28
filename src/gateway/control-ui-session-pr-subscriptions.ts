@@ -1,7 +1,4 @@
-import {
-  AsyncWorkScope,
-  createConcurrencyLimit as pLimit,
-} from "../plugin-sdk/concurrency-runtime.js";
+import pLimit from "p-limit";
 import type { OpenClawConfig } from "../plugin-sdk/config-contracts.js";
 import type {
   ControlUiSessionPullRequestSnapshot,
@@ -11,6 +8,7 @@ import type {
 } from "../plugin-sdk/native-github-session-read.js";
 import type { OpenClawPluginServiceContextV2 } from "../plugin-sdk/plugin-entry.js";
 import { parseAgentSessionKey } from "../plugin-sdk/routing.js";
+import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import {
   createControlUiSessionPrPreparedRead,
   addControlUiSessionPrMembership,

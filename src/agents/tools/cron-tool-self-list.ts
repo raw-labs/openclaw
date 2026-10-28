@@ -1,7 +1,7 @@
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "@openclaw/gateway-protocol";
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 
 const CRON_SELF_LIST_MAX_PAGES = 50;
