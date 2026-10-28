@@ -6,7 +6,7 @@ import {
   type GatewayRequestHandlerOptions,
   type GatewayRequestHandlers,
 } from "openclaw/plugin-sdk/gateway-runtime";
-import { captureRepositorySessionRequestRead } from "openclaw/plugin-sdk/repository-session-read";
+import { captureNativeGitHubSessionRequestRead as captureRepositorySessionRequestRead } from "openclaw/plugin-sdk/native-github-session-read";
 import type { ControlUiSessionPullRequestChecksParams } from "../control-ui-session-pr-check-details-api.js";
 import { parseControlUiSessionPullRequestsSubscribeParams } from "../control-ui-session-pr-subscription-params-api.js";
 import {

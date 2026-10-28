@@ -13,7 +13,7 @@ import {
   type GatewayRequestHandlers,
   type GatewayRequestHandlerOptions,
 } from "openclaw/plugin-sdk/gateway-runtime";
-import { prepareGatewayPersonalCallerV2 } from "openclaw/plugin-sdk/repository-session-host";
+import { prepareGatewayNativeGitHubPersonalCallerV2 as prepareGatewayPersonalCallerV2 } from "openclaw/plugin-sdk/native-github-publication-host";
 import { readRepositoryServices, type RepositoryServices } from "../account-runtime-api.js";
 import type { PersonalGitHubAction } from "../personal-oauth-api.js";
 import { resolveSystemGitHubIdentityStatus } from "../tool-identity-api.js";

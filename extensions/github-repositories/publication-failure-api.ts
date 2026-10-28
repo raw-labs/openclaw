@@ -1,11 +1,11 @@
 import type { SessionGitHubPublicationResult } from "@openclaw/gateway-protocol";
 import { GatewayErrorDetailCodes } from "@openclaw/gateway-protocol/gateway-error-details";
 import type { GitHubPublicationSelectionRejectedErrorDetails } from "@openclaw/gateway-protocol/gateway-error-details";
-import { RepositoryPublicationCreditChangedError } from "openclaw/plugin-sdk/repository-publication-content";
 import {
-  RepositoryPublicationFailureError,
-  RepositoryPublicationAuthorityError,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  NativeGitHubPublicationCreditChangedError as RepositoryPublicationCreditChangedError,
+  NativeGitHubPublicationFailureError as RepositoryPublicationFailureError,
+  NativeGitHubPublicationAuthorityError as RepositoryPublicationAuthorityError,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 
 type PublicationFailure = Pick<
   Extract<SessionGitHubPublicationResult, { status: "failed" }>,
@@ -155,8 +155,8 @@ export function isDefinitiveGitHubPublicationFailure(error: unknown): boolean {
 }
 
 export {
-  RepositoryPublicationRequesterUnavailableError as GitHubPublicationRequesterUnavailableError,
-  RepositoryPublicationChangePermissionError as GitHubPublicationWorkflowPermissionError,
-  RepositoryPublicationWorkspaceChangedError as GitHubPublicationWorkspaceChangedError,
-  RepositoryPublicationSessionChangedError as GitHubPublicationSessionChangedError,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  NativeGitHubPublicationRequesterUnavailableError as GitHubPublicationRequesterUnavailableError,
+  NativeGitHubPublicationChangePermissionError as GitHubPublicationWorkflowPermissionError,
+  NativeGitHubPublicationWorkspaceChangedError as GitHubPublicationWorkspaceChangedError,
+  NativeGitHubPublicationSessionChangedError as GitHubPublicationSessionChangedError,
+} from "openclaw/plugin-sdk/native-github-publication-host";

@@ -5,11 +5,11 @@ import {
   matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync,
   inspectGitHubOAuthRecord,
-  type GitHubDeviceAuthorizationRecord,
-  type GitHubIdentityScope,
-  type GitHubOAuthRecord,
-  type RepositoryOAuthStateHostV1,
-} from "openclaw/plugin-sdk/repository-identity-host";
+  type NativeGitHubDeviceAuthorizationRecord as GitHubDeviceAuthorizationRecord,
+  type NativeGitHubIdentityScope as GitHubIdentityScope,
+  type NativeGitHubOAuthRecord as GitHubOAuthRecord,
+  type NativeGitHubOAuthStateHostV1 as RepositoryOAuthStateHostV1,
+} from "openclaw/plugin-sdk/native-github-account-host";
 import { readGitHubConfig, readGitHubAgentIdentity } from "./config-api.js";
 import type { GitHubToolIdentityConfig } from "./config-api.js";
 import { resolveConfiguredGitHubToolIdentity } from "./tool-identity-api.js";

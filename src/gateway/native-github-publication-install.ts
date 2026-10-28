@@ -1,9 +1,3 @@
-import type {
-  RepositoryPublicationPublisher,
-  RepositoryWorkerIdentity,
-  RepositoryPublicationProvider,
-} from "../gateway/repository-publication-contract.js";
-import { readWorkspacePublicationHost } from "../gateway/workspace-publication-binding.js";
 import { pluginInstanceInvocation } from "../plugins/plugin-instance-invocation.js";
 import {
   getPluginInstance,
@@ -15,6 +9,12 @@ import {
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
 import { getPluginServiceSchedulerBinding } from "../plugins/service-scheduler-binding.js";
+import type {
+  RepositoryPublicationPublisher,
+  RepositoryWorkerIdentity,
+  RepositoryPublicationProvider,
+} from "./repository-publication-contract.js";
+import { readWorkspacePublicationHost } from "./workspace-publication-binding.js";
 
 /** Install only the vendor adapter. Accepted transaction recovery remains Gateway-owned. */
 export async function installRepositoryPublicationProvider(
@@ -54,7 +54,7 @@ export async function installRepositoryPublicationProvider(
   const rememberPublisher = (publisher: RepositoryPublicationPublisher) => {
     signal.throwIfAborted();
     const retained: RepositoryPublicationPublisher = {
-      reference: publisher.reference,
+      provenance: publisher.provenance,
       author: publisher.author,
       assertCurrent() {
         signal.throwIfAborted();
@@ -140,7 +140,7 @@ export async function installRepositoryPublicationProvider(
       const binding = await provider.bindPersonal(input);
       signal.throwIfAborted();
       const retained = {
-        reference: binding.reference,
+        provenance: binding.provenance,
         generation: binding.generation,
         assertCurrent: () => {
           signal.throwIfAborted();

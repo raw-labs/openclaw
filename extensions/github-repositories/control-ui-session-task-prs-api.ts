@@ -1,7 +1,7 @@
 import type {
   ControlUiSessionPullRequests,
-  PreparedRepositorySessionRead,
-} from "openclaw/plugin-sdk/repository-session-read";
+  PreparedNativeGitHubSessionRead as PreparedRepositorySessionRead,
+} from "openclaw/plugin-sdk/native-github-session-read";
 
 type TaskPullRequest = NonNullable<ControlUiSessionPullRequests["taskPullRequests"]>[number];
 type ReceiptResult = {

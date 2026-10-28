@@ -99,9 +99,6 @@ export function scopeControlUiHost(
             const stop = keep(() => dispose.call(result));
             return services(result, {}, stop);
           }
-          if (result && typeof result === "object" && property === "captureSummary") {
-            return services(result);
-          }
           if (
             result &&
             typeof result === "object" &&

@@ -5,12 +5,16 @@ import type {
   ToolsGitHubAuthorizeStartResult,
 } from "@openclaw/gateway-protocol";
 import type { OpenClawConfig, PluginServiceSchedulerV1 } from "openclaw/plugin-sdk/core";
+import { formatErrorMessage } from "openclaw/plugin-sdk/error-runtime";
+import { getOrCreatePromise } from "openclaw/plugin-sdk/lazy-runtime";
+import { warnPluginSdkDeprecation } from "openclaw/plugin-sdk/logging-core";
 import type {
-  GitHubDeviceAuthorizationRecord,
-  GitHubIdentityScope,
-  GitHubOAuthRecord,
-} from "openclaw/plugin-sdk/repository-identity-host";
-import { createRepositoryOAuthStateHostV1 } from "openclaw/plugin-sdk/repository-identity-host";
+  NativeGitHubDeviceAuthorizationRecord as GitHubDeviceAuthorizationRecord,
+  NativeGitHubIdentityScope as GitHubIdentityScope,
+  NativeGitHubOAuthRecord as GitHubOAuthRecord,
+} from "openclaw/plugin-sdk/native-github-account-host";
+import { createNativeGitHubOAuthStateHostV1 as createRepositoryOAuthStateHostV1 } from "openclaw/plugin-sdk/native-github-account-host";
+import { raceWithTimeout } from "openclaw/plugin-sdk/time-runtime";
 import { assertGitHubCliAvailable } from "./cli-preflight-api.js";
 import { readGitHubConfig, readGitHubAgentIdentity } from "./config-api.js";
 import type { GitHubToolIdentityConfig } from "./config-api.js";
@@ -78,8 +82,6 @@ export function createGitHubOAuthLifecycle(params: {
     deleteGitHubOAuthRecordNative,
     readGitHubDeviceAuthorizationRecordNative,
   } = host.records;
-  const { formatErrorMessage, warnPluginSdkDeprecation, getOrCreatePromise, settlesWithin } =
-    host.utilities;
   const personal = createPersonalGitHubOAuthLifecycle();
   const deviceController = new AbortController();
   const devicePolls = new Map<string, Promise<ToolsGitHubAuthorizePollResult>>();
@@ -700,7 +702,7 @@ export function createGitHubOAuthLifecycle(params: {
         // A timeout ends the caller's wait, not custody of an already-rotated token.
         settlement.abort();
       });
-      await settlesWithin(drain, SHUTDOWN_DRAIN_TIMEOUT_MS);
+      await raceWithTimeout(drain, SHUTDOWN_DRAIN_TIMEOUT_MS, () => undefined, { ref: false });
     },
   };
 }

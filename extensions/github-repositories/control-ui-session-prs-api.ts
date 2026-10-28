@@ -4,7 +4,7 @@ import type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "openclaw/plugin-sdk/repository-session-read";
+} from "openclaw/plugin-sdk/native-github-session-read";
 import {
   finishPullRequest,
   loadBoundSessionPullRequest,
@@ -25,7 +25,7 @@ import { parseGitHubRemoteUrl } from "./remote-api.js";
 import { resolveGitHubForkParent } from "./repository-target-api.js";
 
 type MergedPullHead = Parameters<
-  import("openclaw/plugin-sdk/repository-session-read").RepositorySessionSourceScope["readCheckoutBranchFacts"]
+  import("openclaw/plugin-sdk/native-github-session-read").RepositorySessionSourceScope["readCheckoutBranchFacts"]
 >[0]["mergedHeads"][number];
 export type GitHubCheckoutContext = {
   host?: string;

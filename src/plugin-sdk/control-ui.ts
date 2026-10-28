@@ -5,7 +5,6 @@ import type {
   BoardGetParams,
   SessionRow,
   SessionsListParams,
-  SessionCatalogPullRequestSummary,
 } from "@openclaw/gateway-protocol";
 import type { ControlUiComponents } from "./control-ui-components.js";
 import type { ControlUiPresentationHost } from "./control-ui-presentation.js";
@@ -234,8 +233,8 @@ export type ControlUiTextReferenceSnapshot = Readonly<{
 }>;
 export type ControlUiTextReferenceProvider = {
   id: string;
-  /** Presentation requires an admitted link reader owned by this same plugin. */
-  readerId: string;
+  /** Presentation requires this exact admitted reader; its plugin retains ownership. */
+  reader: Readonly<{ pluginId: string; id: string }>;
   snapshot: (context: BoardGetParams) => ControlUiTextReferenceSnapshot;
   observe?: (
     context: BoardGetParams & { signal: AbortSignal },
@@ -462,11 +461,6 @@ export type ControlUiHostV2 = Omit<ControlUiHost, "sessions" | "navigation" | "u
     artifactKey: (target: BoardGetParams) => string;
     agentId: (key: string) => string | undefined;
     matches: (target: BoardGetParams, eventKey: string, eventAgentId?: string | null) => boolean;
-    /** Capture the existing roster writer's read epoch; retired sinks cannot publish. */
-    captureSummary: (target: BoardGetParams) => {
-      read: () => SessionCatalogPullRequestSummary | undefined;
-      publish: (summary: SessionCatalogPullRequestSummary | undefined) => void;
-    };
   };
   navigation: ControlUiHost["navigation"] & {
     openExternal: (url: string) => void;

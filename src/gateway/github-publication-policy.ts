@@ -10,7 +10,11 @@ import {
   RepositoryPublicationChangePermissionError,
   RepositoryPublicationFailureError,
 } from "./github-publication-errors.js";
-import { decodeNativePublisher, publisherReference } from "./github-publication-publisher-facts.js";
+import {
+  assertNativePublisherProvenance,
+  matchesPublisherProvenance,
+  publisherProvenance,
+} from "./github-publication-publisher-facts.js";
 import type { GitHubPublicationRequesterPolicy } from "./github-publication-requester.js";
 import type {
   RepositoryPublicationProvider,
@@ -20,7 +24,8 @@ import type {
 export type NativeReceiptPublisher = ReturnType<typeof storagePublisher>;
 export function storagePublisher(lease: RepositoryPublicationPublisher) {
   lease.assertCurrent();
-  return { ...decodeNativePublisher(lease.reference), lease };
+  assertNativePublisherProvenance(lease.provenance);
+  return { ...lease.provenance, lease };
 }
 export async function prepareCurrentPublisher(
   provider: RepositoryPublicationProvider,
@@ -47,7 +52,8 @@ export async function bindPersonalPublisher(
     selected,
     preparation,
   });
-  const facts = decodeNativePublisher(binding.reference);
+  const facts = binding.provenance;
+  assertNativePublisherProvenance(facts);
   return { ...binding, profileId: facts.profileId, accountId: facts.account.accountId };
 }
 export async function preparePersonalPublisher(
@@ -187,12 +193,13 @@ export function createExecutionPublisher(params: {
       assertCurrent();
       if (!active) {
         active = await (params.publisher?.() ??
-          params.provider.preparePublisher(params.row.agent_id, publisherReference(params.row)));
+          params.provider.preparePublisher(params.row.agent_id, publisherProvenance(params.row)));
+        assertNativePublisherProvenance(active.provenance);
       } else {
         await active.refresh();
       }
       assertCurrent();
-      if (active.reference !== publisherReference(params.row)) {
+      if (!matchesPublisherProvenance(params.row, active.provenance)) {
         throw new Error("Publication publisher changed.");
       }
       return active;

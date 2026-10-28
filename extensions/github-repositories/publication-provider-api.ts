@@ -1,11 +1,7 @@
 import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
-import {
-  encodeNativePublisher,
-  sameNativePublisherSelection,
-  RepositoryPublicationFailureError,
-} from "openclaw/plugin-sdk/repository-publication-engine";
-import type { RepositoryPublicationProvider } from "openclaw/plugin-sdk/repository-publication-engine";
+import { NativeGitHubPublicationFailureError as RepositoryPublicationFailureError } from "openclaw/plugin-sdk/native-github-publication-host";
+import type { NativeGitHubPublicationProvider as RepositoryPublicationProvider } from "openclaw/plugin-sdk/native-github-publication-host";
 import { isRecord, readNonBlankString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { githubRepositoryUrl } from "./host-api.js";
 import { resolveGitHubHost } from "./host-runtime-api.js";
@@ -31,7 +27,11 @@ import {
 } from "./publication-git-transport-api.js";
 import { inspectOwnGitHubPullRequest } from "./publication-inspect-api.js";
 import { assertExistingPullRequestWriteAccess } from "./publication-pr-preflight-api.js";
-import { prepareGitHubPublisher, readGitHubPublisher } from "./publication-publisher-api.js";
+import {
+  sameGitHubPublisherSelection,
+  prepareGitHubPublisher,
+  readGitHubPublisher,
+} from "./publication-publisher-api.js";
 import {
   findGitHubPublicationPullRequest,
   reconcileGitHubPublicationPullRequest,
@@ -136,16 +136,16 @@ export function createGitHubPublicationProvider(owner: {
         profileId: bound.profileId,
         account: input.selected.account,
       };
-      const reference = encodeNativePublisher(selected);
+      const provenance = selected;
       return {
-        reference,
+        provenance,
         generation: input.selected.generation,
         assertCurrent: () => {
           input.action.assertCurrent();
           bound.assertCurrent();
         },
         prepare: async (assertWorkspace) =>
-          prepareGitHubPublisher(input.action.agentId, reference, {
+          prepareGitHubPublisher(input.action.agentId, provenance, {
             prepare: () =>
               preparePersonalGitHubPublicationSelection(
                 bound,
@@ -156,7 +156,7 @@ export function createGitHubPublicationProvider(owner: {
               input.action.assertCurrent();
               assertWorkspace();
               bound.assertCurrent();
-              return sameNativePublisherSelection(current, selected);
+              return sameGitHubPublisherSelection(current, selected);
             },
           }),
       };
@@ -166,9 +166,7 @@ export function createGitHubPublicationProvider(owner: {
       action.assertCurrent();
       return {
         generation: status.generation,
-        reference: status.account
-          ? encodeNativePublisher({ source: "personal", account: status.account })
-          : null,
+        provenance: status.account ? { source: "personal", account: status.account } : null,
       };
     },
     async performPullRequestAction(input) {

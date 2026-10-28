@@ -5,10 +5,7 @@ import { createSessionPullRequestStore } from "./session-pull-requests.ts";
 /** One activation owns the watched union. Views own interest, not another cache. */
 export function createRepositoryBrowserRuntime(
   host: Pick<ControlUiHostV2, "requests" | "signal"> & {
-    sessions: Pick<
-      ControlUiHostV2["sessions"],
-      "artifactKey" | "agentId" | "matches" | "captureSummary"
-    >;
+    sessions: Pick<ControlUiHostV2["sessions"], "artifactKey" | "agentId" | "matches">;
   },
 ) {
   const requests = host.requests;
@@ -19,7 +16,6 @@ export function createRepositoryBrowserRuntime(
     canCall: (method, scope) => requests.canCall(method, scope),
     matchesSession: (sessionKey, eventKey, agentId) =>
       host.sessions.matches({ sessionKey }, eventKey, agentId),
-    captureSummary: (sessionKey) => host.sessions.captureSummary({ sessionKey }),
     readSessionChanged: (payload) => {
       const event = asNullableRecord(payload);
       const row = asNullableRecord(event?.session);

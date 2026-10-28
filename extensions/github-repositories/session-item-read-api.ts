@@ -1,5 +1,5 @@
 import type { GatewayRequestHandlerOptions } from "openclaw/plugin-sdk/gateway-runtime";
-import { captureRepositorySessionRequestRead } from "openclaw/plugin-sdk/repository-session-read";
+import { captureNativeGitHubSessionRequestRead as captureRepositorySessionRequestRead } from "openclaw/plugin-sdk/native-github-session-read";
 import { repositorySessionPrTarget } from "./control-ui-session-pr-read-api.js";
 import { gitHubCheckoutContext } from "./control-ui-session-prs-api.js";
 import { resolveConfiguredGitHubApiBaseUrl, resolveConfiguredGitHubHost } from "./host-api.js";

@@ -1,4 +1,5 @@
 // Control UI tests cover GitHub link hover card behavior.
+import path from "node:path";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { BrowserContext, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
@@ -71,11 +72,14 @@ function installPreview(page: Page, options: Parameters<typeof installMockGatewa
     ...options,
   });
 }
-function installReferencePreview(page: Page, options: Parameters<typeof installMockGateway>[1]) {
+function installReferencePreview(
+  page: Page,
+  options: Parameters<typeof installMockGateway>[1] = {},
+) {
   return installMockGateway(page, {
     ...options,
     methodResponses: { "projects.list": { projects: [] }, ...options.methodResponses },
-    nativePlugins: [GITHUB_REFERENCE_PLUGIN],
+    nativePlugins: options.nativePlugins ?? [GITHUB_REFERENCE_PLUGIN],
     controlUiLinkReaders: [GITHUB_REFERENCE_READER],
     featureMethods: [
       ...(options.featureMethods ?? defaultControlUiFeatureMethods),
@@ -396,86 +400,116 @@ suite.define(() => {
     },
   );
 
-  it("keeps formatted PR references and their hover targets consistent", async () => {
-    const context = await newBrowserContext();
-    const page = await context.newPage();
-    const repository = { owner: "synthetic", repo: "formatting-demo" };
-    const href = "https://github.com/synthetic/formatting-demo/pull/1576";
-    const otherHref = "https://github.com/synthetic/other-project/pull/1576#issuecomment-1";
-    const gateway = await installReferencePreview(page, {
-      featureMethods: [
-        ...defaultControlUiFeatureMethods,
-        SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-        "github.preview",
-        "github.detail",
-      ],
-      historyMessages: [
-        assistantMessage(
-          [
-            "Synthetic formatting example",
-            "Plain: PR #1576 opened.",
-            "Formatted: PR **#1576 opened**.",
-            "Short reference: **PR** #42 opened.",
-            `Other repository: [#1576](${otherHref})`,
-          ].join("\n\n"),
-        ),
-      ],
-      methodResponses: {
-        [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]: { subscribed: true },
-        "github.preview": {
-          cases: [
-            referencePreview(
-              href,
-              "synthetic/formatting-demo #1576",
-              "Synthetic formatting example",
-            ),
-            referencePreview(
-              otherHref,
-              "synthetic/other-project #1576",
-              "Separate repository example",
-            ),
-          ],
+  it.each([true, false])(
+    "keeps formatted PR references and their hover targets consistent (repository contribution=%s)",
+    async (enabled) => {
+      const context = await newBrowserContext();
+      const page = await context.newPage();
+      const repository = { owner: "synthetic", repo: "formatting-demo" };
+      const href = "https://github.com/synthetic/formatting-demo/pull/1576";
+      const otherHref = "https://github.com/synthetic/other-project/pull/1576#issuecomment-1";
+      const gateway = await installReferencePreview(page, {
+        nativePlugins: enabled ? [GITHUB_REFERENCE_PLUGIN] : [],
+        featureMethods: [
+          ...defaultControlUiFeatureMethods,
+          SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+          "github.preview",
+          "github.detail",
+        ],
+        historyMessages: [
+          assistantMessage(
+            [
+              "Synthetic Gateway formatting example",
+              "Plain: PR #1576 opened.",
+              "Formatted: PR **#1576 opened**.",
+              "Short reference: **PR** #42 opened.",
+              `Other repository: [#1576](${otherHref})`,
+            ].join("\n\n"),
+          ),
+        ],
+        methodResponses: {
+          [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]: { subscribed: true },
+          "github.preview": {
+            cases: [
+              referencePreview(
+                href,
+                "synthetic/formatting-demo #1576",
+                "Synthetic formatting example",
+              ),
+              referencePreview(
+                otherHref,
+                "synthetic/other-project #1576",
+                "Separate repository example",
+              ),
+            ],
+          },
         },
-      },
-    });
-    await page.goto(`${suite.server.baseUrl}chat`);
-    const key = await waitForWatchedSessionKey(gateway);
-    await gateway.emitGatewayEvent(CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT, {
-      sessions: { [key]: { repository, pullRequests: [], rateLimited: false, status: "ready" } },
-    });
-    const formatted = page.locator("strong a.markdown-github-item");
-    await formatted.waitFor({ state: "visible" });
-    await formatted.focus();
-    const card = page.locator(".link-reader-hovercard");
-    await expectText(card, "Synthetic formatting example");
-    await expectAttr(formatted, "href", href);
-    await expectAttr(formatted, "data-github-kind", "pull");
-    await expectAttr(part(card, "title"), "href", href);
-    expect(await page.locator(`a[href="${href}"]`).count()).toBeGreaterThanOrEqual(2);
-    expect(
-      await page.locator('a[href="https://github.com/synthetic/formatting-demo/pull/42"]').count(),
-    ).toBe(1);
-    await page.keyboard.press("Escape");
-    const other = page.locator(`a[href="${otherHref}"]`);
-    await other.focus();
-    await expectText(card, "Separate repository example");
-    await expectAttr(part(card, "title"), "href", otherHref);
-    const requests = await gateway.getRequests("github.preview");
-    expect(requests.map((request) => request.params)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ url: href }),
-        expect.objectContaining({ url: otherHref }),
-      ]),
-    );
-    expect(
-      requests.some(
-        ({ params }) =>
-          isRecord(params) &&
-          typeof params.url === "string" &&
-          new URL(params.url).pathname.includes("/issues/"),
-      ),
-    ).toBe(false);
-  });
+      });
+      await page.goto(`${suite.server.baseUrl}chat`);
+      await page.getByText("Synthetic Gateway formatting example", { exact: true }).waitFor();
+      if (enabled) {
+        const key = await waitForWatchedSessionKey(gateway);
+        await gateway.emitGatewayEvent(CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT, {
+          sessions: {
+            [key]: { repository, pullRequests: [], rateLimited: false, status: "ready" },
+          },
+        });
+      }
+      const formatted = page.locator("strong a.markdown-github-item");
+      try {
+        if (enabled) {
+          await formatted.waitFor({ state: "visible" });
+        } else {
+          expect(await formatted.count()).toBe(0);
+          expect(await gateway.getRequests("projects.list")).toHaveLength(0);
+        }
+      } finally {
+        await page
+          .locator(".chat-bubble")
+          .filter({ hasText: "Synthetic Gateway formatting example" })
+          .screenshot({
+            path: path.join(suite.artifactDir, `github-reference-contribution-${enabled}.png`),
+          });
+      }
+      if (!enabled) {
+        await page.locator(`a[href="${otherHref}"]`).focus();
+        await expectText(page.locator(".link-reader-hovercard"), "Separate repository example");
+        return;
+      }
+      await formatted.focus();
+      const card = page.locator(".link-reader-hovercard");
+      await expectText(card, "Synthetic formatting example");
+      await expectAttr(formatted, "href", href);
+      await expectAttr(formatted, "data-github-kind", "pull");
+      await expectAttr(part(card, "title"), "href", href);
+      expect(await page.locator(`a[href="${href}"]`).count()).toBeGreaterThanOrEqual(2);
+      expect(
+        await page
+          .locator('a[href="https://github.com/synthetic/formatting-demo/pull/42"]')
+          .count(),
+      ).toBe(1);
+      await page.keyboard.press("Escape");
+      const other = page.locator(`a[href="${otherHref}"]`);
+      await other.focus();
+      await expectText(card, "Separate repository example");
+      await expectAttr(part(card, "title"), "href", otherHref);
+      const requests = await gateway.getRequests("github.preview");
+      expect(requests.map((request) => request.params)).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ url: href }),
+          expect.objectContaining({ url: otherHref }),
+        ]),
+      );
+      expect(
+        requests.some(
+          ({ params }) =>
+            isRecord(params) &&
+            typeof params.url === "string" &&
+            new URL(params.url).pathname.includes("/issues/"),
+        ),
+      ).toBe(false);
+    },
+  );
 
   it.each([
     { theme: "light", reducedMotion: "no-preference", width: 1180, fails: false },

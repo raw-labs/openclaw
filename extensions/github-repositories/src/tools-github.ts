@@ -15,7 +15,7 @@ import {
   errorShape,
   type GatewayRequestHandlers,
 } from "openclaw/plugin-sdk/gateway-runtime";
-import { consumeGitHubSetupHandoff } from "openclaw/plugin-sdk/repository-identity-host";
+import { consumeGitHubSetupHandoff } from "openclaw/plugin-sdk/native-github-account-host";
 import { readRepositoryServices } from "../account-runtime-api.js";
 import { GitHubCliUnavailableError } from "../cli-preflight-api.js";
 import {

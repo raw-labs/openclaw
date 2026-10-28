@@ -5,19 +5,19 @@ import type {
   UsersGitHubAuthorizeStartResult,
 } from "@openclaw/gateway-protocol";
 import { getOrCreatePromise } from "openclaw/plugin-sdk/lazy-runtime";
-import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
 import {
-  createRepositoryPersonalAccountHostV1,
+  createNativeGitHubPersonalAccountHostV1 as createRepositoryPersonalAccountHostV1,
   cancelUserGitHubAuthorizationSync,
   disconnectUserGitHubConnectionSync,
   listUserGitHubConnectionsAsync,
   prepareUserGitHubConnection,
   readCanonicalUserGitHubConnectionAsync,
   readUserGitHubConnectionAsync,
-  type UserGitHubConnection,
-  type UserGitHubConnected,
-  type UserGitHubDevice,
-} from "openclaw/plugin-sdk/repository-oauth-host";
+  type NativeGitHubUserConnection as UserGitHubConnection,
+  type NativeGitHubUserConnected as UserGitHubConnected,
+  type NativeGitHubUserDevice as UserGitHubDevice,
+} from "openclaw/plugin-sdk/native-github-account-host";
+import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
 import { assertGitHubCliAvailable } from "./cli-preflight-api.js";
 import { refreshGitHubOAuthToken, type GitHubOAuthTokenPair } from "./oauth-api.js";
 import { pollGitHubDeviceFlow, startGitHubDeviceFlow } from "./oauth-device-flow-api.js";

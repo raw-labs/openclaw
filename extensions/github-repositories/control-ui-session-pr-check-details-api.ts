@@ -3,7 +3,7 @@ import type {
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "openclaw/plugin-sdk/repository-session-read";
+} from "openclaw/plugin-sdk/native-github-session-read";
 import {
   type SessionPullRequestReadCredential,
   createGitHubReadGroup,

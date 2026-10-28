@@ -20,7 +20,9 @@ function admitted(binding: Binding) {
   const readers = availableLinkReaders(context.gateway.snapshot);
   return context.plugins.registrations("textReferences").flatMap((entry) => {
     const reader = readers.find(
-      (candidate) => candidate.pluginId === entry.pluginId && candidate.id === entry.value.readerId,
+      (candidate) =>
+        candidate.pluginId === entry.value.reader.pluginId &&
+        candidate.id === entry.value.reader.id,
     );
     return reader && !entry.signal.aborted ? [{ entry, reader }] : [];
   });

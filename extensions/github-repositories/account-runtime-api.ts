@@ -2,8 +2,8 @@ import {
   getGatewayServiceLifetime,
   type GatewayRequestContext,
 } from "openclaw/plugin-sdk/gateway-runtime";
-import type { RepositoryPublicationApi } from "openclaw/plugin-sdk/repository-publication-engine";
-import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
+import type { NativeGitHubPublicationApi as RepositoryPublicationApi } from "openclaw/plugin-sdk/native-github-publication-host";
+import { captureNativeGitHubServiceHost as captureRepositoryServiceHost } from "openclaw/plugin-sdk/native-github-publication-host";
 import type { createGitHubOAuthLifecycle } from "./oauth-lifecycle-api.js";
 
 export type RepositoryServices = {

@@ -4,6 +4,7 @@ import { bindFixtureRuntime, fixture, mocks } from "./github-pr-workspace-prepar
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import * as publicationPublisher from "../../extensions/github-repositories/publication-publisher-api.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
 import { installGitHubPublicationTestHarness } from "./github-publication.test-support.js";
@@ -15,6 +16,54 @@ describe("imported PR source refresh", () => {
     creatorEmail: "publication-guest@example.test",
     sandbox: "required",
     realWorktree: true,
+  });
+
+  it("uses the publisher-provided author for local source-integration commits", async () => {
+    const preparePublisher = publicationPublisher.prepareGitHubPublisher;
+    const selectedAuthor = { name: "Verified Publisher", email: "publisher@example.test" };
+    const override = vi
+      .spyOn(publicationPublisher, "prepareGitHubPublisher")
+      .mockImplementation(async (...args) => {
+        const publisher = await preparePublisher(...args);
+        publisher.author = selectedAuthor;
+        return publisher;
+      });
+    try {
+      const f = await fixture();
+      // Import fixture history first so new objects below are host-generated commits,
+      // not the existing PR author's commits brought in by the source fetch.
+      await f.git("fetch", "--no-write-fetch-head", f.upstream, "main", "topic/existing");
+      const commits = async () =>
+        (
+          await f.git(
+            "cat-file",
+            "--batch-all-objects",
+            "--batch-check=%(objectname) %(objecttype)",
+          )
+        )
+          .split("\n")
+          .filter((line) => line.endsWith(" commit"))
+          .map((line) => line.split(" ")[0]!);
+      const before = new Set(await commits());
+      expect(await f.invoke()).toMatchObject({ status: "prepared" });
+      const integrationCommits: string[] = [];
+      for (const commit of (await commits()).filter((objectCommit) => !before.has(objectCommit))) {
+        if (
+          (await f.git("show", "-s", "--format=%s", commit)) === "Prepare selected base integration"
+        ) {
+          integrationCommits.push(commit);
+        }
+      }
+      expect(integrationCommits).toHaveLength(1);
+      for (const commit of integrationCommits) {
+        expect(await f.git("show", "-s", "--format=%an <%ae>%n%cn <%ce>", commit)).toBe(
+          "Verified Publisher <publisher@example.test>\nVerified Publisher <publisher@example.test>",
+        );
+      }
+      expect(f.writes).toEqual([]);
+    } finally {
+      override.mockRestore();
+    }
   });
 
   it.each([false, true])(

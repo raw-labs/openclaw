@@ -1,9 +1,9 @@
 import { racePromiseWithAbortSignal } from "openclaw/plugin-sdk/agent-harness-attempt-runtime";
 import { createRetainedCache } from "openclaw/plugin-sdk/concurrency-runtime";
 import type {
-  SessionGitHubPullRequestBinding,
+  NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
   ControlUiSessionPullRequest,
-} from "openclaw/plugin-sdk/repository-session-read";
+} from "openclaw/plugin-sdk/native-github-session-read";
 import {
   asFiniteNumber,
   isRecord,

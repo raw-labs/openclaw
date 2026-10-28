@@ -1,9 +1,9 @@
-import type { GitHubRepositoryAdmissionRequest } from "openclaw/plugin-sdk/repository-identity-host";
+import type { NativeGitHubRepositoryAdmissionRequest as GitHubRepositoryAdmissionRequest } from "openclaw/plugin-sdk/native-github-account-host";
 import type { GitHubToolIdentityConfig } from "./tool-identity.types-api.js";
 
 export type GitHubAppSelection = Extract<GitHubToolIdentityConfig, { kind: "app-installation" }>;
 
-export type { GitHubRepositoryAdmissionRequest } from "openclaw/plugin-sdk/repository-identity-host";
+export type { NativeGitHubRepositoryAdmissionRequest as GitHubRepositoryAdmissionRequest } from "openclaw/plugin-sdk/native-github-account-host";
 export type GitHubCredentialReader = (
   env: NodeJS.ProcessEnv,
   admission?: GitHubRepositoryAdmissionRequest,

@@ -1,6 +1,6 @@
+import { captureNativeGitHubServiceHost as captureRepositoryServiceHost } from "openclaw/plugin-sdk/native-github-publication-host";
 import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
 import { registerGitHubAgentTools } from "./agent-tools-api.js";
 import { registerGitHubBoardBinding } from "./board-binding-api.js";
 import { readGitHubConfig } from "./config-api.js";

@@ -1,5 +1,5 @@
 import { notifyListeners, registerListener } from "openclaw/plugin-sdk/collection-runtime";
-import type { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/repository-identity-host";
+import type { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/native-github-account-host";
 
 type ProfileChange = { profileDir: string; kind: "updated" | "removed" };
 const profileListeners = new Set<(change: ProfileChange) => void>();

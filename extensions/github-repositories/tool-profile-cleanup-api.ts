@@ -4,11 +4,11 @@ import { FsSafeError } from "@openclaw/fs-safe/errors";
 import { root as fsRoot, type Root } from "@openclaw/fs-safe/root";
 import { listAgentIds } from "openclaw/plugin-sdk/agent-scope-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
-import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
 import {
   listGitHubOAuthRecords,
   isManagedGitHubProfileId,
-} from "openclaw/plugin-sdk/repository-identity-host";
+} from "openclaw/plugin-sdk/native-github-account-host";
+import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
 import { readGitHubConfig, readGitHubAgentIdentity } from "./config-api.js";
 import {
   resolveManagedGitHubAgentKey,

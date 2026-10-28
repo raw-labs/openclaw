@@ -16,10 +16,8 @@ function createSecondaryHydrationPane() {
   const listBranches = vi.fn(() => secondaryResponse);
   const patch = vi.fn().mockResolvedValue({});
   const sessions = {
-    capturePullRequestEpoch: vi.fn(() => ({})),
     listBranches,
     patch,
-    setPullRequestSummary: vi.fn(),
   } as unknown as SessionCapability;
   const { pane, state } = createTestChatPane({
     client: { request } as unknown as GatewayBrowserClient,

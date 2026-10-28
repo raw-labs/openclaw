@@ -59,19 +59,20 @@ export function createSidebarAccessoryMount(
     const stopHost = initial.host.subscribe(sync);
     const stopStore = runtime.store.subscribe(changed);
     const readBadge = () => {
-      if (currentContext.signal.aborted) {
+      const current = context();
+      if (current.signal.aborted || !container.isConnected) {
         return undefined;
       }
       revision();
-      const value = context().props.artifact;
-      const readable = context().host.requests.canCall(
+      const value = current.props.artifact;
+      const readable = current.host.requests.canCall(
         "controlUi.sessionPullRequests.subscribe",
         "operator.read",
         true,
       );
       const initialSummary =
-        (!context().props.worktreeId ||
-          (readable && context().host.requests.hasScope("operator.read"))) &&
+        (!current.props.worktreeId ||
+          (readable && current.host.requests.hasScope("operator.read"))) &&
         isSummary(value)
           ? value
           : undefined;

@@ -1,11 +1,11 @@
 import type { SessionGitHubPullRequestInspectResult } from "@openclaw/gateway-protocol";
 import {
-  type RepositoryPublicationProvider,
-  type SessionGitHubPullRequestBinding,
-  RepositoryPublicationRequesterUnavailableError,
-  publicationBaseBranch,
-  RepositoryPublicationWorkspaceChangedError,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  type NativeGitHubPublicationProvider as RepositoryPublicationProvider,
+  type NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
+  NativeGitHubPublicationRequesterUnavailableError as RepositoryPublicationRequesterUnavailableError,
+  nativeGitHubPublicationBaseBranch as publicationBaseBranch,
+  NativeGitHubPublicationWorkspaceChangedError as RepositoryPublicationWorkspaceChangedError,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 import { resolveGitHubHost } from "./host-runtime-api.js";
 import { GitHubPublicationBranchChangedError } from "./publication-failure-api.js";
 import { requireGitHubPublicationCommand } from "./publication-git-transport-api.js";

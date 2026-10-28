@@ -4,9 +4,9 @@ import type {
 } from "@openclaw/gateway-protocol";
 import {
   prepareUserGitHubConnection,
-  type UserGitHubConnection,
-  type UserGitHubDevice,
-} from "openclaw/plugin-sdk/repository-oauth-host";
+  type NativeGitHubUserConnection as UserGitHubConnection,
+  type NativeGitHubUserDevice as UserGitHubDevice,
+} from "openclaw/plugin-sdk/native-github-account-host";
 import { preparePersonalGitHubPublicationIdentity } from "./tool-identity-api.js";
 export type PersonalGitHubAction = {
   owner: string;

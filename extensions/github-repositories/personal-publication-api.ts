@@ -1,7 +1,7 @@
 import {
   UserGitHubConnectionAuthorityChangedError,
   prepareUserGitHubConnection,
-} from "openclaw/plugin-sdk/repository-oauth-host";
+} from "openclaw/plugin-sdk/native-github-account-host";
 import type { PersonalGitHubAction } from "./personal-oauth-api.js";
 import {
   rejectGitHubPublicationSelection,

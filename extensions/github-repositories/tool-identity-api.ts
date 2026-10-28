@@ -8,9 +8,9 @@ import type { GitHubIdentityFacts, ToolsGitHubStatusResult } from "@openclaw/gat
 import { resolveAgentWorkspaceDir } from "openclaw/plugin-sdk/agent-scope-runtime";
 import { prepareExecutionEnvironmentExclusions } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
+import { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/native-github-account-host";
 import { isBundledPluginEnabled } from "openclaw/plugin-sdk/plugin-config-runtime";
 import { hasErrnoCode } from "openclaw/plugin-sdk/process-runtime";
-import { inspectGitHubOAuthRecord } from "openclaw/plugin-sdk/repository-identity-host";
 import { composeSessionEntryCommitGuards } from "openclaw/plugin-sdk/session-binding-runtime";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";

@@ -3,7 +3,7 @@ import type {
   ControlUiSessionPullRequestCheck,
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequestCheckStep,
-} from "openclaw/plugin-sdk/repository-session-read";
+} from "openclaw/plugin-sdk/native-github-session-read";
 import { isRecord, readNonBlankString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { gitHubPublicApi, type ControlUiGitHubError } from "./public-api.js";
 

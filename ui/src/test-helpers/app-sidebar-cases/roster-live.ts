@@ -29,7 +29,7 @@ it("AppSidebar updates held off-window rows without rendering", async () => {
   await R.settleRoster(sidebar);
   expect(sidebar.sessionData.sessionsResult).toBe(updated);
   expect(prepare).not.toHaveBeenCalled();
-  sessions.sessions.setPullRequestSummary(last.key, { numbers: [42], state: "open" });
+  sessions.publishPullRequests(last.key, { numbers: [42], state: "open" });
   await R.settleRoster(sidebar);
   expect(prepare).not.toHaveBeenCalled();
   sidebar.setVisibleSessionLimit("ungrouped", rows.length);

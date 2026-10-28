@@ -62,6 +62,12 @@ it("recovers one guest integration, retains saved data and publishes the resolve
   if (first.status !== "published") {
     throw new Error("Fixture publication failed");
   }
+  const preparePublisher = f.coordinator.provider.preparePublisher;
+  vi.spyOn(f.coordinator.provider, "preparePublisher").mockImplementation(async (...args) => {
+    const publisher = await preparePublisher(...args);
+    publisher.author = { name: "Selected Publisher", email: "selected-publisher@example.test" };
+    return publisher;
+  });
   const created = mocks.runCommand.mock.calls.findLast(
     ([argv]) => argv.includes("POST") && argv.some((arg: string) => arg.endsWith("/pulls")),
   )!;
@@ -462,6 +468,9 @@ it("recovers one guest integration, retains saved data and publishes the resolve
     status: "refreshed",
     baseCommit,
   });
+  expect(await git("show", "-s", "--format=%an <%ae>%n%cn <%ce>", "HEAD")).toBe(
+    "Selected Publisher <selected-publisher@example.test>\nSelected Publisher <selected-publisher@example.test>",
+  );
   await git("merge-base", "--is-ancestor", baseCommit, "HEAD");
   expect(await guestGit("rev-parse", "HEAD")).toBe(guestHead);
   expect(await guestGit("rev-parse", "refs/openclaw/review-base")).toBe(baseCommit);

@@ -1,6 +1,6 @@
 import type { SessionGitHubPublicationPublished } from "@openclaw/gateway-protocol";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { SessionGitHubPullRequestBinding } from "openclaw/plugin-sdk/repository-publication-engine";
+import type { NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding } from "openclaw/plugin-sdk/native-github-publication-host";
 
 export function pullRequestState(
   value: unknown,

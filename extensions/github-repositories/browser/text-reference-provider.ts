@@ -58,7 +58,7 @@ export function createGitHubTextReferenceProvider(
   };
   return {
     id: "github-shorthand",
-    readerId: "github",
+    reader: { pluginId: "github", id: "github" },
     // A name cannot fall back to the checkout until current aliases settle.
     snapshot: (target) =>
       githubTextReferenceSnapshot(

@@ -1,6 +1,6 @@
 import type { SessionGitHubPullRequestInspectResult } from "@openclaw/gateway-protocol";
 import { GITHUB_PULL_REQUEST_LOGIN_PATTERN } from "@openclaw/gateway-protocol/schema";
-import type { RepositoryPublicationOwnPullRequestReader } from "openclaw/plugin-sdk/repository-publication-engine";
+import type { NativeGitHubPublicationOwnPullRequestReader as RepositoryPublicationOwnPullRequestReader } from "openclaw/plugin-sdk/native-github-publication-host";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { containsAsciiControlCharacter } from "openclaw/plugin-sdk/string-normalization-runtime";
 import { readGitHubConfig } from "./config-api.js";

@@ -1,4 +1,4 @@
-import type { SessionGitHubPullRequestBinding } from "openclaw/plugin-sdk/repository-publication-engine";
+import type { NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding } from "openclaw/plugin-sdk/native-github-publication-host";
 import { isRecord, readNonBlankString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveGitHubHost } from "./host-runtime-api.js";
 import { GitHubPublicationKnownFailure } from "./publication-failure-api.js";

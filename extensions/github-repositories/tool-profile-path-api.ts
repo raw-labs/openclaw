@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { isManagedGitHubProfileId } from "openclaw/plugin-sdk/repository-identity-host";
+import { isManagedGitHubProfileId } from "openclaw/plugin-sdk/native-github-account-host";
 import { normalizeAgentId } from "openclaw/plugin-sdk/routing";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 

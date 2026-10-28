@@ -1,7 +1,7 @@
 import type { SessionGitHubActionResult } from "@openclaw/gateway-protocol";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
-import type { RepositoryPublicationActionInput } from "openclaw/plugin-sdk/repository-publication-engine";
+import type { NativeGitHubPublicationActionInput as RepositoryPublicationActionInput } from "openclaw/plugin-sdk/native-github-publication-host";
 import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
 import { fetchWithSsrFGuard } from "openclaw/plugin-sdk/ssrf-runtime";
 import {

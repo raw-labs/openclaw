@@ -452,8 +452,8 @@ describe("AppSidebar session indicators", () => {
     await waitForFast(() =>
       expect(sidebar.querySelectorAll(".sidebar-recent-session--child")).toHaveLength(5),
     );
-    sessions.sessions.setPullRequestSummary(openPullRequestKey, { numbers: [1], state: "open" });
-    sessions.sessions.setPullRequestSummary(mergedPullRequestKey, {
+    sessions.publishPullRequests(openPullRequestKey, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(mergedPullRequestKey, {
       numbers: [2],
       state: "merged",
     });
@@ -562,8 +562,8 @@ describe("AppSidebar session indicators", () => {
     const { sidebar } = await mountSidebar(gatewayHarness.gateway, sessions.sessions);
     sidebar.connected = true;
     await sidebar.updateComplete;
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, { numbers: [1], state: "open" });
-    sessions.sessions.setPullRequestSummary(keys.mergedPullRequest, {
+    sessions.publishPullRequests(keys.openPullRequest, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(keys.mergedPullRequest, {
       numbers: [1],
       state: "merged",
     });
@@ -574,7 +574,7 @@ describe("AppSidebar session indicators", () => {
     });
     // Opening chat hydrates its detailed summary from the same last-known snapshot.
     // It must not add a second PR icon beside the sidebar's existing indicator.
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(keys.openPullRequest, { numbers: [1], state: "open" });
     await sidebar.updateComplete;
     expect(
       sidebar.querySelectorAll(
@@ -642,7 +642,7 @@ describe("AppSidebar session indicators", () => {
     if (!openPullRequestRow) {
       throw new Error("expected open PR session");
     }
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, undefined);
+    sessions.publishPullRequests(keys.openPullRequest, undefined);
     openPullRequestRow.worktree = undefined;
     sessions.publishList({ result });
     await waitForFast(() => {

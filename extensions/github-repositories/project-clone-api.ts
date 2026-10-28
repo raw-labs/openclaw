@@ -1,5 +1,5 @@
+import { captureNativeGitHubServiceHost as captureRepositoryServiceHost } from "openclaw/plugin-sdk/native-github-publication-host";
 import type { GitOperationStarter } from "openclaw/plugin-sdk/process-runtime";
-import { captureRepositoryServiceHost } from "openclaw/plugin-sdk/repository-session-host";
 import { createManagedProjectCheckoutV1 } from "openclaw/plugin-sdk/repository-sources";
 import type {
   ManagedProjectOptions,

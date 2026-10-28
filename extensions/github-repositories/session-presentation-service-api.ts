@@ -1,8 +1,8 @@
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type {
-  RepositorySessionPresentation,
-  RepositorySessionReads,
-} from "openclaw/plugin-sdk/repository-session-read";
+  NativeGitHubSessionPresentation as RepositorySessionPresentation,
+  NativeGitHubSessionReads as RepositorySessionReads,
+} from "openclaw/plugin-sdk/native-github-session-read";
 import {
   loadControlUiSessionPullRequestChecks,
   clearSessionPullRequestCheckDetails,

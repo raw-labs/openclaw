@@ -1,80 +1,53 @@
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
-import type { RepositoryPublisherReference } from "./repository-publication-contract.js";
-export type NativePublisherFacts = {
-  source: "system-detected" | "system-configured" | "agent-override" | "personal";
-  profileId?: string;
-  account: { accountId: number; login: string };
-};
-/** Maps verified provenance into the fixed native receipt format. It grants no authority. */
-export function encodeNativePublisher(facts: NativePublisherFacts): RepositoryPublisherReference {
-  const reference = JSON.stringify([
-    "native-github-v1",
-    facts.source,
-    facts.profileId ?? null,
-    facts.account.accountId,
-    facts.account.login,
-  ]);
-  return reference;
-}
-/** Private storage adapter; the engine does not reinterpret this as a live account selection. */
-export function decodeNativePublisher(
-  reference: RepositoryPublisherReference,
-): NativePublisherFacts {
-  const value: unknown = JSON.parse(reference);
-  if (!Array.isArray(value) || value.length !== 5) {
-    throw new Error("Native publication publisher provenance is invalid.");
-  }
-  const [format, source, profileId, accountId, login]: unknown[] = value;
+import type { NativeGitHubPublisherProvenance } from "./repository-publication-contract.js";
+export type NativePublisherFacts = NativeGitHubPublisherProvenance;
+/** Validate facts entering the host; live account assertions separately authorize effects. */
+export function assertNativePublisherProvenance(
+  value: unknown,
+): asserts value is NativeGitHubPublisherProvenance {
   if (
-    format !== "native-github-v1" ||
-    (source !== "system-detected" &&
-      source !== "system-configured" &&
-      source !== "agent-override" &&
-      source !== "personal") ||
-    (profileId !== null && typeof profileId !== "string") ||
-    typeof accountId !== "number" ||
-    !Number.isSafeInteger(accountId) ||
-    accountId < 1 ||
-    typeof login !== "string" ||
-    !login ||
-    JSON.stringify(value) !== reference
+    !isRecord(value) ||
+    (value.source !== "system-detected" &&
+      value.source !== "system-configured" &&
+      value.source !== "agent-override" &&
+      value.source !== "personal") ||
+    (value.profileId !== undefined && typeof value.profileId !== "string") ||
+    !isRecord(value.account) ||
+    typeof value.account.accountId !== "number" ||
+    !Number.isSafeInteger(value.account.accountId) ||
+    value.account.accountId < 1 ||
+    typeof value.account.login !== "string" ||
+    !value.account.login
   ) {
     throw new Error("Native publication publisher provenance is invalid.");
   }
-  return { source, ...(profileId !== null ? { profileId } : {}), account: { accountId, login } };
 }
 
-/** Account login casing is presentation; changing account, profile or source is a new selection. */
-export function sameNativePublisherSelection(
-  actual: NativePublisherFacts,
-  expected: NativePublisherFacts,
-): boolean {
-  return (
-    actual.source === expected.source &&
-    actual.profileId === expected.profileId &&
-    actual.account.accountId === expected.account.accountId &&
-    actual.account.login.toLowerCase() === expected.account.login.toLowerCase()
-  );
-}
-
-export function publisherReference(
+export function publisherProvenance(
   row: Pick<
     GitHubPublicationExecutionRow,
     "identity_source" | "identity_profile_id" | "identity_account_id" | "identity_login"
   >,
-) {
-  const source = row.identity_source;
-  if (
-    source !== "personal" &&
-    source !== "system-configured" &&
-    source !== "system-detected" &&
-    source !== "agent-override"
-  ) {
-    throw new Error("Native publication publisher provenance is invalid.");
-  }
-  return encodeNativePublisher({
-    source,
+): NativeGitHubPublisherProvenance {
+  const provenance = {
+    source: row.identity_source,
     ...(row.identity_profile_id ? { profileId: row.identity_profile_id } : {}),
     account: { accountId: row.identity_account_id, login: row.identity_login },
-  });
+  };
+  assertNativePublisherProvenance(provenance);
+  return provenance;
+}
+
+/** Execution replays exact receipt facts; account selection remains provider-owned. */
+export function matchesPublisherProvenance(
+  row: Parameters<typeof publisherProvenance>[0],
+  provenance: NativeGitHubPublisherProvenance,
+): boolean {
+  return (
+    row.identity_source === provenance.source &&
+    row.identity_profile_id === (provenance.profileId ?? null) &&
+    row.identity_account_id === provenance.account.accountId &&
+    row.identity_login === provenance.account.login
+  );
 }

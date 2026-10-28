@@ -30,10 +30,6 @@ export type SessionPullRequestSourceHostV1 = {
   canCall: (method: string, scope: "operator.read") => boolean;
   matchesSession: (sessionKey: string, eventKey: string, agentId?: string | null) => boolean;
   readSessionChanged: (payload: unknown) => { key: string; agentId?: string | null } | null;
-  captureSummary: (sessionKey: string) => {
-    read: () => SessionCatalogPullRequestSummary | undefined;
-    publish: (summary: SessionCatalogPullRequestSummary | undefined) => void;
-  };
   createConnectionLifecycle: () => { transition: () => boolean };
   createSetSyncLifecycle: (options: SessionPullRequestSyncOptions) => SessionPullRequestSetSync;
 };
@@ -105,10 +101,6 @@ export function createSessionPullRequestStore(
   const loadTokens = new WeakMap<object, object>();
   const snapshots = new Map<string, ControlUiSessionPullRequestSnapshot>();
   const knownBranches = new Set<string>();
-  const summarySinks = new Map<
-    string,
-    ReturnType<SessionPullRequestSourceHostV1["captureSummary"]>
-  >();
   const listeners = new Set<() => void>();
   const waiters = new Map<
     string,
@@ -212,8 +204,6 @@ export function createSessionPullRequestStore(
     for (const key of snapshots.keys()) {
       if (!watched.has(key)) {
         snapshots.delete(key);
-        summarySinks.get(key)?.publish(undefined);
-        summarySinks.delete(key);
         knownBranches.delete(key);
         removed = true;
       }
@@ -235,7 +225,6 @@ export function createSessionPullRequestStore(
 
   const retireConnection = () => {
     chatInvalidation.reset();
-    summarySinks.clear();
     subscriptionMayExist = false;
     retainRefreshIntent(watchedKeys());
     lifecycle.clearRequest();
@@ -335,8 +324,6 @@ export function createSessionPullRequestStore(
       let removed = false;
       for (const sessionKey of matchingKeys) {
         chatInvalidation.reset(sessionKey);
-        summarySinks.get(sessionKey)?.publish(undefined);
-        summarySinks.delete(sessionKey);
         removed = snapshots.delete(sessionKey) || removed;
         knownBranches.delete(sessionKey);
         refresh(sessionKey, { automatic: true });
@@ -409,16 +396,6 @@ export function createSessionPullRequestStore(
         knownBranches.add(sessionKey);
       }
       snapshots.set(sessionKey, next);
-      const sink = summarySinks.get(sessionKey);
-      if (
-        sink &&
-        (snapshot.discardPrevious ||
-          !snapshot.rateLimited ||
-          snapshot.pullRequests.length > 0 ||
-          !canRetainCurrent)
-      ) {
-        sink.publish(summarizeSessionPullRequests(next.pullRequests, sink.read()));
-      }
       updated = true;
       settle(sessionKey, next);
     }
@@ -438,7 +415,6 @@ export function createSessionPullRequestStore(
     onDetach: () => {
       refreshing = null;
       snapshots.clear();
-      summarySinks.clear();
       knownBranches.clear();
       for (const timer of automaticRefreshTimers.values()) {
         clearTimeout(timer);
@@ -458,13 +434,6 @@ export function createSessionPullRequestStore(
       return;
     }
     const desiredKeys = requestedKeys();
-    // Capture the roster epoch before sending any read. Publishing later never grants a
-    // stale response a new epoch, including after reconnect or a replacement session.
-    for (const key of desiredKeys) {
-      if (!summarySinks.has(key)) {
-        summarySinks.set(key, host.captureSummary(key));
-      }
-    }
     const hidden = typeof document !== "undefined" && document.visibilityState === "hidden";
     const sessionKeys = hidden ? [] : desiredKeys;
     const passiveSessionKeys = hidden ? [] : orderedPassiveKeys;
@@ -569,13 +538,6 @@ export function createSessionPullRequestStore(
       });
     }
     orderedWatchedKeys = undefined;
-    if (canReadPullRequests()) {
-      for (const key of requestedKeys()) {
-        if (!summarySinks.has(key)) {
-          summarySinks.set(key, host.captureSummary(key));
-        }
-      }
-    }
     lifecycle.resetRetry();
     pruneUnwatched();
     if (isActive()) {

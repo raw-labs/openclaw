@@ -1,11 +1,11 @@
 import { readConfigFileSnapshotForWrite } from "openclaw/plugin-sdk/config-mutation";
-import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
-import type { RepositoryPublicationApi } from "openclaw/plugin-sdk/repository-publication-engine";
+import type { NativeGitHubPublicationApi as RepositoryPublicationApi } from "openclaw/plugin-sdk/native-github-publication-host";
 import {
-  captureRepositoryServiceHost,
-  installRepositoryPublicationProvider,
-} from "openclaw/plugin-sdk/repository-session-host";
-import { createRepositorySessionReads } from "openclaw/plugin-sdk/repository-session-read";
+  captureNativeGitHubServiceHost as captureRepositoryServiceHost,
+  installNativeGitHubPublicationProvider as installRepositoryPublicationProvider,
+} from "openclaw/plugin-sdk/native-github-publication-host";
+import { createNativeGitHubSessionReads as createRepositorySessionReads } from "openclaw/plugin-sdk/native-github-session-read";
+import type { OpenClawPluginServiceV2 } from "openclaw/plugin-sdk/plugin-entry";
 import { installRepositoryServices } from "../account-runtime-api.js";
 import { createGitHubOAuthLifecycle } from "../oauth-lifecycle-api.js";
 import { createGitHubPublicationProvider } from "../publication-provider-api.js";

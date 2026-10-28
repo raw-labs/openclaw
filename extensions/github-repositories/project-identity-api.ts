@@ -1,7 +1,7 @@
 import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import type { GatewayRequestContext } from "openclaw/plugin-sdk/gateway-runtime";
-import type { RepositoryReadCredentialPreparation } from "openclaw/plugin-sdk/repository-session-read";
+import type { NativeGitHubReadCredentialPreparation as RepositoryReadCredentialPreparation } from "openclaw/plugin-sdk/native-github-session-read";
 import { readGitHubConfig } from "./config-api.js";
 import {
   prepareGitHubReadIdentity,

@@ -1734,33 +1734,17 @@
       "types": "./dist/plugin-sdk/repository-sources.d.ts",
       "default": "./dist/plugin-sdk/repository-sources.js"
     },
-    "./plugin-sdk/repository-identity-host": {
-      "types": "./dist/plugin-sdk/repository-identity-host.d.ts",
-      "default": "./dist/plugin-sdk/repository-identity-host.js"
+    "./plugin-sdk/native-github-account-host": {
+      "types": "./dist/plugin-sdk/native-github-account-host.d.ts",
+      "default": "./dist/plugin-sdk/native-github-account-host.js"
     },
-    "./plugin-sdk/repository-oauth-host": {
-      "types": "./dist/plugin-sdk/repository-oauth-host.d.ts",
-      "default": "./dist/plugin-sdk/repository-oauth-host.js"
+    "./plugin-sdk/native-github-publication-host": {
+      "types": "./dist/plugin-sdk/native-github-publication-host.d.ts",
+      "default": "./dist/plugin-sdk/native-github-publication-host.js"
     },
-    "./plugin-sdk/repository-publication-content": {
-      "types": "./dist/plugin-sdk/repository-publication-content.d.ts",
-      "default": "./dist/plugin-sdk/repository-publication-content.js"
-    },
-    "./plugin-sdk/repository-publication-engine": {
-      "types": "./dist/plugin-sdk/repository-publication-engine.d.ts",
-      "default": "./dist/plugin-sdk/repository-publication-engine.js"
-    },
-    "./plugin-sdk/repository-publication-install": {
-      "types": "./dist/plugin-sdk/repository-publication-install.d.ts",
-      "default": "./dist/plugin-sdk/repository-publication-install.js"
-    },
-    "./plugin-sdk/repository-session-host": {
-      "types": "./dist/plugin-sdk/repository-session-host.d.ts",
-      "default": "./dist/plugin-sdk/repository-session-host.js"
-    },
-    "./plugin-sdk/repository-session-read": {
-      "types": "./dist/plugin-sdk/repository-session-read.d.ts",
-      "default": "./dist/plugin-sdk/repository-session-read.js"
+    "./plugin-sdk/native-github-session-read": {
+      "types": "./dist/plugin-sdk/native-github-session-read.d.ts",
+      "default": "./dist/plugin-sdk/native-github-session-read.js"
     },
     "./plugin-sdk/dashboard": {
       "types": "./dist/plugin-sdk/dashboard.d.ts",

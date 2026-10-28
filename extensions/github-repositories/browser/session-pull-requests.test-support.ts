@@ -107,10 +107,9 @@ export function createGatewayHarness() {
           eventKey,
           eventAgentId,
         ),
-      captureSummary: () => ({ read: () => undefined, publish() {} }),
     } as Pick<
       import("../../../src/plugin-sdk/control-ui.ts").ControlUiHostV2["sessions"],
-      "artifactKey" | "agentId" | "matches" | "captureSummary"
+      "artifactKey" | "agentId" | "matches"
     >,
   });
   onTestFinished(() => {

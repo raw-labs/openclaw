@@ -1,4 +1,4 @@
-import { createRepositoryOAuthStateHostV1 } from "openclaw/plugin-sdk/repository-identity-host";
+import { createNativeGitHubOAuthStateHostV1 as createRepositoryOAuthStateHostV1 } from "openclaw/plugin-sdk/native-github-account-host";
 import { expect } from "vitest";
 import type { ToolsGitHubStatusResult } from "../../packages/gateway-protocol/src/index.js";
 import { inspectGitHubOAuthRecord } from "../../src/agents/github-oauth-records.js";

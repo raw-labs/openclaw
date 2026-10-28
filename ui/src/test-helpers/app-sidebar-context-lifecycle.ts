@@ -57,7 +57,6 @@ export function sidebarSessionHostServices(read: () => SessionCapability | null)
     isRunVisuallyActive: (row: GatewaySessionRow) =>
       read()?.isRunVisuallyActive(row) ?? isSessionRunStateActive(row),
     captureConnectionScope: () => read()?.captureConnectionScope() ?? null,
-    capturePullRequestEpoch: (key: string) => read()!.capturePullRequestEpoch(key),
     isConnectionScopeCurrent: (
       scope: Parameters<SessionCapability["isConnectionScopeCurrent"]>[0],
     ) => read()?.isConnectionScopeCurrent(scope) ?? false,

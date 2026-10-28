@@ -38,6 +38,10 @@ export type OpenClawSharedToolsOptions = {
    */
   questionPrompt?: QuestionPromptDelivery;
   toolBindings?: Readonly<Record<string, unknown>>;
+  /** Policy-only descriptors for tools a child may enable in its own workspace. */
+  inheritToolPolicy?: (
+    definition: Pick<import("./tools/common.js").AnyAgentTool, "name" | "parameters">,
+  ) => void;
   /** Trusted runtime-only authorization for one bounded cross-conversation recall pass. */
   conversationRecall?: ConversationRecallContext;
   /** Host-resolved memory partition shared by plugin tools for this turn. */

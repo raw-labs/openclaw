@@ -1,6 +1,6 @@
 import { getOrCreatePromise } from "openclaw/plugin-sdk/lazy-runtime";
-import { RepositoryPublicationChangePermissionError } from "openclaw/plugin-sdk/repository-publication-engine";
-import type { RepositoryPublicationObjectPlan } from "openclaw/plugin-sdk/repository-publication-engine";
+import { NativeGitHubPublicationChangePermissionError as RepositoryPublicationChangePermissionError } from "openclaw/plugin-sdk/native-github-publication-host";
+import type { NativeGitHubPublicationObjectPlan as RepositoryPublicationObjectPlan } from "openclaw/plugin-sdk/native-github-publication-host";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { GitHubPublicationKnownFailure } from "./publication-failure-api.js";
 

@@ -1,7 +1,7 @@
 import {
   CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
   CHAT_SEND_SESSION_KEY_MAX_LENGTH,
-} from "openclaw/plugin-sdk/repository-session-read";
+} from "openclaw/plugin-sdk/native-github-session-read";
 import { asNullableRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 
 function parseSessionKeys(value: unknown): string[] | null {

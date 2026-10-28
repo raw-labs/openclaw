@@ -96,6 +96,8 @@ type OpenClawPluginToolContextBase = {
   sessionId?: string;
   /** Out-of-band plugin-owned bindings attached by the current run initiator. */
   toolBindings?: Readonly<Record<string, unknown>>;
+  /** Describe a declared tool for child policy capture without making it callable here. */
+  inheritToolPolicy?: (definition: Pick<AnyAgentTool, "name" | "parameters">) => void;
   /** Host-prepared repository identities for project-aware tool behavior. */
   activeProjectKeys?: readonly string[];
   /** Trusted runtime-only authorization for one bounded cross-conversation recall pass. */

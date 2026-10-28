@@ -1,4 +1,4 @@
-import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "openclaw/plugin-sdk/repository-identity-host";
+import { MANAGED_GITHUB_PROFILE_ID_PATTERN } from "openclaw/plugin-sdk/native-github-account-host";
 import { normalizeAgentIdStrict } from "openclaw/plugin-sdk/routing";
 import { buildSecretInputSchema } from "openclaw/plugin-sdk/secret-input";
 import { z } from "zod";

@@ -1,7 +1,7 @@
 import { stringify as stringifyYaml } from "yaml";
 import { resolveConfiguredGitHubHost } from "./host-api.js";
 
-export type { GitHubToolAccount } from "openclaw/plugin-sdk/repository-identity-host";
+export type { NativeGitHubToolAccount as GitHubToolAccount } from "openclaw/plugin-sdk/native-github-account-host";
 
 export function managedGitHubHosts(identity: { login: string; token: string }): string {
   return stringifyYaml({

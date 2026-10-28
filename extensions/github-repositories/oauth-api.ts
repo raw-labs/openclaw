@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import { createStaleWhileRevalidateCache } from "openclaw/plugin-sdk/collection-runtime";
 import { registerSecretValueForRedaction } from "openclaw/plugin-sdk/logging-core";
+import type { NativeGitHubOAuthTokenPair as GitHubOAuthTokenPair } from "openclaw/plugin-sdk/native-github-account-host";
 import { resolveTimerTimeoutMs } from "openclaw/plugin-sdk/number-runtime";
-import type { GitHubOAuthTokenPair } from "openclaw/plugin-sdk/repository-identity-host";
 import { readResponseWithLimit } from "openclaw/plugin-sdk/response-limit-runtime";
 import { asOptionalRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveConfiguredGitHubApiBaseUrl } from "./host-api.js";
 import { clearNativeGitHubTokenCache } from "./read-identity-api.js";
 import type { GitHubToolAccount } from "./tool-account-api.js";
 
-export type { GitHubOAuthTokenPair } from "openclaw/plugin-sdk/repository-identity-host";
+export type { NativeGitHubOAuthTokenPair as GitHubOAuthTokenPair } from "openclaw/plugin-sdk/native-github-account-host";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";

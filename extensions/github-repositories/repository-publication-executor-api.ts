@@ -1,10 +1,10 @@
 import { runTasksWithConcurrency } from "openclaw/plugin-sdk/concurrency-runtime";
 import {
-  type RepositoryPublicationObjectPlan,
-  publicationBaseBranch,
-  hasPublicationMessageFooter,
-  RepositoryPublicationWorkspaceChangedError,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  type NativeGitHubPublicationObjectPlan as RepositoryPublicationObjectPlan,
+  nativeGitHubPublicationBaseBranch as publicationBaseBranch,
+  hasNativeGitHubPublicationMessageFooter as hasPublicationMessageFooter,
+  NativeGitHubPublicationWorkspaceChangedError as RepositoryPublicationWorkspaceChangedError,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { resolveGitHubHost } from "./host-runtime-api.js";
 import { formatGitHubPublicationContent } from "./publication-content-api.js";

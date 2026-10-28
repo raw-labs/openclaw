@@ -6,7 +6,11 @@ import {
   RepositoryPublicationRequesterUnavailableError,
 } from "./github-publication-errors.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
-import { encodeNativePublisher } from "./github-publication-publisher-facts.js";
+import {
+  assertNativePublisherProvenance,
+  matchesPublisherProvenance,
+  publisherProvenance,
+} from "./github-publication-publisher-facts.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
 import type { RepositoryGitHubPublicationExecutionAsync } from "./github-publication-store-async.js";
 import {
@@ -37,20 +41,7 @@ export async function executeRepositoryPublication(params: {
 }) {
   const { execution, snapshot, provider } = params;
   const row = execution.row;
-  const source = row.identity_source;
-  if (
-    source !== "personal" &&
-    source !== "system-detected" &&
-    source !== "system-configured" &&
-    source !== "agent-override"
-  ) {
-    throw new Error("Publication publisher provenance is invalid.");
-  }
-  const reference = encodeNativePublisher({
-    source,
-    ...(row.identity_profile_id ? { profileId: row.identity_profile_id } : {}),
-    account: { accountId: row.identity_account_id, login: row.identity_login },
-  });
+  const provenance = publisherProvenance(row);
   let dispatched = row.last_effect !== null;
   let acceptedHead = row.head_commit;
   const assertCustody = () => {
@@ -69,10 +60,11 @@ export async function executeRepositoryPublication(params: {
   try {
     assertCurrent();
     const publisher = await (params.publisher?.() ??
-      provider.preparePublisher(row.agent_id, reference));
+      provider.preparePublisher(row.agent_id, provenance));
     assertCurrent();
     publisher.assertCurrent();
-    if (publisher.reference !== reference) {
+    assertNativePublisherProvenance(publisher.provenance);
+    if (!matchesPublisherProvenance(row, publisher.provenance)) {
       throw new Error("Publication publisher changed.");
     }
     if (
@@ -121,7 +113,7 @@ export async function executeRepositoryPublication(params: {
         ...(row.title ? { title: row.title } : {}),
         ...(row.body ? { body: row.body } : {}),
         draft: row.draft !== 0,
-        publisher: reference,
+        publisher: provenance,
       },
       target,
       publisher,

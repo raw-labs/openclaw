@@ -1,11 +1,11 @@
 import { getActiveSecretsRuntimeConfigSnapshot } from "openclaw/plugin-sdk/channel-secret-owner-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/core";
 import {
-  sameNativePublisherSelection,
-  performRepositoryWorkerIdentity,
-  type RepositoryWorkerIdentity,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  performNativeGitHubWorkerIdentity as performRepositoryWorkerIdentity,
+  type NativeGitHubWorkerIdentity as RepositoryWorkerIdentity,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 import { resolveConfiguredGitHubHost, githubRepositoryUrl } from "./host-api.js";
+import { sameGitHubPublisherSelection } from "./publication-publisher-api.js";
 import { subscribeGitHubIdentityChanges } from "./read-identity-api.js";
 import { parseGitHubRemoteUrl } from "./remote-api.js";
 import {
@@ -96,7 +96,7 @@ export async function prepareGitHubWorkerIdentity(
       assertCurrent();
       const next = await prepare(assertOperation);
       assertCurrent();
-      if (!sameNativePublisherSelection(next, selected)) {
+      if (!sameGitHubPublisherSelection(next, selected)) {
         return "retired";
       }
       identity = next;

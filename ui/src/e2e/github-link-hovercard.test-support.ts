@@ -65,7 +65,7 @@ export async function expectModifiedNavigation(
 }
 
 export const GITHUB_REFERENCE_READER: ControlUiLinkReaderDescriptor = {
-  pluginId: "github-repositories",
+  pluginId: "github",
   id: "github",
   label: "GitHub",
   icon: "github",

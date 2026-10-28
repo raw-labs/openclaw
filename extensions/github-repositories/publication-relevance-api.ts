@@ -1,4 +1,4 @@
-import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/repository-session-read";
+import type { ControlUiSessionPullRequest } from "openclaw/plugin-sdk/native-github-session-read";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { prepareSessionPullRequestGitHubRead } from "./control-ui-session-pr-request-api.js";
 import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks-api.js";

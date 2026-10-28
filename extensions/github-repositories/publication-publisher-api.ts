@@ -1,10 +1,7 @@
 import {
-  encodeNativePublisher,
-  decodeNativePublisher,
-  sameNativePublisherSelection,
-  performRepositoryPublicationGit,
-  type RepositoryPublicationPublisher,
-} from "openclaw/plugin-sdk/repository-publication-engine";
+  performNativeGitHubPublicationGit as performRepositoryPublicationGit,
+  type NativeGitHubPublicationPublisher as RepositoryPublicationPublisher,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 import { readNativeGitHubToken } from "./read-identity-api.js";
 import type { PreparedGitHubPublicationIdentity } from "./tool-identity-api.js";
 
@@ -15,16 +12,22 @@ const publishers = new WeakMap<
 /** The plugin retains credentials and the live selected account; the host receives provenance only. */
 export async function prepareGitHubPublisher(
   _agentId: string,
-  expected: string | undefined,
+  expected:
+    | import("openclaw/plugin-sdk/native-github-publication-host").NativeGitHubPublisherProvenance
+    | undefined,
   owner: {
     prepare(): Promise<PreparedGitHubPublicationIdentity>;
     isCurrent(identity: PreparedGitHubPublicationIdentity): boolean;
   },
 ): Promise<RepositoryPublicationPublisher> {
   let identity = await owner.prepare();
-  const selected = expected ? decodeNativePublisher(expected) : identity;
-  const reference = expected ?? encodeNativePublisher(identity);
-  if (!sameNativePublisherSelection(identity, selected)) {
+  const selected = expected ?? identity;
+  const provenance = {
+    source: selected.source,
+    ...(selected.profileId ? { profileId: selected.profileId } : {}),
+    account: selected.account,
+  };
+  if (!sameGitHubPublisherSelection(identity, selected)) {
     throw new Error("GitHub publication identity changed.");
   }
   const assertCurrent = () => {
@@ -33,7 +36,7 @@ export async function prepareGitHubPublisher(
     }
   };
   const publisher: RepositoryPublicationPublisher = {
-    reference,
+    provenance,
     author: {
       name: identity.account.login,
       email: `${identity.account.accountId}+${identity.account.login}@users.noreply.github.com`,
@@ -43,7 +46,7 @@ export async function prepareGitHubPublisher(
       assertCurrent();
       const next = await owner.prepare();
       assertCurrent();
-      if (!sameNativePublisherSelection(next, selected)) {
+      if (!sameGitHubPublisherSelection(next, selected)) {
         throw new Error("GitHub publication identity changed.");
       }
       identity = next;
@@ -78,4 +81,17 @@ export function readGitHubPublisher(
     throw new Error("GitHub publication publisher is unavailable.");
   }
   return read();
+}
+
+/** Login casing is presentation; source, profile and verified account select the identity. */
+export function sameGitHubPublisherSelection(
+  actual: import("openclaw/plugin-sdk/native-github-publication-host").NativeGitHubPublisherProvenance,
+  expected: import("openclaw/plugin-sdk/native-github-publication-host").NativeGitHubPublisherProvenance,
+): boolean {
+  return (
+    actual.source === expected.source &&
+    actual.profileId === expected.profileId &&
+    actual.account.accountId === expected.account.accountId &&
+    actual.account.login.toLowerCase() === expected.account.login.toLowerCase()
+  );
 }

@@ -1,7 +1,7 @@
 import {
-  appendPublicationMessage,
-  type RepositoryPublicationContentFactsV1,
-} from "openclaw/plugin-sdk/repository-publication-content";
+  appendNativeGitHubPublicationMessage as appendPublicationMessage,
+  type NativeGitHubPublicationContentFactsV1 as RepositoryPublicationContentFactsV1,
+} from "openclaw/plugin-sdk/native-github-publication-host";
 
 /** GitHub owns text and markers; the host owns credit and optional session disclosure. */
 export function formatGitHubPublicationContent(params: {
