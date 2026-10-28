@@ -141,6 +141,16 @@ export function createVitestResolveConfig(repoRoot: string) {
         ),
       },
       {
+        find: "@openclaw/gateway-protocol/cron-list-page-validation",
+        replacement: path.join(
+          repoRoot,
+          "packages",
+          "gateway-protocol",
+          "src",
+          "cron-list-page-validation.ts",
+        ),
+      },
+      {
         find: "@openclaw/gateway-protocol/frame-guards",
         replacement: path.join(repoRoot, "packages", "gateway-protocol", "src", "frame-guards.ts"),
       },

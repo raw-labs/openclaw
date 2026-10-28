@@ -91,8 +91,6 @@ export type ControlUiLazyStateProps =
 export type ControlUiPresentationHost = {
   readonly apiVersion: 1;
   formatError: (error: unknown, fallback?: string) => string;
-  /** Stable declaration identity, not authorization. */
-  declarationDigest: (value: string) => string;
   formatDuration: (ms?: number | null) => string | undefined;
   safeExternalUrl: (value: string, base: string) => string | null;
   subscribe: (listener: () => void) => () => void;

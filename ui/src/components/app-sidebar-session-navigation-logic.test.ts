@@ -1,6 +1,6 @@
 import { createComponent } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
-import type { ControlUiHost, ControlUiNavigationItem } from "../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiNavigationItem } from "../../../src/plugin-sdk/control-ui.js";
 import type { GatewaySessionRow, SessionsListResult } from "../api/types.ts";
 import type { ControlUiRegistration } from "../plugins/control-ui-capability.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
@@ -24,13 +24,15 @@ it("does not manufacture personal pins from plugin defaults", () => {
   const pluginNavigation = [
     { id: "boards", label: "Boards", page: { id: "boards" } },
     { id: "child", parent: "boards", label: "Child", page: { id: "child" } },
-  ].map((value): ControlUiRegistration<ControlUiNavigationItem> => ({
-    key: `example/${value.id}`,
-    pluginId: "example",
-    signal: new AbortController().signal,
-    value,
-    host: {} as ControlUiHost,
-  }));
+  ].map(
+    (
+      value,
+    ): Pick<ControlUiRegistration<ControlUiNavigationItem>, "key" | "pluginId" | "value"> => ({
+      key: `example/${value.id}`,
+      pluginId: "example",
+      value,
+    }),
+  );
   const reconcile = (sidebarEntries: string[]) =>
     buildReconciledSidebarZone({
       sidebarEntries,

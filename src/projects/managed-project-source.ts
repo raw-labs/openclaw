@@ -10,14 +10,14 @@ export type ManagedProjectSourceV1 = {
   invalidUrlMessage: string;
   clone: (
     input: { url: string; target: string; requiredCommit?: string },
-    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv },
+    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv; assertCurrent: () => void },
   ) => Promise<void>;
   ensureCommit: (
     input: { url: string; target: string; commit: string },
-    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv },
+    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv; assertCurrent: () => void },
   ) => Promise<void>;
   refresh: (
     input: { url: string; target: string },
-    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv },
+    options: ManagedProjectOptions & { readonly env: NodeJS.ProcessEnv; assertCurrent: () => void },
   ) => Promise<void>;
 };

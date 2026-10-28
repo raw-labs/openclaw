@@ -1,4 +1,5 @@
 import type {
+  ControlUiSessionOperation,
   ControlUiSessionOperationFactory,
   ControlUiSessionOperationBinding,
 } from "../../../../src/plugin-sdk/control-ui-session-operation.js";
@@ -67,12 +68,8 @@ export function createSessionRetainedOperations(host: Host) {
   type Entry = {
     row: GatewaySessionRow;
     retained: boolean;
-    operation: unknown;
+    operation: ControlUiSessionOperation<object>;
     routeKey: string;
-    reset: () => void;
-    hasBindings: () => boolean;
-    invalidate: () => void;
-    observeEvent: (event: string, payload: unknown) => void;
     current: () => boolean;
     stop: () => void;
     onError: (error: unknown) => void;
@@ -85,13 +82,13 @@ export function createSessionRetainedOperations(host: Host) {
     entries.delete(key);
     entry.stop();
     try {
-      entry.reset();
+      entry.operation.reset();
     } catch (error) {
       entry.onError(error);
     }
   };
   const releaseIdle = (key: string, entry: Entry) => {
-    if (!entry.retained && !entry.hasBindings() && entries.get(key) === entry) {
+    if (!entry.retained && !entry.operation.hasBindings && entries.get(key) === entry) {
       entries.delete(key);
       entry.stop();
     }
@@ -105,6 +102,18 @@ export function createSessionRetainedOperations(host: Host) {
         retire(key, entry);
       } else {
         entry.row = invocationRow(next);
+      }
+    }
+  };
+  const observePayload = (event: string, payload: unknown, routeKey?: string) => {
+    for (const [key, entry] of entries) {
+      if (entry.current() && (routeKey === undefined || entry.routeKey === routeKey)) {
+        try {
+          entry.operation.observeEvent?.(event, payload, entry.row);
+        } catch (error) {
+          retire(key, entry);
+          entry.onError(error);
+        }
       }
     }
   };
@@ -147,51 +156,34 @@ export function createSessionRetainedOperations(host: Host) {
         entry = undefined;
       }
       if (!entry) {
-        const candidate: Entry = {
-          // Keep only invocation/authority facts, never a transcript or pane state.
-          row: invocationRow({ ...row, key: route.sessionKey, agentId: route.agentId }),
-          retained: false,
-          routeKey,
-          operation: undefined,
-          stop: () => {},
-          onError:
-            lifecycle?.onError ??
-            ((error) => {
-              throw error;
-            }),
-          reset: () => operation.reset(),
-          hasBindings: () => operation.hasBindings,
-          invalidate: () => operation.invalidate(),
-          observeEvent: (event, payload) => operation.observeEvent?.(event, payload, candidate.row),
-          // Pending deletion can roll back; matches() fences actions without
-          // discarding custody before the deletion owner confirms retirement.
-          current: () =>
-            entries.get(key) === candidate &&
-            !lifecycle?.signal.aborted &&
-            host.connection.isCurrent(connection) &&
-            identity(host.snapshot(), factory.requiredMethods) === owner &&
-            host.deletionState(candidate.row) !== "confirmed",
-        };
+        // Pending deletion can roll back; only confirmed retirement discards custody.
+        const current = () =>
+          entry !== undefined &&
+          entries.get(key) === entry &&
+          !lifecycle?.signal.aborted &&
+          host.connection.isCurrent(connection) &&
+          identity(host.snapshot(), factory.requiredMethods) === owner &&
+          host.deletionState(entry.row) !== "confirmed";
         const operation = factory.create({
           client: {
             request: async <T>(method: string, params?: Record<string, unknown>) => {
-              if (!candidate.current()) {
+              if (!current()) {
                 throw new Error("This session operation has ended.");
               }
               const result = await connection.client.request<T>(method, params);
-              if (!candidate.current()) {
+              if (!current()) {
                 throw new Error("This session operation has ended.");
               }
               return result;
             },
           },
           target: route,
-          isCurrent: () => candidate.current(),
+          isCurrent: current,
           reserve: () => {
-            if (!candidate.current()) {
+            if (!entry || !current()) {
               throw new Error("This session operation has ended.");
             }
-            if (candidate.retained) {
+            if (entry.retained) {
               return;
             }
             if (
@@ -200,16 +192,34 @@ export function createSessionRetainedOperations(host: Host) {
             ) {
               throw factory.capacityError();
             }
-            candidate.retained = true;
+            entry.retained = true;
           },
           release: () => {
-            candidate.retained = false;
-            releaseIdle(key, candidate);
+            if (entry) {
+              entry.retained = false;
+              releaseIdle(key, entry);
+            }
           },
-          unbound: () => releaseIdle(key, candidate),
+          unbound: () => {
+            if (entry) {
+              releaseIdle(key, entry);
+            }
+          },
         });
-        candidate.operation = operation;
-        entry = candidate;
+        entry = {
+          // Keep only invocation/authority facts, never a transcript or pane state.
+          row: invocationRow({ ...row, key: route.sessionKey, agentId: route.agentId }),
+          retained: false,
+          routeKey,
+          operation,
+          stop: () => {},
+          onError:
+            lifecycle?.onError ??
+            ((error) => {
+              throw error;
+            }),
+          current,
+        };
         // Split panes share idle state too; only admitted operations survive the last detach.
         if (lifecycle?.signal.aborted || !host.connection.isCurrent(connection)) {
           operation.reset();
@@ -217,7 +227,8 @@ export function createSessionRetainedOperations(host: Host) {
         }
         entries.set(key, entry);
         if (lifecycle) {
-          candidate.stop = listen(lifecycle.signal, "abort", () => retire(key, candidate), {
+          const created = entry;
+          entry.stop = listen(lifecycle.signal, "abort", () => retire(key, created), {
             once: true,
           });
         }
@@ -269,33 +280,13 @@ export function createSessionRetainedOperations(host: Host) {
             }).result?.sessions[0]
           : row,
       );
-      for (const [entryKey, entry] of entries) {
-        if (entry.current() && entry.routeKey === key) {
-          try {
-            entry.observeEvent("sessions.changed", payload);
-          } catch (error) {
-            retire(entryKey, entry);
-            entry.onError(error);
-          }
-        }
-      }
+      observePayload("sessions.changed", payload, key);
     },
-    observePayload(event: string, payload: unknown) {
-      for (const [key, entry] of entries) {
-        if (entry.current()) {
-          try {
-            entry.observeEvent(event, payload);
-          } catch (error) {
-            retire(key, entry);
-            entry.onError(error);
-          }
-        }
-      }
-    },
+    observePayload,
     invalidate() {
       for (const entry of entries.values()) {
         if (entry.current()) {
-          entry.invalidate();
+          entry.operation.invalidate();
         }
       }
     },

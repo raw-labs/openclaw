@@ -9,7 +9,7 @@ export * from "./control-ui-user-avatar-route.js";
 export {
   CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
   CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
-} from "@openclaw/gateway-protocol";
+} from "../../packages/gateway-protocol/src/control-ui-session-pull-requests.js";
 
 /** Anonymous public-page presentation; remote URLs never cross into the renderer. */
 export type ControlUiLinkPreview = {
@@ -45,4 +45,4 @@ export type {
   ControlUiSessionPullRequests,
   ControlUiSessionPullRequestSnapshot,
   ControlUiSessionPullRequestsChanged,
-} from "@openclaw/gateway-protocol";
+} from "../../packages/gateway-protocol/src/control-ui-session-pull-requests.js";

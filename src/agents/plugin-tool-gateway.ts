@@ -1,5 +1,8 @@
 import { getAgentToolAssistantTurnId } from "../../packages/agent-core/src/tool-execution-context.js";
-import { captureWorkspacePublicationProvider } from "../gateway/workspace-publication-binding.js";
+import {
+  captureWorkspacePublicationProvider,
+  isWorkspacePublicationGatewayMethod,
+} from "../gateway/workspace-publication-binding.js";
 import { captureExecRequestOwners } from "../infra/exec-request-context.js";
 import type { OpenClawPluginToolContext } from "../plugins/tool-types.js";
 import { resolveReplyRunForCurrentSessionId } from "../sessions/session-controller.identity.js";
@@ -21,15 +24,6 @@ import {
 } from "./tools/in-process-gateway.js";
 import { handoffSessionTool } from "./tools/session-tool-handoff.js";
 import { hasSessionControlAuthority } from "./tools/sessions-operator-authority.js";
-
-// Existing native wire names retain their authorization; only the installed provider may bridge them.
-const workspacePublicationMethods = new Set([
-  "sessions.github.action",
-  "sessions.github.publish",
-  "sessions.github.options",
-  "sessions.github.status",
-  "sessions.github.confirm",
-]);
 
 /** Capture workspace/operation custody once; factories receive no raw caller or sandbox. */
 export function preparePluginToolGatewayCapability(
@@ -72,7 +66,7 @@ export function preparePluginToolGatewayCapability(
       if (ownedMethods.has(method)) {
         return undefined;
       }
-      if (workspacePublicationMethods.has(method) && assertWorkspaceProvider) {
+      if (isWorkspacePublicationGatewayMethod(method) && assertWorkspaceProvider) {
         assertWorkspaceProvider();
         return assertWorkspaceProvider;
       }

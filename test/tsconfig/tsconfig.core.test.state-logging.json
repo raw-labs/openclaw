@@ -16,6 +16,10 @@
     "../../src/shared/**/*.test.tsx",
     "../../src/infra/sqlite-*.test.ts",
     "../../src/infra/state-migrations*.test.ts",
-    "../../src/infra/state-migrations*.test.tsx"
+    "../../src/infra/state-migrations*.test.tsx",
+    "../../src/infra/session-cost-usage*.test.ts",
+    "../../src/infra/session-cost-usage*.test.tsx",
+    "../../src/infra/postgres-sync/**/*.test.ts",
+    "../../src/infra/postgres-sync/**/*.test.tsx"
   ]
 }

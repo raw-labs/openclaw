@@ -1,7 +1,7 @@
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "@openclaw/gateway-protocol";
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
 import { timestampMsToIsoString } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { CronCompactJob, CronJob, CronJobsListResult } from "../../api/types.ts";

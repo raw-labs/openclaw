@@ -4,6 +4,7 @@ import type { PluginsControlUiCatalog } from "../../../packages/gateway-protocol
 import { CONTROL_UI_BOOTSTRAP_CONFIG_ATTRIBUTE } from "../../../src/gateway/control-ui-bootstrap-contract.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { GatewayRequestError } from "../api/gateway.ts";
+import type { GatewaySessionRow } from "../api/types.ts";
 import { createApplicationConfigCapability } from "../app/config.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import {
@@ -748,7 +749,12 @@ it("bounds action observations and effect authority to live registrations", asyn
   const runtime = runtimeFor(context);
   runtime.start();
   await runtime.refresh();
-  const session = { key: "agent:main:review", agentId: "main", kind: "direct", updatedAt: 1 };
+  const session = {
+    key: "agent:main:review",
+    agentId: "main",
+    kind: "direct",
+    updatedAt: 1,
+  } satisfies GatewaySessionRow;
   const notified = vi.fn();
   const close = observeSessionMenuActions(runtime, session, notified);
   expect(interests).toBe(1);
@@ -806,7 +812,7 @@ it.each(["review", "reader"])(
   "admits references only with declared reader owner %s and retires observations and retained resolvers",
   async (readerPluginId) => {
     let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
-    const context = connectedContext(
+    let context = connectedContext(
       {
         gatewayUrl: localGateway(),
         request: async (method) =>
@@ -875,8 +881,9 @@ it.each(["review", "reader"])(
         return Object.assign(owner, { host });
       },
     );
-    const runtime = runtimeFor(context);
-    context.plugins = runtime;
+    const runtime = new ControlUiPluginRuntime(() => context);
+    runtimes.push(runtime);
+    context = { ...context, plugins: runtime };
     runtime.start();
     await runtime.refresh();
     let latest: ReturnType<ReturnType<typeof createTextReferenceProjection>> = [];

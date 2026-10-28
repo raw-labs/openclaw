@@ -103,6 +103,9 @@
       "@openclaw/gateway-protocol/connect-error-details": [
         "./packages/gateway-protocol/src/connect-error-details.ts"
       ],
+      "@openclaw/gateway-protocol/cron-list-page-validation": [
+        "./packages/gateway-protocol/src/cron-list-page-validation.ts"
+      ],
       "@openclaw/gateway-protocol/gateway-error-details": [
         "./packages/gateway-protocol/src/gateway-error-details.ts"
       ],
