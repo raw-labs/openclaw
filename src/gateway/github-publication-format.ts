@@ -1,7 +1,7 @@
 import {
-  appendPublicationMessage as appendGitHubPublicationMessage,
-  type RepositoryPublicationContentFactsV1,
-} from "../plugin-sdk/repository-publication-content.js";
+  appendNativeGitHubPublicationMessage as appendGitHubPublicationMessage,
+  type NativeGitHubPublicationContentFactsV1 as RepositoryPublicationContentFactsV1,
+} from "../plugin-sdk/native-github-publication-host.js";
 
 /** GitHub owns text and markers; the host owns credit and optional session disclosure. */
 export function formatGitHubPublicationContent(params: {

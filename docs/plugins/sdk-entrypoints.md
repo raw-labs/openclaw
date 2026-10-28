@@ -41,23 +41,33 @@ checkout contracts. Plugins declare discovery metadata and register their source
 the existing picker, session creation, and cloud workspace owners consume it.
 See [Repository sources](/plugins/sdk-repository-sources).
 
-Repository integrations can use the following narrow host entrypoints. The host
-keeps workspace custody, durable publication transactions, admitted reads, and
-account storage; plugins provide vendor transport, selection, and presentation.
+The native GitHub integration uses three explicit host bridges. They preserve the
+existing GitHub account records, publication receipts, and wire methods; they are
+not generic account storage or a multi-vendor publication engine. Repository
+sources and execution-environment contributions use the independent generic
+contracts above.
 
-| Entry point                                                       | Responsibility                                                                |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `repository-identity-host`, `repository-oauth-host`               | Canonical account records and owner-bound OAuth commits                       |
-| `repository-publication-engine`, `repository-publication-content` | Typed vendor callbacks, Git transfer effects, and host-prepared content facts |
-| `repository-publication-install`                                  | Install one publication provider for a managed service lifetime               |
-| `repository-session-host`, `repository-session-read`              | Bind admitted Gateway/session source reads and install review presentation    |
-| `dashboard`                                                       | Register a declared data binding with bounded host preparation                |
+| Entry point                      | Responsibility                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `native-github-account-host`     | Native GitHub account records, owner-bound OAuth commits, and refresh settlement                               |
+| `native-github-publication-host` | Native receipt provenance, admitted publication installation, Git transfer effects, and prepared content facts |
+| `native-github-session-read`     | Native GitHub review admission and presentation over common session/source observations                        |
+| `dashboard`                      | A declared data binding with Board-owned grant preparation                                                     |
 
-These contracts do not move native GitHub implementations or change stored
-account/publication records. A plugin tool's optional `context.gateway` capability
-calls only that plugin's registered methods and its installed publication host
-operations. The host retains request authority and accepted handoff custody;
-plugins do not receive an administrative Gateway client.
+A publication provider supplies typed `NativeGitHubPublisherProvenance` facts:
+the recorded source, optional managed profile, and verified account ID/login.
+The host records these facts in the existing native receipt fields and compares
+them directly on replay. Live account and request assertions still authorize
+every effect.
+The account bridge retains existing shutdown drain and exact refresh settlement
+contracts, including the released synchronous adapters through December 31, 2026.
+The read bridge keeps common session/source observations separate from its
+GitHub-specific own-PR binding and verified-account read capability.
+
+A plugin tool's optional `context.gateway` capability calls only that plugin's
+registered methods and its installed publication host operations. The host
+retains request authority and accepted handoff custody; plugins do not receive an
+administrative Gateway client.
 
 ## Where each section moved
 

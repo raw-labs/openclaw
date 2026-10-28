@@ -1,7 +1,7 @@
 import {
   CONTROL_UI_SESSION_PULL_REQUESTS_MAX_KEYS,
   CHAT_SEND_SESSION_KEY_MAX_LENGTH,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import { asNullableRecord } from "../plugin-sdk/string-coerce-runtime.js";
 
 function parseSessionKeys(value: unknown): string[] | null {

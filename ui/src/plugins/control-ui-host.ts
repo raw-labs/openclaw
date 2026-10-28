@@ -194,43 +194,6 @@ export function createControlUiPluginHost(
           eventAgentId,
         );
       },
-      captureSummary: ({ sessionKey, agentId }) => {
-        const context = current();
-        const snapshot = context.gateway.snapshot;
-        // The store uses owner-qualified artifact keys; the native roster owns raw row keys.
-        const artifact = scopedSessionArtifactKey(sessionKey, agentId);
-        const rosterAgent = context.sessions.state.agentId;
-        const row = context.sessions.state.result?.sessions.find(
-          (candidate) =>
-            scopedSessionArtifactKey(
-              candidate.key,
-              candidate.agentId ?? rosterAgent ?? undefined,
-            ) === artifact,
-        );
-        const selected = scopedSessionArtifactKey(
-          snapshot.sessionKey,
-          snapshot.assistantAgentId ?? undefined,
-        );
-        const summaryKey = row?.key ?? (selected === artifact ? snapshot.sessionKey : sessionKey);
-        const rawOwner = !parseAgentSessionKey(summaryKey) ? rosterAgent : undefined;
-        const scope = context.sessions.captureConnectionScope();
-        const epoch = context.sessions.capturePullRequestEpoch(summaryKey);
-        const live = () =>
-          !owner.abort.signal.aborted &&
-          runtime.isCurrent(owner) &&
-          getContext().sessions === context.sessions &&
-          scope !== null &&
-          context.sessions.isConnectionScopeCurrent(scope) &&
-          (rawOwner === undefined || context.sessions.state.agentId === rawOwner);
-        return {
-          read: () => (live() ? context.sessions.pullRequestSummary(summaryKey) : undefined),
-          publish: (summary) => {
-            if (live()) {
-              context.sessions.setPullRequestSummary(summaryKey, summary, epoch);
-            }
-          },
-        };
-      },
       get rows() {
         return structuredClone(current().sessions.state.result?.sessions ?? []);
       },

@@ -571,16 +571,12 @@ accepted work survives presentation changes only while its plugin, connection,
 and session authority remain current. Plugin retirement or session deletion ends
 that custody. This does not create another scheduler or durable operation store.
 
-Use `host.sessions.captureSummary(target)` to read or publish a session's existing
-pull-request summary projection. The sink captures the roster writer's read epoch;
-a stale or retired sink cannot overwrite a newer projection. It does not provide
-publication authority or a second summary cache.
-
 ### Text references
 
 V2 `host.ui.registerTextReferenceProvider` adds prose references to transcript and
-file Markdown. A provider names its own admitted `readerId`, captures an immutable
-`snapshot(context)`, and resolves text ranges to URLs from those captured facts.
+file Markdown. A provider names an admitted reader with `reader: { pluginId, id }`,
+captures an immutable `snapshot(context)`, and resolves text ranges to URLs from
+those captured facts.
 Ranges address UTF-16 offsets in a prose run; code and existing links are excluded.
 Native GitHub references retain priority, so a contribution does not rewrite
 existing native links.
@@ -589,7 +585,9 @@ The snapshot's `key` identifies its facts for rendering caches. Publish a new
 snapshot object whenever those facts change, even when the key stays the same.
 An optional `observe` callback can notify the host to capture new facts. The
 existing link-reader owner admits presentation and handles opening; this API does
-not authorize remote reads or transfer another plugin's reader ownership.
+not authorize remote reads or transfer another plugin's reader ownership. Both
+the provider registration and the declared reader must remain active. A provider
+may name another plugin's reader without taking ownership of it.
 
 ### Bundle boundaries
 

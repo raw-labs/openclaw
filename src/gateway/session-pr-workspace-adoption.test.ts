@@ -481,7 +481,7 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
       async verifyWriteAccess() {},
     });
     vi.spyOn(provider, "preparePublisher").mockResolvedValue({
-      reference: "synthetic-adoption-publisher",
+      provenance: { source: "system-detected", account: { accountId: 1, login: "fixture" } },
       author: { name: "Guest", email: "guest@example.test" },
       assertCurrent() {},
       async refresh() {},

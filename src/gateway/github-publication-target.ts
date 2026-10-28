@@ -2,12 +2,12 @@ import type { SessionGitHubPullRequestInspectResult } from "../../packages/gatew
 import { resolveGitHubHost } from "../agents/github-host-runtime.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import {
-  type RepositoryPublicationProvider,
-  type SessionGitHubPullRequestBinding,
-  RepositoryPublicationRequesterUnavailableError,
-  publicationBaseBranch as parseGitHubPublicationBaseBranch,
-  RepositoryPublicationWorkspaceChangedError,
-} from "../plugin-sdk/repository-publication-engine.js";
+  type NativeGitHubPublicationProvider as RepositoryPublicationProvider,
+  type NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
+  NativeGitHubPublicationRequesterUnavailableError as RepositoryPublicationRequesterUnavailableError,
+  nativeGitHubPublicationBaseBranch as parseGitHubPublicationBaseBranch,
+  NativeGitHubPublicationWorkspaceChangedError as RepositoryPublicationWorkspaceChangedError,
+} from "../plugin-sdk/native-github-publication-host.js";
 import { GitHubPublicationBranchChangedError } from "./github-publication-failure.js";
 import { inspectOwnGitHubPullRequest } from "./github-publication-pr-inspect.js";
 import { assertExistingPullRequestWriteAccess } from "./github-publication-pr-preflight.js";

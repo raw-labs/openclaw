@@ -2,7 +2,7 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { containsAsciiControlCharacter } from "@openclaw/normalization-core/string-normalization";
 import type { SessionGitHubActionResult } from "../../packages/gateway-protocol/src/index.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
-import type { RepositoryPublicationActionInput } from "../plugin-sdk/repository-publication-engine.js";
+import type { NativeGitHubPublicationActionInput as RepositoryPublicationActionInput } from "../plugin-sdk/native-github-publication-host.js";
 import { readResponseWithLimit } from "../plugin-sdk/response-limit-runtime.js";
 import { fetchWithSsrFGuard } from "../plugin-sdk/ssrf-runtime.js";
 import {

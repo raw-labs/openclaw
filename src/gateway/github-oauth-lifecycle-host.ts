@@ -22,11 +22,7 @@ import {
   readGitHubDeviceAuthorizationRecordNative,
 } from "../agents/github-oauth-records.native.js";
 import { registerRuntimeConfigWriteListener } from "../config/runtime-snapshot.js";
-import { formatErrorMessage } from "../infra/errors.js";
-import { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";
 import { subscribeSecretStoreChanges } from "../secrets/store/secret-store-changes.js";
-import { getOrCreatePromise } from "../shared/lazy-promise.js";
-import { settlesWithin } from "../shared/settle-within.js";
 import {
   registerOpenClawStateDatabaseAsyncResource,
   registerOpenClawStateDatabaseLifecycleListener,
@@ -135,7 +131,6 @@ export function createRepositoryOAuthStateHostV1(signal: AbortSignal) {
         createGitHubOAuthInventoryReader(onChange, signal),
       ),
     },
-    utilities: { formatErrorMessage, warnPluginSdkDeprecation, getOrCreatePromise, settlesWithin },
   };
 }
 export type RepositoryOAuthStateHostV1 = ReturnType<typeof createRepositoryOAuthStateHostV1>;

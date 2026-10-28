@@ -383,12 +383,8 @@
   "llm",
   "execution-environment",
   "repository-sources",
-  "repository-identity-host",
-  "repository-oauth-host",
-  "repository-publication-content",
-  "repository-publication-engine",
-  "repository-publication-install",
-  "repository-session-host",
-  "repository-session-read",
+  "native-github-account-host",
+  "native-github-publication-host",
+  "native-github-session-read",
   "dashboard"
 ]

@@ -3,7 +3,7 @@ import type {
   ControlUiSessionPullRequestCheck,
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequestCheckStep,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import { isRecord, readNonBlankString } from "../plugin-sdk/string-coerce-runtime.js";
 import { gitHubPublicApi, type ControlUiGitHubError } from "./github-public-api.js";
 

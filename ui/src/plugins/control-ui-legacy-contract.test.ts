@@ -122,10 +122,10 @@ function registerV2Views(host: ControlUiHostV2) {
     id: "panel",
     label: "Panel",
     mount(_container, context) {
-      context.host.sessions.captureSummary(context.props);
+      context.host.requests.capture();
       return {
         update(next) {
-          next.host.sessions.captureSummary(next.props);
+          next.host.requests.capture();
         },
       };
     },

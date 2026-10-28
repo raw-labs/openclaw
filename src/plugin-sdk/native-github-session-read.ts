@@ -1,3 +1,4 @@
+/** Native GitHub review admission over host-owned common session/source observations. */
 import { pluginInstanceInvocation } from "../plugins/plugin-instance-invocation.js";
 import {
   hasCurrentPluginInstanceAuthority,
@@ -7,20 +8,20 @@ import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-
 import { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
 import { getPluginServiceSchedulerBinding } from "../plugins/service-scheduler-binding.js";
 export type {
-  PreparedRepositorySessionRead,
+  PreparedRepositorySessionRead as PreparedNativeGitHubSessionRead,
   RepositorySessionObservation,
   RepositorySessionIdentity,
   RepositorySessionSourceScope,
   RepositoryTaskPublications,
 } from "../gateway/repository-session-read.types.js";
 export type {
-  RepositorySessionReads,
-  RepositorySessionReadChange,
-  RepositorySessionPresentation,
+  RepositorySessionReads as NativeGitHubSessionReads,
+  RepositorySessionReadChange as NativeGitHubSessionReadChange,
+  RepositorySessionPresentation as NativeGitHubSessionPresentation,
 } from "../gateway/control-ui-session-pr-runtime.js";
 
 /** Create once in an admitted service; request and scheduler calls borrow this actual owner. */
-export function createRepositorySessionReads() {
+export function createNativeGitHubSessionReads() {
   const scheduler = getPluginServiceSchedulerBinding()?.();
   const resolveGatewayContext = getPluginRuntimeGatewayRequestScope()?.resolveGatewayContext;
   const context = resolveGatewayContext?.();
@@ -70,12 +71,12 @@ export {
 } from "../gateway/control-ui-contract.js";
 
 export { CHAT_SEND_SESSION_KEY_MAX_LENGTH } from "../../packages/gateway-protocol/src/schema/primitives.js";
-export type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
+export type { SessionGitHubPullRequestBinding as NativeGitHubPullRequestBinding } from "../config/sessions/types.js";
 
 /** Borrow only the current admitted request; client and Factory proof issuance stay host-owned. */
-export async function captureRepositorySessionRequestRead() {
+export async function captureNativeGitHubSessionRequestRead() {
   const runtime = await import("../gateway/control-ui-session-pr-request-read.js");
   return runtime.captureRepositorySessionRequestRead();
 }
 
-export type { RepositoryReadCredentialPreparation } from "../gateway/control-ui-session-pr-request-read.js";
+export type { RepositoryReadCredentialPreparation as NativeGitHubReadCredentialPreparation } from "../gateway/control-ui-session-pr-request-read.js";

@@ -12,11 +12,15 @@ import type { RepositoryPublicationContentHostV1 } from "./repository-publicatio
 import type { RepositoryPublicationGitTransfer } from "./repository-publication-git-transfer.js";
 import type { RepositoryWorkerIdentityTransfer } from "./repository-worker-identity-transfer.js";
 
-/** Recorded provenance in the existing native publication receipt backend; never authority. */
-export type RepositoryPublisherReference = string;
+/** Facts required by the existing native GitHub receipt backend; never credential authority. */
+export type NativeGitHubPublisherProvenance = Readonly<{
+  source: "system-detected" | "system-configured" | "agent-override" | "personal";
+  profileId?: string;
+  account: Readonly<{ accountId: number; login: string }>;
+}>;
 export type RepositoryPublicationAuthor = { name: string; email: string };
 export type RepositoryPublicationPublisher = {
-  reference: RepositoryPublisherReference;
+  provenance: NativeGitHubPublisherProvenance;
   author: RepositoryPublicationAuthor;
   assertCurrent(this: void): void;
   /** The account owner refreshes its own credentials, preserving the accepted selection. */
@@ -40,7 +44,7 @@ export type RepositoryPublicationRequestFacts = {
   title?: string;
   body?: string;
   draft: boolean;
-  publisher: RepositoryPublisherReference;
+  publisher: NativeGitHubPublisherProvenance;
 };
 /** Immutable normalized objects; the host keeps checkpoint locations and custody private. */
 export type RepositoryPublicationSnapshot = {
@@ -89,7 +93,7 @@ export type RepositoryPublicationPersonalSessionAction = RepositoryPublicationPe
     lifecycleRevision: string | null;
   };
 export type RepositoryPublicationPersonalBinding = {
-  reference: RepositoryPublisherReference;
+  provenance: NativeGitHubPublisherProvenance;
   generation: string;
   assertCurrent(this: void): void;
   prepare(this: void, assertWorkspace: () => void): Promise<RepositoryPublicationPublisher>;
@@ -177,7 +181,7 @@ export type RepositoryPublicationProvider = {
   preparePublisher(
     this: void,
     agentId: string,
-    expected?: RepositoryPublisherReference,
+    expected?: NativeGitHubPublisherProvenance,
   ): Promise<RepositoryPublicationPublisher>;
   bindPersonal(
     this: void,
@@ -193,7 +197,7 @@ export type RepositoryPublicationProvider = {
   readPersonalSelection(
     this: void,
     action: RepositoryPublicationPersonalAction,
-  ): Promise<{ generation: string | null; reference: RepositoryPublisherReference | null }>;
+  ): Promise<{ generation: string | null; provenance: NativeGitHubPublisherProvenance | null }>;
   performPullRequestAction(
     this: void,
     input: RepositoryPublicationActionInput,

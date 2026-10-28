@@ -705,34 +705,6 @@ it("retires captured requests and native controls with their view and activation
   expect(() => baseCapture()).toThrow("activation has ended");
 });
 
-it("rejects captured summary sinks after a replacement read epoch or reconnect", () => {
-  const request = vi.fn(async () => sessionsResult([], 1));
-  const client = createTestGatewayClient(request);
-  const h = createGatewayHarness(client);
-  const sessions = createTestSessionCapability(h.gateway);
-  const activation = createHost({
-    ...subscriptions,
-    gateway: h.gateway,
-    sessions,
-  } as unknown as ApplicationContext);
-  const target = { sessionKey: "agent:main:summary" };
-  const older = activation.host.sessions.captureSummary(target);
-  const replacement = activation.host.sessions.captureSummary(target);
-  replacement.publish({ numbers: [422], state: "open" });
-  older.publish({ numbers: [421], state: "closed" });
-  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({ numbers: [422], state: "open" });
-  h.publish(false, client);
-  h.publish(true, client);
-  const current = activation.host.sessions.captureSummary(target);
-  current.publish({ numbers: [423], state: "draft" });
-  replacement.publish(undefined);
-  expect(sessions.pullRequestSummary(target.sessionKey)).toEqual({
-    numbers: [423],
-    state: "draft",
-  });
-  onTestFinished(() => sessions.dispose());
-});
-
 it("retires plugin operation effects with their activation while preserving pane-independent custody", async () => {
   const response = createDeferred<{ ok: boolean }>();
   const request = vi.fn(() => response.promise);
@@ -819,42 +791,3 @@ it("cannot rearm set-sync retries or deliver retained retry callbacks after acti
     vi.useRealTimers();
   }
 });
-
-it.each(["global", "main", "agent:writer:work"])(
-  "keeps the native roster summary target for %s artifact identities",
-  async (rawKey) => {
-    const request = vi.fn(async () =>
-      sessionsResult(
-        [
-          {
-            key: rawKey,
-            agentId: "writer",
-            kind: rawKey === "global" ? "global" : "direct",
-            updatedAt: 1,
-          },
-        ],
-        1,
-      ),
-    );
-    const h = createGatewayHarness(createTestGatewayClient(request), undefined, {
-      initial: { assistantAgentId: "writer", sessionKey: rawKey },
-    });
-    const sessions = createTestSessionCapability(h.gateway, "writer");
-    await sessions.refresh();
-    const activation = createHost({
-      ...subscriptions,
-      gateway: h.gateway,
-      sessions,
-    } as unknown as ApplicationContext);
-    const artifact = activation.host.sessions.artifactKey({
-      sessionKey: rawKey,
-      agentId: "writer",
-    });
-    const sink = activation.host.sessions.captureSummary({ sessionKey: artifact });
-    sink.publish({ numbers: [422], state: "open" });
-    expect(sessions.pullRequestSummary(rawKey)).toEqual({ numbers: [422], state: "open" });
-    if (artifact !== rawKey) {
-      expect(sessions.pullRequestSummary(artifact)).toBeUndefined();
-    }
-  },
-);

@@ -1,8 +1,8 @@
 import type { OpenClawConfig } from "../plugin-sdk/core.js";
 import type {
-  RepositorySessionPresentation,
-  RepositorySessionReads,
-} from "../plugin-sdk/repository-session-read.js";
+  NativeGitHubSessionPresentation as RepositorySessionPresentation,
+  NativeGitHubSessionReads as RepositorySessionReads,
+} from "../plugin-sdk/native-github-session-read.js";
 import {
   loadControlUiSessionPullRequestChecks,
   clearSessionPullRequestCheckDetails,

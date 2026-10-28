@@ -2,7 +2,7 @@ import { preparePersonalGitHubPublicationIdentity } from "../agents/github-tool-
 import {
   UserGitHubConnectionAuthorityChangedError,
   prepareUserGitHubConnection,
-} from "../plugin-sdk/repository-oauth-host.js";
+} from "../plugin-sdk/native-github-account-host.js";
 import type { PersonalGitHubAction } from "./github-personal-oauth.js";
 import {
   rejectGitHubPublicationSelection,

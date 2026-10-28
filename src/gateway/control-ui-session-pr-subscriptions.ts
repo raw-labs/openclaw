@@ -3,13 +3,13 @@ import {
   createConcurrencyLimit as pLimit,
 } from "../plugin-sdk/concurrency-runtime.js";
 import type { OpenClawConfig } from "../plugin-sdk/config-contracts.js";
-import type { OpenClawPluginServiceContextV2 } from "../plugin-sdk/plugin-entry.js";
 import type {
   ControlUiSessionPullRequestSnapshot,
   ControlUiSessionPullRequestsChanged,
-  RepositorySessionReads,
-  PreparedRepositorySessionRead,
-} from "../plugin-sdk/repository-session-read.js";
+  NativeGitHubSessionReads as RepositorySessionReads,
+  PreparedNativeGitHubSessionRead as PreparedRepositorySessionRead,
+} from "../plugin-sdk/native-github-session-read.js";
+import type { OpenClawPluginServiceContextV2 } from "../plugin-sdk/plugin-entry.js";
 import { parseAgentSessionKey } from "../plugin-sdk/routing.js";
 import {
   createControlUiSessionPrPreparedRead,

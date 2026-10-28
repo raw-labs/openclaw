@@ -3,7 +3,6 @@ import type { GitHubPublicationSessionLifecycle } from "../state/github-publicat
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import type { PersonalGitHubPublicationRow } from "./github-personal-publication-store.js";
 import type { PublicationSessionIdentity as SessionIdentity } from "./github-publication-availability.js";
-import { decodeNativePublisher } from "./github-publication-publisher-facts.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
 import { readRepositoryGitHubPublicationAsync } from "./github-publication-store-async.js";
 import { terminalRepositoryGitHubPublication } from "./github-repository-publication-store.js";
@@ -184,7 +183,7 @@ export async function presentPersonalGitHubPublicationStatusAsync(
     pending
       ? provider.readPersonalSelection(action).then((value) => ({
           generation: value.generation,
-          account: value.reference ? decodeNativePublisher(value.reference).account : null,
+          account: value.provenance?.account ?? null,
         }))
       : null,
     pending && receipt.kind === "worktree"

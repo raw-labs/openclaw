@@ -802,124 +802,130 @@ it("bounds action observations and effect authority to live registrations", asyn
   replacement();
 });
 
-it("admits references only with their own reader and retires observations and retained resolvers", async () => {
-  let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
-  const context = connectedContext(
-    {
-      gatewayUrl: localGateway(),
-      request: async (method) =>
-        method === "plugins.controlUi.list" ? catalog(descriptors) : { ok: true },
-    },
-    configForRuntime(),
-  );
-  const listeners = new Set<() => void>();
-  context.gateway.subscribe = (changed) => {
-    const notify = () => changed(context.gateway.snapshot);
-    listeners.add(notify);
-    return () => listeners.delete(notify);
-  };
-  const publish = () => {
-    listeners.forEach((changed) => changed());
-    flush();
-  };
-  const reader = {
-    pluginId: "review",
-    id: "items",
-    label: "Review",
-    linkReader: {
-      hosts: ["github.com"],
-      pathPattern: "^/acme/current/pull/[0-9]+$",
-      detailMethod: "review.detail",
-    },
-  };
-  const setReader = (pluginId?: string) => {
-    Object.assign(context.gateway.snapshot, {
-      hello: { auth: { role: "operator", scopes: ["operator.read"] } },
-      pluginCapabilities: {
-        methods: ["review.detail"],
-        controlUiLinkReaders: pluginId ? [{ ...reader, pluginId }] : [],
+it.each(["review", "reader"])(
+  "admits references only with declared reader owner %s and retires observations and retained resolvers",
+  async (readerPluginId) => {
+    let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
+    const context = connectedContext(
+      {
+        gatewayUrl: localGateway(),
+        request: async (method) =>
+          method === "plugins.controlUi.list" ? catalog(descriptors) : { ok: true },
       },
-    });
-    publish();
-  };
-  let interests = 0;
-  let releases = 0;
-  let withdraw = () => {};
-  let synchronouslyWithdraw = false;
-  vi.mocked(controlUiLoader.initializeControlUiPlugin).mockImplementation(
-    async (getContext, runtime, owner) => {
-      const host = createControlUiPluginHost(getContext, runtime, owner);
-      withdraw = host.ui.registerTextReferenceProvider({
-        id: "shorthand",
-        readerId: "items",
-        snapshot: () => ({
-          key: "same",
-          resolve: () => [{ start: 0, end: 5, url: "https://github.com/acme/current/pull/1" }],
-        }),
-        observe() {
-          interests++;
-          if (synchronouslyWithdraw) {
-            withdraw();
-          }
-          return () => {
-            interests--;
-            releases++;
-          };
+      configForRuntime(),
+    );
+    const listeners = new Set<() => void>();
+    context.gateway.subscribe = (changed) => {
+      const notify = () => changed(context.gateway.snapshot);
+      listeners.add(notify);
+      return () => listeners.delete(notify);
+    };
+    const publish = () => {
+      listeners.forEach((changed) => changed());
+      flush();
+    };
+    const reader = {
+      pluginId: "review",
+      id: "items",
+      label: "Review",
+      linkReader: {
+        hosts: ["github.com"],
+        pathPattern: "^/acme/current/pull/[0-9]+$",
+        detailMethod: "review.detail",
+      },
+    };
+    const setReader = (pluginId?: string) => {
+      Object.assign(context.gateway.snapshot, {
+        hello: { auth: { role: "operator", scopes: ["operator.read"] } },
+        pluginCapabilities: {
+          methods: ["review.detail"],
+          controlUiLinkReaders: pluginId ? [{ ...reader, pluginId }] : [],
         },
       });
-      return Object.assign(owner, { host });
-    },
-  );
-  const runtime = runtimeFor(context);
-  context.plugins = runtime;
-  runtime.start();
-  await runtime.refresh();
-  let latest: ReturnType<ReturnType<typeof createTextReferenceProjection>> = [];
-  const dispose = createRoot((stopRoot) => {
-    const references = createTextReferenceProjection(() => ({
-      context,
-      session: { sessionKey: "agent:main:one" },
-      presented: true,
-    }));
-    createEffect(references, (value) => {
-      latest = value;
+      publish();
+    };
+    let interests = 0;
+    let releases = 0;
+    let withdraw = () => {};
+    let synchronouslyWithdraw = false;
+    vi.mocked(controlUiLoader.initializeControlUiPlugin).mockImplementation(
+      async (getContext, runtime, owner) => {
+        const host = createControlUiPluginHost(getContext, runtime, owner);
+        withdraw = host.ui.registerTextReferenceProvider({
+          id: "shorthand",
+          reader: { pluginId: readerPluginId, id: "items" },
+          snapshot: () => ({
+            key: "same",
+            resolve: () => [
+              { start: 0, end: 5, url: "https://github.com/acme/current/pull/1" },
+              { start: 6, end: 11, url: "https://other.example/pull/2" },
+            ],
+          }),
+          observe() {
+            interests++;
+            if (synchronouslyWithdraw) {
+              withdraw();
+            }
+            return () => {
+              interests--;
+              releases++;
+            };
+          },
+        });
+        return Object.assign(owner, { host });
+      },
+    );
+    const runtime = runtimeFor(context);
+    context.plugins = runtime;
+    runtime.start();
+    await runtime.refresh();
+    let latest: ReturnType<ReturnType<typeof createTextReferenceProjection>> = [];
+    const dispose = createRoot((stopRoot) => {
+      const references = createTextReferenceProjection(() => ({
+        context,
+        session: { sessionKey: "agent:main:one" },
+        presented: true,
+      }));
+      createEffect(references, (value) => {
+        latest = value;
+      });
+      return stopRoot;
     });
-    return stopRoot;
-  });
-  onTestFinished(dispose);
-  flush();
-  expect(latest).toEqual([]);
-  expect(interests).toBe(0);
-  setReader("foreign");
-  expect(latest).toEqual([]);
-  setReader("review");
-  expect(interests).toBe(1);
-  const stable = latest;
-  publish();
-  expect(latest).toBe(stable);
-  const retained = latest[0]!;
-  expect(retained.resolve({ text: "PR #1", links: [] })).toHaveLength(1);
-  setReader();
-  expect(latest).toEqual([]);
-  expect(interests).toBe(0);
-  expect(releases).toBe(1);
-  expect(retained.resolve({ text: "PR #1", links: [] })).toEqual([]);
-  setReader("review");
-  expect(interests).toBe(1);
-  descriptors = [pluginDescriptor("two", `${assetPath("two")}index.js`)];
-  synchronouslyWithdraw = true;
-  await runtime.refresh();
-  flush();
-  expect(interests).toBe(0);
-  expect(latest).toEqual([]);
-  // A provider may withdraw inside observe before returning its cleanup.
-  expect(releases).toBe(3);
-  synchronouslyWithdraw = false;
-  descriptors = [pluginDescriptor("three", `${assetPath("three")}index.js`)];
-  await runtime.refresh();
-  flush();
-  expect(interests).toBe(1);
-  dispose();
-  expect(interests).toBe(0);
-  expect(releases).toBe(4);
-});
+    onTestFinished(dispose);
+    flush();
+    expect(latest).toEqual([]);
+    expect(interests).toBe(0);
+    setReader("foreign");
+    expect(latest).toEqual([]);
+    setReader(readerPluginId);
+    expect(interests).toBe(1);
+    const stable = latest;
+    publish();
+    expect(latest).toBe(stable);
+    const retained = latest[0]!;
+    expect(retained.resolve({ text: "PR #1", links: [] })).toHaveLength(1);
+    setReader();
+    expect(latest).toEqual([]);
+    expect(interests).toBe(0);
+    expect(releases).toBe(1);
+    expect(retained.resolve({ text: "PR #1", links: [] })).toEqual([]);
+    setReader(readerPluginId);
+    expect(interests).toBe(1);
+    descriptors = [pluginDescriptor("two", `${assetPath("two")}index.js`)];
+    synchronouslyWithdraw = true;
+    await runtime.refresh();
+    flush();
+    expect(interests).toBe(0);
+    expect(latest).toEqual([]);
+    // A provider may withdraw inside observe before returning its cleanup.
+    expect(releases).toBe(3);
+    synchronouslyWithdraw = false;
+    descriptors = [pluginDescriptor("three", `${assetPath("three")}index.js`)];
+    await runtime.refresh();
+    flush();
+    expect(interests).toBe(1);
+    dispose();
+    expect(interests).toBe(0);
+    expect(releases).toBe(4);
+  },
+);

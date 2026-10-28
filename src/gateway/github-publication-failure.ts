@@ -1,11 +1,11 @@
 import { GatewayErrorDetailCodes } from "@openclaw/gateway-protocol/gateway-error-details";
 import type { GitHubPublicationSelectionRejectedErrorDetails } from "@openclaw/gateway-protocol/gateway-error-details";
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/index.js";
-import { RepositoryPublicationCreditChangedError } from "../plugin-sdk/repository-publication-content.js";
 import {
-  RepositoryPublicationFailureError,
-  RepositoryPublicationAuthorityError,
-} from "../plugin-sdk/repository-publication-engine.js";
+  NativeGitHubPublicationCreditChangedError as RepositoryPublicationCreditChangedError,
+  NativeGitHubPublicationFailureError as RepositoryPublicationFailureError,
+  NativeGitHubPublicationAuthorityError as RepositoryPublicationAuthorityError,
+} from "../plugin-sdk/native-github-publication-host.js";
 
 type PublicationFailure = Pick<
   Extract<SessionGitHubPublicationResult, { status: "failed" }>,

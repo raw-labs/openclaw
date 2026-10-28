@@ -3,10 +3,10 @@ import type { OpenClawConfig } from "../plugin-sdk/config-contracts.js";
 import type {
   ControlUiSessionPullRequestSnapshot,
   ControlUiSessionPullRequests,
-  RepositorySessionReads,
+  NativeGitHubSessionReads as RepositorySessionReads,
   RepositorySessionSourceScope,
-  PreparedRepositorySessionRead,
-} from "../plugin-sdk/repository-session-read.js";
+  PreparedNativeGitHubSessionRead as PreparedRepositorySessionRead,
+} from "../plugin-sdk/native-github-session-read.js";
 import { isIncognitoSessionKey } from "../plugin-sdk/session-key-runtime.js";
 import {
   prepareControlUiSessionPrServiceTarget,

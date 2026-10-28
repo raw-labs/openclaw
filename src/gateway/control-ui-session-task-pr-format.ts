@@ -1,7 +1,7 @@
 import type {
   ControlUiSessionPullRequests,
-  PreparedRepositorySessionRead,
-} from "../plugin-sdk/repository-session-read.js";
+  PreparedNativeGitHubSessionRead as PreparedRepositorySessionRead,
+} from "../plugin-sdk/native-github-session-read.js";
 
 type TaskPullRequest = NonNullable<ControlUiSessionPullRequests["taskPullRequests"]>[number];
 type ReceiptResult = {

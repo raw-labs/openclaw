@@ -1,6 +1,6 @@
 import { getOrCreatePromise } from "../plugin-sdk/lazy-runtime.js";
-import { RepositoryPublicationChangePermissionError } from "../plugin-sdk/repository-publication-engine.js";
-import type { RepositoryPublicationObjectPlan } from "../plugin-sdk/repository-publication-engine.js";
+import { NativeGitHubPublicationChangePermissionError as RepositoryPublicationChangePermissionError } from "../plugin-sdk/native-github-publication-host.js";
+import type { NativeGitHubPublicationObjectPlan as RepositoryPublicationObjectPlan } from "../plugin-sdk/native-github-publication-host.js";
 import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import { GitHubPublicationKnownFailure } from "./github-publication-failure.js";
 

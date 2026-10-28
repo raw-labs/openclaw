@@ -1,4 +1,4 @@
-import type { ControlUiSessionPullRequest } from "../plugin-sdk/repository-session-read.js";
+import type { ControlUiSessionPullRequest } from "../plugin-sdk/native-github-session-read.js";
 import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import { prepareSessionPullRequestGitHubRead } from "./control-ui-session-pr-request.js";
 import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";

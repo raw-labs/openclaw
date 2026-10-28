@@ -2,11 +2,11 @@ import { resolveGitHubHost } from "../agents/github-host-runtime.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import { runTasksWithConcurrency } from "../plugin-sdk/concurrency-runtime.js";
 import {
-  type RepositoryPublicationObjectPlan,
-  publicationBaseBranch as parseGitHubPublicationBaseBranch,
-  hasPublicationMessageFooter as hasGitHubPublicationMessageFooter,
-  RepositoryPublicationWorkspaceChangedError,
-} from "../plugin-sdk/repository-publication-engine.js";
+  type NativeGitHubPublicationObjectPlan as RepositoryPublicationObjectPlan,
+  nativeGitHubPublicationBaseBranch as parseGitHubPublicationBaseBranch,
+  hasNativeGitHubPublicationMessageFooter as hasGitHubPublicationMessageFooter,
+  NativeGitHubPublicationWorkspaceChangedError as RepositoryPublicationWorkspaceChangedError,
+} from "../plugin-sdk/native-github-publication-host.js";
 import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import {
   GitHubPublicationBranchChangedError,

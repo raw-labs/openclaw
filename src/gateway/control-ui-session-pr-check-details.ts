@@ -3,7 +3,7 @@ import type {
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import {
   type SessionPullRequestReadCredential,
   createGitHubReadGroup,

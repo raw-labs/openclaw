@@ -348,8 +348,11 @@ function* assembleOpenClawCodingTools(
     accountId: options?.agentAccountId,
     channel: resolveGatewayMessageChannel(options?.messageChannel ?? options?.messageProvider),
   });
+  const inheritedToolDefinitions: Pick<AnyAgentTool, "name" | "parameters">[] = [];
   const pluginToolOptions = {
     ...options,
+    inheritToolPolicy: (definition: Pick<AnyAgentTool, "name" | "parameters">) =>
+      inheritedToolDefinitions.push(definition),
     agentSessionKey: options?.sessionKey,
     agentChannel: resolveGatewayMessageChannel(options?.messageChannel ?? options?.messageProvider),
     agentTo: options?.messageTo,
@@ -578,6 +581,7 @@ function* assembleOpenClawCodingTools(
     capabilityProfile,
     tools: exportedTools,
     inheritedToolAllowlist,
+    policyDefinitions: inheritedToolDefinitions,
     includeOpenClawTools,
     isMemoryFlushRun,
   });

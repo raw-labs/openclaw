@@ -1,13 +1,13 @@
 import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import type { OpenClawConfig } from "../plugin-sdk/core.js";
 import type {
-  SessionGitHubPullRequestBinding,
-  PreparedRepositorySessionRead,
+  NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
+  PreparedNativeGitHubSessionRead as PreparedRepositorySessionRead,
   RepositorySessionObservation,
-  RepositorySessionReads,
+  NativeGitHubSessionReads as RepositorySessionReads,
   RepositorySessionSourceScope,
   ControlUiSessionPullRequests,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import type { SessionPullRequestReadCredential } from "./control-ui-session-pr-request.js";
 import type { GitHubCheckoutContext } from "./control-ui-session-prs.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";

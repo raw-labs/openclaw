@@ -5,7 +5,7 @@ import type {
   GitHubPublicationExecutionRow,
   GitHubPublicationRow,
 } from "../state/github-publication-read.types.js";
-import { publisherReference } from "./github-publication-publisher-facts.js";
+import { publisherProvenance } from "./github-publication-publisher-facts.js";
 
 type PublicationFailureCode = Extract<SessionGitHubPublicationResult, { status: "failed" }>["code"];
 
@@ -192,6 +192,6 @@ export function requestFacts(row: PublicationRequestRowFacts) {
     ...(row.title ? { title: row.title } : {}),
     ...(row.body ? { body: row.body } : {}),
     draft: row.draft !== 0,
-    publisher: publisherReference(row),
+    publisher: publisherProvenance(row),
   };
 }

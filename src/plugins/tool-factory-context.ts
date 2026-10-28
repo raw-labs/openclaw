@@ -57,6 +57,22 @@ export function createPluginToolFactoryContext(params: {
   };
   return {
     ...context,
+    inheritToolPolicy:
+      context.inheritToolPolicy &&
+      ((definition) => {
+        if (!authority?.()) {
+          throw new Error(`Plugin "${entry.pluginId}" tool runtime is no longer active.`);
+        }
+        if (
+          !entry.declaredNames?.has(definition.name) ||
+          (entry.names.length > 0 && !entry.names.includes(definition.name))
+        ) {
+          throw new Error(
+            `Plugin "${entry.pluginId}" cannot inherit undeclared tool "${definition.name}".`,
+          );
+        }
+        context.inheritToolPolicy?.(definition);
+      }),
     ...(entry.contextVersion === 2
       ? params.bindExecutionCapabilities?.(
           assertInvocationCurrent,

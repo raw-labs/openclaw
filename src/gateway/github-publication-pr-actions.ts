@@ -2,9 +2,9 @@ import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { SessionGitHubActionResult } from "../../packages/gateway-protocol/src/index.js";
 import { redactToolPayloadText as redactToolDetail } from "../plugin-sdk/logging-core.js";
 import type {
-  RepositoryPublicationActionInput,
-  RepositoryPublicationActionResult,
-} from "../plugin-sdk/repository-publication-engine.js";
+  NativeGitHubPublicationActionInput as RepositoryPublicationActionInput,
+  NativeGitHubPublicationActionResult as RepositoryPublicationActionResult,
+} from "../plugin-sdk/native-github-publication-host.js";
 import { pullRequestState } from "./github-publication-action-state.js";
 import { uploadGitHubPublicationEvidence } from "./github-publication-evidence-upload.js";
 import {

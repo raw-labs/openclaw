@@ -4,7 +4,7 @@ import type {
   ControlUiSessionBranch,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import {
   finishPullRequest,
   loadBoundSessionPullRequest,
@@ -25,7 +25,7 @@ import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { resolveGitHubForkParent } from "./github-repository-target.js";
 
 type MergedPullHead = Parameters<
-  import("../plugin-sdk/repository-session-read.js").RepositorySessionSourceScope["readCheckoutBranchFacts"]
+  import("../plugin-sdk/native-github-session-read.js").RepositorySessionSourceScope["readCheckoutBranchFacts"]
 >[0]["mergedHeads"][number];
 export type GitHubCheckoutContext = {
   host?: string;

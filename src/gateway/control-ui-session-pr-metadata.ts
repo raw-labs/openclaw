@@ -1,9 +1,9 @@
 import { racePromiseWithAbortSignal } from "../plugin-sdk/agent-harness-attempt-runtime.js";
 import { createRetainedCache } from "../plugin-sdk/concurrency-runtime.js";
 import type {
-  SessionGitHubPullRequestBinding,
+  NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
   ControlUiSessionPullRequest,
-} from "../plugin-sdk/repository-session-read.js";
+} from "../plugin-sdk/native-github-session-read.js";
 import {
   asFiniteNumber,
   isRecord,

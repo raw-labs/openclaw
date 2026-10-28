@@ -16,7 +16,6 @@ import {
   createGitHubPublicationCommandRunner,
   requireGitHubPublicationCommit,
 } from "./github-publication-git-transport.js";
-import { decodeNativePublisher } from "./github-publication-publisher-facts.js";
 import {
   prepareManagedWorkspaceReviewBase,
   readManagedSandboxGitState,
@@ -76,7 +75,7 @@ export async function integrateManagedWorkspaceSource(
   },
 ): Promise<SessionGitHubBaseRefreshResult> {
   const { owner, publisher, provider, sandbox } = params;
-  const identity = decodeNativePublisher(publisher.reference);
+  const identity = publisher.provenance;
   const action = params.source ? "prepare_pr" : "refresh_base";
   const reviewPreparationError = `Source integration is saved, but sandbox review-base preparation failed. Resolve any pending sandbox Git merge or index lock, then retry ${action} before tests and Auto Review.`;
   const attribution = await prepareGitCoauthorAttribution({
@@ -175,10 +174,10 @@ export async function integrateManagedWorkspaceSource(
         async (policy) => {
           const cwd = owner.worktree.path;
           const env = {
-            GIT_AUTHOR_NAME: identity.account.login,
-            GIT_COMMITTER_NAME: identity.account.login,
-            GIT_AUTHOR_EMAIL: `${identity.account.accountId}+${identity.account.login}@users.noreply.github.com`,
-            GIT_COMMITTER_EMAIL: `${identity.account.accountId}+${identity.account.login}@users.noreply.github.com`,
+            GIT_AUTHOR_NAME: publisher.author.name,
+            GIT_COMMITTER_NAME: publisher.author.name,
+            GIT_AUTHOR_EMAIL: publisher.author.email,
+            GIT_COMMITTER_EMAIL: publisher.author.email,
           };
           const git = (args: string[], input?: string) =>
             policy.require(cwd, args, { env, input, beforeRun: check });

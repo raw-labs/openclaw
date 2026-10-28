@@ -8,11 +8,11 @@ import {
 } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../plugin-sdk/core.js";
 import {
-  sameNativePublisherSelection,
-  performRepositoryWorkerIdentity,
-  type RepositoryWorkerIdentity,
-} from "../plugin-sdk/repository-publication-engine.js";
+  performNativeGitHubWorkerIdentity as performRepositoryWorkerIdentity,
+  type NativeGitHubWorkerIdentity as RepositoryWorkerIdentity,
+} from "../plugin-sdk/native-github-publication-host.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
+import { sameGitHubPublisherSelection } from "./github-publication-publisher.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
 
 export function subscribeGitHubWorkerIdentityChanges(listener: () => void) {
@@ -96,7 +96,7 @@ export async function prepareGitHubWorkerIdentity(
       assertCurrent();
       const next = await prepare(assertOperation);
       assertCurrent();
-      if (!sameNativePublisherSelection(next, selected)) {
+      if (!sameGitHubPublisherSelection(next, selected)) {
         return "retired";
       }
       identity = next;
