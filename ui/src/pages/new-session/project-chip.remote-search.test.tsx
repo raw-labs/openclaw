@@ -234,7 +234,9 @@ describe("remote project search slot", () => {
         },
       ],
     });
-    methods.push("forge.repositories.search");
+    Object.assign(context.gateway.snapshot.hello!.features!, {
+      methods: ["forge.repositories.search"],
+    });
     request.mockResolvedValue(result("available"));
     browser.synchronize();
     await waitForSolid(() => expect(view.queryByText("example/available")).not.toBeNull());

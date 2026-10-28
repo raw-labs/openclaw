@@ -1253,11 +1253,6 @@ describe("plugin sdk alias helpers", () => {
       ["@openclaw/gateway-client/websocket-data", "gateway-client", "websocket-data"],
       ["@openclaw/gateway-protocol", "gateway-protocol", "index"],
       ["@openclaw/gateway-protocol/schema", "gateway-protocol", "schema"],
-      [
-        "@openclaw/gateway-protocol/cron-list-page-validation",
-        "gateway-protocol",
-        "cron-list-page-validation",
-      ],
       ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
       ["@openclaw/gateway-protocol/frame-guards", "gateway-protocol", "frame-guards"],
       [
@@ -1320,11 +1315,6 @@ describe("plugin sdk alias helpers", () => {
       ["@openclaw/gateway-client/readiness", "gateway-client", "readiness"],
       ["@openclaw/gateway-client/browser", "gateway-client", "browser"],
       ["@openclaw/gateway-protocol/session-row-deltas", "gateway-protocol", "session-row-deltas"],
-      [
-        "@openclaw/gateway-protocol/cron-list-page-validation",
-        "gateway-protocol",
-        "cron-list-page-validation",
-      ],
       [
         "@openclaw/gateway-protocol/connect-error-details",
         "gateway-protocol",
