@@ -1,0 +1,768 @@
+{
+  "id": "github-repositories",
+  "name": "GitHub",
+  "description": "GitHub accounts, repository sources, execution identity, and session review integration.",
+  "enabledByDefault": true,
+  "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "host": {
+        "type": "string",
+        "pattern": "^\\s*[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\s*$"
+      },
+      "apiBaseUrl": {
+        "type": "string",
+        "format": "uri"
+      },
+      "service": {
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "string",
+            "pattern": "^\\s*[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\\s*$"
+          },
+          "token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "const": "env"
+                      },
+                      "provider": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "const": "store"
+                      },
+                      "provider": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "id": {
+                        "type": "string",
+                        "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "const": "file"
+                      },
+                      "provider": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "source": {
+                        "type": "string",
+                        "const": "exec"
+                      },
+                      "provider": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "source",
+                      "provider",
+                      "id"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "system": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "pattern": "^ghp_[a-f0-9]{32}$"
+              },
+              "gitAuthor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              "kind": {
+                "type": "string",
+                "const": "oauth"
+              }
+            },
+            "required": [
+              "profileId"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "profileId": {
+                "type": "string",
+                "pattern": "^ghp_[a-f0-9]{32}$"
+              },
+              "gitAuthor": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "email": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": false
+              },
+              "kind": {
+                "type": "string",
+                "const": "app-installation"
+              },
+              "app": {
+                "type": "object",
+                "properties": {
+                  "appId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "installationId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "accountId": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "repositories": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "fullName": {
+                          "type": "string",
+                          "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "fullName"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "permissions": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string",
+                      "pattern": "^[a-z_]+$"
+                    },
+                    "additionalProperties": {
+                      "type": "string",
+                      "enum": [
+                        "read",
+                        "write"
+                      ]
+                    }
+                  },
+                  "privateKey": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "env"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "provider",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "store"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                              },
+                              "id": {
+                                "type": "string",
+                                "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "provider",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "file"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "provider",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "source": {
+                                "type": "string",
+                                "const": "exec"
+                              },
+                              "provider": {
+                                "type": "string",
+                                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                              },
+                              "id": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "source",
+                              "provider",
+                              "id"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "keyVersion": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "appId",
+                  "installationId",
+                  "accountId",
+                  "repositories",
+                  "permissions",
+                  "privateKey",
+                  "keyVersion"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "profileId",
+              "kind",
+              "app"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "agents": {
+        "type": "object",
+        "propertyNames": {
+          "type": "string"
+        },
+        "additionalProperties": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "pattern": "^ghp_[a-f0-9]{32}$"
+                },
+                "gitAuthor": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "email": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "oauth"
+                },
+                "allowInSandbox": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "profileId"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "profileId": {
+                  "type": "string",
+                  "pattern": "^ghp_[a-f0-9]{32}$"
+                },
+                "gitAuthor": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "email": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "kind": {
+                  "type": "string",
+                  "const": "app-installation"
+                },
+                "app": {
+                  "type": "object",
+                  "properties": {
+                    "appId": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "installationId": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "accountId": {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "repositories": {
+                      "minItems": 1,
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "exclusiveMinimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "fullName": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "fullName"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "permissions": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+$"
+                      },
+                      "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                          "read",
+                          "write"
+                        ]
+                      }
+                    },
+                    "privateKey": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "const": "env"
+                                },
+                                "provider": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "provider",
+                                "id"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "const": "store"
+                                },
+                                "provider": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                                },
+                                "id": {
+                                  "type": "string",
+                                  "pattern": "^[A-Z][A-Z0-9_]{0,127}$"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "provider",
+                                "id"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "const": "file"
+                                },
+                                "provider": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                                },
+                                "id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "provider",
+                                "id"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "source": {
+                                  "type": "string",
+                                  "const": "exec"
+                                },
+                                "provider": {
+                                  "type": "string",
+                                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                                },
+                                "id": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "source",
+                                "provider",
+                                "id"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    "keyVersion": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  },
+                  "required": [
+                    "appId",
+                    "installationId",
+                    "accountId",
+                    "repositories",
+                    "permissions",
+                    "privateKey",
+                    "keyVersion"
+                  ],
+                  "additionalProperties": false
+                },
+                "allowInSandbox": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "profileId",
+                "kind",
+                "app"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "repositorySearch": {
+        "type": "object",
+        "properties": {
+          "useNativeCredentials": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "controlUi": {
+    "entry": "dist/control-ui/index.js",
+    "settingsViews": [
+      {
+        "id": "connections",
+        "section": "profile",
+        "panel": "connections",
+        "requiredMethods": [
+          "tools.github.status"
+        ],
+        "search": {
+          "label": "GitHub connections",
+          "hash": "#settings-profile-github-connections",
+          "aliases": "github oauth account connection publication authentication auth status dashboard actions"
+        }
+      },
+      {
+        "id": "agent-tools",
+        "section": "agents",
+        "panel": "tools",
+        "requiredMethods": [
+          "tools.github.status"
+        ]
+      }
+    ]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "uiCapabilities": [
+    "action"
+  ],
+  "contracts": {
+    "tools": [
+      "github_identity_status",
+      "github_publish"
+    ],
+    "gatewayMethodDispatch": [
+      "authenticated-request"
+    ]
+  },
+  "toolMetadata": {
+    "github_identity_status": {
+      "profiles": [
+        "coding"
+      ],
+      "policyGroups": [
+        "group:sessions",
+        "group:openclaw"
+      ]
+    },
+    "github_publish": {
+      "profiles": [
+        "coding"
+      ],
+      "policyGroups": [
+        "group:sessions",
+        "group:openclaw"
+      ],
+      "sideEffecting": true
+    }
+  },
+  "doctorContract": {
+    "configRepair": true
+  },
+  "configContracts": {
+    "compatibilityMigrationPaths": [
+      "tools.github",
+      "agents.entries.*.tools.github",
+      "agents.list.*.tools.github",
+      "gateway.github",
+      "gateway.controlUi.github",
+      "gateway.projects.nativeGitHubSearch"
+    ],
+    "secretInputs": {
+      "bundledDefaultEnabled": true,
+      "paths": [
+        {
+          "path": "service.token",
+          "ownerKind": "capability",
+          "executionEnvironment": "exclude"
+        },
+        {
+          "path": "system.app.privateKey",
+          "ownerKind": "capability",
+          "executionEnvironment": "exclude"
+        },
+        {
+          "path": "agents.*.app.privateKey",
+          "ownerKind": "capability",
+          "executionEnvironment": "exclude"
+        }
+      ]
+    },
+    "agentConfigMaps": [
+      "agents"
+    ]
+  },
+  "categories": [
+    "developer-tools"
+  ],
+  "repositorySources": [
+    {
+      "id": "repositories",
+      "label": "GitHub",
+      "searchMethod": "projects.searchRemote"
+    }
+  ],
+  "uiHints": {
+    "service.token": {
+      "sensitive": true
+    },
+    "system.app.privateKey": {
+      "sensitive": true
+    },
+    "agents.*.app.privateKey": {
+      "sensitive": true
+    }
+  },
+  "securityAuditConfig": true,
+  "dashboard": {
+    "dataBindings": [
+      {
+        "id": "actions.runs",
+        "legacyId": "github.actions.runs",
+        "method": "github-repositories.board.actions.runs",
+        "description": "With a usable connected agent GitHub identity: await openclaw.data.read(\"github.actions.runs\",{repository:\"owner/repo\",perPage:20}); grant capabilities.tools:[\"github.actions.runs:owner/repo\"]. Uses the agent GitHub identity and cached server reads; direct fetch(api.github.com) is anonymous and rate limited. Identity is checked before save; reconnect in Settings if unavailable. Optional workflow (ID/filename), branch, status, created (ISO day/comparison/range), excludePullRequests=true (omits PR objects); perPage 1..30. Shares private Actions metadata with the widget/session audience; never preview or My GitHub auth. No netOrigins needed."
+      }
+    ]
+  },
+  "doctorHealthChecks": true
+}

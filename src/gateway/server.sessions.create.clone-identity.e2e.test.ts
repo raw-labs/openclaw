@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
 import { requireGit } from "../agents/worktrees/git.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import { getRuntimeConfig } from "../config/io.js";
@@ -26,8 +27,8 @@ import {
   URL as REPOSITORY_URL,
   fixture,
 } from "./worker-environments/repository-git-pack.test-support.js";
-
-vi.mock("../agents/github-oauth-client.js", () => ({
+// mock-isolation: Supply verified account facts while exercising real authenticated Git clone and refresh admission.
+vi.mock("../../extensions/github-repositories/oauth-api.js", () => ({
   verifyGitHubCredential: async () => ({
     status: "available",
     account: { accountId: 123, login: "fixture" },
@@ -62,8 +63,23 @@ test.each(
     await writeManagedGitHubProfileFiles(profileDir, { login: "fixture", token: TOKEN });
     const selected = {
       ...getRuntimeConfig(),
-      gateway: { projects: { nativeGitHubSearch: true } },
-      tools: { github: { profileId } },
+      gateway: {
+        projects: {},
+      },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(getRuntimeConfig()),
+              system: { profileId },
+              repositorySearch: {
+                useNativeCredentials: true,
+              },
+            },
+          },
+        },
+      },
     };
     setRuntimeConfigSnapshot(selected);
     const runCommand = processExec.runCommandWithTimeout;
@@ -134,7 +150,18 @@ test.each(
     const revoke = async () => {
       reachedBoundary = true;
       if (identity === "retired") {
-        setRuntimeConfigSnapshot({ ...selected, tools: {} });
+        setRuntimeConfigSnapshot({
+          ...selected,
+          plugins: {
+            ...selected.plugins,
+            entries: {
+              ...selected.plugins.entries,
+              "github-repositories": {
+                config: { ...readGitHubConfig(selected), system: undefined },
+              },
+            },
+          },
+        });
       } else if (identity === "rotated") {
         await writeManagedGitHubProfileFiles(profileDir, {
           login: "fixture",

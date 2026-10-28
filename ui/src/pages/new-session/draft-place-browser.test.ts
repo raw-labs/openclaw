@@ -65,6 +65,11 @@ function createBrowser(
       connection: { gatewayUrl: "ws://gateway.example" },
       snapshot: { phase: "connected", client, hello },
     },
+    plugins: {
+      registryStatus: "complete",
+      repositorySources: [],
+      subscribe: () => () => undefined,
+    },
     agents: { state: { agentsList: { sessionPlacement: {} } } },
     sessions: {
       state: {

@@ -1,8 +1,7 @@
 import { createRepositoryCheckoutTransfer } from "../../plugins/repository-checkout-transfer.js";
-import { resolvePluginRepositorySource } from "../../plugins/repository-sources.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import type { SessionRepositoryWorkspaceRecord } from "../../state/session-repository-workspaces.types.js";
-import { prepareRepositoryGitHubIdentity } from "./repository-github-identity.js";
+import type { RepositorySources } from "../repository-sources.js";
 import {
   stageSessionRepositoryCheckpoint,
   withSessionRepositoryCheckpoint,
@@ -17,6 +16,7 @@ import type {
 export async function syncSessionRepositoryWorkspace(params: {
   repository: SessionRepositoryWorkspaceRecord;
   repositorySourceId?: string;
+  getRepositorySources?: () => RepositorySources;
   tunnel: WorkerTunnelHandle;
   sessionId: string;
   sessionKey: string;
@@ -58,14 +58,12 @@ export async function syncSessionRepositoryWorkspace(params: {
     );
   }
   params.assertCurrent();
-  const pluginSource = params.repositorySourceId
-    ? resolvePluginRepositorySource(params.repositorySourceId, repository.url)
-    : undefined;
-  const github =
-    prepared || pluginSource
-      ? undefined
-      : await prepareRepositoryGitHubIdentity(params.agentId, params.assertCurrent);
-  params.assertCurrent();
+  const repositorySource = prepared
+    ? undefined
+    : params.getRepositorySources?.().resolve(repository.url, params.repositorySourceId);
+  if (!prepared && !repositorySource) {
+    throw new Error("Repository source service is unavailable; retry after Gateway startup.");
+  }
   const source: Extract<WorkerWorkspaceSyncRequest["source"], { kind: "repository" }> = {
     kind: "repository",
     url: repository.url,
@@ -78,40 +76,28 @@ export async function syncSessionRepositoryWorkspace(params: {
       !repository.checkpointRef &&
       repository.runSetupScript &&
       params.runSetupScript === true,
-    ...(github?.token ? { gitToken: github.token } : {}),
   };
   const sync = async (checkpoint?: typeof source.checkpoint) => {
     params.assertCurrent();
-    pluginSource?.assertCurrent();
-    if (pluginSource && !prepared) {
-      const bound = createRepositoryCheckoutTransfer(
-        params.tunnel,
-        {
-          sessionId: params.sessionId,
-          sessionKey: params.sessionKey,
-          generation: params.generation,
-          gitAuthor: params.gitAuthor,
-          source: { ...source, ...(checkpoint ? { checkpoint } : {}) },
-        },
-        params.assertCurrent,
-      );
-      await pluginSource.checkoutWorker({
-        agentId: params.agentId,
-        transfer: bound.transfer,
-        assertCurrent: params.assertCurrent,
-      });
-      return bound.result();
+    const request = {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      generation: params.generation,
+      gitAuthor: params.gitAuthor,
+      source: { ...source, ...(checkpoint ? { checkpoint } : {}) },
+      authorize: params.assertCurrent,
+    };
+    if (!repositorySource) {
+      return await params.tunnel.syncWorkspace(request);
     }
-    const start = () =>
-      params.tunnel.syncWorkspace({
-        sessionId: params.sessionId,
-        sessionKey: params.sessionKey,
-        generation: params.generation,
-        gitAuthor: params.gitAuthor,
-        source: { ...source, ...(checkpoint ? { checkpoint } : {}) },
-        authorize: github?.assertSelected ?? params.assertCurrent,
-      });
-    return github ? await github.start(start) : await start();
+    const bound = createRepositoryCheckoutTransfer(params.tunnel, request, params.assertCurrent);
+    await repositorySource.checkoutWorker({
+      agentId: params.agentId,
+      transfer: bound.transfer,
+      assertCurrent: params.assertCurrent,
+    });
+    params.assertCurrent();
+    return bound.result();
   };
   params.markPhase?.("repositorySync");
   const synced = repository.checkpointRef

@@ -1,4 +1,8 @@
 import {
+  prepareGitHubCoauthorAttribution,
+  type GitCoauthorAttribution,
+} from "../../extensions/github-repositories/git-attribution-api.js";
+import {
   MAX_SESSION_PARTICIPANTS,
   isMainGitContributorScope,
   inheritSessionGitContributorProfileIds,
@@ -11,10 +15,6 @@ import {
   prepareUserProfileGitHubAttribution,
   resolveUserProfileGitHubAttribution,
 } from "../state/user-profile-github-identity.js";
-import {
-  prepareGitHubCoauthorAttribution,
-  type GitCoauthorAttribution,
-} from "./github-git-attribution.js";
 
 type GitCoauthorAttributionParams = {
   agentId: string;

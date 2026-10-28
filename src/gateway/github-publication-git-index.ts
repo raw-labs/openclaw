@@ -6,7 +6,7 @@ import path from "node:path";
 import { hasErrnoCode, isErrno } from "../infra/errno.js";
 import { gitNullConfigPath } from "../infra/git-exec.js";
 import { statIfExists } from "../infra/path-existence.js";
-import { GitHubPublicationWorkspaceChangedError } from "./github-publication-failure.js";
+import { RepositoryPublicationWorkspaceChangedError as GitHubPublicationWorkspaceChangedError } from "./github-publication-errors.js";
 
 type GitCommandOptions = { cwd?: string; env?: NodeJS.ProcessEnv; input?: string };
 

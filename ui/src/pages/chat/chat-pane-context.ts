@@ -539,7 +539,6 @@ export abstract class ChatPaneContext extends ChatPaneLifecycle {
       state.chatSessionApprovalReplay = undefined;
       state.guardianNotices = [];
       state.providerPolicyNotice = null;
-      this.resetSessionPullRequests();
       this.resetOlderMessagesViewport();
       state.chatLoading = false;
     }

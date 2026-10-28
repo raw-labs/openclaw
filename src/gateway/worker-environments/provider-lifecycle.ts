@@ -78,8 +78,6 @@ export function createWorkerProviderLifecycle(
     onOwnerStopped: dedicatedLeases.retire,
   });
 
-  const machineCatalog = createWorkerMachineCatalog(options);
-
   const expirePrepared = async (record: WorkerEnvironmentRecord) =>
     record.preparation?.consumedAtMs === null && record.preparation.expiresAtMs <= now()
       ? store.requestDestroy({
@@ -240,6 +238,7 @@ export function createWorkerProviderLifecycle(
           record,
           namespace: options.projectNamespace,
           getConfig: options.getConfig,
+          getRepositorySources: options.getRepositorySources,
           requireCurrent: requireProjectOwner,
           signal: workSignal,
         });
@@ -737,7 +736,7 @@ export function createWorkerProviderLifecycle(
       }),
     destroy,
     identityResolverFor,
-    ...machineCatalog,
+    ...createWorkerMachineCatalog(options),
     providerFor,
     reconcileRecord,
     readRuntimeRefresh: runtimeRefresher.read,

@@ -1,5 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "../agents/github-host-runtime.js";
+import {
+  resolveGitHubHost,
+  resolveGitHubApiBaseUrl,
+} from "../../extensions/github-repositories/host-runtime-api.js";
 import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
 import type { GatewayClient } from "./server-methods/client-types.js";

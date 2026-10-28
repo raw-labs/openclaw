@@ -220,7 +220,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
     ["activity"],
     [
       "ui/src/components/image-lightbox.tsx",
-      "ui/src/lib/session-pull-requests.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
       "ui/src/pages/activity/activity-page.ts",
     ],
   ),
@@ -234,7 +234,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
     ["activity"],
     [
       "ui/src/components/link-reader-panel.tsx",
-      "ui/src/lib/session-pull-requests.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
       "ui/src/pages/activity/activity-page.ts",
       "ui/src/pages/activity/session-activity-git.ts",
     ],
@@ -737,7 +737,10 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
   pageWatch(
     "ui/src/e2e/chat-retained-pane-escape.e2e.test.ts",
     ["chat"],
-    ["ui/src/components/app-sidebar.ts", "ui/src/lib/session-pull-requests.ts"],
+    [
+      "ui/src/components/app-sidebar.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
+    ],
     ["ui/src/styles/app-sidebar.css"],
   ),
   pageWatch(
@@ -749,7 +752,10 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
   pageWatch(
     "ui/src/e2e/chat-scroll-dock.e2e.test.ts",
     ["chat"],
-    ["ui/src/lib/session-pull-requests.ts", "ui/src/pages/chat/scroll.ts"],
+    [
+      "extensions/github-repositories/browser/session-pull-requests.ts",
+      "ui/src/pages/chat/scroll.ts",
+    ],
   ),
   pageWatch("ui/src/e2e/chat-scroll.e2e.test.ts", ["chat"], ["ui/src/pages/chat/scroll.ts"]),
   pageWatch(
@@ -817,7 +823,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
     ["chat"],
     [
       "ui/src/components/panel-loading-skeleton.ts",
-      "ui/src/lib/session-pull-requests.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
       "ui/src/pages/chat/chat-pane.ts",
       "ui/src/pages/chat/components/chat-header-session-menu.ts",
       "ui/src/pages/chat/components/session-diff-menus.tsx",
@@ -1283,7 +1289,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
   pageWatch(
     "ui/src/e2e/mobile-shell-geometry.e2e.test.ts",
     ["chat", "new-session"],
-    ["ui/src/lib/session-pull-requests.ts"],
+    ["extensions/github-repositories/browser/session-pull-requests.ts"],
   ),
   pageWatch("ui/src/e2e/mobile-sidebar-session-menu.e2e.test.ts", ["chat"], sessionMenuOwnerRoots),
   pageWatch("ui/src/e2e/model-agent-scoping.e2e.test.ts", ["config", "debug", "model-providers"]),
@@ -1688,7 +1694,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
     ["chat"],
     [
       ...sessionMenuOwnerRoots,
-      "ui/src/lib/session-pull-requests.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
       "ui/src/pages/chat/chat-pane.ts",
     ],
   ),
@@ -1786,7 +1792,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
   pageWatch(
     "ui/src/e2e/session-management.trailing-state.e2e.test.ts",
     ["chat"],
-    [...sessionMenuOwnerRoots, "ui/src/lib/session-pull-requests.ts"],
+    [...sessionMenuOwnerRoots, "extensions/github-repositories/browser/session-pull-requests.ts"],
   ),
   pageWatch(
     "ui/src/e2e/session-manager-history.e2e.test.ts",
@@ -1844,7 +1850,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
       "ui/src/components/solid/channel-avatar.tsx",
       "ui/src/components/session-menu-solid.tsx",
       "ui/src/components/viewer-facepile.ts",
-      "ui/src/lib/session-pull-requests.ts",
+      "extensions/github-repositories/browser/session-pull-requests.ts",
     ],
   ),
   pageWatch("ui/src/e2e/session-progress-hovercard.navigation.e2e.test.ts", ["chat"]),
@@ -1890,7 +1896,7 @@ const ownerWatches: readonly UiE2eOwnerWatch[] = [
   pageWatch(
     "ui/src/e2e/session-pull-requests.e2e.test.ts",
     ["chat"],
-    ["ui/src/lib/session-pull-requests.ts"],
+    ["extensions/github-repositories/browser/session-pull-requests.ts"],
   ),
   pageWatch("ui/src/e2e/session-reconnect-existence.e2e.test.ts", ["chat"]),
   pageWatch(

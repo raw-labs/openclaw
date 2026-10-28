@@ -1,12 +1,12 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { controlUiGitHubHandlers as controlUiHandlers } from "../../../extensions/github-repositories/runtime-api.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.js";
 import { createControlUiRequestOptions } from "./control-ui-request.test-support.js";
-import { controlUiHandlers } from "./control-ui.js";
 import type { RespondFn } from "./types.js";
 
 const requestOptions = createControlUiRequestOptions(() => ({ agents: { entries: { main: {} } } }));
@@ -21,7 +21,18 @@ describe("progressive controlUi.githubDetail", () => {
   it("forwards overview requests through the identity adapter without reading optional endpoints", async () => {
     const cfg: OpenClawConfig = {
       agents: { entries: { main: {} } },
-      gateway: { controlUi: { github: { token: "progressive-service-token" } } },
+      gateway: {
+        controlUi: {},
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              service: { token: "progressive-service-token" },
+            },
+          },
+        },
+      },
     };
     setRuntimeConfigSnapshot(cfg);
     const head = "a".repeat(40);

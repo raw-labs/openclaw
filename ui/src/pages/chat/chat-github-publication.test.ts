@@ -1,10 +1,11 @@
 /* @vitest-environment jsdom */
 import { createComponent, flush } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
+import type { GitHubPublicationOptions } from "../../../../extensions/github-repositories/browser/api.ts";
+import { GitHubPublicationAction } from "../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { GatewayRequestError } from "../../api/gateway.ts";
-import type { GitHubPublicationOptions } from "../../lib/sessions/github-publication-owner.ts";
-import { mountSolid } from "../../test-helpers/mount-solid.ts";
+import { mountRepositorySolid as mountSolid } from "../../test-helpers/repository-ci.test-support.tsx";
 import {
   account,
   confirmation,
@@ -16,7 +17,6 @@ import {
   settled,
   shared,
 } from "./chat-github-publication.test-support.ts";
-import { GitHubPublicationAction } from "./components/chat-github-publication.tsx";
 
 describe("explicit GitHub publication", () => {
   it("does not present an accepted publication status read as a new write", async () => {
@@ -231,7 +231,7 @@ describe("explicit GitHub publication", () => {
       }
       await vi.waitFor(() => expect(changed).toHaveBeenCalled());
       controller.sync(retainedScope);
-      expect(controller.view()).toBeUndefined();
+      expect(controller.view()?.activity).toBeNull();
       ready.onPublish?.();
       ready.onSelect?.("personal");
       ready.onRefresh();

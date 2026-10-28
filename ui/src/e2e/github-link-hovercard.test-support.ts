@@ -1,6 +1,9 @@
 import type { Page } from "playwright";
 import { expect } from "vitest";
-import type { ControlUiLinkReaderPreview } from "../../../src/shared/control-ui-link-reader.js";
+import type {
+  ControlUiLinkReaderDescriptor,
+  ControlUiLinkReaderPreview,
+} from "../../../src/shared/control-ui-link-reader.js";
 
 export const pullPreviewResponse = {
   url: "https://github.com/openclaw/openclaw/pull/99816",
@@ -60,3 +63,18 @@ export async function expectModifiedNavigation(
     JSON.parse((await page.locator("body").getAttribute("data-native-navigation")) ?? "null"),
   ).toEqual({ href, shift: true, prevented: false });
 }
+
+export const GITHUB_REFERENCE_READER: ControlUiLinkReaderDescriptor = {
+  pluginId: "github",
+  id: "github",
+  label: "GitHub",
+  icon: "github",
+  linkReader: {
+    hosts: ["github.com"],
+    pathPattern: "^/[^/]+/[^/]+/(?:issues/[1-9][0-9]{0,9}|pull/[1-9][0-9]{0,9}(?:/files)?)/?$",
+    detailMethod: "github.detail",
+    previewMethod: "github.preview",
+    progressive: true,
+  },
+};
+export { GITHUB_REPOSITORY_PLUGIN as GITHUB_REFERENCE_PLUGIN } from "../test-helpers/repository-plugin.ts";

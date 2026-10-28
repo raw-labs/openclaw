@@ -267,7 +267,7 @@ The refresh interval defaults to 60 minutes and cannot be shorter than 15.
 
 The X plugin uses its configured GitHub token for read-only REST calls to
 `api.github.com`. The existing GitHub tools identity does not expose a shared
-authenticated REST client, so configuring `tools.github` alone does not provide
+authenticated REST client, so configuring `plugins.entries.github-repositories.config.system` alone does not provide
 this credential. Set `token` to a [SecretRef](/gateway/secrets) available to the
 Gateway. The credential must be able to list all collaborators on the selected
 repository, including their permissions, and read public user profiles and

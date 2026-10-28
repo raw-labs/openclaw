@@ -19,7 +19,7 @@ export const en: TranslationMap & {
   mcpApp: TranslationMap;
   linkReader: TranslationMap;
   agentTools: TranslationMap;
-  githubPublication: TranslationMap & Record<"newAction" | "capacity", string>;
+  githubPublication: TranslationMap;
   githubConnections: TranslationMap &
     Record<"title" | "mine" | "system" | "forMe" | "forSystem", string>;
   board: TranslationMap & { widget: TranslationMap };
@@ -90,7 +90,7 @@ export const en: TranslationMap & {
           | "errorSender",
           string
         >;
-      pullRequests: TranslationMap & Record<"open" | "draft" | "merged" | "closed", string>;
+      pullRequests: TranslationMap;
       processesPanel: TranslationMap;
     };
   configForm: TranslationMap & { sections: TranslationMap };
@@ -1754,11 +1754,7 @@ export const en: TranslationMap & {
     notFoundTitle: "Person not found",
     notFoundDescription: "No online presence or visible session association matches this identity.",
   },
-  githubPublication: {
-    newAction: "Choose a new publication",
-    capacity:
-      'Too many publications are awaiting review. Finish an existing publication, then select "{newAction}" to make room. Existing retries remain available.',
-  },
+  githubPublication: {},
   githubConnections: {
     title: "GitHub connections",
     mine: "My GitHub",
@@ -2215,12 +2211,7 @@ export const en: TranslationMap & {
       terminalUnavailable: "Terminal opening is unavailable for this session.",
     },
     taskSuggestions: {},
-    pullRequests: {
-      open: "Open",
-      draft: "Draft",
-      merged: "Merged",
-      closed: "Closed",
-    },
+    pullRequests: {},
     usageRemaining: "Usage Remaining",
     view: {},
     sendShortcut: "Send shortcut",

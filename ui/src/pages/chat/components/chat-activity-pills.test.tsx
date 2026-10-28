@@ -1,11 +1,20 @@
 /* @vitest-environment jsdom */
 
+import type {
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestSnapshot,
+} from "@openclaw/gateway-protocol";
 import { createSignal } from "solid-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionGoal } from "../../../api/types.ts";
+import type { ApplicationContext } from "../../../app/context.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { ApplicationProvider } from "../../../lib/reactive/context.ts";
+import { createContext, createGateway, createSessions } from "../../../test-helpers/app-sidebar.ts";
+import { createTestGatewayClient } from "../../../test-helpers/gateway-client.ts";
 import { cleanupSolid, mountSolid } from "../../../test-helpers/mount-solid.ts";
-import { flush } from "../../../test-helpers/solid-settle.ts";
+import { installRepositoryPresentation } from "../../../test-helpers/repository-presentation.test-support.ts";
+import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import type { ChatActivityPillsProps } from "./chat-activity-pills-types.ts";
 import { ChatActivityPills } from "./chat-activity-pills.tsx";
 
@@ -39,12 +48,18 @@ afterEach(() => {
   }
 });
 
-function mountPills(initial: ChatActivityPillsProps) {
+function mountPills(initial: ChatActivityPillsProps, context?: ApplicationContext) {
   let publish: (next: ChatActivityPillsProps) => void;
   const view = mountSolid(() => {
     const [props, setProps] = createSignal(initial);
     publish = setProps;
-    return <ChatActivityPills {...props()} />;
+    return context ? (
+      <ApplicationProvider value={context}>
+        <ChatActivityPills {...props()} />
+      </ApplicationProvider>
+    ) : (
+      <ChatActivityPills {...props()} />
+    );
   });
   flush();
   return {
@@ -151,10 +166,8 @@ it("retains the goal action while approval hides subagent activity, then restore
   expect(onSubagents).toHaveBeenCalledExactlyOnceWith(subagentButton);
 });
 
-it("follows the current pill order after pull requests move or leave the strip", () => {
-  const pullRequest = (
-    number: number,
-  ): NonNullable<ChatActivityPillsProps["pullRequests"]>["items"][number] => ({
+it("follows the current contributed pill order after pull requests move or leave the strip", async () => {
+  const pullRequest = (number: number): ControlUiSessionPullRequest => ({
     number,
     owner: "example",
     repo: "project",
@@ -168,14 +181,30 @@ it("follows the current pill order after pull requests move or leave the strip",
   const third = pullRequest(3);
   const fourth = pullRequest(4);
   const onOpen = vi.fn();
-  const props = (
-    items: NonNullable<ChatActivityPillsProps["pullRequests"]>["items"],
-  ): ChatActivityPillsProps => ({
+  let snapshot: ControlUiSessionPullRequestSnapshot = {
+    pullRequests: [first, second, third],
+    status: "ready",
+    rateLimited: false,
+  };
+  const context = createContext(
+    createGateway(createTestGatewayClient(async () => ({}))),
+    createSessions("main", []),
+  );
+  const presentation = installRepositoryPresentation(context, () => snapshot);
+  const props: ChatActivityPillsProps = {
     presented: true,
     approvalPending: false,
-    pullRequests: { items, status: "ready", onOpen },
-  });
-  const view = mountPills(props([first, second, third]));
+    contributions: { sessionKey: "agent:main:pills", onOpenDetailsPage: onOpen },
+  };
+  const view = mountPills(props, presentation.context);
+  const update = (items: ControlUiSessionPullRequest[]) => {
+    snapshot = { ...snapshot, pullRequests: items };
+    presentation.notify();
+    flush();
+  };
+  await waitForSolid(() =>
+    expect(view.queryByRole("button", { name: /Review change 1/ })).not.toBeNull(),
+  );
   const button = (number: number) =>
     view.getByRole<HTMLButtonElement>("button", { name: new RegExp(`Review change ${number}`) });
   const press = (key: string, shiftKey = false) => {
@@ -189,14 +218,14 @@ it("follows the current pill order after pull requests move or leave the strip",
   press("ArrowRight");
   expect(document.activeElement).toBe(thirdButton);
 
-  view.update(props([third, first, second]));
+  update([third, first, second]);
   expect(button(1)).toBe(firstButton);
   expect(button(3)).toBe(thirdButton);
   thirdButton.focus();
   press("ArrowRight");
   expect(document.activeElement).toBe(firstButton);
 
-  view.update(props([third, second, fourth]));
+  update([third, second, fourth]);
   button(2).focus();
   press("Home");
   expect(document.activeElement).toBe(thirdButton);
@@ -207,5 +236,9 @@ it("follows the current pill order after pull requests move or leave the strip",
   expect(press("ArrowLeft", true).defaultPrevented).toBe(false);
   expect(document.activeElement).toBe(button(2));
   button(4).click();
-  expect(onOpen).toHaveBeenCalledExactlyOnceWith(fourth, button(4));
+  expect(onOpen).toHaveBeenCalledExactlyOnceWith(
+    "github-repositories",
+    { id: "pull-request:example/project#4", title: fourth.title },
+    button(4),
+  );
 });

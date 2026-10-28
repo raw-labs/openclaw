@@ -1,9 +1,5 @@
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
-import {
-  listAgentEntries,
-  listAgentIds,
-  resolveAgentConfig,
-} from "../agents/agent-scope-config.js";
+import { listAgentIds, resolveAgentConfig } from "../agents/agent-scope-config.js";
 import {
   resolveConfiguredToolPolicies,
   resolveProviderToolPolicy,
@@ -151,21 +147,6 @@ export async function collectAttackSurfaceSummaryFindings(
       detail,
     },
   ];
-  for (const entry of listAgentEntries(cfg)) {
-    if (typeof entry.id !== "string" || entry.tools?.github?.allowInSandbox !== true) {
-      continue;
-    }
-    const configPath = `agents.entries.${entry.id}.tools.github.allowInSandbox`;
-    findings.push({
-      checkId: "sandbox.github_identity_exposed",
-      severity: "warn",
-      title: "Managed GitHub identity reaches sandboxed execution",
-      detail:
-        `${configPath}=true allows agent "${entry.id}" to use its managed GitHub credentials ` +
-        "and Git author in its own sandboxed execution. Commands in that sandbox can read and use the credentials.",
-      remediation: `Set ${configPath}=false unless this agent's sandboxed code is trusted with its GitHub access.`,
-    });
-  }
   return findings;
 }
 

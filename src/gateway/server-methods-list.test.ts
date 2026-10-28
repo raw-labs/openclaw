@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { repositoryGatewayMethods } from "../../extensions/github-repositories/gateway-methods-api.js";
 import { GATEWAY_EVENTS } from "./events.js";
 import {
   createCoreGatewayMethodDescriptors,
@@ -46,9 +47,10 @@ describe("listGatewayMethods", () => {
   });
 
   it("preserves the frozen legacy advertised method prefix", () => {
-    expect(methods.slice(0, LEGACY_ADVERTISED_GATEWAY_METHODS.length)).toEqual(
-      LEGACY_ADVERTISED_GATEWAY_METHODS,
-    );
+    // Extracted integrations append through the installed plugin registry, not the core catalog.
+    const pluginMethods = new Set<string>(repositoryGatewayMethods.map(([name]) => name));
+    const retained = LEGACY_ADVERTISED_GATEWAY_METHODS.filter((name) => !pluginMethods.has(name));
+    expect(methods.slice(0, retained.length)).toEqual(retained);
   });
 
   const sessionEnvironmentMethods = [
@@ -86,10 +88,11 @@ describe("listGatewayMethods", () => {
     }
   });
 
-  it("advertises Control UI session pull request detection", () => {
-    expect(methods).toContain("controlUi.sessionPullRequests.subscribe");
-    expect(methods).toContain("controlUi.sessionPullRequests.checks");
-    expect(coreGatewayHandlers["controlUi.sessionPullRequests.checks"]).toBeTypeOf("function");
+  it("leaves GitHub discovery to its installed plugin while retaining the shared event", () => {
+    for (const [name] of repositoryGatewayMethods) {
+      expect(methods).not.toContain(name);
+      expect(coreGatewayHandlers).not.toHaveProperty(name);
+    }
     expect(GATEWAY_EVENTS).toContain("controlUi.sessionPullRequests.changed");
   });
 
@@ -128,14 +131,6 @@ describe("listGatewayMethods", () => {
 
   it.each([
     ["sessions.title.prepare", { scope: "operator.write", controlPlaneWrite: true }],
-    ["projects.add", { scope: "operator.write", controlPlaneWrite: true }],
-    [
-      "projects.searchRemote",
-      {
-        scope: "operator.read",
-        description: "Search GitHub repositories that can be cloned as managed projects.",
-      },
-    ],
   ] as const)("classifies %s policy", (name, policy) => {
     expect(descriptor(name)).toMatchObject(policy);
   });

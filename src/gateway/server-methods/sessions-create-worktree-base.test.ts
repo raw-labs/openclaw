@@ -3,13 +3,13 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, test, vi } from "vitest";
+import { refreshProjectClone } from "../../../extensions/github-repositories/project-clone.test-support.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
 import {
   loadSessionEntry,
   loadTranscriptEventsSync,
 } from "../../config/sessions/session-accessor.js";
-import { refreshProjectClone } from "../../projects/project-clone.js";
 import { registerProjectRegistry } from "../../projects/project-registry.js";
 import { registerClonedProjectRegistry } from "../../projects/project-registry.test-support.js";
 import {
@@ -97,8 +97,11 @@ async function cleanupRun(
   }
 }
 
-vi.mock("../../projects/project-clone.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../projects/project-clone.js")>();
+vi.mock("../../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../../extensions/github-repositories/project-clone-api.js")
+    >();
   return { ...actual, materializeProjectClone: projectCloneMocks.materialize };
 });
 

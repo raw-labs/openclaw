@@ -1,5 +1,15 @@
+import type { ControlUiSessionOperationBinding } from "../../../../src/plugin-sdk/control-ui-session-operation.ts";
+import { formatUiError } from "../format-error.ts";
+import { scopedSessionArtifactKey } from "./session-key.ts";
+type GitHubPublicationBinding =
+  ControlUiSessionOperationBinding<GitHubPublicationPresentationBinding>;
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
+import {
+  createGitHubPublicationOperationFactory,
+  type GitHubPublicationPresentationBinding,
+  type GitHubPublicationOptions,
+} from "../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../test/helpers/promise.js";
 import { GatewayRequestError, type GatewayBrowserClient } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
@@ -7,15 +17,11 @@ import { interrupted as personalReview } from "../../pages/chat/chat-github-publ
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import {
-  githubPublicationOperationFactory,
-  type GitHubPublicationOptions,
-} from "./github-publication-owner.ts";
-import {
   createGatewayHarness as baseGateway,
   createTestSessionCapability,
   sessionsResult,
 } from "./session-capability.test-support.ts";
-import type { GitHubPublicationBinding, SessionGateway } from "./session-capability.ts";
+import type { SessionGateway } from "./session-capability.ts";
 import { sessionRetryDelayMs } from "./session-retry.ts";
 
 function createGatewayHarness(client: GatewayBrowserClient) {
@@ -35,72 +41,6 @@ function createGatewayHarness(client: GatewayBrowserClient) {
     },
   };
 }
-
-describe("session pull-request state", () => {
-  it("publishes state removal for client replacement and disconnect", () => {
-    const harness = createGatewayHarness({} as GatewayBrowserClient);
-    const sessions = createTestSessionCapability(harness.gateway);
-    const listener = vi.fn();
-    const summary = { numbers: [111532], state: "open" as const };
-    sessions.subscribe(listener);
-
-    sessions.setPullRequestSummary("agent:main:pr-session", summary);
-    expect(sessions.pullRequestSummary("agent:main:pr-session")).toEqual(summary);
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    sessions.setPullRequestSummary("agent:main:pr-session", summary);
-    expect(listener).toHaveBeenCalledTimes(1);
-
-    const replacement = {} as GatewayBrowserClient;
-    for (const connected of [true, false]) {
-      const before = listener.mock.calls.length;
-      harness.publish(connected, replacement);
-      expect(sessions.pullRequestSummary("agent:main:pr-session")).toBeUndefined();
-      expect(listener.mock.calls.length).toBeGreaterThan(before);
-      if (connected) {
-        sessions.setPullRequestSummary("agent:main:pr-session", summary);
-      }
-    }
-  });
-
-  it("rejects an older pane's pull-request result", () => {
-    const sessions = createTestSessionCapability(
-      createGatewayHarness({} as GatewayBrowserClient).gateway,
-    );
-    const key = "agent:main:shared-session";
-    const olderEpoch = sessions.capturePullRequestEpoch(key);
-    const newerEpoch = sessions.capturePullRequestEpoch(key);
-
-    sessions.setPullRequestSummary(key, { numbers: [111532], state: "draft" }, newerEpoch);
-    sessions.setPullRequestSummary(key, undefined, olderEpoch);
-
-    expect(sessions.pullRequestSummary(key)).toEqual({ numbers: [111532], state: "draft" });
-  });
-
-  it("retires pull-request state when a session is deleted", async () => {
-    const key = "agent:main:deleted-pr";
-    const request = vi.fn(async (method: string) => {
-      if (method === "sessions.delete") {
-        return { ok: true, deleted: true };
-      }
-      if (method === "sessions.list") {
-        return sessionsResult([], 2);
-      }
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    const sessions = createTestSessionCapability(
-      createGatewayHarness({ request } as unknown as GatewayBrowserClient).gateway,
-    );
-    const epoch = sessions.capturePullRequestEpoch(key);
-    sessions.setPullRequestSummary(key, { numbers: [111532], state: "open" }, epoch);
-
-    await expect(sessions.delete(key)).resolves.toEqual({ deleted: true });
-    expect(sessions.pullRequestSummary(key)).toBeUndefined();
-
-    sessions.setPullRequestSummary(key, { numbers: [111532], state: "open" }, epoch);
-    expect(sessions.pullRequestSummary(key)).toBeUndefined();
-  });
-});
 
 const sharedPublisher = { source: "system-configured" as const, accountId: 1, login: "system-bot" };
 const sharedOptions = {
@@ -143,6 +83,8 @@ function publicationHarness(responses?: {
     return reply();
   });
   const harness = createGatewayHarness(createTestGatewayClient(request));
+  // Native callers attach only after the required publication method is advertised.
+  harness.gateway.snapshot.hello = gatewayHelloForMethods(["sessions.github.publish"]);
   const sessions = createTestSessionCapability(harness.gateway);
   const row = (id: string): GatewaySessionRow => ({
     key: `agent:main:${id}`,
@@ -154,8 +96,12 @@ function publicationHarness(responses?: {
     let changed = createDeferred();
     const binding = sessions.retainedOperations.attach(
       session,
-      githubPublicationOperationFactory,
-      "openclaw-native",
+      createGitHubPublicationOperationFactory(
+        formatUiError,
+        () => "32 publications are awaiting review. Choose a new publication to release one.",
+        (target) => scopedSessionArtifactKey(target.sessionKey, target.agentId),
+      ),
+      "github-repositories",
     )!;
     binding.subscribe(() => {
       const previous = changed;

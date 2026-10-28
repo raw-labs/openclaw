@@ -22,7 +22,6 @@ import { t } from "../../i18n/index.ts";
 import { registerSessionOrganizationEnglish } from "../../i18n/locales/en-session-organization.ts";
 import { watchAgentScope } from "../../lib/agents/index.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
 import { GatewayPageBinding } from "../../lib/gateway-page-binding.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
@@ -30,10 +29,6 @@ import {
   readSessionMethodAccess,
   type SessionMethodAccessRequest,
 } from "../../lib/session-method-access.ts";
-import {
-  SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-  sessionPullRequestsForGateway,
-} from "../../lib/session-pull-requests.ts";
 import { resolveSessionRenamePatch, resolveSessionRenameValue } from "../../lib/session-rename.ts";
 import {
   SESSIONS_PAGE_DEFAULT_LIMIT,
@@ -54,7 +49,6 @@ import {
   isSubagentSessionKey,
   resolveUiConfiguredMainKey,
   resolveUiSessionRowAgentId,
-  scopedSessionArtifactKey,
 } from "../../lib/sessions/session-key.ts";
 import { requestSessionInvolvement } from "../../lib/sessions/session-requests.ts";
 import { searchVisibleSessionTranscripts } from "../../lib/sessions/transcript-search.ts";
@@ -103,7 +97,6 @@ export function createSessionsPage(
 ) {
   let routeData = initialRouteData;
   let active = true;
-  const menuOwner = {};
   function setRouteData(next?: SessionsRouteData) {
     if (routeData === next) {
       return;
@@ -1097,7 +1090,6 @@ export function createSessionsPage(
   }
 
   function closeSessionMenu() {
-    sessionPullRequestsForGateway(application.gateway).unwatch(menuOwner);
     state.sessionMenu = null;
     sessionMenuTrigger = null;
     state.sessionMenuWork = null;
@@ -1113,20 +1105,8 @@ export function createSessionsPage(
       state.sessionMenuWork = null;
       return;
     }
-    const store = sessionPullRequestsForGateway(scope.context.gateway);
-    const pullRequestKey = scopedSessionArtifactKey(
-      row.key,
-      sessionAgentId(row.key, scope.context),
-    );
     state.sessionMenuWork = fetchSessionMenuWork({
       client: scope.client,
-      loadPullRequests: canCallGatewayMethod(
-        scope.context.gateway.snapshot,
-        SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
-        "operator.read",
-      )
-        ? () => store.load(menuOwner, pullRequestKey)
-        : undefined,
       worktreeId: row.worktree.id,
       execNode: row.execNode,
     }).then((work) => (isRequestScopeCurrent(scope) ? work : null));
@@ -1493,7 +1473,6 @@ export function createSessionsPage(
       transcriptSearchAbort?.abort();
       clearSearchTimer();
       inputDialog.abort();
-      sessionPullRequestsForGateway(application.gateway).unwatch(menuOwner);
       gatewayLifecycle.dispose();
     };
   });

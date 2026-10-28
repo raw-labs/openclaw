@@ -1,5 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SessionCatalogSession } from "../../../../packages/gateway-protocol/src/index.ts";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
@@ -34,7 +34,7 @@ async function fixture(
   archive = true,
   terminalAvailable = false,
 ) {
-  const { sessions } = createSessionsHarness("main", ["agent:main:main", key]);
+  const { sessions, publishPullRequests } = createSessionsHarness("main", ["agent:main:main", key]);
   Object.assign(sessions.state.result!.sessions[1]!, live);
   const { sidebar } = await mountSidebar(createGateway({} as GatewayBrowserClient), sessions);
   sidebar.terminalAvailable = terminalAvailable;
@@ -48,7 +48,7 @@ async function fixture(
   };
   await update({});
   const query: Sidebar["querySelector"] = sidebar.querySelector.bind(sidebar);
-  return { sidebar, sessions, query, update };
+  return { sidebar, sessions, publishPullRequests, query, update };
 }
 
 describe("AppSidebar catalog row lifecycle", () => {
@@ -236,16 +236,43 @@ describe("AppSidebar catalog row lifecycle", () => {
   });
 
   it("clears adopted marquee state when its live pull request appears", async () => {
-    const { sidebar, sessions, query } = await fixture();
+    const resizeCallbacks = new Map<Element, () => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly notify: ResizeObserverCallback) {}
+        observe(target: Element) {
+          resizeCallbacks.set(target, () => this.notify([], this));
+        }
+        unobserve(target: Element) {
+          resizeCallbacks.delete(target);
+        }
+        disconnect() {
+          resizeCallbacks.clear();
+        }
+      },
+    );
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const { sidebar, publishPullRequests, query } = await fixture();
     const row = query<HTMLElement>(`[data-session-key="${key}"]`);
     const oldLabel = row?.querySelector<HTMLElement>(".hover-marquee");
+    expect(oldLabel).not.toBeNull();
+    await vi.waitFor(() => expect(resizeCallbacks.has(oldLabel!)).toBe(true));
     oldLabel?.classList.add("hover-marquee--scrolling");
     oldLabel?.style.setProperty("--hover-marquee-shift", "-80px");
-    sessions.setPullRequestSummary(key, { numbers: [125820], state: "open" });
+    publishPullRequests(key, { numbers: [125820], state: "open" });
     await settleLitElement(sidebar);
+    await vi.waitFor(() =>
+      expect(row?.querySelector(".session-row-badge--pull-request")).not.toBeNull(),
+    );
+    // Plugin content changes the label's available width; its geometry owner resets the marquee.
+    resizeCallbacks.get(oldLabel!)!();
     const label = row?.querySelector<HTMLElement>(".hover-marquee");
-    expect(label).not.toBe(oldLabel);
-    expect(label?.classList.contains("hover-marquee--scrolling")).toBe(false);
+    await vi.waitFor(() =>
+      expect(label?.classList.contains("hover-marquee--scrolling")).toBe(false),
+    );
     expect(row?.querySelector(".session-row-badge--pull-request")).not.toBeNull();
   });
 });

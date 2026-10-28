@@ -18,7 +18,6 @@ import {
   runGatewayDaemonHealth,
   runGatewayServicesHealth,
   runHostDesktopHealth,
-  runGitHubProjectHealth,
   runOpenAIOAuthTlsHealth,
   runSecurityHealth,
   runStartupChannelMaintenanceHealth,
@@ -197,10 +196,6 @@ export function resolveFinalDoctorHealthContributions(params: {
     createDoctorHealthContribution("doctor:web-fetch-proxy", "Web fetch proxy", {
       updateWork: { kind: "inspection", scope: "run" },
       run: runWebFetchProxyHealth,
-    }),
-    createDoctorHealthContribution("doctor:github-projects", "GitHub projects", {
-      updateWork: { kind: "standalone" },
-      run: runGitHubProjectHealth,
     }),
     createDoctorHealthContribution("doctor:plugin-health", "Plugin health", {
       updateWork: { kind: "standalone" },

@@ -4,9 +4,9 @@ import { bindFixtureRuntime, fixture, mocks } from "./github-pr-workspace-prepar
 import fs from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import * as publicationPublisher from "../../extensions/github-repositories/publication-publisher-api.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
-import * as publicationPublisher from "./github-publication-publisher.js";
 import { installGitHubPublicationTestHarness } from "./github-publication.test-support.js";
 import * as workspaceStore from "./worker-environments/local-workspace-store.js";
 import { isLocalWorkspaceBaseRefreshRef } from "./worker-environments/workspace-result-inventory.js";

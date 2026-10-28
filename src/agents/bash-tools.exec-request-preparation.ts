@@ -9,6 +9,7 @@ import {
   isDangerousHostEnvVarName,
   normalizeHostOverrideEnvVarKey,
   sanitizeHostExecEnvWithDiagnostics,
+  retainLocalCliAuthenticationEnvironment,
 } from "../infra/host-env-security.js";
 import {
   getInstallationTarget,
@@ -24,7 +25,7 @@ import {
 } from "../infra/shell-env.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookChannelContext } from "../plugins/hook-types.js";
-import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
+import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.shared.js";
@@ -37,7 +38,6 @@ import { type ExecWorkdirResolution, resolveExecWorkdir } from "./bash-tools.exe
 import { buildSandboxEnv, coerceEnv } from "./bash-tools.shared.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import { capturePreparedExecutionEnvironment } from "./execution-environment.js";
-import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 import { sanitizeEnvVars } from "./sandbox/sanitize-env-vars.js";
 import { isSubagentEnvelopeSession } from "./subagents/spawn/subagent-capabilities.js";
 import { ToolInputError } from "./tools/common.js";
@@ -191,20 +191,21 @@ export function resolveExecNotificationDefaults(defaults?: ExecToolDefaults) {
   };
 }
 
-export function resolveExecPreparedRunEnvironment(defaults?: ExecToolDefaults) {
+export function resolveExecPreparedRunEnvironment(
+  defaults?: ExecToolDefaults,
+  assertCurrent = captureAgentToolSourceExecutionGuard(),
+) {
   const secrets = getActiveSecretsRuntimeConfigSnapshot();
-  const input = {
-    config: defaults?.config ?? {},
-    sourceConfig: secrets?.sourceConfig,
-    agentId: defaults?.executionAgentId ?? defaults?.agentId ?? "main",
-    assertCurrent: captureAgentToolSourceExecutionGuard(),
-  };
   return {
     ...(defaults?.preparedRunEnvironment ??
       capturePreparedExecutionEnvironment(
-        input,
-        prepareGitHubToolEnvironment(input),
-        getPluginRegistryForContext(),
+        {
+          config: defaults?.config ?? {},
+          sourceConfig: secrets?.sourceConfig,
+          agentId: defaults?.executionAgentId ?? defaults?.agentId ?? "main",
+          assertCurrent,
+        },
+        getPluginRuntimeGatewayRequestScope()?.pluginRegistry,
         secrets?.executionEnvironmentExclusions,
       )),
     localProcessEnv: installationTargetEnv(getInstallationTarget()),
@@ -410,7 +411,6 @@ export function resolvePreparedExecEnvironment(params: {
   credentialScrubEnv?: Readonly<Record<string, string>>;
   localIdentityEnv?: Readonly<Record<string, string>>;
   localGitConfigParameters?: string;
-  managedLocalIdentity?: boolean;
   localProcessEnv?: Readonly<Record<string, string>>;
   warnings: string[];
 }): {
@@ -546,15 +546,8 @@ export function resolvePreparedExecEnvironment(params: {
     applyPathPrepend(env, params.defaultPathPrepend);
   }
 
-  if (params.host === "gateway" && params.managedLocalIdentity === false) {
-    // Native GitHub identity is the explicit exception to the generic host-secret filter.
-    // Exact service-owner scrubs below still win; non-local hosts receive neither value.
-    for (const name of ["GH_TOKEN", "GITHUB_TOKEN"] as const) {
-      const value = process.env[name];
-      if (typeof value === "string") {
-        env[name] = value;
-      }
-    }
+  if (params.host === "gateway") {
+    retainLocalCliAuthenticationEnvironment(env, process.env);
   }
   if (params.storeSecretEnv) {
     // Secret-kind entries are authenticated ciphertext, not active credentials.
@@ -567,8 +560,8 @@ export function resolvePreparedExecEnvironment(params: {
   }
   const preparedEnv: Record<string, string> = {
     ...params.localProcessEnv,
-    ...params.credentialScrubEnv,
     ...(params.host === "gateway" ? params.localIdentityEnv : undefined),
+    ...params.credentialScrubEnv,
   };
   // Inherited Git parameters can contain credentials; keep them out of request overrides.
   const gitPolicyEnv =

@@ -1,9 +1,6 @@
 import { createContainerEnvFile } from "../../infra/container-env-file.js";
 import type { PreparedSandboxExecutionEnvironment } from "../../plugins/execution-environment-types.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
-import { buildGitHubExecLaunchArgv } from "../github-exec-launch.js";
-import { CLEARED_GITHUB_CREDENTIALS } from "../github-host.js";
-import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
 import type { SandboxBackendCommandParams } from "./backend-handle.types.js";
 import type {
   CreateSandboxBackendParams,
@@ -11,7 +8,6 @@ import type {
   SandboxBackendManager,
 } from "./backend.types.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
-import { SANDBOX_GITHUB_CONFIG_DIR } from "./constants.js";
 import { containerHasTerminated } from "./container-inspect.js";
 import {
   captureSandboxContainerTermination,
@@ -53,7 +49,6 @@ async function createContainerSandboxBackend(
   engine: SandboxContainerEngine,
   params: CreateSandboxBackendParams,
   operatorAuthority?: AdmittedRunOperatorAuthority,
-  githubIdentity?: PreparedGitHubToolEnvironment,
   executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
 ): Promise<SandboxBackendHandle> {
   const assertCurrent = () => {
@@ -130,24 +125,14 @@ async function createContainerSandboxBackend(
     },
     async buildExecSpec({ command, workdir, env: requestedEnv, usePty, stdin }) {
       await validateSandboxContainerEngineTarget(boundEngine, engineTarget);
-      const identity = githubIdentity;
-      const githubProfileDir = identity?.localIdentityEnv.GH_CONFIG_DIR;
-      const externalCommandShell =
-        githubProfileDir && process.platform === "win32"
-          ? (await import("../shell-utils.js")).getShellConfig()
-          : undefined;
       assertCurrent();
-      const env =
-        identity || executionEnvironment
-          ? {
-              ...requestedEnv,
-              ...identity?.credentialScrubEnv,
-              ...identity?.localIdentityEnv,
-              ...(identity ? { GH_CONFIG_DIR: SANDBOX_GITHUB_CONFIG_DIR } : {}),
-              ...executionEnvironment?.credentialScrubEnv,
-              ...executionEnvironment?.localIdentityEnv,
-            }
-          : requestedEnv;
+      const env = executionEnvironment
+        ? {
+            ...requestedEnv,
+            ...executionEnvironment.localIdentityEnv,
+            ...executionEnvironment.credentialScrubEnv,
+          }
+        : requestedEnv;
       const { PATH: requestedPath, ...containerEnv } = env;
       if (requestedPath) {
         containerEnv.OPENCLAW_PREPEND_PATH = requestedPath;
@@ -164,10 +149,6 @@ async function createContainerSandboxBackend(
           argv.push("-w", execWorkdir);
         }
         argv.push("--env-file", envFile.path);
-        if (githubProfileDir) {
-          // The host launcher supplies values privately; the engine reads them by name.
-          argv.push(...Object.keys(CLEARED_GITHUB_CREDENTIALS).flatMap((name) => ["--env", name]));
-        }
         for (const name of executionEnvironment?.inheritedEnvironmentNames ?? []) {
           argv.push("--env", name);
         }
@@ -178,16 +159,10 @@ async function createContainerSandboxBackend(
           : "";
         // Use absolute path for sh to avoid dependency on PATH resolution during exec.
         argv.push(containerId, "/bin/sh", "-lc", `${pathExport}${command}`);
-        const nativeArgv = githubProfileDir
-          ? buildGitHubExecLaunchArgv(argv, githubProfileDir, {
-              githubHost: identity?.localIdentityEnv.GH_HOST,
-              externalCommandShell,
-            })
-          : argv;
         return {
           argv: executionEnvironment?.wrapLocalLaunch
-            ? [...executionEnvironment.wrapLocalLaunch(nativeArgv)]
-            : nativeArgv,
+            ? [...executionEnvironment.wrapLocalLaunch(argv)]
+            : argv,
           env: executionEnvironment
             ? {
                 ...(boundEngine.baseEnv ?? process.env),
@@ -358,14 +333,12 @@ async function createContainerSandboxBackend(
 export async function createDockerSandboxBackend(
   params: CreateSandboxBackendParams,
   operatorAuthority?: AdmittedRunOperatorAuthority,
-  githubIdentity?: PreparedGitHubToolEnvironment,
   executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
 ): Promise<SandboxBackendHandle> {
   return await createContainerSandboxBackend(
     DOCKER_SANDBOX_ENGINE,
     params,
     operatorAuthority,
-    githubIdentity,
     executionEnvironment,
   );
 }
@@ -373,14 +346,12 @@ export async function createDockerSandboxBackend(
 export async function createPodmanSandboxBackend(
   params: CreateSandboxBackendParams,
   operatorAuthority?: AdmittedRunOperatorAuthority,
-  githubIdentity?: PreparedGitHubToolEnvironment,
   executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
 ): Promise<SandboxBackendHandle> {
   return await createContainerSandboxBackend(
     PODMAN_SANDBOX_ENGINE,
     params,
     operatorAuthority,
-    githubIdentity,
     executionEnvironment,
   );
 }

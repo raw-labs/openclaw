@@ -87,7 +87,13 @@ export async function recoverPendingWorkspaceResults(
     }
     // An explicit Gateway move may already have bound a local worktree. The
     // result's recorded source still owns its immutable artifact until settlement.
-    return { kind: "repository", repository };
+    return {
+      kind: "repository",
+      repository,
+      ...(workspace.kind === "repository" && workspace.repositorySourceId
+        ? { repositorySourceId: workspace.repositorySourceId }
+        : {}),
+    };
   };
   const prepareGatewayMove = createPendingGatewayMovePreparation(deps);
   const destroyPendingEnvironment = async (

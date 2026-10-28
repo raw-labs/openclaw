@@ -35,12 +35,12 @@ metadata and does not require a plugin browser module or custom UI enablement.
 
 ## Selection and local preparation
 
-The picker shows plugin source groups alongside the existing native search.
+The picker shows source groups declared by enabled plugins.
 Selecting a result carries the qualified `pluginId/contributionId` as the optional
 `sessions.create.repositorySource`, alongside `projectGitUrl` or `repository`.
 An explicit source that is disabled, withdrawn, or does not accept the URL fails
 with an actionable error; it never falls back to another account or source.
-Requests without that field retain their existing native behavior.
+Without that field, the Gateway resolves the URL against enabled repository sources. A missing or ambiguous source is an actionable error; there is no native GitHub fallback.
 
 The registered source supplies:
 
@@ -89,7 +89,8 @@ are neither returned as source metadata nor persisted in prepared snapshots.
 
 ## Compatibility
 
-Existing plugins need no new registration or manifest fields. Native repository
-selection, URLs, saved source snapshots, and GitHub identity/publication owners
-remain in place when no plugin source is selected. This capability does not
-migrate existing GitHub account/configuration records or replace native tools.
+Existing plugins need no new registration or manifest fields. The bundled
+`github-repositories` plugin supplies the GitHub source and its account/configuration
+migration. The host keeps saved source snapshots, managed checkout storage,
+accepted checkpoints, publication receipts, and recovery; plugin code owns forge
+transport and identity policy. See [GitHub](/plugins/github#repository-integration).

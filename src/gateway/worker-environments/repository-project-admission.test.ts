@@ -1,10 +1,19 @@
+import type { RepositorySourceV1 } from "openclaw/plugin-sdk/repository-sources";
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PreparedGitHubSourceReadIdentity } from "../../../extensions/github-repositories/read-identity-api.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
-import type { PreparedGitHubSourceReadIdentity } from "../../agents/github-read-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
+import {
+  createPluginRegistryFixture,
+  registerTestPlugin,
+} from "../../plugin-sdk/plugin-test-contracts.js";
+import { getPluginInstance } from "../../plugins/plugin-instance-scope.js";
+import { createPluginRecord } from "../../plugins/status.test-helpers.js";
+import { createRepositorySources } from "../repository-sources.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 
 const mocks = vi.hoisted(() => ({
   captureAgentLifecycleBinding: vi.fn(),
@@ -19,18 +28,21 @@ vi.mock("../../agents/agent-lifecycle-registry.js", () => ({
   matchesAgentLifecycleBinding: mocks.matchesAgentLifecycleBinding,
   matchesAgentLifecycleBindingAsync: mocks.matchesAgentLifecycleBindingAsync,
 }));
-vi.mock("../../agents/github-tool-identity.js", async () => ({
-  GitHubIdentityError: (await import("../../agents/github-read-identity.js")).GitHubIdentityError,
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
+  GitHubIdentityError: (
+    await import("../../../extensions/github-repositories/read-identity-api.js")
+  ).GitHubIdentityError,
   prepareGitHubReadIdentity: mocks.prepareGitHubReadIdentity,
 }));
 vi.mock("../../secrets/runtime-state.js", () => ({
   getActiveSecretsRuntimeConfigSnapshot: () => undefined,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: async () => {},
-}));
-vi.mock("./repository-git-pack.js", () => ({
-  prepareRepositoryWorkerGitPack: mocks.prepareGitPack,
+vi.mock("./repository-git-pack.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./repository-git-pack.js")>()),
+  prepareRepositoryCheckoutPack: mocks.prepareGitPack,
 }));
 
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
@@ -43,8 +55,10 @@ const recipe = "d".repeat(40);
 const repositoryUrl = "https://github.com/acme/project.git";
 let observedRepositoryUrl = repositoryUrl;
 const agent = { agentId: "main", provenance: null };
+let sources: ReturnType<typeof createRepositorySourcesFixture>;
 const admission = {
   namespace: "test-gateway",
+  getRepositorySources: () => sources,
   getConfig: () => ({}),
   assertCurrent: () => {},
 };
@@ -73,6 +87,8 @@ describe("repository project admission", () => {
     fetchImpl.mock.calls.map(([input]) => new URL(new Request(input).url).pathname);
 
   beforeEach(() => {
+    setRuntimeConfigSnapshot({});
+    sources = createRepositorySourcesFixture();
     observedRepositoryUrl = repositoryUrl;
     selection = { source: "system-configured", profileId: `ghp_${"1".repeat(32)}`, accountId: 1 };
     token = "synthetic-github-source-token";
@@ -112,8 +128,10 @@ describe("repository project admission", () => {
     });
     fetchImpl = vi.fn<typeof fetch>(async (input) => {
       const url = new URL(new Request(input).url);
+      // Enterprise REST shares the same fixture repository behind its supported API prefix.
+      url.pathname = url.pathname.replace(/^\/api\/v3(?=\/)/u, "");
       let value: unknown;
-      if (url.pathname === "/graphql") {
+      if (url.pathname === "/graphql" || url.pathname === "/api/graphql") {
         if (unavailable) {
           return new Response(null, { status: 404 });
         }
@@ -167,6 +185,107 @@ describe("repository project admission", () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     clearRuntimeConfigSnapshot();
+  });
+
+  it("retains the recorded source of reusable capacity when another source accepts its URL", async () => {
+    const host = new AbortController();
+    const initialRegistry = createPluginRegistryFixture();
+    const replacementRegistry = createPluginRegistryFixture();
+    const secondPrepare = vi.fn();
+    const provider = (pluginId: string): RepositorySourceV1 => ({
+      id: "repos",
+      resolve: (url) => (url === repositoryUrl ? { url, name: "acme/project" } : undefined),
+      async prepare() {
+        throw new Error("Unexpected local clone");
+      },
+      worker: {
+        isIdentityCurrent: () => true,
+        async prepare(input) {
+          if (pluginId === "forge-b") {
+            secondPrepare();
+          }
+          input.assertCurrent();
+          return {
+            repositoryId,
+            identityKey: "anonymous-fixture",
+            private: false,
+            baseCommit: commit,
+            tree: rootTree,
+            assertCurrent: input.assertCurrent,
+            async readTree() {
+              return [];
+            },
+            async readBlob() {
+              throw new Error("Unexpected recipe blob");
+            },
+            async confirmAdmission() {},
+            async revalidate() {
+              input.assertCurrent();
+            },
+            async prepareGitPack() {
+              throw new Error("Unexpected pack preparation");
+            },
+          };
+        },
+        async checkout() {
+          throw new Error("Unexpected checkout");
+        },
+      },
+    });
+    const register = (fixture: typeof initialRegistry, id: string) => {
+      const record = createPluginRecord({
+        id,
+        repositorySources: [{ id: "repos", label: "Forge", searchMethod: "forge.search" }],
+      });
+      registerTestPlugin({
+        ...fixture,
+        record,
+        register: (api) => api.registerRepositorySource(provider(id)),
+      });
+      return getPluginInstance(record)!;
+    };
+    const first = register(initialRegistry, "forge-a");
+    let activeRegistry = initialRegistry.registry.registry;
+    const instances = [first];
+    const getRepositorySources = () => createRepositorySources(host.signal, activeRegistry);
+    try {
+      const admitted = await prepareRepositoryWorkerProjectSource({
+        ...initial,
+        getRepositorySources,
+      });
+      const persisted = readRepositoryWorkerProjectSnapshot(structuredClone(admitted.project));
+      assert(persisted);
+      expect(persisted.source.repositorySourceId).toBe("forge-a/repos");
+      instances.push(register(initialRegistry, "forge-b"));
+      await expect(
+        prepareRepositoryWorkerProjectSource({
+          ...admission,
+          getRepositorySources,
+          expected: persisted,
+        }),
+      ).resolves.toMatchObject({ project: persisted });
+      await first.dispose();
+      await expect(admitted.revalidate()).rejects.toThrow();
+      await expect(
+        prepareRepositoryWorkerProjectSource({
+          ...admission,
+          getRepositorySources,
+          expected: persisted,
+        }),
+      ).rejects.toThrow();
+      expect(secondPrepare).not.toHaveBeenCalled();
+      instances.push(register(replacementRegistry, "forge-b"));
+      activeRegistry = replacementRegistry.registry.registry;
+      const fresh = await prepareRepositoryWorkerProjectSource({
+        ...initial,
+        getRepositorySources,
+      });
+      expect(fresh.project.source.repositorySourceId).toBe("forge-b/repos");
+      expect(secondPrepare).toHaveBeenCalledOnce();
+    } finally {
+      host.abort();
+      await Promise.all(instances.map((instance) => instance.dispose()));
+    }
   });
 
   it("admits the declarative recipe before an executable fallback from immutable blobs", async () => {
@@ -274,8 +393,20 @@ describe("repository project admission", () => {
     ).rejects.toThrow("identity changed");
   });
 
-  it("prepares an authenticated pack for an internal enterprise repository", async () => {
-    setRuntimeConfigSnapshot({ gateway: { github: { host: "ghe.example.test" } } });
+  it("revalidates an enterprise repository once before and after its authenticated pack", async () => {
+    setRuntimeConfigSnapshot({
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
+      },
+    });
     observedRepositoryUrl = "https://ghe.example.test/acme/project.git";
     const admitted = await prepareRepositoryWorkerProjectSource({
       ...initial,
@@ -283,6 +414,12 @@ describe("repository project admission", () => {
     });
 
     expect(admitted).toHaveProperty("prepareGitPack");
+    fetchImpl.mockClear();
+    let requestsBeforePack: string[] = [];
+    mocks.prepareGitPack.mockImplementationOnce(async () => {
+      requestsBeforePack = requestPaths();
+      return "/synthetic/source.pack";
+    });
     await expect(
       admitted.prepareGitPack?.({
         temporaryRoot: "/synthetic/temporary",
@@ -290,8 +427,14 @@ describe("repository project admission", () => {
       }),
     ).resolves.toBe("/synthetic/source.pack");
     expect(mocks.prepareGitPack).toHaveBeenCalledWith(
-      expect.objectContaining({ url: observedRepositoryUrl, token }),
+      expect.objectContaining({
+        url: observedRepositoryUrl,
+        httpAuthorization: `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
+      }),
     );
+    const revalidation = ["/api/graphql", "/api/v3/repos/acme/project"];
+    expect(requestsBeforePack).toEqual(revalidation);
+    expect(requestPaths()).toEqual([...revalidation, ...revalidation]);
   });
 
   it.each(["HEAD", "refs/tags/v1", "feature/ready"])(
@@ -308,7 +451,7 @@ describe("repository project admission", () => {
           kind: "repository",
           url: repositoryUrl,
           repositoryId,
-          owner: { agent, identity: selection },
+          owner: { agent, identity: { source: "plugin", key: expect.any(String) } },
         },
       });
       expect(result.setupRecipe).toBe(recipe);
@@ -535,9 +678,6 @@ describe("repository project admission", () => {
 
   it("admits private source with a separate key and retains credentials only in the pack producer", async () => {
     const publicSource = await prepareRepositoryWorkerProjectSource(initial);
-    expect(publicSource.project.key).toBe(
-      "5f3a252d4721416c63de96e5736650e1b83d356e31df48b7442ec4d60ea17189",
-    );
     expect(publicSource.prepareGitPack).toBeUndefined();
     privateRepository = true;
     const admitted = await prepareRepositoryWorkerProjectSource(initial);
@@ -559,7 +699,7 @@ describe("repository project admission", () => {
     expect(mocks.prepareGitPack).toHaveBeenCalledExactlyOnceWith({
       url: repositoryUrl,
       baseCommit: commit,
-      token,
+      httpAuthorization: `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
       temporaryRoot: "/synthetic",
       signal,
       assertCurrent: expect.any(Function),
@@ -621,7 +761,10 @@ describe("repository project admission", () => {
     selection = { source: "anonymous" };
     const anonymous = await prepareRepositoryWorkerProjectSource(initial);
     expect(anonymous.project.key).not.toBe(authenticated.project.key);
-    expect(anonymous.project.source.owner.identity).toEqual({ source: "anonymous" });
+    expect(anonymous.project.source.owner.identity).toEqual({
+      source: "plugin",
+      key: expect.any(String),
+    });
     privateRepository = true;
     await expect(anonymous.revalidate()).rejects.toThrow("identity changed");
   });

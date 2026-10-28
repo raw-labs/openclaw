@@ -1,10 +1,10 @@
 import type { BrowserContext, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../lib/session-pull-requests.ts";
-import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { navigationDrawerToggle } from "../test-helpers/control-ui-navigation.ts";
 import { createControlUiSessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
-import { openChatPublication } from "./chat-details.test-support.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
+import { openChatDetails, openChatPublication } from "./chat-details.test-support.ts";
 import { exactButton as publicationAction } from "./chat-flow.test-support.ts";
 import {
   personalAccount,
@@ -181,6 +181,16 @@ export function defineGitHubPublicationAccountTests({
           : {},
         width,
       );
+      if (width === 390) {
+        const details = await openChatDetails(page);
+        const review = details.locator('[data-details-destination="publication"]');
+        await review.waitFor();
+        // The plugin row keeps the native 14px chevron instead of squeezing its label.
+        const bounds = await review.boundingBox();
+        const copy = await review.locator(".chat-details-mobile-root__copy").boundingBox();
+        expect(bounds!.height).toBeLessThanOrEqual(64);
+        expect(copy!.width).toBeGreaterThan(200);
+      }
       await openChatPublication(page);
       const arrow = page.getByRole("button", {
         name: /^Publication account(?:$|:)/,

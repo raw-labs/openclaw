@@ -1,8 +1,8 @@
 import type { WorkerToolSurface } from "../../packages/gateway-protocol/src/schema/worker-gateway-tool.js";
 import { createCoreCodingTools } from "../agents/core-coding-tools.js";
-import type { PreparedGitHubToolEnvironment } from "../agents/github-tool-identity.types.js";
 import { projectEffectiveExecPolicy } from "../agents/session-permission-exec-mode.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type { PreparedExecutionEnvironment } from "../plugins/execution-environment-types.js";
 import type { SkillSnapshot } from "../skills/types.js";
 import type { WorkerLaunchPlan, WorkerToolAuthority } from "./launch-descriptor.js";
 
@@ -19,7 +19,7 @@ export function createWorkerPlacementTools(params: {
   sessionKey: string;
   sessionId: string;
   runId: string;
-  github?: PreparedGitHubToolEnvironment;
+  github?: PreparedExecutionEnvironment;
   skillsSnapshot?: SkillSnapshot;
 }) {
   // Workers have no node/sandbox execution transport; host approval grants are not portable.

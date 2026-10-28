@@ -183,16 +183,6 @@ const CORE_TOOL_DEFINITIONS: CoreToolDefinition[] = [
     ["conversations_turn", "Send and wait for a correlated external reply"],
     ["sessions_send", SESSIONS_SEND_TOOL_DISPLAY_SUMMARY, { executionLocation: "gateway" }],
     ["sessions_spawn", SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY, { executionLocation: "gateway" }],
-    [
-      "github_identity_status",
-      "Inspect the effective GitHub identity and credential health",
-      { profiles: ["coding"] },
-    ],
-    [
-      "github_publish",
-      "Publish the reconciled session worktree as a draft GitHub pull request",
-      { profiles: ["coding"] },
-    ],
     ["agents_wait", AGENTS_WAIT_TOOL_DISPLAY_SUMMARY, { profiles: ["coding"] }],
     ["sessions_yield", "End turn to receive sub-agent results"],
     ["subagents", "Background work: subagents, media gen, automation runs. list/cancel."],

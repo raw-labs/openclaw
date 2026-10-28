@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as publicationIdentity from "../../../extensions/github-repositories/publication-availability-api.js";
+import { prepareGitHubPublicationTarget } from "../../../extensions/github-repositories/publication-target-api.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { runGit } from "../../agents/worktrees/git.js";
@@ -10,7 +12,6 @@ import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.j
 import { createDeferredCore } from "../../shared/deferred.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import * as availability from "../github-publication-availability.js";
-import { prepareGitHubPublicationTarget } from "../github-publication-target.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import * as sessionStoreWorker from "../session-utils-store-worker.js";
 import {
@@ -61,7 +62,7 @@ async function git(root: string, ...args: string[]) {
 }
 
 beforeEach(() => {
-  vi.spyOn(availability, "prepareCurrentGitHubPublicationOptionsIdentity").mockResolvedValue(
+  vi.spyOn(publicationIdentity, "prepareCurrentGitHubPublicationOptionsIdentity").mockResolvedValue(
     publisherIdentity,
   );
 });
@@ -212,11 +213,17 @@ describe("registered guest publication target discovery", () => {
       expect(await options(fixture)).toHaveBeenCalledWith(true, sharedOptions);
       expect(lookup).toHaveBeenCalledOnce();
       await expect(
-        prepareGitHubPublicationTarget({
-          worktree,
-          identity: { ...publisherIdentity, env: {} },
-          assertCurrent: () => {},
-        }),
+        (async () => {
+          const source = await availability.readRepositoryPublicationTargetFacts({
+            worktree,
+            assertCurrent: () => {},
+          });
+          return prepareGitHubPublicationTarget({
+            source,
+            identity: { ...publisherIdentity, env: {} },
+            assertCurrent: () => {},
+          });
+        })(),
       ).rejects.toThrow(repositoryChanged);
       now += 1;
       expectFailure(await options(fixture), { message: repositoryChanged });

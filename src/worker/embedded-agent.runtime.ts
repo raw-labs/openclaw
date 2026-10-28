@@ -17,7 +17,6 @@ import { buildRuntimeContextCustomMessage } from "../agents/embedded-agent-runne
 import { readSubscriptionCompletionEvidence } from "../agents/embedded-agent-runner/run/subscription-completion-evidence.js";
 import { subscribeEmbeddedAgentSession } from "../agents/embedded-agent-subscribe.js";
 import { recordModelFallbackStop } from "../agents/failover-error.js";
-import type { PreparedGitHubToolEnvironment } from "../agents/github-tool-identity.types.js";
 import { assertSettledTurnFinalizationResult } from "../agents/harness/settled-turn-finalization-result.js";
 import { createAgentHarnessToolSurfaceRuntimeCore } from "../agents/harness/tool-surface-bridge.js";
 import { projectRuntimeContextFragments } from "../agents/internal-runtime-context.js";
@@ -36,6 +35,7 @@ import { completeSystemPromptRuntime } from "../agents/system-prompt-runtime.js"
 import { wrapToolWithGatewayCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { getMachineDisplayName } from "../infra/machine-name.js";
 import { resolveRuntimeOsLabel } from "../infra/os-summary.js";
+import type { PreparedExecutionEnvironment } from "../plugins/execution-environment-types.js";
 import { setPluginToolMeta } from "../plugins/tool-metadata.js";
 import { toAgentStoreSessionKey } from "../routing/session-key.js";
 import { materializeSkillResources } from "../skills/runtime/resources.js";
@@ -72,7 +72,7 @@ type RunWorkerEmbeddedTurnParams = Omit<
   cwd: string;
   workerContainmentRoot: string;
   stateDir: string;
-  github?: PreparedGitHubToolEnvironment;
+  github?: PreparedExecutionEnvironment;
   sessionId: string;
   sessionKey: string;
   inference: { stream: ReturnType<typeof createWorkerInferenceStreamAdapter> };

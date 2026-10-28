@@ -478,8 +478,8 @@ describe("Gateway GitHub publication boundaries", () => {
       };
       mocks.getConfigSnapshot.mockReturnValue({ config, sourceConfig: config });
       const { prepareGitHubPublicationIdentity } = await vi.importActual<
-        typeof import("../agents/github-tool-identity.js")
-      >("../agents/github-tool-identity.js");
+        typeof import("../../extensions/github-repositories/tool-identity-api.js")
+      >("../../extensions/github-repositories/tool-identity-api.js");
       mocks.prepareIdentity.mockImplementation(prepareGitHubPublicationIdentity);
     } else {
       mocks.findWorktreeById.mockReturnValue(worktree());

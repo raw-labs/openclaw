@@ -11,7 +11,7 @@ import { splitTrailingAuthProfile } from "../../../../src/agents/model-ref-profi
 import { normalizeAgentModelRefForConfig } from "../../../../src/config/model-input.js";
 import { parseModelPolicyWildcardRef } from "../../../../src/config/model-policy-ref.js";
 import type { AgentConfig } from "../../../../src/config/types.agents.js";
-import type { GitHubToolIdentityConfig, ToolsConfig } from "../../../../src/config/types.tools.js";
+import type { ToolsConfig } from "../../../../src/config/types.tools.js";
 import { formatAgentRuntimeLabel } from "../../../../src/shared/agent-runtime-display.js";
 import type {
   AgentIdentityResult,
@@ -42,7 +42,6 @@ export function selectableAgentsList(agentsList: AgentsListResult): AgentsListRe
 
 type AgentDisplayTools = Pick<ToolsConfig, "allow" | "alsoAllow" | "deny"> & {
   profile?: string;
-  github?: Partial<Pick<GitHubToolIdentityConfig, "profileId" | "gitAuthor">>;
 };
 
 type AgentConfigEntry = Pick<

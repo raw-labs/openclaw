@@ -23,10 +23,13 @@ import {
   assertNoCredentialFiles,
   fixture as gitFixture,
 } from "./repository-git-pack.test-support.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { createWorkerEnvironmentService } from "./service.js";
 
-vi.mock("../../agents/github-tool-identity.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/github-tool-identity.js")>()),
+vi.mock("../../../extensions/github-repositories/tool-identity-api.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../../extensions/github-repositories/tool-identity-api.js")
+  >()),
   prepareGitHubReadIdentity: async ({ assertActive }: { assertActive: () => void }) => {
     assertActive();
     return {
@@ -46,6 +49,7 @@ type ProvisionOptions = NonNullable<Parameters<WorkerProvider["provision"]>[2]>;
 
 it("uses the real provider lifecycle and authorized private Git transport for presence demand", async () => {
   const git = await gitFixture({ setupRecipe: false });
+  const sources = createRepositorySourcesFixture(() => pool.config);
   vi.stubEnv("OPENCLAW_STATE_DIR", pool.root);
   pool.config.agents = { entries: { main: {} } };
   setRuntimeConfigSnapshot(pool.config);
@@ -101,6 +105,7 @@ it("uses the real provider lifecycle and authorized private Git transport for pr
     logger: { warn: vi.fn() },
     store: pool.store,
     getConfig: () => pool.config,
+    getRepositorySources: () => sources,
     resolveProvider: () => pool.provider,
     projectNamespace: "gateway",
     prepareInstallation: unexpected,
@@ -117,7 +122,8 @@ it("uses the real provider lifecycle and authorized private Git transport for pr
     }),
     presenceDemandStore: {
       read: readPreparedPoolPresenceDemand,
-      write: writePreparedPoolPresenceDemand,
+      write: (value, assertCurrent) =>
+        writePreparedPoolPresenceDemand(value, assertCurrent, sources),
     },
     now: () => pool.nowMs,
   });

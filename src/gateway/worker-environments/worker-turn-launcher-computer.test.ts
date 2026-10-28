@@ -8,6 +8,7 @@ import { runEmbeddedAgentEntry } from "../../agents/embedded-agent-runner/run-en
 import { abortable } from "../../agents/embedded-agent-runner/run/abortable.js";
 import type { EmbeddedAgentRunResult } from "../../agents/embedded-agent-runner/types.js";
 import { FailoverError, resolveModelFallbackError } from "../../agents/failover-error.js";
+import { resolveGitHubPluginToolsFixture } from "../../agents/github-plugin-tools.test-support.js";
 import { runWithModelFallback } from "../../agents/model-fallback-runner.js";
 import { createAgentRunDirectAbortError } from "../../agents/run-termination.js";
 import { installSessionPlacementAdmissionProvider } from "../../agents/session-placement-admission.js";
@@ -38,9 +39,15 @@ import * as fx from "./worker-turn-launcher.test-support.js";
 afterAll(closeStateDatabaseForTest);
 
 const readGitHubFact = vi.hoisted(() => vi.fn());
-// mock-isolation: Worker launches consume facts without starting identity discovery.
-vi.mock("../github-publication-discovery.js", () => ({
-  readGitHubPublicationFact: readGitHubFact,
+// Discovery stays outside launch-envelope and prepared-grant fence tests.
+// mock-isolation: retain the real plugin registrar/factories without ambient package discovery.
+vi.mock("../../agents/openclaw-plugin-tools.js", () => ({
+  resolveOpenClawPluginToolsForOptions: (
+    params: Parameters<typeof resolveGitHubPluginToolsFixture>[0],
+  ) => resolveGitHubPluginToolsFixture(params),
+  resolveOpenClawPluginToolsForOptionsAsync: async (
+    params: Parameters<typeof resolveGitHubPluginToolsFixture>[0],
+  ) => resolveGitHubPluginToolsFixture(params),
 }));
 
 const primaryModes = [
@@ -151,7 +158,7 @@ describe("worker launch capabilities", () => {
           return tools;
         },
       });
-      const provider = createLauncher({ environments });
+      const provider = createLauncher({ environments, readWorkerPublicationFact: readGitHubFact });
       const execution = executeTurn(provider, "run-github", vi.fn());
       if (revoked) {
         await expect(execution).rejects.toBe(revokedError);

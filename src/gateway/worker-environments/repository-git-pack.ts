@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { gitEnvironment } from "../../agents/worktrees/git.js";
 import { executeGitCommand, gitNullConfigPath } from "../../infra/git-exec.js";
-import { parseConfiguredProjectGitUrl } from "../../projects/project-git-url.runtime.js";
 import { workerSshCommandOptions } from "./ssh.js";
 import { prepareWorkerWorkspaceGitPack } from "./workspace-git-base.js";
 
@@ -128,26 +127,4 @@ export async function prepareRepositoryCheckoutPack(params: {
   });
   assertCurrent();
   return pack;
-}
-
-/** Native GitHub callers keep their existing source admission and token contract. */
-export async function prepareRepositoryWorkerGitPack(params: {
-  url: string;
-  baseCommit: string;
-  token: string;
-  temporaryRoot: string;
-  signal: AbortSignal;
-  assertCurrent: () => void;
-}): Promise<string> {
-  if (parseConfiguredProjectGitUrl(params.url)?.url !== params.url) {
-    throw new Error("Repository preparation requires a normalized GitHub HTTPS repository URL");
-  }
-  if (!params.token.trim()) {
-    throw new Error("Private repository preparation requires a current GitHub credential");
-  }
-  const { token, ...input } = params;
-  return await prepareRepositoryCheckoutPack({
-    ...input,
-    httpAuthorization: `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
-  });
 }

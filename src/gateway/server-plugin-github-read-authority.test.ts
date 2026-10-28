@@ -1,20 +1,23 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import repositoryManifest from "../../extensions/github-repositories/openclaw.plugin.json" with { type: "json" };
+import { controlUiGitHubHandlers as controlUiHandlers } from "../../extensions/github-repositories/runtime-api.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../config/runtime-snapshot.js";
 import {
   createPluginRegistryFixture,
+  registerTestPlugin,
   registerVirtualTestPlugin,
 } from "../plugin-sdk/plugin-test-contracts.js";
+import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import type { OpenClawPluginDefinition } from "../plugins/types.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { loadBundledPluginFacade } from "../test-utils/bundled-plugin-public-surface.js";
 import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createGatewayMethodRegistry } from "./methods/registry.js";
-import { controlUiHandlers } from "./server-methods/control-ui.js";
 import type { GatewayRequestHandlerOptions, RespondFn } from "./server-methods/types.js";
 import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import {
@@ -26,6 +29,10 @@ import { resetTestPluginRegistry, setTestPluginRegistry } from "./test-helpers.p
 const { default: github } = await loadBundledPluginFacade<{
   default: OpenClawPluginDefinition;
 }>({ pluginId: "github", artifactBasename: "index.ts" });
+
+const { default: repositories } = await loadBundledPluginFacade<{
+  default: OpenClawPluginDefinition;
+}>({ pluginId: "github-repositories", artifactBasename: "index.ts" });
 
 let state: Awaited<ReturnType<typeof createOpenClawTestState>> | undefined;
 beforeEach(async () => {
@@ -41,7 +48,12 @@ afterEach(async () => {
 function fixture(method: "preview" | "detail") {
   const cfg = {
     agents: { entries: { main: {} } },
-    gateway: { controlUi: { github: { token: "synthetic-preview-credential" } } },
+    gateway: { controlUi: {} },
+    plugins: {
+      entries: {
+        "github-repositories": { config: { service: { token: "synthetic-preview-credential" } } },
+      },
+    },
   };
   setRuntimeConfigSnapshot(cfg);
   const { registry, config } = createPluginRegistryFixture();
@@ -56,6 +68,18 @@ function fixture(method: "preview" | "detail") {
     },
     register: expectDefined(github.register, "GitHub registration"),
   });
+  registerTestPlugin({
+    registry,
+    config,
+    record: createPluginRecord({
+      id: "github-repositories",
+      name: "GitHub repositories",
+      contracts: repositoryManifest.contracts,
+      repositorySources: repositoryManifest.repositorySources,
+      dashboard: repositoryManifest.dashboard,
+    }),
+    register: expectDefined(repositories.register, "GitHub repository registration"),
+  });
   setTestPluginRegistry(registry.registry);
   const context = createContext();
   context.getRuntimeConfig = () => cfg;
@@ -63,23 +87,21 @@ function fixture(method: "preview" | "detail") {
   const handler = expectDefined(controlUiHandlers[hostMethod], "GitHub host reader");
   const readResponse = vi.fn<RespondFn>();
   const methods = createGatewayMethodRegistry(
-    [
-      ...registry.registry.gatewayMethodDescriptors,
-      {
-        name: hostMethod,
-        owner: { kind: "core", area: "control-ui" },
-        scope: "operator.read",
-        profileAccess: "independent",
-        handler: (options: GatewayRequestHandlerOptions) =>
-          handler({
-            ...options,
-            respond: (...args) => {
-              readResponse(...args);
-              options.respond(...args);
-            },
-          }),
-      },
-    ],
+    registry.registry.gatewayMethodDescriptors.map((descriptor) =>
+      descriptor.name === hostMethod
+        ? {
+            ...descriptor,
+            handler: (options: GatewayRequestHandlerOptions) =>
+              handler({
+                ...options,
+                respond: (...args) => {
+                  readResponse(...args);
+                  options.respond(...args);
+                },
+              }),
+          }
+        : descriptor,
+    ),
     registry.registry,
   );
   context.getGatewayMethodRegistry = () => methods;

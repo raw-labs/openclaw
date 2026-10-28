@@ -1,4 +1,5 @@
 import { vi } from "vitest";
+import { settingsViews } from "../../../../extensions/github-repositories/browser/index.tsx";
 import type {
   UserProfile,
   UsersSelfResult,
@@ -31,7 +32,18 @@ export function createConnectedContext(
   const listeners = new Set<(next: ApplicationGatewaySnapshot) => void>();
   const subscribe = () => () => undefined;
   const baseContext = {
-    plugins: { settingsContributions: [], subscribe },
+    plugins: {
+      settingsContributions: settingsViews.map((view) => ({
+        pluginId: "github-repositories",
+        revision: "test",
+        placement: view.placement,
+      })),
+      subscribe,
+      reportError: vi.fn(),
+      async loadSettingsView(_placement: unknown, signal: AbortSignal) {
+        return { view: settingsViews[0], signal, dispose() {} };
+      },
+    },
     runtimeConfig: { subscribe, state: {}, ensureLoaded: async () => undefined },
     gateway: {
       connect: vi.fn(),

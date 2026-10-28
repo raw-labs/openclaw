@@ -1,5 +1,6 @@
 import "../test-utils/prepare-compiled-subprocesses.js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { createGitHubPublicationProvider } from "../../extensions/github-repositories/publication-provider-api.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as registryRead from "../agents/worktrees/registry-read.js";
 import {
@@ -32,7 +33,6 @@ import {
   prepareGitHubPublicationWorkspaceOwner,
 } from "./github-publication-availability.js";
 import { createRepositoryPublicationDiscovery } from "./github-publication-discovery.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import type { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import { prepareRepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
 
@@ -158,7 +158,7 @@ vi.mock("../agents/worktrees/service.js", () => ({
   },
 }));
 // mock-isolation: Control identity preparation without credential discovery.
-vi.mock("../agents/github-tool-identity.js", () => ({
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", () => ({
   prepareGitHubPublicationIdentity: mocks.identity,
   prepareGitHubPublicationOptionsIdentity: mocks.identity,
   matchesPreparedGitHubPublicationIdentity: () => true,
@@ -166,7 +166,7 @@ vi.mock("../agents/github-tool-identity.js", () => ({
   onManagedGitHubProfileChanged: () => () => {},
 }));
 // mock-isolation: Exclude OAuth credentials and network activity from this reader fixture.
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("../../extensions/github-repositories/account-runtime-api.js", () => ({
   requestCurrentGitHubOAuthRefresh: async () => {},
 }));
 // mock-isolation: Use synthetic configuration without loading operator configuration.

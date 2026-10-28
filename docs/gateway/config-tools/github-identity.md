@@ -1,5 +1,5 @@
 ---
-summary: "tools.github: the shared managed GitHub CLI identity, its refresh, and its execution boundaries"
+summary: "GitHub plugin: the shared managed GitHub CLI identity, its refresh, and its execution boundaries"
 read_when:
   - Giving agents a shared managed `gh` identity instead of native credentials
   - Checking which execution paths receive the launch-bound credential
@@ -7,11 +7,11 @@ read_when:
 title: "Configuration — GitHub identity for agent tools"
 ---
 
-`tools.github` selects the shared managed GitHub CLI identity used by agent execution, and defines which execution paths receive its credential.
+The [GitHub plugin](/plugins/github#configuration-and-upgrade) owns these settings. `plugins.entries.github-repositories.config.system` selects the shared managed GitHub CLI identity used by agent execution, and defines which execution paths receive its credential.
 
 ## Session GitHub App reader
 
-A configured `tools.github` (or complete agent override) with
+A configured `plugins.entries.github-repositories.config.system` (or complete agent override) with
 `kind: "app-installation"` selects a GitHub App installation for explicitly
 admitted session reads. The `app` object specifies `appId`, `installationId`,
 `accountId`, exact `repositories` (`id` and `fullName`), `permissions`,
@@ -40,13 +40,15 @@ Factory repository-admission broker. Only an authenticated direct-local system
 administrator connection can redeem it. A request field cannot supply the
 person's identity, and admission never falls back to a human or native token.
 
-## `tools.github`
+<a id="tools.github" /><a id="tools-github" />
 
-GitHub CLI identity is native by default. When `tools.github` is omitted, local agent tools, the Codex harness, and Agent Settings follow normal `gh` resolution: `GH_TOKEN` or `GITHUB_TOKEN` from the Gateway process takes precedence, followed by the runtime user's `gh` keyring/config. The Git author comes from the selected agent's workspace.
+## Shared managed identity
+
+GitHub CLI identity is native by default. When `plugins.entries.github-repositories.config.system` is omitted, local agent tools, the Codex harness, and Agent Settings follow normal `gh` resolution: `GH_TOKEN` or `GITHUB_TOKEN` from the Gateway process takes precedence, followed by the runtime user's `gh` keyring/config. The Git author comes from the selected agent's workspace.
 
 Gateway GitHub reads and Publish PR account options reuse successful `gh auth token --hostname github.com` reads for up to 60 seconds, matching the credential-verification cache. Host `gh auth login`, `logout`, or `switch` changes can therefore take up to 60 seconds to appear on those read surfaces. Concurrent reads share one native lookup. OAuth shutdown, profile replacement or rotation, and disconnect clear the native-token cache. Environment tokens, managed profile credentials, caller permissions, and session access are still checked live; publication obtains its own live native credential. Failed token reads and anonymous-access absence proofs are not cached.
 
-Use **Settings → Profile → GitHub connections** to see **My GitHub** and **System GitHub** together. Administrators explicitly choose **For the system** to configure this shared execution identity; the general connection flow defaults to **For me** for identified users. Per-agent overrides remain an advanced administrative setting under **Agents → Tools**. A personal connection is separate from `tools.github`: it supports explicitly selected Gateway-brokered publication and does not change agent shell credentials, shared defaults, or verified sign-in identity. See [GitHub connections](/concepts/user-model#github-connections).
+Use **Settings → Profile → GitHub connections** to see **My GitHub** and **System GitHub** together. Administrators explicitly choose **For the system** to configure this shared execution identity; the general connection flow defaults to **For me** for identified users. Per-agent overrides remain an advanced administrative setting under **Agents → Tools**. A personal connection is separate from `plugins.entries.github-repositories.config.system`: it supports explicitly selected Gateway-brokered publication and does not change agent shell credentials, shared defaults, or verified sign-in identity. See [GitHub connections](/concepts/user-model#github-connections).
 
 OpenClaw displays a one-time user code with a **Copy code** button beside it; clicking the code selects it in full for manual copying. Open the fixed `https://github.com/login/device` link, paste the code, and approve `repo`, `workflow`, `read:org`, and `gist`. The latter two are part of GitHub CLI's minimum classic-token contract. The Gateway owns the device code, token exchange, account verification, private managed `gh` profile, and rotating refresh token. Setup and refresh do not return credentials in browser responses or place them in config, logs, command arguments, transcripts, or the model runtime environment. OpenClaw-owned local exec receives an access token only through its private process-launch environment, as described below.
 
@@ -58,29 +60,30 @@ Managed profiles and personal publication use `github.com` and its public accoun
 
 ```json5
 {
-  tools: {
-    github: {
-      profileId: "ghp_0123456789abcdef0123456789abcdef",
-      kind: "oauth",
-      gitAuthor: { name: "Automation User", email: "automation@example.com" },
-    },
-  },
-  agents: {
+  plugins: {
     entries: {
-      reviewer: {
-        tools: {
-          github: {
-            profileId: "ghp_fedcba9876543210fedcba9876543210",
-            gitAuthor: { name: "Review Agent" },
+      "github-repositories": {
+        config: {
+          system: {
+            profileId: "ghp_0123456789abcdef0123456789abcdef",
+            kind: "oauth",
+            gitAuthor: { name: "Automation User", email: "automation@example.com" },
+          },
+          agents: {
+            reviewer: {
+              profileId: "ghp_fedcba9876543210fedcba9876543210",
+              gitAuthor: { name: "Review Agent" },
+            },
           },
         },
       },
     },
   },
+  agents: { entries: { reviewer: {} } },
 }
 ```
 
-Omitting `agents.entries.<id>.tools.github` inherits the system identity. An agent object is a complete managed override. Settings shows the effective identity and the selected configuration scope separately, so editing **System** never masquerades as an agent override. If a configured managed profile is missing, tokenless, or corrupt, GitHub status reports `configured_unavailable` rather than reporting the native account. Gateway-brokered publication verifies the selected profile's own credential and pins it for each child operation; a missing profile cannot redirect publication to native authentication. Ordinary agent shell execution continues to use the shared or per-agent selection, with the execution boundaries described below.
+Omitting `plugins.entries.github-repositories.config.agents.<id>` inherits the system identity. An agent object is a complete managed override. Settings shows the effective identity and the selected configuration scope separately, so editing **System** never masquerades as an agent override. If a configured managed profile is missing, tokenless, or corrupt, GitHub status reports `configured_unavailable` rather than reporting the native account. Gateway-brokered publication verifies the selected profile's own credential and pins it for each child operation; a missing profile cannot redirect publication to native authentication. Ordinary agent shell execution continues to use the shared or per-agent selection, with the execution boundaries described below.
 
 Managed identity selects the `gh` CLI/API account and optional Git author/committer metadata. OpenClaw prepares a non-secret overlay containing the private `GH_CONFIG_DIR`, ambient token scrubs, and configured author fields. For local execution, it does not install a credential helper, rewrite SSH remotes, add HTTP authorization headers, or otherwise override an existing repository's Git network credentials. Commands still use the existing `gh` on `PATH`, including any operator-managed protection or caching wrapper.
 
@@ -310,28 +313,30 @@ Verification proves which account answered the GitHub API request. Status report
 
 Removing an agent override or choosing native credentials deletes the associated local refresh record after the config change. Already-running local processes may retain the old profile and its current access token until they exit, restart, or the token expires, while new runs use the updated identity immediately. This local change does not revoke the authorization at GitHub; revoke it separately from the OAuth application's GitHub settings when required.
 
-Control UI issue and pull request hover previews use the selected agent's effective managed GitHub identity, including an inherited system identity. An unavailable managed identity produces an actionable error rather than switching to another credential. Without a managed selection, previews retain the optional `gateway.controlUi.github.token` service credential, shared `GH_TOKEN`/`GITHUB_TOKEN` environment fallback for `github.com`, and anonymous public access. Set `gateway.controlUi.github.host` to match `gateway.github.host` for Enterprise service access; an omitted credential host means `github.com`. Previews remain public-only, and their caches are scoped to the credential and host. Project discovery continues to use the separate service credential. When this SecretRef is explicit, OpenClaw excludes its exact environment or store name from agent execution. A custom name does not clear unrelated `GH_TOKEN` or `GITHUB_TOKEN` values used by native identity; a ref named `GH_TOKEN` or `GITHUB_TOKEN` excludes that exact variable.
+Control UI issue and pull request hover previews use the selected agent's effective managed GitHub identity, including an inherited system identity. An unavailable managed identity produces an actionable error rather than switching to another credential. Without a managed selection, previews retain the optional `plugins.entries.github-repositories.config.service.token` service credential, shared `GH_TOKEN`/`GITHUB_TOKEN` environment fallback for `github.com`, and anonymous public access. Set `plugins.entries.github-repositories.config.service.host` to match `plugins.entries.github-repositories.config.host` for Enterprise service access; an omitted credential host means `github.com`. Previews remain public-only, and their caches are scoped to the credential and host. Project discovery continues to use the separate service credential. When this SecretRef is explicit, OpenClaw excludes its exact environment or store name from agent execution. A custom name does not clear unrelated `GH_TOKEN` or `GITHUB_TOKEN` values used by native identity; a ref named `GH_TOKEN` or `GITHUB_TOKEN` excludes that exact variable.
 
 If a preview or detail view reports “GitHub request is no longer active,” open it again to retry. This describes the interrupted request, not a change to your GitHub account; reconnecting GitHub is unnecessary.
 
 ## Sandbox opt-in
 
-`agents.entries.<id>.tools.github.allowInSandbox` is an optional boolean that
+`plugins.entries.github-repositories.config.agents.<id>.allowInSandbox` is an optional boolean that
 defaults to `false`. Enable it on an agent's managed identity when that agent
 needs GitHub access inside its own Docker or Podman sandbox, for example a
 release agent on a Gateway where every human role requires sandboxing:
 
 ```json5
 {
-  agents: {
+  agents: { entries: { release: { sandbox: { mode: "all", scope: "agent" } } } },
+  plugins: {
     entries: {
-      release: {
-        sandbox: { mode: "all", scope: "agent" },
-        tools: {
-          github: {
-            profileId: "ghp_0123456789abcdef0123456789abcdef",
-            allowInSandbox: true,
-            gitAuthor: { name: "Release Agent", email: "release@example.com" },
+      "github-repositories": {
+        config: {
+          agents: {
+            release: {
+              profileId: "ghp_0123456789abcdef0123456789abcdef",
+              allowInSandbox: true,
+              gitAuthor: { name: "Release Agent", email: "release@example.com" },
+            },
           },
         },
       },
@@ -341,7 +346,7 @@ release agent on a Gateway where every human role requires sandboxing:
 ```
 
 Use the agent's existing generated `profileId`; the example is a placeholder.
-This setting is agent-only and is not accepted under global `tools.github`.
+This setting is agent-only and is not accepted under global `plugins.entries.github-repositories.config.system`.
 Replacing or reconnecting the agent's managed identity preserves this setting;
 removing the agent override clears it.
 Omitting it or setting it to `false` keeps the existing sandbox behavior:

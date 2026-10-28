@@ -39,46 +39,6 @@ const OperatorScopeSchema = z.enum([
   TALK_SCOPE,
   TALK_SECRETS_SCOPE,
 ]);
-const GatewayGitHubEndpointSchema = z
-  .strictObject({
-    host: z.string().trim().min(1).optional(),
-    apiBaseUrl: z.string().url().optional(),
-  })
-  .superRefine((value, ctx) => {
-    if (!value.host && !value.apiBaseUrl) {
-      return;
-    }
-    const host = value.host?.toLowerCase();
-    if (!host || !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/u.test(host) || host.includes("..")) {
-      ctx.addIssue({ code: "custom", path: ["host"], message: "GitHub host must be a hostname" });
-      return;
-    }
-    if (!value.apiBaseUrl) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["apiBaseUrl"],
-        message: "GitHub API base URL is required with host",
-      });
-      return;
-    }
-    const api = new URL(value.apiBaseUrl);
-    const cloudApi = api.hostname === `api.${host}` && api.pathname === "/";
-    const serverApi = api.hostname === host && ["/api/v3", "/api/v3/"].includes(api.pathname);
-    if (
-      api.protocol !== "https:" ||
-      api.username ||
-      api.password ||
-      api.search ||
-      api.hash ||
-      (!cloudApi && !serverApi)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["apiBaseUrl"],
-        message: "GitHub API base URL must match the configured HTTPS host",
-      });
-    }
-  });
 export const GatewayOperatorRoleDefinitionSchema = z.strictObject({
   sessions: z.strictObject({
     /** Maximum access to another person's sessions without explicit membership. */
@@ -179,7 +139,6 @@ export const GatewayConfigSchema = z
           .optional(),
       })
       .optional(),
-    github: GatewayGitHubEndpointSchema.optional(),
     projects: z
       .strictObject({
         defaultRepository: z
@@ -188,7 +147,6 @@ export const GatewayConfigSchema = z
             ref: z.string().trim().min(1).max(255).optional(),
           })
           .optional(),
-        nativeGitHubSearch: z.boolean().optional(),
       })
       .optional(),
     controlUi: z
@@ -233,17 +191,6 @@ export const GatewayConfigSchema = z
         communityInvite: z.boolean().optional(),
         /** Seed fresh drafts from configured model/reasoning instead of remembered choices. */
         newSessionModelDefaults: z.enum(["last-used", "configured"]).optional(),
-        /** Optional service credential used only for Control UI GitHub previews and discovery. */
-        github: z
-          .strictObject({
-            host: z
-              .string()
-              .trim()
-              .regex(/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/iu)
-              .optional(),
-            token: SecretInputSchema.optional().register(sensitive),
-          })
-          .optional(),
         /** Produce utility-model session status digests for subscribed Control UI clients (default true). */
         sessionObserver: z.boolean().optional(),
         /**

@@ -1,4 +1,5 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { gitHubPublicApi } from "../../../extensions/github-repositories/public-api.js";
 import type { GatewayClientInfo } from "../../../packages/gateway-protocol/src/client-info.js";
 import { ConnectErrorDetailCodes } from "../../../packages/gateway-protocol/src/connect-error-details.js";
 import {
@@ -13,7 +14,6 @@ import {
 import type { UserTurnInput } from "../../sessions/user-turn-transcript.types.js";
 import type { SessionOperatorScope } from "../../shared/session-method-scopes-base.js";
 import { INTERNAL_MESSAGE_CHANNEL, isOperatorUiClient } from "../../utils/message-channel.js";
-import { gitHubPublicApi } from "../github-public-api.js";
 import { resolveGatewayOperatorRoleActor } from "../operator-role-policy.js";
 import { isSyntheticGatewayCaller } from "./gateway-personal-caller.js";
 import type { GatewayClient, GatewayRequestOptions } from "./shared-types.js";

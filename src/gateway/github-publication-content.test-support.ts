@@ -1,8 +1,8 @@
+import { currentGitHubPublicationConfig } from "../../extensions/github-repositories/publication-availability-api.js";
+import { formatGitHubPublicationContent } from "../../extensions/github-repositories/publication-content-api.js";
 import type { InternalSessionEntry } from "../config/sessions/types.js";
 import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
 import { prepareRepositoryPublicationContentFacts } from "./github-publication-content.js";
-import { formatGitHubPublicationContent } from "./github-publication-format.js";
-import { currentGitHubPublicationConfig } from "./github-publication-identity.js";
 
 /** Enterprise identity proof composes canonical host facts with the real plugin formatter. */
 export async function prepareGitHubPublicationContent(params: {

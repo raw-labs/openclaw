@@ -1,8 +1,7 @@
 import { createMemo, For, onSettled, Show } from "solid-js";
+import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
 import "../../../styles/chat/session-rail.css";
 import "../../../styles/chat/working-indicator.css";
-import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
-import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { ChatSendShortcut } from "../../../app/settings.ts";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
@@ -30,20 +29,6 @@ import { SessionRailComposer, sessionRailQuestion } from "./chat-session-rail-co
 import { ChatWorkingIndicator } from "./chat-working-indicator.tsx";
 
 registerEnglishCatalog(registerChatSessionEnglish);
-
-function checksSummary(pullRequest: ControlUiSessionPullRequest): string | null {
-  const checks = pullRequest.checks;
-  if (!checks) {
-    return null;
-  }
-  if (checks.state === "passing") {
-    return t("chat.rail.checksPassing", { count: String(checks.passed) });
-  }
-  if (checks.state === "failing") {
-    return t("chat.rail.checksFailing", { count: String(checks.failed) });
-  }
-  return t("chat.rail.checksPending", { count: String(checks.running) });
-}
 const COMPANION_HINT_KEYS = {
   busy: "chat.rail.askBusy",
   "history-unavailable": "chat.rail.askHistoryUnavailable",
@@ -60,10 +45,10 @@ const COMPANION_HINT_KEYS = {
 type ChatSessionRailProps = {
   presentation?: "desktop" | "mobile";
   sessionKey: string;
+  agentId?: string;
   digest: SessionObserverDigest | null;
   running: boolean;
   activeRunId: string | null;
-  pullRequests: ControlUiSessionPullRequest[];
   companion: ChatSessionCompanionThread;
   modelControls?: ChatModelControlsProps;
   client: GatewayBrowserClient | null;
@@ -172,7 +157,7 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       cancelLayout(thread);
     };
   });
-  const showPullRequests = () =>
+  const summaryVisible = () =>
     props.digest &&
     (!props.running || (props.activeRunId && props.digest.runId === props.activeRunId));
   return (
@@ -189,29 +174,9 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       <PluginContributions
         kind="session-summary"
         sessionKey={props.sessionKey}
-        presented={props.presented}
+        agentId={props.agentId}
+        presented={props.presented && Boolean(summaryVisible())}
       />
-      {showPullRequests() && props.pullRequests.length > 0 && (
-        <div class="chat-session-rail__prs" aria-label={t("chat.rail.pullRequests")}>
-          <For each={props.pullRequests.slice(0, 2)} keyed={(pr) => pr.url}>
-            {(pullRequest) => (
-              <a
-                class="chat-session-rail__pr"
-                href={pullRequest().url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={pullRequest().title}
-              >
-                <span>#{pullRequest().number}</span>
-                <span>{t(`chat.pullRequests.${pullRequest().state}`)}</span>
-                {checksSummary(pullRequest()) && (
-                  <span class="chat-session-rail__pr-checks">{checksSummary(pullRequest())}</span>
-                )}
-              </a>
-            )}
-          </For>
-        </div>
-      )}
       <div
         class="chat-session-rail__thread"
         aria-live="polite"
@@ -376,10 +341,10 @@ defineSolidBridge<ChatSessionRailProps>("openclaw-chat-session-rail", ChatSessio
   properties: {
     presentation: { default: undefined, attribute: false },
     sessionKey: { default: "", attribute: false },
+    agentId: { default: undefined, attribute: false },
     digest: { default: null, attribute: false },
     running: { default: false, attribute: false },
     activeRunId: { default: null, attribute: false },
-    pullRequests: { default: [], attribute: false },
     companion: { default: { turns: [], loading: false, draft: "" }, attribute: false },
     modelControls: { default: undefined, attribute: false },
     client: { default: null, attribute: false },

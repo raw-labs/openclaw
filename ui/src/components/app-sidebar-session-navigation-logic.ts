@@ -177,7 +177,6 @@ export function buildSidebarSessionNavigationState(input: {
     const workSession =
       Boolean(row.worktree || row.repository || row.execNode) ||
       context?.sessions.isPreparedWorkSession(row.key) === true;
-    const pullRequest = context?.sessions.pullRequestSummary(row.key);
     const outboxAttentionCount = input.outboxAttentionCountForSessionKey(row.key);
     const hasComposerDraft = row.incognito !== true && input.hasSessionDraft(row.key);
     const agentStatusNote = input.resolveAgentStatusNote(row);
@@ -194,7 +193,6 @@ export function buildSidebarSessionNavigationState(input: {
         visuallyActive,
         isRunVisuallyActive,
         workSession,
-        pullRequest,
         outboxAttentionCount,
         hasComposerDraft,
         input.resolveAttention,
@@ -284,7 +282,6 @@ export function buildSidebarSessionNavigationState(input: {
               : undefined,
           cloudWorkerStopAction: resolveCloudWorkerStopAction(row.placement),
           hasAutomation: row.hasAutomation === true,
-          pullRequest,
           outboxAttentionCount,
           hasComposerDraft,
           unread: row.archived !== true && row.unread === true,
@@ -631,7 +628,6 @@ export function projectSidebarVisibleMainSession(
     renameValue: "",
     attention,
     ownAttention: attention,
-    pullRequest: undefined,
     agentStatusNote: undefined,
     workSession: false,
     outboxAttentionCount: 0,

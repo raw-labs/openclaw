@@ -10,8 +10,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, it, vi } from "vitest";
 import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
 import { createRequesterPublicationFixture } from "./github-publication-requester.test-support.js";
 import {
@@ -62,6 +62,12 @@ it("recovers one guest integration, retains saved data and publishes the resolve
   if (first.status !== "published") {
     throw new Error("Fixture publication failed");
   }
+  const preparePublisher = f.coordinator.provider.preparePublisher;
+  vi.spyOn(f.coordinator.provider, "preparePublisher").mockImplementation(async (...args) => {
+    const publisher = await preparePublisher(...args);
+    publisher.author = { name: "Selected Publisher", email: "selected-publisher@example.test" };
+    return publisher;
+  });
   const created = mocks.runCommand.mock.calls.findLast(
     ([argv]) => argv.includes("POST") && argv.some((arg: string) => arg.endsWith("/pulls")),
   )!;
@@ -150,38 +156,47 @@ it("recovers one guest integration, retains saved data and publishes the resolve
   let cancelAfterScan: AbortController | undefined;
   await write(cwd, ".env.local", "host-private-fixture");
   const transport = mocks.runCommand.getMockImplementation()!;
-  mocks.runCommand.mockImplementation(async (argv: string[], options?: { input?: string }) => {
-    if (argv.some((arg) => arg.startsWith("repos/openclaw/openclaw/git/ref/heads/"))) {
-      return commandResult(JSON.stringify({ ref: "refs/heads/main", sha: baseCommit }));
-    }
-    if (argv.includes("fetch") && (argv.includes(partialBase) || argv.includes("--stdin"))) {
-      expect(argv).toContain("https://github.com/openclaw/openclaw.git");
-      expect(argv).toContain("credential.helper=!gh auth git-credential");
-      if (argv.includes("--stdin")) {
-        contentFetches++;
-        if (rejectContentFetch) {
-          return commandResult("", 1);
-        }
-      } else {
-        commitFetches++;
+  mocks.runCommand.mockImplementation(
+    async (argv: string[], options?: { input?: string; env?: NodeJS.ProcessEnv }) => {
+      if (argv.some((arg) => arg.startsWith("repos/openclaw/openclaw/git/ref/heads/"))) {
+        return commandResult(JSON.stringify({ ref: "refs/heads/main", sha: baseCommit }));
       }
-      return await runCommandBuffered(
-        argv.map((arg) => (arg === "https://github.com/openclaw/openclaw.git" ? upstreamUrl : arg)),
-        { ...options, cwd, timeoutMs: 10_000 },
-      );
-    }
-    if (argv.includes("state=all")) {
-      return commandResult(JSON.stringify([pr]));
-    }
-    const result = await transport(argv, options);
-    if (argv.includes("--missing=print")) {
-      cancelAfterScan?.abort(new Error("refresh cancelled after object discovery"));
-    }
-    if (argv.includes("push")) {
-      pr.headSha = await git("rev-parse", "HEAD");
-    }
-    return result;
-  });
+      if (argv.includes("fetch") && (argv.includes(partialBase) || argv.includes("--stdin"))) {
+        expect(argv).toContain("https://github.com/openclaw/openclaw.git");
+        expect(options?.env?.GIT_CONFIG_KEY_1).toBe("credential.helper");
+        expect(options?.env?.GIT_CONFIG_VALUE_1).toBe("");
+        expect(options?.env?.GIT_CONFIG_KEY_2).toBe(
+          "http.https://github.com/openclaw/openclaw.git.extraHeader",
+        );
+        expect(options?.env?.GIT_CONFIG_VALUE_2).toMatch(/^Authorization: Basic /);
+        if (argv.includes("--stdin")) {
+          contentFetches++;
+          if (rejectContentFetch) {
+            return commandResult("", 1);
+          }
+        } else {
+          commitFetches++;
+        }
+        return await runCommandBuffered(
+          argv.map((arg) =>
+            arg === "https://github.com/openclaw/openclaw.git" ? upstreamUrl : arg,
+          ),
+          { ...options, cwd, timeoutMs: 10_000 },
+        );
+      }
+      if (argv.includes("state=all")) {
+        return commandResult(JSON.stringify([pr]));
+      }
+      const result = await transport(argv, options);
+      if (argv.includes("--missing=print")) {
+        cancelAfterScan?.abort(new Error("refresh cancelled after object discovery"));
+      }
+      if (argv.includes("push")) {
+        pr.headSha = await git("rev-parse", "HEAD");
+      }
+      return result;
+    },
+  );
   using owner = await resolveLocalWorkspaceOwner({
     ...f.guestSource.session,
     cfg: f.config,
@@ -269,7 +284,6 @@ it("recovers one guest integration, retains saved data and publishes the resolve
         {
           client: f.guestSource.client,
           context: Object.assign(createRequestContext(), f.guestSource.context, {
-            githubPublicationService: f.coordinator,
             workerSessionPlacementService: f.placements,
           }),
           signal,
@@ -454,6 +468,9 @@ it("recovers one guest integration, retains saved data and publishes the resolve
     status: "refreshed",
     baseCommit,
   });
+  expect(await git("show", "-s", "--format=%an <%ae>%n%cn <%ce>", "HEAD")).toBe(
+    "Selected Publisher <selected-publisher@example.test>\nSelected Publisher <selected-publisher@example.test>",
+  );
   await git("merge-base", "--is-ancestor", baseCommit, "HEAD");
   expect(await guestGit("rev-parse", "HEAD")).toBe(guestHead);
   expect(await guestGit("rev-parse", "refs/openclaw/review-base")).toBe(baseCommit);

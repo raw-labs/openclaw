@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { setImmediate } from "node:timers/promises";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildGitHubExecLaunchArgv } from "../../extensions/github-repositories/exec-launch-api.js";
 import { quoteCliArg } from "../cli/quote-cli-arg.js";
 import { onAgentEvent } from "../infra/agent-events.js";
 import {
@@ -1174,8 +1175,7 @@ describe("processGatewayAllowlist", () => {
     expect(result.pendingResult?.details.status).toBe("approval-pending");
     await vi.waitFor(() => expect(sendExecApprovalFollowupResultMock).toHaveBeenCalledOnce());
 
-    const followupTarget = sendExecApprovalFollowupResultMock.mock.calls[0]?.[0];
-    expect(followupTarget?.direct).toBe(true);
+    expect(sendExecApprovalFollowupResultMock.mock.calls[0]?.[0]?.direct).toBe(true);
     const followupText = requireSentFollowupText();
     expect(followupText).toContain("Diagnostics export created.");
     expect(followupText).toContain("Path: /tmp/openclaw-diagnostics.zip");
@@ -1491,7 +1491,7 @@ describe("processGatewayAllowlist", () => {
           approvalFollowupMode: "agent",
           env,
           requestedEnv: env,
-          githubProfileDir: profileDir,
+          wrapLocalLaunch: (argv) => buildGitHubExecLaunchArgv([...argv], profileDir),
         });
         expect(result.pendingResult?.details.status).toBe("approval-pending");
         await vi.waitFor(() => expect(approvalDecisionMock).toHaveBeenCalledOnce());

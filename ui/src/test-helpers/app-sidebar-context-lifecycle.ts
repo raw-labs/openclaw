@@ -1,8 +1,11 @@
+import type { GatewaySessionRow } from "../api/types.ts";
 import { createAgentSelectionCapability } from "../app/agent-selection.ts";
 import { createApplicationTheme } from "../app/bootstrap-theme.ts";
 import { createConnectionBootstrapCoordinator } from "../app/connection-bootstrap.ts";
 import type { ApplicationGateway } from "../app/context.ts";
 import { loadSettings, patchSettings } from "../app/settings.ts";
+import { isSessionRunStateActive } from "../lib/session-run-state.ts";
+import type { SessionCapability } from "../lib/sessions/index.ts";
 
 const cleanups = new Set<() => void>();
 
@@ -46,4 +49,16 @@ export function disposeSidebarContextLifecycles() {
     cleanup();
   }
   cleanups.clear();
+}
+
+/** Fixture projections borrow native custody/currentness; they do not reproduce its policy. */
+export function sidebarSessionHostServices(read: () => SessionCapability | null) {
+  return {
+    isRunVisuallyActive: (row: GatewaySessionRow) =>
+      read()?.isRunVisuallyActive(row) ?? isSessionRunStateActive(row),
+    captureConnectionScope: () => read()?.captureConnectionScope() ?? null,
+    isConnectionScopeCurrent: (
+      scope: Parameters<SessionCapability["isConnectionScopeCurrent"]>[0],
+    ) => read()?.isConnectionScopeCurrent(scope) ?? false,
+  };
 }

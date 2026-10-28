@@ -8,12 +8,19 @@ function envRef(id: string) {
   return { source: "env", provider: "default", id };
 }
 
-function prepare(config: unknown, env: NodeJS.ProcessEnv = {}) {
+function prepare(
+  config: unknown,
+  env: NodeJS.ProcessEnv = {},
+  loadablePluginOrigins?: Parameters<
+    typeof prepareSecretsRuntimeSnapshot
+  >[0]["loadablePluginOrigins"],
+) {
   return prepareSecretsRuntimeSnapshot({
     config: asConfig(config),
     env,
     agentDirs: ["/tmp/openclaw-agent-main"],
     loadAuthStore: () => ({ version: 1, profiles: {} }),
+    loadablePluginOrigins,
   });
 }
 
@@ -30,7 +37,7 @@ function expectInactiveRemote(
 }
 
 describe("secrets runtime gateway local surfaces", () => {
-  it("resolves selected system and agent App signing keys without rewriting source refs", async () => {
+  it("resolves plugin-owned system and agent App signing keys without rewriting source refs", async () => {
     const app = {
       appId: 101,
       installationId: 202,
@@ -42,23 +49,47 @@ describe("secrets runtime gateway local surfaces", () => {
     };
     const github = { profileId: "ghp_" + "a".repeat(32), kind: "app-installation", app };
     const snapshot = await prepare(
-      { tools: { github }, agents: { entries: { main: { tools: { github } } } } },
+      {
+        plugins: {
+          entries: {
+            "github-repositories": {
+              enabled: true,
+              config: { system: github, agents: { main: github } },
+            },
+          },
+        },
+      },
       { GITHUB_APP_KEY: "synthetic-app-key" },
+      new Map([["github-repositories", "bundled"]]),
     );
     const resolved = { kind: "app-installation", app: { privateKey: "synthetic-app-key" } };
-    expect(snapshot.config.tools?.github).toMatchObject(resolved);
-    expect(snapshot.config.agents?.entries?.main?.tools?.github).toMatchObject(resolved);
+    expect(snapshot.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
+      system: resolved,
+      agents: { main: resolved },
+    });
     expect(app.privateKey).toEqual(envRef("GITHUB_APP_KEY"));
   });
 
-  it("resolves the Control UI GitHub preview credential independently", async () => {
+  it("resolves the plugin-owned GitHub service credential independently", async () => {
     const snapshot = await prepare(
-      { gateway: { controlUi: { github: { token: envRef("CONTROL_UI_GITHUB_TOKEN") } } } },
+      {
+        plugins: {
+          entries: {
+            "github-repositories": {
+              enabled: true,
+              config: { service: { token: envRef("CONTROL_UI_GITHUB_TOKEN") } },
+            },
+          },
+        },
+      },
       { CONTROL_UI_GITHUB_TOKEN: "resolved-preview-token" },
+      new Map([["github-repositories", "bundled"]]),
     );
-    expect(snapshot.config.gateway?.controlUi?.github?.token).toBe("resolved-preview-token");
+    expect(snapshot.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
+      service: { token: "resolved-preview-token" },
+    });
     expect(snapshot.warnings.map((warning) => warning.path)).not.toContain(
-      "gateway.controlUi.github.token",
+      "plugins.entries.github-repositories.config.service.token",
     );
   });
 

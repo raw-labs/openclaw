@@ -9,7 +9,7 @@ import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js"
 import { requireGit } from "../../agents/worktrees/git.js";
 import * as gitExec from "../../infra/git-exec.js";
 import { createWorkerProjectPreparation } from "./project-preparation.js";
-import { prepareRepositoryWorkerGitPack } from "./repository-git-pack.js";
+import { prepareRepositoryCheckoutPack } from "./repository-git-pack.js";
 import type { RepositoryWorkerProjectSnapshot } from "./repository-project-source.schema.js";
 
 type RepositoryPackProducer = NonNullable<
@@ -196,10 +196,10 @@ export async function fixture(fixtureOptions: { setupRecipe?: boolean } = {}) {
     },
   };
   const preparePack = (signal = new AbortController().signal, temporaryRoot = scratch) =>
-    prepareRepositoryWorkerGitPack({
+    prepareRepositoryCheckoutPack({
       url: URL,
       baseCommit,
-      token: TOKEN,
+      httpAuthorization: AUTHORIZATION,
       temporaryRoot,
       signal,
       assertCurrent: () => {},

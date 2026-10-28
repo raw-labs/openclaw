@@ -2,7 +2,6 @@ import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/s
 import type { PreparedSandboxExecutionEnvironment } from "../../plugins/execution-environment-types.js";
 import { resolveGlobalMap } from "../../shared/global-singleton.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
-import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
 import type { WorkspaceStateGuard } from "../workspace-state-store.worker-contract.js";
 import type { SandboxBackendHandle } from "./backend-handle.types.js";
 import type {
@@ -158,27 +157,21 @@ export function requireSandboxBackendFactory(id: string): SandboxBackendFactory 
 export async function createSandboxBackend(
   params: CreateSandboxBackendParams,
   operatorAuthority?: AdmittedRunOperatorAuthority,
-  githubIdentity?: PreparedGitHubToolEnvironment,
-  guard?: WorkspaceStateGuard,
   executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
+  guard?: WorkspaceStateGuard,
 ): Promise<SandboxBackendHandle> {
   params.assertRuntimeCurrent?.();
   const factory = requireSandboxBackendFactory(params.cfg.backend);
   if (
-    (githubIdentity ||
-      (executionEnvironment &&
-        (Object.keys(executionEnvironment.localIdentityEnv).length > 0 ||
-          executionEnvironment.readOnlyResourceMounts.length > 0 ||
-          executionEnvironment.inheritedEnvironmentNames.length > 0 ||
-          executionEnvironment.wrapLocalLaunch))) &&
+    executionEnvironment &&
+    (Object.keys(executionEnvironment.localIdentityEnv).length > 0 ||
+      executionEnvironment.readOnlyResourceMounts.length > 0 ||
+      executionEnvironment.inheritedEnvironmentNames.length > 0 ||
+      executionEnvironment.wrapLocalLaunch) &&
     factory !== createDockerSandboxBackend &&
     factory !== createPodmanSandboxBackend
   ) {
-    throw new Error(
-      githubIdentity
-        ? "Sandbox GitHub identity requires the built-in Docker or Podman backend."
-        : "Plugin execution environments require the built-in Docker or Podman backend.",
-    );
+    throw new Error("Plugin execution environments require the built-in Docker or Podman backend.");
   }
   const reserveRuntimeId = resolveSandboxBackendRegistration(params.cfg.backend)?.reserveRuntimeId;
   const toEntry = (backend: SandboxBackendHandle): SandboxRegistryEntry => ({
@@ -196,19 +189,9 @@ export async function createSandboxBackend(
     // A plugin overriding the same backend ID retains its own lifecycle contract.
     const backend =
       factory === createDockerSandboxBackend
-        ? await createDockerSandboxBackend(
-            params,
-            operatorAuthority,
-            githubIdentity,
-            executionEnvironment,
-          )
+        ? await createDockerSandboxBackend(params, operatorAuthority, executionEnvironment)
         : factory === createPodmanSandboxBackend
-          ? await createPodmanSandboxBackend(
-              params,
-              operatorAuthority,
-              githubIdentity,
-              executionEnvironment,
-            )
+          ? await createPodmanSandboxBackend(params, operatorAuthority, executionEnvironment)
           : await factory(params);
     await updateRegistry(toEntry(backend), {
       ...guard,

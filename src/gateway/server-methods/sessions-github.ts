@@ -1,3 +1,7 @@
+import { readRepositoryServices } from "../../../extensions/github-repositories/account-runtime-api.js";
+import { prepareCurrentGitHubPublicationOptionsIdentity } from "../../../extensions/github-repositories/publication-availability-api.js";
+import { isGitHubPublicationSuperseded } from "../../../extensions/github-repositories/publication-relevance-api.js";
+import { GitHubIdentityError } from "../../../extensions/github-repositories/read-identity-api.js";
 import {
   ErrorCodes,
   type GatewayCoreRequestParams,
@@ -10,7 +14,6 @@ import {
 } from "../../../packages/gateway-protocol/src/index.js";
 import type { SessionGitHubOptionsResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { raceWithTimeout } from "../../../packages/retry/src/index.js";
-import { GitHubIdentityError } from "../../agents/github-read-identity.js";
 import { canRefreshWorkspacePublicationBase } from "../../agents/sandbox/github-publication.js";
 import { getGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
 import { normalizeAgentId } from "../../routing/session-key.js";
@@ -22,9 +25,7 @@ import {
   type PublicationSessionIdentity,
 } from "../github-publication-availability.js";
 import { RepositoryPublicationFailureError } from "../github-publication-errors.js";
-import { prepareCurrentGitHubPublicationOptionsIdentity } from "../github-publication-identity.js";
 import { performSessionGitHubInspection } from "../github-publication-inspect.js";
-import { isGitHubPublicationSuperseded } from "../github-publication-relevance.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { resolveRequestedSessionAgentId } from "../session-request-agent.js";
 import { SessionMutationAuthorizationChangedError } from "../session-sharing.js";
@@ -73,11 +74,15 @@ function defineSessionGitHubMethod<Method extends SessionGitHubMethod>(
         return;
       }
     }
-    const publication = options.context.githubPublicationService;
+    const publication = readRepositoryServices(options.context)?.publication;
     const respond = options.respond;
     // Request authority is bound to this exact options object, not its enumerable fields.
     options.respond = (...args) => {
-      if (args[0] && publication && options.context.githubPublicationService !== publication) {
+      if (
+        args[0] &&
+        publication &&
+        readRepositoryServices(options.context)?.publication !== publication
+      ) {
         throw new Error("The repository publisher stopped; retry from the current service.");
       }
       respond(...args);
@@ -169,7 +174,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
     validateSessionGitHubActionParams,
     async (options) => {
       if (options.params.action === "prepare_pr") {
-        const service = options.context.githubPublicationService;
+        const service = readRepositoryServices(options.context)?.publication;
         if (!service) {
           throw new Error("Repository publication service is unavailable.");
         }
@@ -235,7 +240,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
       using _ = {
         [Symbol.dispose]: admitted.release,
       };
-      const service = options.context.githubPublicationService;
+      const service = readRepositoryServices(options.context)?.publication;
       if (!service) {
         throw new Error("Repository publication service is unavailable.");
       }
@@ -257,7 +262,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
     async (options) => {
       const { params, respond, context, sessionMutationAuthorization } = options;
 
-      const coordinator = context.githubPublicationService;
+      const coordinator = readRepositoryServices(context)?.publication;
       if (!coordinator) {
         respond(
           false,
@@ -349,19 +354,19 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
             deadline.signal,
           );
 
-          const coordinator = options.context.githubPublicationService;
+          const coordinator = readRepositoryServices(options.context)?.publication;
           if (!coordinator) {
             options.respond(false, undefined, publicationStateUnavailableError());
             return;
           }
-          const service = options.context.githubOAuthService?.personal;
+          const service = readRepositoryServices(options.context)?.oauth?.personal;
           if (read.personal.kind === "eligible" && !service) {
             throw new Error("GitHub connections are unavailable; retry after Gateway startup.");
           }
           const action = read.personal.kind === "eligible" ? read.personal.action : null;
           const session = read.currentSession();
           const assertResponseCurrent = () => {
-            if (options.context.githubPublicationService !== coordinator) {
+            if (readRepositoryServices(options.context)?.publication !== coordinator) {
               throw new Error("The repository publisher stopped; retry its current options.");
             }
             read.assertSessionUnchanged(session);
@@ -440,7 +445,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
         await import("./github-personal-authorization.js");
       using read = await prepareGitHubPublicationOptionsRead(options, options.params);
 
-      const service = options.context.githubPublicationService;
+      const service = readRepositoryServices(options.context)?.publication;
       if (!service) {
         options.respond(false, undefined, publicationStateUnavailableError());
         return;
@@ -475,7 +480,7 @@ export const sessionsGitHubHandlers: GatewayRequestHandlers = {
     "sessions.github.confirm",
     validateSessionGitHubConfirmParams,
     async (options) => {
-      const service = options.context.githubPublicationService;
+      const service = readRepositoryServices(options.context)?.publication;
       if (!service) {
         throw new Error("GitHub publication is unavailable.");
       }

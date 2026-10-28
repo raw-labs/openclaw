@@ -196,34 +196,46 @@ export function renderSessionUnreadBadge(): JSX.Element {
   );
 }
 
-export function SessionRowBadges(props: SessionRowBadgesParams) {
+function SessionRowBadge(props: { badge: ReturnType<typeof resolveSessionRowBadges>[number] }) {
+  return (
+    <openclaw-tooltip prop:content={props.badge.label}>
+      <span
+        class={["session-row-badge", `session-row-badge--${props.badge.modifier}`]}
+        data-placement-state={props.badge.placementState}
+        data-disk-space-status={props.badge.diskSpaceStatus}
+        data-workspace-conflicts={
+          props.badge.workspaceConflictCount
+            ? String(props.badge.workspaceConflictCount)
+            : undefined
+        }
+        role="img"
+        aria-label={props.badge.label}
+      >
+        <Icon name={props.badge.icon} />
+        <Show when={props.badge.count}>
+          <span aria-hidden="true">{props.badge.count}</span>
+        </Show>
+      </span>
+    </openclaw-tooltip>
+  );
+}
+export function SessionRowBadges(props: SessionRowBadgesParams & { accessories?: JSX.Element }) {
   const badges = createMemo(() => resolveSessionRowBadges(props, t));
   return (
-    <Show when={badges().length}>
+    <Show when={badges().length || props.accessories}>
       <span class="session-row-badges">
-        <For each={badges()} keyed={(badge) => badge.modifier}>
-          {(badge) => (
-            <openclaw-tooltip prop:content={badge().label}>
-              <span
-                class={["session-row-badge", `session-row-badge--${badge().modifier}`]}
-                data-pull-request-state={badge().pullRequestState}
-                data-placement-state={badge().placementState}
-                data-disk-space-status={badge().diskSpaceStatus}
-                data-workspace-conflicts={
-                  badge().workspaceConflictCount
-                    ? String(badge().workspaceConflictCount)
-                    : undefined
-                }
-                role="img"
-                aria-label={badge().label}
-              >
-                <Icon name={badge().icon} />
-                <Show when={badge().count}>
-                  <span aria-hidden="true">{badge().count}</span>
-                </Show>
-              </span>
-            </openclaw-tooltip>
-          )}
+        <For
+          each={badges().filter((badge) => badge.modifier === "incognito")}
+          keyed={(badge) => badge.modifier}
+        >
+          {(badge) => <SessionRowBadge badge={badge()} />}
+        </For>
+        {props.accessories}
+        <For
+          each={badges().filter((badge) => badge.modifier !== "incognito")}
+          keyed={(badge) => badge.modifier}
+        >
+          {(badge) => <SessionRowBadge badge={badge()} />}
         </For>
       </span>
     </Show>

@@ -88,18 +88,6 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Web-tool policy grouping for search/fetch providers, limits, and fallback behavior tuning. Keep enabled settings aligned with API key availability and outbound networking policy.",
   "tools.exec":
     "Exec-tool policy grouping for shell execution host, security mode, approval behavior, and runtime bindings. Keep conservative defaults in production and tighten elevated execution paths.",
-  "tools.github":
-    "Managed local GitHub CLI profile and optional Git author for agent tools. Omit this object to preserve the Gateway runtime user's native account and author; repository remote credentials are never overridden.",
-  "tools.github.profileId":
-    "Opaque generated profile version used to switch managed credentials atomically.",
-  "tools.github.kind":
-    "Marks a managed OAuth profile whose rotating refresh credential is owned by the Gateway. Omitted profiles use a personal access token.",
-  "tools.github.gitAuthor.name": "Optional process-local Git author and committer name.",
-  "tools.github.gitAuthor.email": "Optional process-local Git author and committer email.",
-  "agents.entries.*.tools.github":
-    "Complete managed GitHub CLI identity and Git author override for this agent. Omit it to inherit the system identity.",
-  "agents.entries.*.tools.github.allowInSandbox":
-    "Allows this agent's managed GitHub credentials and Git author inside its own Docker or Podman sandbox (default: false). Shared scope refuses identity injection; other backends reject provisioning. Security audit warns while enabled.",
   "tools.exec.host":
     'Selects execution target strategy for shell commands. Use "auto" for runtime-aware behavior (sandbox when available, otherwise gateway), or pin sandbox/gateway/node explicitly when you need a fixed surface.',
   "tools.exec.mode":
@@ -228,10 +216,6 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Show a dismissible Community card in the Control UI sidebar (default on), with Discord, Reddit, and X links. Set false to hide it for every browser using this UI deployment. Changes apply after browser refresh or reconnect. Existing browser-local dismissals remain honored.",
   "gateway.controlUi.newSessionModelDefaults":
     'Choose "configured" to start fresh Control UI drafts with the selected agent’s configured model, runtime and reasoning defaults instead of remembered selections. Default: "last-used". Explicit draft and conversation choices remain editable; Fast Mode and placement preferences are unchanged. Applies after browser refresh or reconnect.',
-  "gateway.controlUi.github.host":
-    "Host this service credential may access. Omit for github.com; set to gateway.github.host for Enterprise project discovery and account metadata.",
-  "gateway.controlUi.github.token":
-    "SecretRef-backed service credential for Control UI project discovery and GitHub hover previews without a managed identity. Set gateway.controlUi.github.host for Enterprise; an omitted host means github.com. Hover previews prefer the selected agent's configured GitHub identity. GH_TOKEN/GITHUB_TOKEN fallback applies only to github.com. Requests using a mismatched or unavailable credential are rejected.",
   "gateway.controlUi.sessionObserver":
     "Produce live session status digests for subscribed Control UI clients with each agent's utility model (default on). Set false to disable observer model calls gateway-wide; setting agents.defaults.utilityModel to an empty string disables utility-model observation for agents that do not override it.",
   "gateway.controlUi.embedSandbox":

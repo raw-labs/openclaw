@@ -1,17 +1,27 @@
+import type { ControlUiSessionPullRequestSnapshot } from "@openclaw/gateway-protocol";
 /* @vitest-environment jsdom */
 import { createComponent, createSignal } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
+import {
+  dismissChatPullRequest,
+  chatBranchId,
+} from "../../../../../extensions/github-repositories/browser/api.ts";
 import { createDeferred } from "../../../../../test/helpers/promise.js";
 import type { GatewaySessionRow } from "../../../api/types.ts";
-import type { ApplicationGateway } from "../../../app/gateway.ts";
 import { fnv1aUtf16 } from "../../../lib/fnv1a.ts";
 import type { SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { disposeSidebarContextLifecycles } from "../../../test-helpers/app-sidebar-context-lifecycle.ts";
+import { createContext, createSessions } from "../../../test-helpers/app-sidebar.ts";
 import { createApplicationGateway } from "../../../test-helpers/application-context-fixtures.ts";
+import { createApplicationContextProvider } from "../../../test-helpers/application-context.ts";
 import {
   createGatewayRequestMock,
   createTestGatewayClient,
 } from "../../../test-helpers/gateway-client.ts";
+import { gatewayHelloForMethods } from "../../../test-helpers/gateway-methods.ts";
 import { mountSolid } from "../../../test-helpers/mount-solid.ts";
+import { installRepositoryPresentation } from "../../../test-helpers/repository-presentation.test-support.ts";
+import { createSolidApplicationContextProvider } from "../../../test-helpers/solid-application-context.tsx";
 import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import { ChatDetailsEnvironmentMobile } from "./chat-details-environment-mobile.tsx";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
@@ -20,7 +30,37 @@ import type { SubagentActivityProps } from "./chat-subagent-activity.tsx";
 
 type ChatSubagentActivityLive = SolidBridgeElement<SubagentActivityProps>;
 
-async function mount(overrides: Partial<ChatDetailsProps> = {}) {
+const repositoryFixtures = new WeakMap<
+  ChatDetailsSession,
+  {
+    publish: (snapshot: ControlUiSessionPullRequestSnapshot | undefined) => void;
+    request: ReturnType<typeof createGatewayRequestMock>;
+  }
+>();
+
+async function mount(
+  overrides: Partial<ChatDetailsProps> = {},
+  initialSnapshot?: ControlUiSessionPullRequestSnapshot,
+  readMethods: readonly string[] = [],
+) {
+  let snapshot = initialSnapshot;
+  const request = createGatewayRequestMock(async (method) => {
+    if (method === "cron.list") {
+      return {
+        jobs: [],
+        total: 0,
+        offset: 0,
+        limit: 200,
+        hasMore: false,
+        nextOffset: null,
+        snapshotRevision: "1",
+      };
+    }
+    if (method === "cron.status") {
+      return { enabled: true, triggersEnabled: true, jobs: 0 };
+    }
+    throw new Error(`Unexpected Details repository request: ${method}`);
+  });
   const value: ChatDetailsProps = {
     sessionKey: "agent:main:details",
     currentAgentId: "main",
@@ -28,35 +68,68 @@ async function mount(overrides: Partial<ChatDetailsProps> = {}) {
     selectedSession: { key: "agent:main:details", kind: "direct" },
     ...overrides,
   };
-  const view = mountSolid(() =>
-    createComponent(ChatDetailsSession, { props: value, presented: true }),
+  const fallback = createApplicationGateway();
+  fallback.publish({
+    ...fallback.gateway.snapshot,
+    phase: "connected",
+    client: createTestGatewayClient(request),
+    hello: gatewayHelloForMethods(readMethods),
+    assistantAgentId: "main",
+    sessionKey: value.sessionKey,
+  });
+  const gateway = value.gateway ?? fallback.gateway;
+  const context = createContext(gateway, createSessions("main", [value.sessionKey]));
+  onTestFinished(disposeSidebarContextLifecycles);
+  if (value.selectedSession) {
+    context.sessions.reconcile(value.selectedSession);
+  }
+  const activation = installRepositoryPresentation(context, () => snapshot);
+  const view = mountSolid(
+    () => createComponent(ChatDetailsSession, { props: value, presented: true }),
+    { wrapper: createSolidApplicationContextProvider(activation.context).wrapper },
   );
   const element = view.container.querySelector("openclaw-chat-details-session")!;
+  repositoryFixtures.set(element, {
+    request,
+    publish(next) {
+      snapshot = next;
+      activation.notify();
+      flush();
+    },
+  });
   await element.updateComplete;
   return element;
 }
+
+async function publishRepositorySnapshot(
+  element: ChatDetailsSession,
+  snapshot: ControlUiSessionPullRequestSnapshot | undefined,
+) {
+  repositoryFixtures.get(element)!.publish(snapshot);
+  await element.updateComplete;
+}
 it("omits empty linked-work disclosures and opens arriving pull requests", async () => {
   const element = await mount();
-  expect(
-    element.querySelector(
-      '[data-details-group="pull-requests"], [data-details-group="automations"], [data-details-group="subagents"], [data-details-group="processes"]',
-    ),
-  ).toBeNull();
-  element.props = {
-    ...element.props!,
-    pullRequests: [
-      {
-        number: 7,
-        owner: "example",
-        repo: "project",
-        branch: "feature",
-        title: "A pull request arriving after the panel opens",
-        url: "https://github.com/example/project/pull/7",
-        state: "open",
-      },
-    ],
-  };
-  await element.updateComplete;
+  // Retained plugin content may stay mounted, but empty native groups are not presented.
+  const linkedWork = () =>
+    [
+      ...element.querySelectorAll(
+        '[data-details-group="pull-requests"], [data-details-group="automations"], [data-details-group="subagents"], [data-details-group="processes"]',
+      ),
+    ].find((group) => !group.closest("[hidden]")) ?? null;
+  expect(linkedWork()).toBeNull();
+  const pullRequests: ControlUiSessionPullRequestSnapshot["pullRequests"] = [
+    {
+      number: 7,
+      owner: "example",
+      repo: "project",
+      branch: "feature",
+      title: "A pull request arriving after the panel opens",
+      url: "https://github.com/example/project/pull/7",
+      state: "open",
+    },
+  ];
+  await publishRepositorySnapshot(element, { pullRequests, status: "ready", rateLimited: false });
   const group = element.querySelector<HTMLDetailsElement>('[data-details-group="pull-requests"]')!;
   expect(group.open).toBe(true);
   group.open = false;
@@ -65,14 +138,8 @@ it("omits empty linked-work disclosures and opens arriving pull requests", async
   element.props = { ...element.props! };
   await element.updateComplete;
   expect(group.open).toBe(false);
-  const pullRequests = element.props!.pullRequests;
-  element.props = { ...element.props!, pullRequests: [] };
-  await element.updateComplete;
-  expect(
-    element.querySelector(
-      '[data-details-group="pull-requests"], [data-details-group="automations"], [data-details-group="subagents"], [data-details-group="processes"]',
-    ),
-  ).toBeNull();
+  await publishRepositorySnapshot(element, undefined);
+  expect(linkedWork()).toBeNull();
   expect(element.querySelector(".chat-details-session > summary")).toBeNull();
   const openChanges = vi.fn();
   element.props = { ...element.props!, onOpenSessionDiff: openChanges };
@@ -88,13 +155,8 @@ it("omits empty linked-work disclosures and opens arriving pull requests", async
   expect(openChanges).toHaveBeenCalledOnce();
   element.props = { ...element.props!, onOpenSessionDiff: undefined };
   await element.updateComplete;
-  expect(
-    element.querySelector(
-      '[data-details-group="pull-requests"], [data-details-group="automations"], [data-details-group="subagents"], [data-details-group="processes"]',
-    ),
-  ).toBeNull();
-  element.props = { ...element.props!, pullRequests };
-  await element.updateComplete;
+  expect(linkedWork()).toBeNull();
+  await publishRepositorySnapshot(element, { pullRequests, status: "ready", rateLimited: false });
   expect(
     element.querySelector<HTMLDetailsElement>('[data-details-group="pull-requests"]')?.open,
   ).toBe(true);
@@ -185,30 +247,51 @@ it("shows participant controls only while the session has participants", async (
   expect(element.querySelector(".chat-details__meta-actions")).toBeNull();
 });
 it("uses the current PR renderer and preserves CI session identity and branch dismissal", async () => {
-  const element = await mount({
-    pullRequestsSessionId: "incarnation-7",
-    pullRequests: [
-      {
-        number: 7,
-        owner: "example",
-        repo: "project",
-        branch: "feature",
-        title: "A compact PR title",
-        url: "https://github.com/example/project/pull/7",
-        state: "open",
-        additions: 84,
-        deletions: 41,
+  const session = {
+    key: "agent:main:details",
+    kind: "direct" as const,
+    sessionId: "incarnation-7",
+  };
+  const element = await mount(
+    {
+      selectedSession: session,
+      sessionHeaderFacts: {
+        session,
+        participationBlocked: false,
+        hasActiveRun: false,
+        workspaceReady: true,
+        workspaceConflict: false,
       },
-    ],
-  });
+    },
+    {
+      pullRequests: [
+        {
+          number: 7,
+          owner: "example",
+          repo: "project",
+          branch: "feature",
+          title: "A compact PR title",
+          url: "https://github.com/example/project/pull/7",
+          state: "open",
+          additions: 84,
+          deletions: 41,
+        },
+      ],
+      status: "ready",
+      rateLimited: false,
+    },
+    ["cron.list", "cron.status"],
+  );
   await waitForSolid(() =>
     expect(element.querySelector(".chat-pr__title")?.textContent).toBe("A compact PR title"),
   );
   const link = element.querySelector(".chat-pr__link")!;
   expect(link.getAttribute("href")).toBe("https://github.com/example/project/pull/7");
   const automation = element.querySelector("openclaw-chat-ci-automation");
-  expect(automation).toHaveProperty("sessionId", "incarnation-7");
-  expect(automation).toHaveProperty("presented", false);
+  const request = repositoryFixtures.get(element)!.request;
+  // The actual CI owner stays cold while its retained monitoring page is hidden.
+  expect(automation?.closest<HTMLElement>(".chat-pr-menu__page")?.hidden).toBe(true);
+  expect(request).not.toHaveBeenCalled();
   element.querySelector<HTMLButtonElement>(".chat-pr__actions button")!.click();
   flush();
   const menu = element.querySelector(".chat-pr__actions")!;
@@ -221,20 +304,32 @@ it("uses the current PR renderer and preserves CI session identity and branch di
   menu.querySelector<HTMLButtonElement>('[data-value="monitoring"]')!.click();
   flush();
   expect(element.querySelector("openclaw-chat-ci-automation")).toBe(automation);
-  expect(automation).toHaveProperty("presented", true);
+  expect(automation?.closest<HTMLElement>(".chat-pr-menu__page")?.hidden).toBe(false);
+  // Admission requires the Details facts and CI target to share incarnation-7.
+  await waitForSolid(() =>
+    expect(request).toHaveBeenCalledWith(
+      "cron.list",
+      expect.objectContaining({ sessionKey: session.key, sessionAgentId: "main" }),
+      expect.any(Object),
+    ),
+  );
+  // A successfully admitted inventory must settle into usable monitoring controls.
+  await waitForSolid(() =>
+    expect(automation?.querySelector<HTMLInputElement>("input")?.disabled).toBe(false),
+  );
   const branch = {
     owner: "example",
     repo: "project",
     branch: "feature",
     createUrl: "https://github.com/example/project/compare/feature",
   };
-  element.props = {
-    ...element.props!,
+  dismissChatPullRequest(window.localStorage, session.key, chatBranchId(branch));
+  await publishRepositorySnapshot(element, {
     pullRequests: [],
-    pullRequestsBranch: branch,
-    pullRequestsBranchDismissed: true,
-  };
-  await element.updateComplete;
+    branch,
+    status: "ready",
+    rateLimited: false,
+  });
   expect(element.querySelector(".chat-pr")).toBeNull();
 });
 it("projects direct active children through the live observer with stable rounded-avatar seeds", async () => {
@@ -308,12 +403,16 @@ it("admits only the latest visible native summary inputs and retires detached wo
       currentAgentId: "main",
       selectedSession: { key: `agent:main:${id}`, kind: "direct", sessionId: id },
       messages: [],
-      pullRequestsGateway: gateway,
+      gateway,
       onOpenSessionDiff: () => {},
     };
   };
   select("hidden");
-  document.body.append(element);
+  const provider = createApplicationContextProvider(
+    createContext(gateway, createSessions("main", [])),
+  );
+  provider.append(element);
+  document.body.append(provider);
   await element.updateComplete;
   await vi.advanceTimersByTimeAsync(0);
   expect(diff).not.toHaveBeenCalled();
@@ -347,7 +446,7 @@ it("admits only the latest visible native summary inputs and retires detached wo
 
   const button = element.querySelector(".chat-details__all-changes");
   element.remove();
-  document.body.append(element);
+  provider.append(element);
   await element.updateComplete;
   await vi.advanceTimersByTimeAsync(0);
   expect(element.querySelector(".chat-details__all-changes")).toBe(button);
@@ -382,15 +481,10 @@ it("shows abbreviated colored deltas with exact accessible totals, partial and s
         ? { files: [{ path: "app.ts" }], additions: 12_480, deletions: 61, truncated: true }
         : { jobs: [], total: 0, hasMore: false, nextOffset: null, snapshotRevision: "1" },
     );
-  // SAFETY: These components only read the supplied connection and subscription surface.
-  const gateway = {
-    snapshot: { client: { request }, phase: "connected", hello: null },
-    connectionRevision: 1,
-    subscribe: () => () => {},
-    subscribeEvents: () => () => {},
-  } as unknown as ApplicationGateway;
+  const { gateway, publish } = createApplicationGateway();
+  publish({ ...gateway.snapshot, phase: "connected", client: createTestGatewayClient(request) });
   try {
-    const element = await mount({ onOpenSessionDiff: vi.fn(), pullRequestsGateway: gateway });
+    const element = await mount({ onOpenSessionDiff: vi.fn(), gateway });
     await vi.advanceTimersByTimeAsync(0);
     await waitForSolid(() =>
       expect(element.querySelector(".chat-details__change-files")?.textContent).toContain("1 file"),

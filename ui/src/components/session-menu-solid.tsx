@@ -28,12 +28,10 @@ import {
 
 /** Only resolved local worktree destinations are offered by the menu host. */
 export type SessionMenuWork = {
-  pullRequestUrl: string | null;
   worktreePath: string | null;
 };
 export type SessionMenuAction =
   | SessionManagementAction
-  | { kind: "open-pr"; url: string }
   | { kind: "plugin"; id: string }
   | { kind: "stop-cloud-worker" };
 export type SessionMenuActionKind = SessionMenuAction["kind"];
@@ -45,6 +43,7 @@ export type PluginSessionMenuAction = {
   shortcut?: string;
   opensExternal?: boolean;
 };
+
 function pluginActionIcon(name?: string): IconName {
   // SAFETY: the host icon inventory admits only existing native icon keys.
   return name && Object.hasOwn(iconData, name) ? (name as IconName) : "plug";
@@ -154,7 +153,6 @@ function SessionMenuContent(
     content: <div class="session-menu__separator" role="separator" />,
   });
   const primaryDivider = separator("primary-divider");
-  const prDivider = separator("pr-divider");
   const advancedDivider = separator("advanced-divider");
   const lastActive: MenuEntry = {
     kind: "content",
@@ -197,30 +195,6 @@ function SessionMenuContent(
             ) : undefined,
             closeOnSelect: false,
           }))
-        : []),
-      ...(!batch() && props.work?.pullRequestUrl
-        ? [
-            prDivider,
-            {
-              id: "open-pr",
-              label: t("sessionsView.openPullRequest"),
-              class: "session-menu__item",
-              labelClass: "session-menu__text",
-              disabled: props.disabled,
-              attributes: {
-                "data-new-tab-action": "",
-                "data-shortcut": "g",
-                "aria-keyshortcuts": "G",
-              },
-              icon: (
-                <span class="session-menu__icon" aria-hidden="true">
-                  <Icon name="gitPullRequest" />
-                </span>
-              ),
-              details: <SessionMenuShortcut shortcut="g" />,
-              closeOnSelect: false,
-            },
-          ]
         : []),
       advancedDivider,
       ...(!batch() && props.cloudWorkerStopAllowed
@@ -269,8 +243,6 @@ function SessionMenuContent(
       }
     } else if (value === "stop-cloud-worker") {
       runAction({ kind: value });
-    } else if (value === "open-pr" && props.work?.pullRequestUrl) {
-      runAction({ kind: "open-pr", url: props.work.pullRequestUrl });
     }
   };
   const closed = () => {

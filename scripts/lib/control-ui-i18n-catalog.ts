@@ -1,6 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  settingsEnglish,
+  pullRequestEnglish,
+  publicationEnglish,
+} from "../../extensions/github-repositories/english-api.ts";
 import { buildBaseHints } from "../../src/config/schema.hints.js";
 import { PUBLIC_SESSION_COPY } from "../../src/shared/public-session-copy.ts";
 import { configHintTranslationKey } from "../../ui/src/i18n/lib/config-hint-translation.ts";
@@ -13,7 +18,6 @@ import { registerBoardWebsiteEnglish } from "../../ui/src/i18n/locales/en-board-
 import { registerBoardEnglish } from "../../ui/src/i18n/locales/en-board.ts";
 import { registerBrowserEnglish } from "../../ui/src/i18n/locales/en-browser.ts";
 import { registerChatCameraEnglish } from "../../ui/src/i18n/locales/en-chat-camera.ts";
-import { registerChatCiEnglish } from "../../ui/src/i18n/locales/en-chat-ci.ts";
 import { registerChatCommandResultsEnglish } from "../../ui/src/i18n/locales/en-chat-command-results.ts";
 import { registerChatComposerEnglish } from "../../ui/src/i18n/locales/en-chat-composer.ts";
 import { registerChatGoalsEnglish } from "../../ui/src/i18n/locales/en-chat-goals.ts";
@@ -29,8 +33,6 @@ import { registerDesktopEnglish } from "../../ui/src/i18n/locales/en-desktop.ts"
 import { registerDevicesEnglish } from "../../ui/src/i18n/locales/en-devices.ts";
 import { registerDreamingEnglish } from "../../ui/src/i18n/locales/en-dreaming.ts";
 import { registerFilePreviewEnglish } from "../../ui/src/i18n/locales/en-file-preview.ts";
-import { registerGitHubConnectionsEnglish } from "../../ui/src/i18n/locales/en-github-connections.ts";
-import { registerGitHubEnglish } from "../../ui/src/i18n/locales/en-github.ts";
 import { registerLabsEnglish } from "../../ui/src/i18n/locales/en-labs.ts";
 import { registerLinkReaderEnglish } from "../../ui/src/i18n/locales/en-link-reader.ts";
 import { registerLogbookEnglish } from "../../ui/src/i18n/locales/en-logbook.ts";
@@ -51,6 +53,7 @@ import { registerPortalsEnglish } from "../../ui/src/i18n/locales/en-portals.ts"
 import { registerProcessesEnglish } from "../../ui/src/i18n/locales/en-processes.ts";
 import { registerProfileEnglish } from "../../ui/src/i18n/locales/en-profile.ts";
 import { registerSecretsStoreEnglish } from "../../ui/src/i18n/locales/en-secrets-store.ts";
+import { registerSessionHovercardEnglish } from "../../ui/src/i18n/locales/en-session-hovercard.ts";
 import { registerSessionMachineEnglish } from "../../ui/src/i18n/locales/en-session-machine.ts";
 import { registerSessionOrganizationEnglish } from "../../ui/src/i18n/locales/en-session-organization.ts";
 import { registerSessionPeopleEnglish } from "../../ui/src/i18n/locales/en-session-people.ts";
@@ -93,7 +96,6 @@ const sourceFiles = [
   "en-board.ts",
   "en-browser.ts",
   "en-chat-camera.ts",
-  "en-chat-ci.ts",
   "en-chat-command-results.ts",
   "en-chat-composer.ts",
   "en-chat-goals.ts",
@@ -113,8 +115,7 @@ const sourceFiles = [
   "en-labs.ts",
   "en-login.ts",
   "en-link-reader.ts",
-  "en-github.ts",
-  "en-github-connections.ts",
+  "en-session-hovercard.ts",
   "en-mcp.ts",
   "en-mcp-app.ts",
   "en-meetings.ts",
@@ -212,13 +213,16 @@ export function loadControlUiSourceCatalog(): TranslationMap {
         commands: registerCommandPaletteEnglish.catalog.chat.commands,
         welcome: registerCommandPaletteEnglish.catalog.chat.welcome,
         messages: registerChatMessageMetadataEnglish.catalog.chat.messages,
-        pullRequests: registerGitHubEnglish.catalog.chat.pullRequests,
+        pullRequests: pullRequestEnglish.chat.pullRequests,
       },
-      sessionHovercard: registerGitHubEnglish.catalog.sessionHovercard,
-      githubPublication: registerGitHubEnglish.catalog.githubPublication,
-      githubConnections: registerGitHubConnectionsEnglish.catalog.githubConnections,
+      sessionHovercard: {
+        ...registerSessionHovercardEnglish.catalog.sessionHovercard,
+        ...pullRequestEnglish.sessionHovercard,
+      },
+      githubPublication: publicationEnglish.githubPublication,
+      githubConnections: settingsEnglish.githubConnections,
       agentTools: {
-        ...registerGitHubConnectionsEnglish.catalog.agentTools,
+        ...settingsEnglish.agentTools,
         ...en.agentTools,
         ...registerToolDiagnosticsEnglish.catalog.agentTools,
       },
@@ -247,7 +251,7 @@ export function loadControlUiSourceCatalog(): TranslationMap {
     registerSecretsStoreEnglish.catalog,
     registerBrowserEnglish.catalog,
     registerChatCameraEnglish.catalog,
-    registerChatCiEnglish.catalog,
+    pullRequestEnglish,
     registerChatCommandResultsEnglish.catalog,
     registerChatComposerEnglish.catalog,
     registerChatGoalsEnglish.catalog,
@@ -293,6 +297,13 @@ export async function readControlUiSourceCatalog(): Promise<string> {
   const sources = await Promise.all(
     [
       ...sourceFiles.map((fileName) => path.join(localesDir, fileName)),
+      ...[
+        "english-api.ts",
+        "browser/settings-english.ts",
+        "browser/metadata-english.ts",
+        "browser/pull-request-english.ts",
+        "browser/publication-english.ts",
+      ].map((file) => path.resolve(localesDir, "../../../../extensions/github-repositories", file)),
       path.resolve(localesDir, "../../../../src/shared/public-session-copy.ts"),
       path.resolve(localesDir, "../../../../extensions/active-memory/control-ui.presentation.json"),
       path.resolve(localesDir, "../../../../extensions/memory-wiki/control-ui.presentation.json"),

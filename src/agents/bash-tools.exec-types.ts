@@ -24,7 +24,6 @@ import type { ExecToolRoutingDefaults } from "./bash-tools.exec-routing.types.js
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import type { EmbeddedFullAccessBlockedReason } from "./embedded-agent-runner/types.js";
 import type { ExecReviewerConfig } from "./exec-auto-reviewer.js";
-import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
 import type { AgentToolResult } from "./runtime/index.js";
 
 type ExecProcessFailureKind =
@@ -79,8 +78,7 @@ export type ExecToolDefaults = ExecToolRoutingDefaults & {
   reviewer?: ExecReviewerConfig;
   config?: OpenClawConfig;
   /** Host-prepared non-secret environment and store projection exclusions. */
-  preparedRunEnvironment?: PreparedGitHubToolEnvironment &
-    PreparedExecutionEnvironment & { assertCurrent?: () => void };
+  preparedRunEnvironment?: PreparedExecutionEnvironment & { assertCurrent?: () => void };
   /** An explicit snapshot, including an empty one, replaces local store access. */
   preparedStoreEnvironment?: Readonly<SecretStoreExecEnvironment>;
   /** Host-prepared routing hint; remote workers have no Gateway session database. */
@@ -290,8 +288,7 @@ export type ExecProcessStartOptions = {
   workdir: string;
   env: Record<string, string>;
   secretEgressBindings?: readonly SecretEgressSentinelBinding[];
-  /** Host-selected managed profile; never inferred from the requested environment. */
-  githubProfileDir?: string;
+  /** Host-prepared launch adapter; never inferred from requested environment. */
   wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
   assertExecutionEnvironmentCurrent?: () => void;
   transportCredentialScrubEnv?: Readonly<Record<string, string>>;

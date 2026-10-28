@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rejectGitHubPublicationSelection } from "../../../extensions/github-repositories/publication-failure-api.js";
 import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
 import { captureRuntimeConfigAsyncReader, getRuntimeConfig } from "../../config/io.js";
 import {
@@ -12,12 +13,11 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { getUserProfileDisplay } from "../../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import {
-  GitHubPublicationRequesterUnavailableError,
-  rejectGitHubPublicationSelection,
-} from "../github-publication-failure.js";
+import { installPublicationRpcFixture } from "../github-account-service.test-support.js";
+import { RepositoryPublicationRequesterUnavailableError } from "../github-publication-errors.js";
 import type { GitHubPublicationCoordinator } from "../github-publication.js";
 import { handleGatewayRequest } from "../server-methods.js";
+import { createContext } from "../server-plugin-in-process-dispatch.test-support.js";
 import { createSyntheticPluginRuntimeClient } from "../server-plugin-runtime-client.js";
 import { createOperatorWsClient } from "../server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "../server/ws-connection/connect-operator-access.js";
@@ -92,13 +92,12 @@ async function invoke(
   } = {},
 ) {
   const respond = vi.fn<GatewayRequestHandlerOptions["respond"]>();
+  const context = createContext([], getRuntimeConfig);
+  await installPublicationRpcFixture(context, { requestForSessionV2: mocks.request });
   const request: GatewayRequestHandlerOptions = {
     params,
     respond,
-    context: {
-      githubPublicationService: { requestForSessionV2: mocks.request },
-      getRuntimeConfig,
-    } as never,
+    context,
     client:
       options.client ??
       createSyntheticPluginRuntimeClient({
@@ -253,7 +252,7 @@ describe("sessions.github.publish", () => {
           expect(mocks.request).not.toHaveBeenCalled();
           expect(respond).toHaveBeenCalledWith(false, undefined, {
             code: "UNAVAILABLE",
-            message: new GitHubPublicationRequesterUnavailableError().message,
+            message: new RepositoryPublicationRequesterUnavailableError().message,
           });
           return;
         }
@@ -350,7 +349,7 @@ describe("sessions.github.publish", () => {
     expect(requester.snapshot).toEqual(expectedSystemRequester.snapshot);
     expect(() => requester.assertCurrent()).not.toThrow();
     authorized = false;
-    expect(() => requester.assertCurrent()).toThrow(GitHubPublicationRequesterUnavailableError);
+    expect(() => requester.assertCurrent()).toThrow(RepositoryPublicationRequesterUnavailableError);
     request.resolve({ ...acceptedPublication, requestId: "publication-revoked" });
 
     await expect(pending).rejects.toBe(changed);

@@ -220,14 +220,19 @@ export function renderCatalogSessionRow(
             <span class="sidebar-recent-session__title-row"> {marqueeLabel} </span>
             <span class="sidebar-recent-session__details">
               <span class="sidebar-recent-session__details-endcap">
-                {<SessionRowBadges pullRequest={readSession().pullRequest} />}
-                <PluginContributions
-                  kind="session-row"
-                  sessionKey={key()}
-                  agentId={params.snapshot.newSessionAgentId}
-                  artifact={readSession().pullRequest}
-                  presented={true}
-                />
+                {
+                  <SessionRowBadges
+                    accessories={
+                      <PluginContributions
+                        kind="session-row"
+                        sessionKey={key()}
+                        agentId={params.snapshot.newSessionAgentId}
+                        artifact={readSession().pullRequest}
+                        presented={true}
+                      />
+                    }
+                  />
+                }
               </span>
             </span>
           </span>

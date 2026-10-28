@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ControlUiGitHubError } from "../../extensions/github-repositories/public-api.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { SecretSurfaceUnavailableError } from "../secrets/runtime-degraded-state.js";
@@ -17,7 +18,6 @@ import {
 import { ensureProfileForTailscaleIdentity } from "../state/user-profiles.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { buildAuthenticatedPresenceUser } from "./authenticated-presence-user.js";
-import type { ControlUiGitHubError } from "./github-public-api.js";
 import { createAuthenticatedGitHubIdentitySync } from "./github-user-identity.js";
 import { cfg as accessConfig } from "./github-user-identity.oidc.test-support.js";
 import { resolveAuthenticatedHttpUserProfile } from "./http-auth-user-profile.js";
@@ -134,7 +134,18 @@ describe("authenticated GitHub identity sync", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const params: Parameters<typeof createAuthenticatedGitHubIdentitySync>[0] = {
         authResult: { ok: true, method: "trusted-proxy", user: "github:ghe.example.test:101" },
-        config: { gateway: { github: { host: "ghe.example.test" } } },
+        config: {
+          gateway: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  host: "ghe.example.test",
+                },
+              },
+            },
+          },
+        },
         authConfig: { mode: "trusted-proxy", trustedProxy: { userHeader: "x-factory-principal" } },
         requestHeaders: { "x-factory-github-login": "ada", "x-factory-github-name": "Ada" },
       };
@@ -156,7 +167,21 @@ describe("authenticated GitHub identity sync", () => {
       expect(getUserProfileListItem(result.profileId)).toMatchObject({
         displayName: "Chosen name",
       });
-      for (const config of [{}, { gateway: { github: { host: "other.example.test" } } }]) {
+      for (const config of [
+        {},
+        {
+          gateway: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  host: "other.example.test",
+                },
+              },
+            },
+          },
+        },
+      ]) {
         expect(createAuthenticatedGitHubIdentitySync({ ...params, config })).toBeUndefined();
       }
       expect(
@@ -178,9 +203,17 @@ describe("authenticated GitHub identity sync", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       setRuntimeConfigSnapshot({
         gateway: {
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: {
-            github: { host: "ghe.example.test", token: "enterprise-service-token" },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "enterprise-service-token" },
+              },
+            },
           },
         },
       });
@@ -353,7 +386,18 @@ describe("authenticated GitHub identity sync", () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       setRuntimeConfigSnapshot({
-        gateway: { controlUi: { github: { token: "configured-service-token" } } },
+        gateway: {
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: "configured-service-token" },
+              },
+            },
+          },
+        },
       });
       const initialFetch = vi
         .spyOn(globalThis, "fetch")
@@ -530,9 +574,35 @@ describe("GitHub public identity metadata cache", () => {
           ),
         );
       stubIdentityFetch(metadata, access);
-      setRuntimeConfigSnapshot({ gateway: { controlUi: { github: { token: "first-token" } } } });
+      setRuntimeConfigSnapshot({
+        gateway: {
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: "first-token" },
+              },
+            },
+          },
+        },
+      });
       await createAccessSync()();
-      setRuntimeConfigSnapshot({ gateway: { controlUi: { github: { token: "second-token" } } } });
+      setRuntimeConfigSnapshot({
+        gateway: {
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: "second-token" },
+              },
+            },
+          },
+        },
+      });
       await createAccessSync()();
       expect(new Headers(metadata.mock.calls[1]?.[1]?.headers).has("if-none-match")).toBe(false);
       access.id = 102;
@@ -542,8 +612,15 @@ describe("GitHub public identity metadata cache", () => {
       vi.stubEnv("GH_TOKEN", "other-process-token");
       setRuntimeConfigSnapshot({
         gateway: {
-          controlUi: {
-            github: { token: { source: "env", provider: "default", id: "UNAVAILABLE_TOKEN" } },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: { source: "env", provider: "default", id: "UNAVAILABLE_TOKEN" } },
+              },
+            },
           },
         },
       });
@@ -555,7 +632,20 @@ describe("GitHub public identity metadata cache", () => {
   it("never reuses an anonymous ETag for an authenticated refresh", async () => {
     await withOpenClawTestState({ scenario: "minimal" }, async () => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-      setRuntimeConfigSnapshot({ gateway: { controlUi: { github: { token: "service-token" } } } });
+      setRuntimeConfigSnapshot({
+        gateway: {
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                service: { token: "service-token" },
+              },
+            },
+          },
+        },
+      });
       const metadata = vi
         .fn<typeof fetch>()
         .mockResolvedValueOnce(new Response(null, { status: 401 }))

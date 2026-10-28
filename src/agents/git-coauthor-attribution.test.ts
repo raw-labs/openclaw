@@ -214,10 +214,16 @@ it("derives exact bounded trailers only from canonical profile-backed humans", a
       resolveGitCoauthorAttribution({
         ...scope,
         config: {
-          tools: {
-            github: {
-              profileId: "ghp_11111111111111111111111111111111",
-              gitAuthor: { email },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  system: {
+                    profileId: "ghp_11111111111111111111111111111111",
+                    gitAuthor: { email },
+                  },
+                },
+              },
             },
           },
         },

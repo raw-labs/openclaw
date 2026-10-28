@@ -1,11 +1,14 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
-import { clearGitHubCredentialVerificationCache } from "../agents/github-oauth-client.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import { clearGitHubCredentialVerificationCache } from "../../extensions/github-repositories/oauth-api.js";
+import { clearNativeGitHubTokenCache } from "../../extensions/github-repositories/read-identity-api.js";
+import { controlUiGitHubHandlers as controlUiHandlers } from "../../extensions/github-repositories/runtime-api.js";
 import {
   resolveManagedGitHubProfileDir,
   writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import { prepareConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
 import { createAdmittedHostCapabilityTestFixture } from "../agents/harness/host-capability.test-support.js";
 import { resolveSandboxToolPolicyForAgent } from "../agents/sandbox/tool-policy.js";
 import {
@@ -38,7 +41,6 @@ import { createOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import { createRequestGatewayMethodRegistry } from "./server-methods.js";
 import { createControlUiRequestOptions } from "./server-methods/control-ui-request.test-support.js";
-import { controlUiHandlers } from "./server-methods/control-ui.js";
 import type { RespondFn } from "./server-methods/types.js";
 import { dispatchGatewayMethodInProcess } from "./server-plugin-in-process-dispatch.js";
 import {
@@ -62,6 +64,7 @@ beforeEach(async () => {
     scenario: "minimal",
     env: { GH_TOKEN: undefined, GITHUB_TOKEN: undefined },
   });
+  clearNativeGitHubTokenCache();
   clearGitHubCredentialVerificationCache();
 });
 afterEach(async () => {
@@ -78,11 +81,31 @@ afterEach(async () => {
 async function createFixture(allow?: string[], throughSearch = false) {
   const config: OpenClawConfig = {
     agents: {
-      entries: { reader: { workspace: state.workspaceDir, tools: { github: { profileId } } } },
+      entries: {
+        reader: {
+          workspace: state.workspaceDir,
+          tools: {},
+        },
+      },
     },
     tools: { profile: "coding", allow, toolSearch: throughSearch },
-    plugins: { allow: ["github"], slots: { memory: "none" } },
-    gateway: { controlUi: { github: { token: "synthetic-unused-service-credential" } } },
+    plugins: {
+      allow: ["github", "github-repositories"],
+      slots: { memory: "none" },
+      entries: {
+        "github-repositories": {
+          config: {
+            service: { token: "synthetic-unused-service-credential" },
+            agents: {
+              reader: { profileId },
+            },
+          },
+        },
+      },
+    },
+    gateway: {
+      controlUi: {},
+    },
   };
   setRuntimeConfigSnapshot(config);
   await writeManagedGitHubProfileFiles(
@@ -531,7 +554,7 @@ describe("GitHub agent reader", () => {
   );
   it.each([
     { policy: "coding profile", allow: undefined },
-    { policy: "plugin allowlist", allow: ["github"] },
+    { policy: "plugin allowlist", allow: ["github", "github-repositories"] },
     { policy: "plugin group allowlist", allow: ["group:plugins"] },
   ])("reads with $policy, session-only scopes and the invoking identity", async ({ allow }) => {
     fixture = await createFixture(allow);
@@ -618,7 +641,10 @@ describe("GitHub agent reader", () => {
       }
     }
     fixture.config.tools = { profile: "coding" };
-    fixture.config.plugins = { ...fixture.config.plugins, entries: { github: { enabled: false } } };
+    fixture.config.plugins = {
+      ...fixture.config.plugins,
+      entries: { github: { enabled: false } },
+    };
     setRuntimeConfigSnapshot(fixture.config);
     fixture.registry.rollbackPluginGlobalSideEffects("github", fixture.record);
     const names = (await fixture.assemble()).map((tool) => tool.name);
@@ -715,8 +741,8 @@ describe("GitHub agent reader", () => {
           }),
         ]);
         const requestsBeforeChange = fixture.fetcher.mock.calls.length;
-        const agent = expectDefined(fixture.config.agents?.entries?.reader, "reader configuration");
-        agent.tools = { ...agent.tools, github: { profileId: `ghp_${"8".repeat(32)}` } };
+        const plugin = readGitHubConfig(fixture.config);
+        plugin.agents = { ...plugin.agents, reader: { profileId: `ghp_${"8".repeat(32)}` } };
         setRuntimeConfigSnapshot(fixture.config);
         release.resolve();
         await rejected;

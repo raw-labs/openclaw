@@ -25,6 +25,7 @@ import {
   modelAccountProfile,
   mountProfilePage,
 } from "./profile-page.test-support.tsx";
+import { disconnectedGitHub, mockRpc } from "./profile-rpc.test-support.ts";
 
 const modelAccountCatalog = {
   providers: [
@@ -120,23 +121,23 @@ it("refreshes translated copy when the locale changes while mounted", async () =
 
 it("renders identity before Usage statistics and opens the usage page", async () => {
   const profile = modelAccountProfile;
-  const request = vi.fn(async (method: string) => {
-    if (method === "users.prefs.get") {
-      return { status: "ok", entries: {} };
-    }
-    if (method === "users.self") {
-      return { profile };
-    }
-    if (method === "users.listModelAccounts") {
-      return { profileId: profile.id, accounts: [], links: [] };
-    }
-    throw new Error(`unexpected method: ${method}`);
+  const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
+    "users.prefs.get": () => ({ status: "ok", entries: {} }),
+    "users.self": () => ({ profile }),
+    "users.listModelAccounts": () => ({ profileId: profile.id, accounts: [], links: [] }),
   });
   const harness = createConnectedContext(request as GatewayBrowserClient["request"], {
     id: profile.id,
     email: profile.emails[0],
     name: profile.displayName ?? undefined,
   });
+  harness.emitHello(
+    gatewayHelloForMethods(
+      ["users.github.status", "tools.github.status", "users.listModelAccounts"],
+      ["operator.admin"],
+    ),
+  );
   const page = mountProfilePage(harness.context);
   await waitForFast(() => expect(page.querySelector("#settings-profile-identity")).not.toBeNull());
   await waitForFast(() =>
@@ -145,7 +146,12 @@ it("renders identity before Usage statistics and opens the usage page", async ()
 
   await waitForFast(() =>
     expect(request.mock.calls.map(([method]) => method).toSorted()).toEqual(
-      ["users.self", "users.listModelAccounts", "users.prefs.get"].toSorted(),
+      [
+        "users.self",
+        "users.listModelAccounts",
+        "users.prefs.get",
+        "users.github.status",
+      ].toSorted(),
     ),
   );
   const identity = page.querySelector("#settings-profile-identity");

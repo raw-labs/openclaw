@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { RepositorySources } from "../repository-sources.js";
 import type { WorkerProjectPreparationIdentity } from "./preparation-identity.schema.js";
 import { createWorkerProjectPreparation } from "./project-preparation.js";
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
@@ -11,6 +12,7 @@ export async function prepareWorkerProviderProject(params: {
   record: Pick<WorkerEnvironmentRecord, "preparation" | "createdAtMs">;
   namespace: string;
   getConfig: () => OpenClawConfig;
+  getRepositorySources?: () => RepositorySources;
   requireCurrent: () => void;
   signal?: AbortSignal;
 }) {
@@ -21,6 +23,7 @@ export async function prepareWorkerProviderProject(params: {
           expected: project,
           namespace: params.namespace,
           getConfig: params.getConfig,
+          getRepositorySources: params.getRepositorySources,
           assertCurrent: params.requireCurrent,
           signal: params.signal,
           knownRecipe: preparation
@@ -37,7 +40,7 @@ export async function prepareWorkerProviderProject(params: {
     namespace: params.namespace,
     ...(repository
       ? {
-          revalidateRepositorySource: repository.revalidate,
+          revalidateRepositorySource: (signal: AbortSignal) => repository.revalidate(signal),
           prepareRepositoryGitPack: repository.prepareGitPack,
         }
       : {}),

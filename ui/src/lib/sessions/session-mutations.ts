@@ -611,7 +611,6 @@ export function createSessionMutations(host: SessionMutationsHost) {
     createResult,
     reconcileConfirmedPreviousConnection,
     retireDeletedSession(this: void, key: string) {
-      host.retirePullRequestSummary(key);
       archiveState.clear(key);
       preparedWorkSessionKeys.delete(key.trim());
       modelOverrides.set(key, undefined);

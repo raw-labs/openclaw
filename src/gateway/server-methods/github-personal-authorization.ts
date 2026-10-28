@@ -1,3 +1,8 @@
+import type {
+  PersonalGitHubAction,
+  PersonalGitHubActionV2,
+} from "../../../extensions/github-repositories/personal-oauth-api.js";
+import { currentGitHubPublicationConfig } from "../../../extensions/github-repositories/publication-availability-api.js";
 import { getRuntimeConfigSnapshotMetadata } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../../routing/session-key.js";
@@ -8,11 +13,9 @@ import {
 } from "../../shared/operator-scope-compat.js";
 import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-identity-operations.js";
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
-import type { PersonalGitHubAction, PersonalGitHubActionV2 } from "../github-personal-oauth.js";
 import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
 import { prepareGitHubPublicationSession } from "../github-publication-availability.js";
 import { RepositoryPublicationSessionChangedError } from "../github-publication-errors.js";
-import { currentGitHubPublicationConfig } from "../github-publication-identity.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { hasCurrentGatewayOperatorAccess } from "../operator-access-policy.js";
 import {

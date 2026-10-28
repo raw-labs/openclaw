@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 
 import { afterEach, expect, it, vi } from "vitest";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../../extensions/github-repositories/session-pull-requests-api.ts";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
-import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../lib/session-pull-requests.ts";
 import type { SessionCapability } from "../../lib/sessions/index.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { setChatHistoryLoad } from "./chat-history-state.ts";
@@ -16,10 +16,8 @@ function createSecondaryHydrationPane() {
   const listBranches = vi.fn(() => secondaryResponse);
   const patch = vi.fn().mockResolvedValue({});
   const sessions = {
-    capturePullRequestEpoch: vi.fn(() => ({})),
     listBranches,
     patch,
-    setPullRequestSummary: vi.fn(),
   } as unknown as SessionCapability;
   const { pane, state } = createTestChatPane({
     client: { request } as unknown as GatewayBrowserClient,
@@ -142,7 +140,6 @@ it.each([
       "system.info",
       "session.discussion.info",
       "sessions.companion.state",
-      SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
     ]);
     expect(
       f.request.mock.calls.find(([method]) => method === "sessions.companion.state")?.[1],

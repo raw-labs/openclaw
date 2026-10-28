@@ -34,7 +34,7 @@ const ChatContextBreakdown = lazy(() => import("./chat-context-breakdown.tsx"), 
 export type ChatDetailsContextContentProps = {
   details: Pick<
     ChatDetailsProps,
-    "selectedSession" | "currentAgentId" | "pullRequestsGateway" | "runActive" | "onCompact"
+    "selectedSession" | "currentAgentId" | "gateway" | "runActive" | "onCompact"
   >;
   /** True only while the host and this section/page are presented. */
   presented: boolean;
@@ -160,11 +160,7 @@ export function ChatDetailsContextContent(props: ChatDetailsContextContentProps)
             </span>
             <strong>{usage().detail}</strong>
           </div>
-          <Show
-            when={
-              props.presented && props.details.pullRequestsGateway && props.details.selectedSession
-            }
-          >
+          <Show when={props.presented && props.details.gateway && props.details.selectedSession}>
             <Loading
               fallback={
                 <PanelLoadingSkeleton
@@ -176,7 +172,7 @@ export function ChatDetailsContextContent(props: ChatDetailsContextContentProps)
             >
               <ChatContextBreakdown
                 desktop={props.desktop}
-                gateway={props.details.pullRequestsGateway!}
+                gateway={props.details.gateway!}
                 session={props.details.selectedSession!}
                 agentId={props.details.currentAgentId ?? undefined}
                 used={usage().used}

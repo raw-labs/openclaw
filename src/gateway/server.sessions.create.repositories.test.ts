@@ -2,6 +2,7 @@ import { getEventListeners } from "node:events";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
+import { loadTestSessionPullRequests as loadControlUiSessionPullRequests } from "../../extensions/github-repositories/control-ui-session-prs.test-support.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { loadSessionEntry } from "../config/sessions/session-accessor.js";
 import * as gitWorker from "../infra/git-worker.js";
@@ -10,7 +11,6 @@ import {
   closeOpenClawStateDatabaseForTest,
 } from "../state/openclaw-state-db.js";
 import { withEnvAsync } from "../test-utils/env.js";
-import { loadTestSessionPullRequests as loadControlUiSessionPullRequests } from "./control-ui-session-prs.test-support.js";
 import { disposeSessionReadContexts } from "./server-methods/sessions-read-cache.test-support.js";
 import { controlUiClient } from "./server.sessions.create.projects.test-support.js";
 import { dispatchInboundMessageMock, testState } from "./test-helpers.js";
@@ -20,8 +20,11 @@ import {
 } from "./test/server-sessions.test-helpers.js";
 
 const projectCloneMocks = vi.hoisted(() => ({ materialize: vi.fn() }));
-vi.mock("../projects/project-clone.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../projects/project-clone.js")>();
+vi.mock("../../extensions/github-repositories/project-clone-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../../extensions/github-repositories/project-clone-api.js")
+    >();
   return { ...actual, materializeProjectClone: projectCloneMocks.materialize };
 });
 
@@ -103,8 +106,7 @@ test("sessions.create retains a cloud repository across replay without creating 
       if (operation.type === "checkout.context") {
         return {
           root: operation.input.root,
-          owner: "openclaw",
-          repo: "openclaw",
+          originUrl: "https://github.com/openclaw/openclaw",
           branch: "previous-local-branch",
           defaultBranch: "main",
         };

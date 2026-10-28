@@ -136,20 +136,6 @@ test.each([
   expectSchemaIssue({ gateway: { roles } }, ["gateway", "roles", field]);
 });
 
-test("accepts a matching GitHub cloud endpoint", () => {
-  const github = { host: "tenant.ghe.com", apiBaseUrl: "https://api.tenant.ghe.com" };
-  expect(OpenClawSchema.safeParse({ gateway: { github } }).success).toBe(true);
-});
-
-test.each([
-  { host: "ghe.example.test", apiBaseUrl: "https://api.other.example.test" },
-  { host: "ghe.example.test", apiBaseUrl: "http://ghe.example.test/api/v3" },
-  { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/other" },
-  { host: "ghe.example.test" },
-])("rejects a GitHub endpoint that could send credentials away from $host", (github) => {
-  expect(OpenClawSchema.safeParse({ gateway: { github } }).success).toBe(false);
-});
-
 test("accepts a provider neutral repository default", () => {
   expect(
     OpenClawSchema.safeParse({

@@ -2,6 +2,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
 import { afterEach, expect, it, vi } from "vitest";
+import { readGitHubConfig } from "../../../extensions/github-repositories/config-api.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import { linkEmail } from "../../state/user-profile-writes.worker.js";
@@ -56,24 +57,36 @@ it.each([
         f.client.internal = { ...f.client.internal, authenticatedOperator: true };
         setRuntimeConfigSnapshot({
           ...f.cfg,
-          gateway: { ...f.cfg.gateway, github: { host, apiBaseUrl } },
-          tools: {
-            github: {
-              kind: "app-installation" as const,
-              profileId: "ghp_00000000000000000000000000000001",
-              app: {
-                appId: 101,
-                installationId: 202,
-                accountId: 303,
-                repositories: [
-                  repo,
-                  ...(scenario === "multiple-repositories"
-                    ? [{ id: 405, fullName: "example/other" }]
-                    : []),
-                ],
-                permissions,
-                privateKey,
-                keyVersion: "synthetic-v1",
+          gateway: {
+            ...f.cfg.gateway,
+          },
+          tools: {},
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  host,
+                  apiBaseUrl,
+                  ...readGitHubConfig(f.cfg),
+                  system: {
+                    kind: "app-installation" as const,
+                    profileId: "ghp_00000000000000000000000000000001",
+                    app: {
+                      appId: 101,
+                      installationId: 202,
+                      accountId: 303,
+                      repositories: [
+                        repo,
+                        ...(scenario === "multiple-repositories"
+                          ? [{ id: 405, fullName: "example/other" }]
+                          : []),
+                      ],
+                      permissions,
+                      privateKey,
+                      keyVersion: "synthetic-v1",
+                    },
+                  },
+                },
               },
             },
           },
@@ -194,6 +207,7 @@ it.each([
           expect(respond).toHaveBeenCalledExactlyOnceWith(
             true,
             expect.objectContaining(preview),
+            undefined,
             undefined,
           );
           expect(claims).toHaveLength(1);

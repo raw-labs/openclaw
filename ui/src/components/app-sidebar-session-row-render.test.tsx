@@ -18,6 +18,7 @@ import "../test-helpers/app-sidebar-suite.ts";
 import { domProbe } from "../test-helpers/dom-probe.ts";
 import { createTestGatewayClient } from "../test-helpers/gateway-client.ts";
 import { mountSolid } from "../test-helpers/mount-solid.ts";
+import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { renderAppSidebarOnline } from "./app-sidebar-online.tsx";
 import { renderSidebarAgentCard } from "./app-sidebar-render.tsx";
@@ -69,11 +70,6 @@ function createHost(mode: "chip" | "roster" = "roster", snapshot?: Partial<Sideb
   const props = document.createElement("openclaw-app-sidebar") as AppSidebarElement;
   props.sidebarAgentsMode = mode;
   const host = new AppSidebarOwner({ dashboards: null, loadMoreDashboards() {} }, context, props);
-  // The full sidebar mounts this owner; row-only fixtures keep the supplied catalog summary.
-  host.sessionPullRequests = {
-    summary: (_sessionKey, _worktreeId, initial) => initial,
-    count: () => undefined,
-  };
   host.sessionOwnershipVisibility = { filters: true, avatars: true };
   document.body.append(container);
   if (snapshot) {
@@ -95,6 +91,7 @@ function mountRow(
   const [current, setCurrent] = createSignal(session);
   mountSolid(() => <RecentSession host={fixture.host} session={current()} {...options} />, {
     container: fixture.container,
+    wrapper: createSolidApplicationContextProvider(fixture.context).wrapper,
   });
   return { ...fixture, session, current, setCurrent };
 }
@@ -130,10 +127,14 @@ function observeHost(host: AppSidebarOwner) {
 function mountObservedHost(
   host: AppSidebarOwner,
   container: HTMLElement,
+  context: ReturnType<typeof createHost>["context"],
   view: (host: AppSidebarOwner) => JSX.Element,
 ) {
   const observed = observeHost(host);
-  mountSolid(() => view(observed.host), { container });
+  mountSolid(() => view(observed.host), {
+    container,
+    wrapper: createSolidApplicationContextProvider(context).wrapper,
+  });
   return observed.update;
 }
 
@@ -408,9 +409,12 @@ it.each(["owner", "icon"] as const)(
 it("materializes the archive hint on hover without changing the action name", () => {
   vi.useFakeTimers();
   onTestFinished(installTitleTooltips(document));
-  const { host, container, dom } = createHost();
+  const { host, container, context, dom } = createHost();
   const session = projectSidebarSession({ key: "agent:main:thread", label: "Research" });
-  mountSolid(() => <RecentSession host={host} session={session} />, { container });
+  mountSolid(() => <RecentSession host={host} session={session} />, {
+    container,
+    wrapper: createSolidApplicationContextProvider(context).wrapper,
+  });
   const archive = dom.query<HTMLButtonElement>("[data-sidebar-session-archive]")!;
   const name = archive.getAttribute("aria-label");
   const hint = archive.title;
@@ -431,7 +435,7 @@ it("renders the saved chip identity before agent discovery without reviving anot
     ...emptySnapshot,
     brand: { ...emptySnapshot.brand, agentId: "main", name: "Harbor", textAvatar: "⚓" },
   });
-  const update = mountObservedHost(host, container, renderSidebarAgentCard);
+  const update = mountObservedHost(host, container, context, renderSidebarAgentCard);
   const card = dom.query("openclaw-sidebar-agent-card");
   expect(card).not.toBeNull();
   await waitForSolid(() => {
@@ -452,8 +456,8 @@ it("renders the saved chip identity before agent discovery without reviving anot
 });
 
 it("retains the workspace name DOM across unrelated sidebar publications and renames", () => {
-  const { host, container, dom } = createHost("roster", {});
-  const update = mountObservedHost(host, container, renderSidebarAgentCard);
+  const { host, container, context, dom } = createHost("roster", {});
+  const update = mountObservedHost(host, container, context, renderSidebarAgentCard);
   const name = () => dom.query(".sidebar-agent-card__name-text");
   const original = name();
   expect(original?.textContent).toBe("Harbor");
@@ -471,14 +475,14 @@ it("retains the workspace name DOM across unrelated sidebar publications and ren
 });
 
 it("keeps the rendered preview slot after caching without restoring live run authority", () => {
-  const { host, container, dom } = createHost("chip");
+  const { host, container, context, dom } = createHost("chip");
   host.sessionsShowPreview = true;
   const session = projectSidebarSession({
     key: "agent:main:thread",
     lastMessagePreview: "The report is ready for review.",
   });
   const [current, setCurrent] = createSignal(session);
-  const update = mountObservedHost(host, container, (observedHost) => (
+  const update = mountObservedHost(host, container, context, (observedHost) => (
     <RecentSession host={observedHost} session={current()} />
   ));
   expect(dom.text(".sidebar-recent-session__subtitle")).toBe("The report is ready for review.");
@@ -499,12 +503,12 @@ it("keeps the rendered preview slot after caching without restoring live run aut
 });
 
 it("keeps Users visible despite a cached legacy collapse preference", () => {
-  const { host, container, dom } = createHost("chip", {
+  const { host, container, context, dom } = createHost("chip", {
     collapsedSections: ["online"],
     onlineUsers: [{ id: "ada", name: "Ada", watchedSessions: [] }],
   });
   host.sessionData.presencePayload = { presence: [{ ts: 1, user: { id: "ada", name: "Ada" } }] };
-  const update = mountObservedHost(host, container, renderAppSidebarOnline);
+  const update = mountObservedHost(host, container, context, renderAppSidebarOnline);
   expect(dom.text(".sidebar-online__person-name")).toBe("Ada");
   host.releaseSidebarSnapshot();
   update();
@@ -512,14 +516,14 @@ it("keeps Users visible despite a cached legacy collapse preference", () => {
 });
 
 it("shows unavailable counts after a failed live summary instead of retaining saved totals", () => {
-  const { host, container, dom } = createHost("roster", {
+  const { host, container, context, dom } = createHost("roster", {
     mode: "roster",
     onlineUsers: [
       { id: "ada", name: "Ada", identity: { type: "profile", id: "ada" }, watchedSessions: [] },
     ],
     onlineCounts: [["ada", { open: 2, running: 1 }]],
   });
-  const update = mountObservedHost(host, container, renderAppSidebarOnline);
+  const update = mountObservedHost(host, container, context, renderAppSidebarOnline);
   expect(dom.query(".sidebar-online__counts")).not.toBeNull();
   host.releaseSidebarSnapshot();
   host.sessionData.ownerCounts.error = "Synthetic count failure";
@@ -530,7 +534,7 @@ it("shows unavailable counts after a failed live summary instead of retaining sa
 it.each([false, true])(
   "keeps row facepiles idle with unchanged inputs (owner: %s), while admitting new presence",
   async (withOwner) => {
-    const { host, container, dom } = createHost();
+    const { host, container, context, dom } = createHost();
     let session = projectSidebarSession({
       key: "agent:main:thread",
       owner: withOwner
@@ -548,7 +552,10 @@ it.each([false, true])(
       observed.track();
       return session;
     };
-    mountSolid(() => <RecentSession host={observed.host} session={current()} />, { container });
+    mountSolid(() => <RecentSession host={observed.host} session={current()} />, {
+      container,
+      wrapper: createSolidApplicationContextProvider(context).wrapper,
+    });
     const update = observed.update;
     update();
     const row = dom.query(".sidebar-recent-session")!;
@@ -591,14 +598,17 @@ it.each([false, true])(
 );
 
 it("updates a pinned session's resolved avatar without replacing its row", () => {
-  const { host, container, dom } = createHost();
+  const { host, container, context, dom } = createHost();
   const session = projectSidebarSession({ key: "agent:main:pinned" });
   const [avatar, setAvatar] = createSignal("Loading avatar");
   const icon = () => {
     const label = avatar();
     return <span data-pinned-avatar>{label}</span>;
   };
-  mountSolid(() => <RecentSession host={host} session={session} icon={icon()} />, { container });
+  mountSolid(() => <RecentSession host={host} session={session} icon={icon()} />, {
+    container,
+    wrapper: createSolidApplicationContextProvider(context).wrapper,
+  });
   const row = dom.query(".sidebar-recent-session");
   expect(dom.text("[data-pinned-avatar]")).toBe("Loading avatar");
 

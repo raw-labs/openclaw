@@ -17,10 +17,8 @@ import {
   takeControlUiScreenshotFrame,
   takeControlUiViewportScreenshot,
 } from "../test-helpers/control-ui-e2e-screenshot.ts";
-import {
-  installMockGateway,
-  type ControlUiMockGatewayScenario,
-} from "../test-helpers/control-ui-e2e.ts";
+import type { ControlUiMockGatewayScenario } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway } from "../test-helpers/repository-plugin.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({
@@ -94,7 +92,7 @@ suite.define(() => {
     methodResponses: Record<string, unknown> = {},
     presenceUsers = testPresenceUsers,
   ) {
-    const gateway = await installMockGateway(page, {
+    const gateway = await installRepositoryGateway(page, {
       basePath,
       presenceUsers,
       methodResponses: {
@@ -436,7 +434,7 @@ suite.define(() => {
             status: 200,
           });
         });
-        const gateway = await installMockGateway(page, {
+        const gateway = await installRepositoryGateway(page, {
           basePath,
           presenceUsers: testPresenceUsers,
           methodResponses: {
@@ -879,7 +877,7 @@ suite.define(() => {
         viewport: { width: 1280, height: 800 },
       },
       async ({ page }) => {
-        const gateway = await installMockGateway(page, {
+        const gateway = await installRepositoryGateway(page, {
           basePath,
           deferredMethods: ["users.self"],
           presenceUsers: testPresenceUsers,
@@ -950,7 +948,7 @@ suite.define(() => {
           status: 200,
         });
       });
-      const gateway = await installMockGateway(page, {
+      const gateway = await installRepositoryGateway(page, {
         basePath,
         deferredMethods: ["users.setAvatar"],
         presenceUsers: testPresenceUsers,

@@ -1429,29 +1429,6 @@ describe("doctor health contributions", () => {
     );
   });
 
-  it("hints how to enable authenticated GitHub project search", async () => {
-    const contribution = getContribution("doctor:github-projects");
-    const ctx = doctorContext({ env: {}, configPath: "/tmp/openclaw.json" });
-    await contribution.run(ctx);
-    expectNote("gateway.controlUi.github.host matching gateway.github.host", "GitHub projects");
-    mocks.note.mockClear();
-    await contribution.run({ ...ctx, env: { GH_TOKEN: "configured" } });
-    expect(mocks.note).not.toHaveBeenCalled();
-    await contribution.run({
-      ...ctx,
-      cfg: {
-        gateway: {
-          controlUi: {
-            github: {
-              token: { source: "store", provider: "default", id: "CONTROL_UI_GITHUB" },
-            },
-          },
-        },
-      },
-    });
-    expect(mocks.note).not.toHaveBeenCalled();
-  });
-
   it("grants Doctor-only state migration authority only in repair mode", async () => {
     const ids = resolveDoctorHealthContributions().map((entry) => entry.id);
 

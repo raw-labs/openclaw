@@ -268,7 +268,6 @@ it("prepares managed GitHub exec with the node's own sanitized environment", asy
           GH_CONFIG_DIR: "/gateway/managed-gh",
           GIT_AUTHOR_NAME: "Gateway Author",
         },
-        managedLocalIdentity: true,
         warnings: [],
       }),
   );
@@ -310,7 +309,6 @@ it.each(["GH_TOKEN", "GITHUB_TOKEN"])(
             host: "node",
             defaultPathPrepend: [],
             credentialScrubEnv: { GH_TOKEN: "", GITHUB_TOKEN: "" },
-            managedLocalIdentity: true,
             warnings: [],
           }),
         ).toThrow(`Environment variable '${key}' is forbidden`);

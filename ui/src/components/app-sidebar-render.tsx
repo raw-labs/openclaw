@@ -21,6 +21,7 @@ import { t } from "../lib/reactive/i18n.ts";
 import { projectOwner } from "../lib/reactive/projection.ts";
 import { HoverMarquee } from "../lib/solid/hover-marquee.tsx";
 import { pluginTabKey } from "../pages/plugin/route.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import { renderSidebarNavLink as SidebarNavLink } from "./app-sidebar-nav-menus.tsx";
 import type { AppSidebarSessionNavigationElement } from "./app-sidebar-session-navigation.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
@@ -544,11 +545,11 @@ export function renderAppSidebarPageEntry(
       <Show
         when={pluginTab()}
         fallback={
-          <openclaw-plugin-contributions
-            prop:kind={"navigation"}
-            prop:navigationKey={entry.key}
-            prop:navigationChildren={false}
-            prop:navigationMenus={host.sidebarMenus}
+          <PluginContributions
+            kind={"navigation"}
+            navigationKey={entry.key}
+            navigationChildren={false}
+            navigationMenus={host.sidebarMenus}
           />
         }
       >

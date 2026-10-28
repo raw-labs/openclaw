@@ -74,6 +74,7 @@ import {
   connectReq,
   installGatewayTestHooks,
   rpcReq,
+  setTestPluginRegistry,
   startServer,
   startServerWithClient,
   testState,
@@ -268,6 +269,9 @@ describe("gateway connect pairing exemptions", () => {
   });
 
   test("keeps a merged owner unidentified until Doctor repairs it before reconnect", async () => {
+    // Gateway transport mocks must load before the account runtime's auth import graph.
+    const { installGitHubAccountRpcFixture, startMinimalGatewayGitHubAccountFixture } =
+      await import("../../github-account-service.test-support.js");
     const origin = "https://localhost";
     const auth = { mode: "token", token: "merged-owner-secret" } as const;
     const config: OpenClawConfig = {
@@ -285,6 +289,7 @@ describe("gateway connect pairing exemptions", () => {
     testState.gatewayAuth = auth;
     testState.gatewayControlUi = config.gateway?.controlUi;
     await replaceConfigFile({ nextConfig: config, afterWrite: { mode: "auto" } });
+    setTestPluginRegistry(installGitHubAccountRpcFixture(config));
     const started = await startServerWithClient(undefined, {
       auth,
       controlUiEnabled: true,
@@ -360,10 +365,9 @@ describe("gateway connect pairing exemptions", () => {
         error: { code: "FORBIDDEN", message: "users.self requires an authenticated user" },
       });
       expect(selfHandler.mock.lastCall?.[0].client).not.toHaveProperty("authenticatedUserProfile");
-      const personal = selfHandler.mock.lastCall?.[0].context.githubOAuthService?.personal;
-      if (!personal) {
-        throw new Error("expected the Gateway's personal GitHub service");
-      }
+      const personal = await startMinimalGatewayGitHubAccountFixture(
+        selfHandler.mock.lastCall?.[0].context,
+      );
       const personalStatus = vi.spyOn(personal, "status");
       const personalAuthorize = vi.spyOn(personal, "startAuthorization");
       personalSpies.push(personalStatus, personalAuthorize);
@@ -509,6 +513,8 @@ describe("gateway connect pairing exemptions", () => {
   });
 
   test("keeps the owner's renamed profile across shared-token and cached device-token connections", async () => {
+    const { installGitHubAccountRpcFixture, startMinimalGatewayGitHubAccountFixture } =
+      await import("../../github-account-service.test-support.js");
     const origin = "https://localhost";
     const auth = { mode: "token", token: "local-owner-secret" } as const;
     testState.gatewayAuth = auth;
@@ -517,9 +523,11 @@ describe("gateway connect pairing exemptions", () => {
       nextConfig: { gateway: { auth, controlUi: { allowedOrigins: [origin] } } },
       afterWrite: { mode: "auto" },
     });
+    setTestPluginRegistry(installGitHubAccountRpcFixture({}));
     const started = await startServer(undefined, { auth, controlUiEnabled: true });
     const loaded = loadDeviceIdentity("durable-gateway-owner");
     const clients: GatewayClient[] = [];
+    const selfHandler = vi.spyOn(usersHandlers, "users.self");
     const scopes = ["operator.read", "operator.write"];
     const connect = (token?: string) =>
       new Promise<{ client: GatewayClient; hello: HelloOk }>((resolve, reject) => {
@@ -546,6 +554,7 @@ describe("gateway connect pairing exemptions", () => {
       const { profile } = await first.client.request<UsersSelfResult>("users.self", {});
       expect(profile.emails).toEqual([]);
       expect(profile.role).toBeUndefined();
+      await startMinimalGatewayGitHubAccountFixture(selfHandler.mock.lastCall?.[0].context);
       expect(await first.client.request("users.github.status", {})).toMatchObject({
         personal: { state: "disconnected" },
       });
@@ -589,6 +598,7 @@ describe("gateway connect pairing exemptions", () => {
         profile: { id: profile.id, displayName: "Augusta Owner", emails: [] },
       });
     } finally {
+      selfHandler.mockRestore();
       await Promise.all(clients.map((client) => client.stopAndWait()));
       await started.server.close();
       started.envSnapshot.restore();

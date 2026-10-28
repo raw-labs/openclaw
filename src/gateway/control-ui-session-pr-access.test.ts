@@ -3,6 +3,22 @@ import { copyFileSync, renameSync } from "node:fs";
 import { DatabaseSync, StatementSync } from "node:sqlite";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import * as checkDetails from "../../extensions/github-repositories/control-ui-session-pr-check-details-api.js";
+import {
+  createControlUiSessionPrRead,
+  prepareControlUiSessionPrServiceTarget,
+} from "../../extensions/github-repositories/control-ui-session-pr-read-api.js";
+import {
+  createTestSessionPrReadSource,
+  createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions,
+  spyOnSessionPrLoader,
+} from "../../extensions/github-repositories/control-ui-session-pr-subscriptions.test-support.js";
+import {
+  githubJson,
+  pullListItem,
+  requestUrl,
+} from "../../extensions/github-repositories/control-ui-session-prs.test-support.js";
+import { controlUiGitHubHandlers as controlUiHandlers } from "../../extensions/github-repositories/runtime-api.js";
 import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promise.js";
 import { observeSqliteReadSql } from "../../test/helpers/sqlite-statement-execution-counter.js";
 import { deleteSessionEntryLifecycle } from "../config/sessions.js";
@@ -29,25 +45,14 @@ import type {
 import {
   branch,
   createFixture,
+  createRpcResponseCapture,
   readerChanges,
   sessionKey,
   snapshot,
   type Load,
 } from "./control-ui-session-pr-access.test-support.js";
-import * as checkDetails from "./control-ui-session-pr-check-details.js";
-import {
-  createTestSessionPrReadSource,
-  createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions,
-  spyOnSessionPrLoader,
-} from "./control-ui-session-pr-subscriptions.test-support.js";
-import {
-  createControlUiSessionPrRead,
-  prepareControlUiSessionPrServiceTarget,
-} from "./control-ui-session-pr-target.js";
-import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import { controlUiHandlers } from "./server-methods/control-ui.js";
 import { createGatewayWsTestSocket } from "./server/ws-connection.test-helpers.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
@@ -645,7 +650,7 @@ it.each([
       const loadChecks = vi
         .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
         .mockImplementation(load);
-      const respond = vi.fn();
+      const { received: respond, respond: captureResponse } = createRpcResponseCapture();
       const request = handleGatewayRequest({
         req: {
           type: "req",
@@ -657,7 +662,7 @@ it.each([
         context: f.context,
         extraHandlers: controlUiHandlers,
         isWebchatConnect: () => false,
-        respond,
+        respond: captureResponse,
       });
       try {
         await awaitGateBeforeSettlement(

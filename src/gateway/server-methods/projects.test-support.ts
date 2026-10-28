@@ -3,21 +3,30 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { vi } from "vitest";
+import { repositoryProjectHandlers } from "../../../extensions/github-repositories/runtime-api.js";
 import { managedWorktrees } from "../../agents/worktrees/service.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { withPluginRuntimeGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import { trackAsyncWork } from "../../shared/async-work-scope.js";
 import {
   withOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
 import { withRestoredMocks } from "../../test-utils/vitest-spies.js";
+import { installGitHubAccountRpcFixture } from "../github-account-service.test-support.js";
 import { retainSessionListForegroundWork } from "../session-projection-work.js";
 import { bindSessionRowProjection } from "../session-row-projection-access.js";
 import {
   createSessionRowProjection,
   type SessionRowProjection,
 } from "../session-row-projection.js";
-import { projectsHandlers as registeredProjectsHandlers } from "./projects.js";
+import { createRepositorySourcesFixture } from "../worker-environments/repository-source.test-support.js";
+import { projectsHandlers as nativeProjectsHandlers } from "./projects.js";
+import type { GatewayRequestContext } from "./types.js";
+export const registeredProjectsHandlers = {
+  ...nativeProjectsHandlers,
+  ...repositoryProjectHandlers,
+};
 
 export const execFileAsync = promisify(execFile);
 export const listRegistryRecords = vi.fn(async () => []);
@@ -85,23 +94,35 @@ export async function invokeProjectMethod(
       !projection && method === "projects.list" && (profileId || params.includeObserved)
         ? await createSessionRowProjection({ cfg, modelCatalog: [] })
         : undefined;
-    await handlers[method]!({
-      ...lifetime,
-      req: {} as never,
-      params,
-      respond: (ok, payload, error) => {
-        capture.result = { ok, payload, error };
+    const context = bindSessionRowProjection(
+      {
+        getRuntimeConfig: getConfig,
+        trackExecution: trackAsyncWork,
+        repositorySources: createRepositorySourcesFixture(getConfig),
       },
-      context: bindSessionRowProjection(
-        { getRuntimeConfig: getConfig, trackExecution: trackAsyncWork },
-        () => projection ?? ownedProjection,
-      ) as never,
-      client: {
-        connect: { scopes },
-        ...(profileId ? { authenticatedUserProfile: { profileId } } : {}),
-      } as never,
-      isWebchatConnect: () => false,
-    });
+      () => projection ?? ownedProjection,
+    ) as GatewayRequestContext;
+    context.resolveGatewayContext = () => context;
+    const handler =
+      method === "projects.add"
+        ? installGitHubAccountRpcFixture(getConfig()).gatewayHandlers[method]
+        : handlers[method];
+    await withPluginRuntimeGatewayContextResolver(context.resolveGatewayContext, () =>
+      handler!({
+        ...lifetime,
+        req: {} as never,
+        params,
+        respond: (ok, payload, error) => {
+          capture.result = { ok, payload, error };
+        },
+        context,
+        client: {
+          connect: { scopes },
+          ...(profileId ? { authenticatedUserProfile: { profileId } } : {}),
+        } as never,
+        isWebchatConnect: () => false,
+      }),
+    );
     return capture.result;
   } finally {
     ownedProjection?.dispose();

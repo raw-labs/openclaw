@@ -4,40 +4,60 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterEach, expect, it, vi } from "vitest";
+import * as githubOAuthLifecycle from "../../extensions/github-repositories/account-runtime-api.js";
+import { readGitHubConfig } from "../../extensions/github-repositories/config-api.js";
+import * as githubOAuth from "../../extensions/github-repositories/oauth-api.js";
+import * as projectCloning from "../../extensions/github-repositories/project-clone-api.js";
+import * as cloneRuntime from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import { ProjectCloneError } from "../../extensions/github-repositories/project-clone-runtime-api.js";
+import {
+  createGitHubReadIdentity,
+  type GitHubReadIdentityPreparation,
+  type PreparedGitHubReadIdentity,
+  type PreparedGitHubSourceReadIdentity,
+} from "../../extensions/github-repositories/read-identity-api.js";
+import {
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+} from "../../extensions/github-repositories/tool-identity-api.js";
+import * as repositoryGitHubIdentity from "../../extensions/github-repositories/tool-identity-api.js";
 import {
   isSessionEntryDataSql,
   observeHostDataSql,
 } from "../../test/helpers/sqlite-statement-execution-counter.js";
-import * as githubOAuth from "../agents/github-oauth-client.js";
-import { createGitHubReadIdentity } from "../agents/github-read-identity.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
 import { findLiveRegistryWorktreeByOwner } from "../agents/worktrees/registry.test-support.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
-import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { readRuntimeConfig, setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import * as sessionEntries from "../config/sessions/session-accessor.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createRepositorySourceFixture } from "../plugins/repository-source.test-support.js";
-import * as cloneRuntime from "../projects/project-clone-runtime.js";
-import { ProjectCloneError } from "../projects/project-clone-runtime.js";
-import * as projectCloning from "../projects/project-clone.js";
 import { registerClonedProjectRegistry } from "../projects/project-registry.test-support.js";
 import * as secretsRuntime from "../secrets/runtime-state.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import * as githubOAuthLifecycle from "./github-oauth-lifecycle.js";
 import { captureGitHubPublicationWorkspaceSnapshot } from "./github-publication-git-transport.js";
 import { REMOTE_GITHUB_PUBLICATION_SNAPSHOT_JS } from "./github-repository-publication-snapshot.js";
-import { materializeSessionRepositoryWorkspaceOnGateway } from "./session-repository-materialization.js";
-import * as repositoryGitHubIdentity from "./worker-environments/repository-github-identity.js";
+import { createRepositorySources } from "./repository-sources.js";
+import { materializeSessionRepositoryWorkspaceOnGateway as invokeMaterialization } from "./session-repository-materialization.js";
+import { withRepositorySourceGatewayFixture } from "./worker-environments/repository-source.test-support.js";
 import { stageSessionRepositoryCheckpoint } from "./worker-environments/session-repository-checkpoints.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
+
+// Bind real source/custody operations through the existing Gateway invocation seam.
+function materializeSessionRepositoryWorkspaceOnGateway(
+  params: Parameters<typeof invokeMaterialization>[0],
+) {
+  if (params.getRepositorySources) {
+    return invokeMaterialization(params);
+  }
+  return withRepositorySourceGatewayFixture(readRuntimeConfig, (sources) =>
+    invokeMaterialization({ ...params, getRepositorySources: () => sources }),
+  );
+}
 
 const exec = promisify(execFile);
 const git = async (cwd: string, args: string[]) =>
@@ -107,24 +127,43 @@ it.each([
         const cfg: OpenClawConfig = {
           agents: { entries: { main: { workspace: state.workspaceDir } } },
           gateway: {
-            controlUi: { github: { token: "synthetic-preview-token" } },
-            ...(["enterprise", "host mismatch"].includes(scenario)
-              ? { github: enterpriseGitHub }
-              : {}),
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...(["enterprise", "host mismatch"].includes(scenario) ? enterpriseGitHub : {}),
+                  service: { token: "synthetic-preview-token" },
+                },
+              },
+            },
           },
         };
         const config: OpenClawConfig = {
           ...cfg,
           ...(scenario === "enterprise"
             ? {}
-            : { tools: { github: { profileId: systemProfileId } } }),
+            : {
+                tools: {},
+                plugins: {
+                  entries: {
+                    "github-repositories": {
+                      config: {
+                        ...readGitHubConfig(cfg),
+                        system: { profileId: systemProfileId },
+                        ...(scenario === "agent"
+                          ? { agents: { main: { profileId: agentProfileId } } }
+                          : {}),
+                      },
+                    },
+                  },
+                },
+              }),
           agents: {
             entries: {
               main: {
                 workspace: state.workspaceDir,
-                ...(scenario === "agent"
-                  ? { tools: { github: { profileId: agentProfileId } } }
-                  : {}),
               },
             },
           },
@@ -220,7 +259,7 @@ it.each([
           },
         });
         const rejections: Partial<Record<typeof scenario, string | RegExp>> = {
-          "host mismatch": "configured GitHub host (ghe.example.test)",
+          "host mismatch": "selected repository source is unavailable",
           "unavailable identity": /reconnect.*GitHub identity/iu,
           revoked: "move authority revoked",
           reset: "Repository workspace changed",
@@ -252,7 +291,7 @@ it.each([
                 : "https://api.github.com",
           });
           expect(clone).toHaveBeenCalledWith(
-            { cfg, gitUrl: repository.url, requiredCommit: repository.baseCommit },
+            { gitUrl: repository.url, requiredCommit: repository.baseCommit },
             expect.objectContaining({ token }),
           );
         }
@@ -266,27 +305,51 @@ it.each([
 it.each([
   "enterprise",
   "plugin",
+  "plugin on GitHub host",
   "revoked",
   "postcommit failure",
   "publication unavailable",
   "requested topic",
   "unbound incognito",
 ] as const)("retains only committed materialization: %s", async (outcome) => {
+  const isPlugin = outcome === "plugin" || outcome === "plugin on GitHub host";
   // Local recovery fixtures exercise retained state; identity admission is covered above.
-  vi.spyOn(repositoryGitHubIdentity, "prepareRepositoryGitHubIdentity").mockImplementation(
-    async (_agentId, assertCurrent) =>
-      createGitHubReadIdentity({
-        token: undefined,
-        selection: { source: "anonymous" },
-        assertSelected: assertCurrent,
-        readToken: async () => undefined,
-      }),
+  function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation & { allowAnonymous: true },
+  ): Promise<PreparedGitHubSourceReadIdentity>;
+  function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation,
+  ): Promise<PreparedGitHubReadIdentity>;
+  async function prepareRecoveryReadIdentity(
+    params: GitHubReadIdentityPreparation & { allowAnonymous?: boolean },
+  ): Promise<PreparedGitHubSourceReadIdentity> {
+    if (params.allowAnonymous !== true) {
+      throw new Error("Recovery fixture expects an anonymous source read");
+    }
+    return createGitHubReadIdentity({
+      token: undefined,
+      selection: { source: "anonymous" },
+      assertSelected: params.assertActive,
+      readToken: async () => undefined,
+    });
+  }
+  vi.spyOn(repositoryGitHubIdentity, "prepareGitHubReadIdentity").mockImplementation(
+    prepareRecoveryReadIdentity,
   );
   await withOpenClawTestState({ label: "repository-materialize" }, async (state) => {
     const cfg = {
-      ...(outcome === "enterprise" ? { gateway: { github: enterpriseGitHub } } : {}),
       agents: { entries: { main: { workspace: state.workspaceDir } } },
-      tools: { github: { profileId: "ghp_11111111111111111111111111111111" } },
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...(outcome === "enterprise" ? enterpriseGitHub : {}),
+              system: { profileId: "ghp_11111111111111111111111111111111" },
+            },
+          },
+        },
+      },
     };
     await state.writeConfig(cfg);
     setRuntimeConfigSnapshot(cfg);
@@ -308,18 +371,17 @@ it.each([
       name: "Fixture",
       originUrl: url,
     });
-    const pluginSource =
-      outcome === "plugin"
-        ? createRepositorySourceFixture({
-            id: "repositories",
-            resolve: (candidate) => (candidate === url ? { url, name: "Fixture" } : undefined),
-            async prepare(input) {
-              expect(input.requiredCommit).toBe(baseCommit);
-              input.assertCurrent();
-              return { project, assertCurrent: input.assertCurrent, refresh: async () => {} };
-            },
-          })
-        : undefined;
+    const pluginSource = isPlugin
+      ? createRepositorySourceFixture({
+          id: "repositories",
+          resolve: (candidate) => (candidate === url ? { url, name: "Fixture" } : undefined),
+          async prepare(input) {
+            expect(input.requiredCommit).toBe(baseCommit);
+            input.assertCurrent();
+            return { project, assertCurrent: input.assertCurrent, refresh: async () => {} };
+          },
+        })
+      : undefined;
     const base = await captureWorkspaceManifest({ root: source, baseCommit });
     const remote = state.path("remote");
     await exec("git", ["clone", "--", source, remote]);
@@ -332,7 +394,7 @@ it.each([
     const current = await captureWorkspaceManifest({ root: remote, baseCommit });
     const publicationStagingRoot = state.path("publication-snapshot");
     const publicationDigest =
-      outcome === "publication unavailable" || outcome === "plugin"
+      outcome === "publication unavailable" || isPlugin
         ? undefined
         : (
             await exec(process.execPath, [
@@ -432,6 +494,12 @@ it.each([
           cfg,
           sessionId,
           assertCurrent,
+          ...(pluginSource
+            ? {
+                getRepositorySources: () =>
+                  createRepositorySources(new AbortController().signal, pluginSource.registry),
+              }
+            : {}),
         });
       const operation = pluginSource ? pluginSource.run(materialize) : materialize();
       if (outcome === "revoked") {
@@ -447,7 +515,7 @@ it.each([
         const materialized = readEntry()!;
         expect(materialized.repositorySourceId).toBe(pluginSource?.id);
         if (pluginSource) {
-          expect(repositoryGitHubIdentity.prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+          expect(repositoryGitHubIdentity.prepareGitHubReadIdentity).not.toHaveBeenCalled();
         }
         const worktree = (await managedWorktrees.findLiveByOwner("session", scope.sessionKey))!;
         expect(materialized.repositoryWorkspaceId).toBeUndefined();

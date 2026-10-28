@@ -15,7 +15,6 @@ import type {
 import type { AuthenticatedUser } from "../../app/user-profile.ts";
 import type { GatewayConnectionScope } from "../gateway-connection-lifecycle.ts";
 import type { SessionGroupSettings } from "./custom-groups.ts";
-import type { GitHubPublicationPresentationBinding } from "./github-publication-owner.ts";
 import type { SessionArchivedFilter } from "./navigation.ts";
 import type { SessionChangedRowResult } from "./session-row-reconcile.ts";
 
@@ -190,7 +189,3 @@ export type SessionCreateReconciliation = "blocking" | "background";
 
 export type SessionMessageSubscription = GatewaySessionMessageSubscription;
 export type SessionArchiveVisibility = "pending" | "archived";
-
-export type GitHubPublicationBinding = GitHubPublicationPresentationBinding & {
-  matches: (row: GatewaySessionRow) => boolean;
-};

@@ -22,7 +22,6 @@ export function projectSidebarSession(
     sessions: {
       isPreparedWorkSession: () => false,
       isRunVisuallyActive: isSessionRunStateActive,
-      pullRequestSummary: () => undefined,
     },
   } as unknown as Parameters<typeof buildSidebarSessionNavigationState>[0]["context"];
   const navigation = buildSidebarSessionNavigationState({

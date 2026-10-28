@@ -1,7 +1,5 @@
-import { createMemo, Errored, For, Loading, Show } from "solid-js";
+import { createMemo, For, Show } from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
-import { formatUiError } from "../../lib/format-error.ts";
-import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
 import { pathDisplayName } from "../../lib/path-display.ts";
 import { t } from "../../lib/reactive/i18n.ts";
 import { readSessionMethodAccess } from "../../lib/session-method-access.ts";
@@ -64,13 +62,6 @@ export function ProjectChip(props: {
       : gatewayName
         ? t("newSession.gatewayNamed", { name: gatewayName })
         : t("newSession.gateway");
-    const projectSearchAvailable =
-      !props.nativeTerminal &&
-      canCallGatewayMethod(
-        props.params.context?.gateway.snapshot,
-        "projects.searchRemote",
-        "operator.read",
-      );
     const projectAddAvailable =
       !props.nativeTerminal &&
       readSessionMethodAccess(props.params.context?.gateway.snapshot, {
@@ -87,21 +78,8 @@ export function ProjectChip(props: {
       recentSuffixes,
       deviceBrowse,
       browserLabel,
-      projectSearchAvailable,
       projectAddAvailable,
     };
-  });
-  const projectSearchRead = createMemo(() => props.params.place.browser.projectSearchRead);
-  const projectSearchResult = createMemo(() => {
-    const read = projectSearchRead();
-    return read
-      ? read.completed.then((outcome) => {
-          if (outcome && "error" in outcome) {
-            throw outcome.error;
-          }
-          return outcome?.result ?? null;
-        })
-      : null;
   });
   const browseButton = () => (
     <button
@@ -287,65 +265,6 @@ export function ProjectChip(props: {
               submitting={props.params.submitting}
             />
           ) : undefined}
-          {!view().cloneInput && view().query.length >= 2 && view().projectSearchAvailable ? (
-            <>
-              <div class="new-session-page__menu-title">{t("newSession.githubProjects")}</div>
-              <Errored
-                fallback={(error) => (
-                  <div class="new-session-page__project-error" role="alert">
-                    {formatUiError(error())}
-                  </div>
-                )}
-              >
-                <Loading
-                  on={projectSearchRead()}
-                  fallback={
-                    <div class="new-session-page__project-status" role="status">
-                      {t("common.loading")}
-                    </div>
-                  }
-                >
-                  {projectSearchResult()?.credential === "missing" ? (
-                    <div class="new-session-page__menu-note">{t("newSession.githubTokenHint")}</div>
-                  ) : undefined}
-                  {
-                    <For
-                      each={projectSearchResult()?.projects ?? []}
-                      keyed={(project) => project.cloneUrl}
-                    >
-                      {(project) => {
-                        const icon = <Icon name="gitBranch" />;
-                        return (
-                          <SessionMenuItem
-                            item={{
-                              value: `remote-project:${project().fullName}`,
-                              label: project().fullName,
-                              icon,
-                              sub: project().description ?? t("newSession.cloneProject"),
-                              checked:
-                                !props.params.place.browser.remoteProject?.sourceId &&
-                                props.params.place.browser.remoteProject?.cloneUrl ===
-                                  project().cloneUrl,
-                              title: project().webUrl,
-                              onSelect: () =>
-                                props.params.place.selectRemoteProject({
-                                  identity: project().fullName,
-                                  cloneUrl: project().cloneUrl,
-                                  ...(project().defaultBranch
-                                    ? { defaultBranch: project().defaultBranch }
-                                    : {}),
-                                }),
-                            }}
-                            submitting={props.params.submitting || !view().projectAddAvailable}
-                          />
-                        );
-                      }}
-                    </For>
-                  }
-                </Loading>
-              </Errored>
-            </>
-          ) : undefined}
           <Show when={!props.nativeTerminal && !view().cloneInput && view().query.length >= 2}>
             <For
               each={props.params.place.browser.repositorySearchGroups}
@@ -371,7 +290,7 @@ export function ProjectChip(props: {
                     {(project) => (
                       <SessionMenuItem
                         item={{
-                          value: `remote-project:${group().source.key}:${project().fullName}`,
+                          value: `remote-project:${group().source.key}:${project().cloneUrl}`,
                           label: project().fullName,
                           icon: <Icon name="gitBranch" />,
                           sub: project().description ?? t("newSession.cloneProject"),

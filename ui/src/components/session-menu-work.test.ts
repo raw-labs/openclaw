@@ -1,24 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ControlUiSessionPullRequest } from "../../../src/gateway/control-ui-contract.js";
 import { isLoopbackHostname } from "../lib/gateway-locality.ts";
 import {
   clearNativeGatewayTestState,
   setNativeGatewayTestState,
 } from "../test-helpers/native-gateways.ts";
 import { fetchSessionMenuWork } from "./session-menu-work.ts";
-
-function pullRequest(overrides: Partial<ControlUiSessionPullRequest>): ControlUiSessionPullRequest {
-  return {
-    number: 1,
-    owner: "openclaw",
-    repo: "openclaw",
-    branch: "feature/demo",
-    title: "Demo",
-    url: "https://github.com/openclaw/openclaw/pull/1",
-    state: "open",
-    ...overrides,
-  };
-}
 
 function sessionMenuClient(request: (method: string, params: unknown) => Promise<unknown>) {
   return { request: request as never };
@@ -63,32 +49,23 @@ describe("fetchSessionMenuWork", () => {
     await expect(
       fetchSessionMenuWork({
         client: sessionMenuClient(request),
-        loadPullRequests: async () => ({
-          pullRequests: [pullRequest({ url: "https://example.test/pr" })],
-          rateLimited: false,
-          status: "ready",
-        }),
         worktreeId: "wt-1",
         execNode: "execNode" in testCase ? testCase.execNode : undefined,
       }),
     ).resolves.toEqual({
-      pullRequestUrl: "https://example.test/pr",
       worktreePath: testCase.expectedPath,
     });
     expect(request).toHaveBeenCalledTimes(testCase.expectedPath ? 1 : 0);
   });
 
-  it("returns nulls when the PR surface is absent, the worktree is removed, or requests fail", async () => {
+  it("hides removed checkout paths and failed lookups", async () => {
     const failing = vi.fn(() => Promise.reject(new Error("offline")));
     await expect(
       fetchSessionMenuWork({
         client: sessionMenuClient(failing),
-        loadPullRequests: async () => {
-          throw new Error("offline");
-        },
         worktreeId: "wt-1",
       }),
-    ).resolves.toEqual({ pullRequestUrl: null, worktreePath: null });
+    ).resolves.toEqual({ worktreePath: null });
 
     const request = vi.fn(() =>
       Promise.resolve({ worktrees: [{ id: "wt-1", path: "/gone", removedAt: 5 }] }),
@@ -98,7 +75,7 @@ describe("fetchSessionMenuWork", () => {
         client: sessionMenuClient(request),
         worktreeId: "wt-1",
       }),
-    ).resolves.toEqual({ pullRequestUrl: null, worktreePath: null });
+    ).resolves.toEqual({ worktreePath: null });
     expect(request).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledWith("worktrees.list", {});
   });

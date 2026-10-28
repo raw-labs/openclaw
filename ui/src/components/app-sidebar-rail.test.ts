@@ -301,7 +301,7 @@ describe("personal navigation rail", () => {
       },
       key,
     );
-    sessions.sessions.setPullRequestSummary(key, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(key, { numbers: [1], state: "open" });
     await update(sidebar, { storedOutboxes: outbox(key), sidebarEntries: [`session:${key}`] });
     const row = dom.query(`[data-session-key="${key}"]`)!;
     expect(

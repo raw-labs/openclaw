@@ -2,6 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
+import {
+  ensureProjectCheckoutCommit,
+  refreshProjectCheckout,
+} from "../../../extensions/github-repositories/project-clone-runtime-api.js";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { executeGitCommand, requireGitCommandOutput } from "../../infra/git-exec.js";
 import { createWarnLogCapture } from "../../logging/test-helpers/warn-log-capture.js";
@@ -10,10 +14,6 @@ import {
   recordCommandProcessFailure,
 } from "../../process/exec-result.js";
 import * as processExec from "../../process/exec.js";
-import {
-  ensureProjectCheckoutCommit,
-  refreshProjectCheckout,
-} from "../../projects/project-clone-runtime.js";
 import { resolveWorktreeBase } from "./base-ref.js";
 import { runGit } from "./git.js";
 
