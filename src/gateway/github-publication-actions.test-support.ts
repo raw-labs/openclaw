@@ -1,3 +1,4 @@
+import { createContext as createGatewayContext } from "./server-plugin-in-process-dispatch.test-support.js";
 // oxfmt-ignore
 import {
   commandResult,
@@ -16,7 +17,6 @@ import {
   createRequesterPublicationFixture,
 } from "./github-publication-requester.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 
 const mocks = githubPublicationTestMocks();
 
@@ -208,10 +208,11 @@ export function createPublicationActionInvoker(
       await handleGatewayRequest({
         req: { type: "req", id: randomUUID(), method, params },
         client: invocation.client ?? principal.client,
-        context: {
-          ...principal.context,
-          githubPublicationService: f.coordinator,
-        } as GatewayRequestContext,
+        context: Object.assign(
+          createGatewayContext([], principal.context.getRuntimeConfig),
+          principal.context,
+          { githubPublicationService: f.coordinator },
+        ),
         isWebchatConnect: () => false,
         respond,
       });

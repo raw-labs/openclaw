@@ -380,5 +380,11 @@
   "web-media",
   "agent-core",
   "agent-sessions",
-  "llm"
+  "llm",
+  "execution-environment",
+  "repository-sources",
+  "native-github-account-host",
+  "native-github-publication-host",
+  "native-github-session-read",
+  "dashboard"
 ]

@@ -1,13 +1,11 @@
-import { sha256Hex } from "@openclaw/normalization-core/node-crypto";
-import {
-  SessionGitHubPublicationFailedSchema,
-  type SessionGitHubPublicationResult,
-} from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
+import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { SessionGitHubPublicationFailedSchema } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import { sha256Hex } from "../infra/crypto-digest.js";
 import type {
   GitHubPublicationExecutionRow,
   GitHubPublicationRow,
 } from "../state/github-publication-read.types.js";
+import { publisherProvenance } from "./github-publication-publisher-facts.js";
 
 type PublicationFailureCode = Extract<SessionGitHubPublicationResult, { status: "failed" }>["code"];
 
@@ -53,25 +51,6 @@ export function assertReadableSharedGitHubPublication(
   ) {
     throw new Error("Shared GitHub publication receipt is corrupt.");
   }
-}
-
-export function matchesGitHubPublicationIdentityRow(
-  row: Pick<
-    GitHubPublicationExecutionRow,
-    | "identity_source"
-    | "identity_profile_id"
-    | "identity_account_id"
-    | "identity_login"
-    | "agent_id"
-  >,
-  identity: Pick<PreparedGitHubPublicationIdentity, "source" | "profileId" | "account">,
-): boolean {
-  return (
-    row.identity_source === identity.source &&
-    row.identity_profile_id === (identity.profileId ?? null) &&
-    row.identity_account_id === identity.account.accountId &&
-    row.identity_login.toLowerCase() === identity.account.login.toLowerCase()
-  );
 }
 
 export function digestGitHubPublicationRequest(params: {
@@ -172,5 +151,47 @@ export function projectGitHubPublicationResult(
         : row.identity_source === "personal"
           ? "My GitHub publication was accepted for the selected account and workspace."
           : "Publication was accepted. Finish the turn so the Gateway can reconcile and publish the workspace.",
+  };
+}
+
+export function matchesGitHubPublicationIdentityRow(
+  row: Pick<
+    GitHubPublicationExecutionRow,
+    "identity_source" | "identity_profile_id" | "identity_account_id" | "identity_login"
+  >,
+  identity: import("./github-publication-publisher-facts.js").NativePublisherFacts,
+): boolean {
+  return (
+    row.identity_source === identity.source &&
+    row.identity_profile_id === (identity.profileId ?? null) &&
+    row.identity_account_id === identity.account.accountId &&
+    row.identity_login.toLowerCase() === identity.account.login.toLowerCase()
+  );
+}
+
+type PublicationRequestRowFacts = Pick<
+  GitHubPublicationExecutionRow,
+  | "request_id"
+  | "created_at_ms"
+  | "session_id"
+  | "session_key"
+  | "agent_id"
+  | "title"
+  | "body"
+  | "draft"
+  | "identity_source"
+  | "identity_profile_id"
+  | "identity_account_id"
+  | "identity_login"
+>;
+export function requestFacts(row: PublicationRequestRowFacts) {
+  return {
+    requestId: row.request_id,
+    createdAtMs: row.created_at_ms,
+    session: { sessionId: row.session_id, sessionKey: row.session_key, agentId: row.agent_id },
+    ...(row.title ? { title: row.title } : {}),
+    ...(row.body ? { body: row.body } : {}),
+    draft: row.draft !== 0,
+    publisher: publisherProvenance(row),
   };
 }

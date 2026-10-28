@@ -226,6 +226,9 @@ export function createWorkerPlacementDispatchService(options: WorkerPlacementDis
                     url: workspace.repository.url,
                     ref: workspace.repository.requestedRef ?? undefined,
                     baseCommit: workspace.repository.baseCommit ?? undefined,
+                    ...(workspace.repositorySourceId
+                      ? { repositorySourceId: workspace.repositorySourceId }
+                      : {}),
                   },
                 }
               : {}),

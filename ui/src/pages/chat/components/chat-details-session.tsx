@@ -1,7 +1,6 @@
 import { For, Show, createMemo, createSignal, createStore, onSettled } from "solid-js";
 import type { SessionParticipant } from "../../../../../packages/gateway-protocol/src/schema/session-participant.js";
 import { Icon } from "../../../components/solid/icon.tsx";
-import type { MenuHandle } from "../../../components/solid/menu.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { sessionParticipantIdentityKey } from "../../../lib/chat/sender-label.ts";
@@ -11,16 +10,15 @@ import { projectOwner } from "../../../lib/reactive/projection.ts";
 import { createSessionDiffSummary } from "../../../lib/session-diff-summary.ts";
 import { scopedSessionArtifactKey } from "../../../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import { ProcessesPanelData } from "../processes-panel-data.ts";
 import { ChatAuthorAvatar } from "./chat-author-avatar.ts";
 import { ChatDetailsBackground } from "./chat-details-background.tsx";
 import { ChatDetailsDesktopContext } from "./chat-details-context.tsx";
-import { ChatDetailsDesktopBody } from "./chat-details-desktop-body.tsx";
 import { ChatDetailsDesktopSection } from "./chat-details-desktop-section.tsx";
 import { ChatDetailsContext, ChatDetailsEnvironment } from "./chat-details-environment.tsx";
 import { ChatDetailsPeople, ChatDetailsPeopleSummary } from "./chat-details-people.tsx";
 import { ChatDetailsProcesses } from "./chat-details-processes.tsx";
-import { ChatDetailsProgress } from "./chat-details-progress.tsx";
 import type {
   ChatDetailsDesktopSectionId,
   ChatDetailsOutputs,
@@ -584,6 +582,16 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                     </Show>
                   )}
                 </Show>
+                <PluginContributions
+                  kind="session-context"
+                  sessionKey={props.props?.sessionKey ?? ""}
+                  agentId={props.props?.currentAgentId ?? undefined}
+                  facts={props.props?.sessionHeaderFacts}
+                  presented={active()}
+                  compact={true}
+                  dismissed={props.dismissed}
+                  onOpenSessionDiff={props.props?.onOpenSessionDiff}
+                />
                 <ChatSummaryAutomations
                   desktop={desktopAutomations()}
                   gateway={props.props?.pullRequestsGateway}
@@ -667,44 +675,4 @@ declare global {
   interface HTMLElementTagNameMap {
     "openclaw-chat-details-session": ChatDetailsSession;
   }
-}
-
-export type ChatDetailsDesktopCompositionProps = Omit<Props, "desktop"> & {
-  /** The native host keeps ownership of top-layer menus and Undo/focus behavior. */
-  progressMenuRef?: (menu: MenuHandle) => void;
-  onHideProgress?: () => void;
-};
-
-/** Desktop entry point: one scroll body and the native Progress owner after Outputs. */
-export function ChatDetailsDesktopComposition(props: ChatDetailsDesktopCompositionProps) {
-  return (
-    <ChatDetailsDesktopBody presented={props.presented}>
-      <ChatDetailsSession
-        props={props.props}
-        presented={props.presented}
-        dismissed={props.dismissed}
-        desktop
-      />
-      <Show when={props.props?.progressCard}>
-        <ChatDetailsProgress
-          desktop
-          props={props.props}
-          presented={props.presented}
-          menuRef={props.progressMenuRef}
-          onHideProgress={props.onHideProgress}
-        />
-      </Show>
-      <Show when={!props.props?.progressCard && props.props?.progressCardError}>
-        {(error) => (
-          <div class="chat-details__muted" role="status">
-            {t(
-              error() === "access-denied"
-                ? "sessionProgressCard.widgetAccessDenied"
-                : "sessionProgressCard.widgetUnavailable",
-            )}
-          </div>
-        )}
-      </Show>
-    </ChatDetailsDesktopBody>
-  );
 }

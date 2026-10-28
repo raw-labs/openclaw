@@ -16,7 +16,7 @@ import {
 import { hasSessionPresenceViewers } from "../../lib/presence-users.ts";
 import { projectsForGateway } from "../../lib/projects.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
-import { GitHubPublicationOwner } from "../../lib/sessions/github-publication-owner.ts";
+import { githubPublicationOperationFactory } from "../../lib/sessions/github-publication-owner.ts";
 import { scopedAgentParamsForSession } from "../../lib/sessions/index.ts";
 import { resolveUiConfiguredMainKey } from "../../lib/sessions/session-key.ts";
 import { navigateToModelProvider } from "../model-providers/navigation.ts";
@@ -279,6 +279,14 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       );
     };
     const publicationRow = readPublicationRow();
+    const sessionHeaderFacts = this.captureSessionHeaderFacts(
+      state,
+      selectedSession,
+      readPublicationRow,
+      publicationScope,
+      sessionParticipationBlocked,
+      Boolean(workspaceConflict),
+    );
     if (
       !publicationScope ||
       !publicationRow ||
@@ -290,9 +298,10 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
     } else {
       if (!this.publication.binding?.matches(publicationRow)) {
         this.publication.binding?.detach();
-        this.publication.binding = this.context.sessions.githubPublication.attach(
+        this.publication.binding = this.context.sessions.retainedOperations.attach(
           publicationRow,
-          GitHubPublicationOwner,
+          githubPublicationOperationFactory,
+          "openclaw-native",
         );
       }
       const publication = this.publication.binding;
@@ -374,6 +383,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         : undefined;
     const props: ChatProps = {
       applicationContext: this.context,
+      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       onHistorySentinelRef: this.registerHistorySentinel,

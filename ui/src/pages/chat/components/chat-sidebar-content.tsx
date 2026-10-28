@@ -100,6 +100,7 @@ export type SidebarPanelProps = {
   canvasPluginSurfaceUrl?: string | null;
   embedSandboxMode?: EmbedSandboxMode;
   allowExternalEmbedUrls?: boolean;
+  textReferences?: MarkdownRenderOptions["textReferences"];
   githubRepo?: MarkdownRenderOptions["githubRepo"];
   githubRepositories?: MarkdownRenderOptions["githubRepositories"];
   embedded?: boolean;
@@ -534,6 +535,7 @@ export function SidebarPanel(props: SidebarPanelProps) {
                             codeBlockInteraction: "interactive",
                             fileLinks: true,
                             githubRepo: props.githubRepo ?? null,
+                            textReferences: props.textReferences,
                             githubRepositories: props.githubRepositories,
                             interactiveImages: props.onOpenImage !== undefined,
                             sessionLinks: true,

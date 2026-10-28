@@ -8,6 +8,7 @@ import { useScrollState } from "../../components/solid/scroll-state.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import type { PresentationValue } from "../../lib/presentation.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
+import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
 import { PaneSubagentStop } from "./chat-pane-header-view.tsx";
 import { usePanePresentation } from "./chat-pane-presentation.ts";
 import { SidebarRegionView } from "./chat-pane-sidebar-view.tsx";
@@ -160,17 +161,19 @@ function PaneHeaderContent(props: {
   sessionKey: string;
   agentId: string;
   presentation: PresentationValue;
+  facts?: import("../../../../src/plugin-sdk/control-ui.js").ControlUiSessionHeaderFacts;
 }) {
   const presented = usePanePresentation(() => props.presentation);
   return (
     <>
       <PaneHeaderView {...props.header} />
       {props.notice ? renderChatTopbarNotices(props.notice) : undefined}
-      <openclaw-plugin-contributions
-        prop:kind="session-header"
-        prop:sessionKey={props.sessionKey}
-        prop:agentId={props.agentId}
-        prop:presented={presented()}
+      <PluginContributions
+        kind="session-header"
+        facts={props.facts}
+        sessionKey={props.sessionKey}
+        agentId={props.agentId}
+        presented={presented()}
       />
     </>
   );
@@ -196,7 +199,11 @@ function PaneContent(props: { data: PaneLayoutData; questions: ComposerQuestions
     <Show
       when={props.data.subagentHeader}
       fallback={
-        <Show when={props.data.header}>{(value) => <PaneHeaderContent {...value()} />}</Show>
+        <Show when={props.data.header}>
+          {(value) => (
+            <PaneHeaderContent {...value()} facts={props.data.primary.chat.sessionHeaderFacts} />
+          )}
+        </Show>
       }
     >
       {(value) => <PaneSubagentHeader {...value()} />}

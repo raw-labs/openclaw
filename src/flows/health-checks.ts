@@ -106,6 +106,12 @@ export interface HealthCheck {
   ): Promise<HealthRepairResult>;
 }
 
+/** Plugin public APIs register checks into the current Doctor invocation, never a runtime registry. */
+export interface PluginDoctorHealthRegistrationHost {
+  getHealthCheck(id: string): HealthCheck | undefined;
+  registerHealthCheck(check: HealthCheck): void;
+}
+
 /** Opt-in diagnostics stay out of routine lint and repair passes. */
 export function isHealthCheckEnabledByDefault(check: HealthCheck): boolean {
   return !("defaultEnabled" in check && check.defaultEnabled === false);

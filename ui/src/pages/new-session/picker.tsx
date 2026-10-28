@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { onSettled } from "solid-js";
+import { createMemo, onSettled } from "solid-js";
 import { Icon } from "../../components/solid/icon.tsx";
 import { Popover, type PopoverHandle } from "../../components/solid/popover.tsx";
 import { listen } from "../../lib/reactive/listener.ts";
@@ -23,6 +23,10 @@ export function SessionPicker(props: {
   let trigger!: HTMLButtonElement;
   let popover!: PopoverHandle;
   let cleanup: (() => void) | undefined;
+  const onOpenChange = createMemo(() => {
+    const callbacks = props.params.place.browser.popoverCallbacks(props.kind);
+    return (open: boolean) => callbacks[open ? "onPopoverShow" : "onPopoverHide"]();
+  });
   onSettled(() => () => cleanup?.());
   return (
     <>
@@ -86,10 +90,7 @@ export function SessionPicker(props: {
         ]}
         open={props.params.place.browser.popoverOpen(props.kind)}
         placement="bottom-start"
-        onOpenChange={(open) => {
-          const callbacks = props.params.place.browser.popoverCallbacks(props.kind);
-          callbacks[open ? "onPopoverShow" : "onPopoverHide"]();
-        }}
+        onOpenChange={onOpenChange()}
         ref={(handle) => {
           popover = handle;
           const surface = handle.overlay.surface;

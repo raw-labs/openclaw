@@ -1,3 +1,5 @@
+import { createRepositoryCheckoutTransfer } from "../../plugins/repository-checkout-transfer.js";
+import { resolvePluginRepositorySource } from "../../plugins/repository-sources.js";
 import { getSessionRepositoryWorkspaceStore } from "../../state/session-repository-workspaces.js";
 import type { SessionRepositoryWorkspaceRecord } from "../../state/session-repository-workspaces.types.js";
 import { prepareRepositoryGitHubIdentity } from "./repository-github-identity.js";
@@ -14,6 +16,7 @@ import type {
 /** Prepare source on the worker and durably accept its initial state before activation. */
 export async function syncSessionRepositoryWorkspace(params: {
   repository: SessionRepositoryWorkspaceRecord;
+  repositorySourceId?: string;
   tunnel: WorkerTunnelHandle;
   sessionId: string;
   sessionKey: string;
@@ -55,9 +58,13 @@ export async function syncSessionRepositoryWorkspace(params: {
     );
   }
   params.assertCurrent();
-  const github = prepared
-    ? undefined
-    : await prepareRepositoryGitHubIdentity(params.agentId, params.assertCurrent);
+  const pluginSource = params.repositorySourceId
+    ? resolvePluginRepositorySource(params.repositorySourceId, repository.url)
+    : undefined;
+  const github =
+    prepared || pluginSource
+      ? undefined
+      : await prepareRepositoryGitHubIdentity(params.agentId, params.assertCurrent);
   params.assertCurrent();
   const source: Extract<WorkerWorkspaceSyncRequest["source"], { kind: "repository" }> = {
     kind: "repository",
@@ -75,6 +82,26 @@ export async function syncSessionRepositoryWorkspace(params: {
   };
   const sync = async (checkpoint?: typeof source.checkpoint) => {
     params.assertCurrent();
+    pluginSource?.assertCurrent();
+    if (pluginSource && !prepared) {
+      const bound = createRepositoryCheckoutTransfer(
+        params.tunnel,
+        {
+          sessionId: params.sessionId,
+          sessionKey: params.sessionKey,
+          generation: params.generation,
+          gitAuthor: params.gitAuthor,
+          source: { ...source, ...(checkpoint ? { checkpoint } : {}) },
+        },
+        params.assertCurrent,
+      );
+      await pluginSource.checkoutWorker({
+        agentId: params.agentId,
+        transfer: bound.transfer,
+        assertCurrent: params.assertCurrent,
+      });
+      return bound.result();
+    }
     const start = () =>
       params.tunnel.syncWorkspace({
         sessionId: params.sessionId,

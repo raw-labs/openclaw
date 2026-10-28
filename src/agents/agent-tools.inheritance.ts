@@ -5,7 +5,6 @@ import type { ResolvedConversationCapabilityProfile } from "./conversation-capab
 import { isConversationToolAllowed } from "./conversation-tool-policy-pipeline.js";
 import { applyGatewayToolPolicy } from "./gateway-tool-policy.js";
 import { hasRestrictiveAllowPolicy, replaceWithEffectiveToolAllowlist } from "./tool-policy.js";
-import { githubPublishToolDefinition } from "./tools/github-publish-tool.js";
 
 /** Record parent restrictions for future children without adding callable parent tools. */
 export function captureChildToolAllowlist(params: {
@@ -13,6 +12,7 @@ export function captureChildToolAllowlist(params: {
   capabilityProfile: ResolvedConversationCapabilityProfile;
   tools: AnyAgentTool[];
   inheritedToolAllowlist: string[];
+  policyDefinitions: readonly Pick<AnyAgentTool, "name" | "parameters">[];
   includeOpenClawTools: boolean;
   isMemoryFlushRun: boolean;
 }): void {
@@ -21,17 +21,15 @@ export function captureChildToolAllowlist(params: {
     capabilityProfile.policy.inheritancePolicies.some(hasRestrictiveAllowPolicy);
   const extraNames = options?.additionalInheritedToolNamesRef ?? [];
   extraNames.length = 0;
-  // A parent may have no repository while its child receives a worktree.
-  // Preserve publication only when the parent's policy permits it; the
-  // child's tool assembly checks its own repository.
+  // Factories can describe tools unavailable in this workspace. Children still
+  // construct their own tools, constrained by this parent's policy ceiling.
   if (
     (captureAllowlist || options?.additionalInheritedToolNamesRef) &&
     params.includeOpenClawTools &&
-    !params.isMemoryFlushRun &&
-    options?.githubPublicationAvailable === false
+    !params.isMemoryFlushRun
   ) {
     const permitted = filterToolsByMessageProvider(
-      [githubPublishToolDefinition],
+      [...params.policyDefinitions],
       options?.toolPolicyMessageProvider ?? options?.messageProvider,
     ).filter(({ name }) => isConversationToolAllowed(capabilityProfile, name));
     extraNames.push(...applyGatewayToolPolicy(permitted, options?.config).map((tool) => tool.name));

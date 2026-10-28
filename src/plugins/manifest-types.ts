@@ -297,6 +297,8 @@ export type PluginManifestQaRunner = {
 };
 
 export type PluginManifestDashboardDataBinding = {
+  /** Bundled cutover only: preserve an already-shipped binding/grant namespace. */
+  legacyId?: string;
   /** Plugin-local id. Widget grants receive the plugin-id prefix. */
   id: string;
   /** Read-scoped Gateway method registered by this plugin. */
@@ -354,6 +356,8 @@ export type PluginManifestSecretInputPath = {
   expected?: "string";
   /** Runtime owner kind used to isolate this surface when resolution fails. */
   ownerKind?: "capability" | "route";
+  /** Withhold this ref’s env/store name from child execution, even while inactive. */
+  executionEnvironment?: "exclude";
 };
 
 export type PluginManifestSecretInputContracts = {
@@ -367,6 +371,8 @@ export type PluginManifestSecretInputContracts = {
 };
 
 export type PluginManifestConfigContracts = {
+  /** Plugin-config-relative maps keyed by agent id, pruned on agent deletion. */
+  agentConfigMaps?: string[];
   /**
    * Root-relative config paths that indicate this plugin's setup-time
    * compatibility migrations might apply. Use this to keep generic runtime
@@ -512,6 +518,8 @@ export type PluginManifest = {
   doctorContract?: PluginManifestDoctorContract;
   /** Whether the plugin public API registers structured health checks. */
   doctorHealthChecks?: boolean;
+  /** Cheap config-only audit artifact; no plugin runtime activation. */
+  securityAuditConfig?: boolean;
   /** Static ownership metadata for doctor session-route state repairs. */
   sessionRouteStateOwners?: DoctorSessionRouteStateOwner[];
   /** Cheap QA runner metadata exposed before plugin runtime loads. */
@@ -519,6 +527,8 @@ export type PluginManifest = {
   /** Widget data and action capabilities validated against runtime registrations. */
   dashboard?: PluginManifestDashboard;
   controlUi?: PluginManifestControlUi;
+  /** Backend discovery declarations, independent of browser assets. */
+  repositorySources?: import("../../packages/gateway-protocol/src/plugin-control-ui-repositories.js").ControlUiRepositorySource[];
   /** Static UI contributions; omission is unspecified and an empty list declares none. */
   uiCapabilities?: PluginUiCapability[];
   themes?: PluginManifestTheme[];
@@ -620,6 +630,8 @@ export type PluginManifestToolMetadata = PluginManifestCapabilityProviderMetadat
   optional?: boolean;
   /** Built-in tool profiles that expose this plugin tool by default. */
   profiles?: PluginManifestToolProfile[];
+  /** Existing tool policy groups that include this plugin tool in allow and deny rules. */
+  policyGroups?: Array<(typeof import("../agents/tool-catalog.js").TOOL_POLICY_GROUP_IDS)[number]>;
   /** Tool execution is safe to repeat after an incomplete model turn. */
   replaySafe?: boolean;
   /** Tool execution can change durable state and failed attempts must remain visible. */

@@ -1,6 +1,8 @@
 /** Invokes current-context plugin tool factories and reports one assembly's timings. */
 import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
+import { copyAgentToolAvailability } from "../agents/agent-tool-availability.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
+import { runWithSessionToolHandoffSettlement } from "../agents/tools/session-tool-handoff-settlement.js";
 import { isInvalidConfigError } from "../config/io.invalid-config.js";
 import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -65,20 +67,27 @@ export function bindPluginToolCallbacks(
 ): AnyAgentTool {
   const record = registry.plugins.find((candidate) => candidate.id === entry.pluginId);
   const authority = capturePluginLifecycleAuthority(registry, record, { scopedRuntime: true });
-  const invoke = <T>(run: () => T): T => {
+  const assertPluginCurrent = () => {
     if (!authority?.()) {
       throw new Error(`Plugin "${entry.pluginId}" tool runtime is no longer active.`);
     }
+  };
+  const invoke = <T>(run: () => T, isAcceptedHandoff?: (result: unknown) => boolean): T => {
+    assertPluginCurrent();
     assertInvocationCurrent?.();
     const result = runWithPluginToolScope(entry, registry, run);
-    if (assertInvocationCurrent && isPromiseLike(result)) {
-      return Promise.resolve(result).then((value) => {
-        assertInvocationCurrent();
-        return value;
-      }) as T; // SAFETY: Only promise-like callback results enter this branch; the resolved value is unchanged.
-    }
-    assertInvocationCurrent?.();
-    return result;
+    const settle = <V>(value: V): V => {
+      assertPluginCurrent();
+      // Yield closes the originating invocation. Only its host-accepted acknowledgment
+      // may cross that closure; other results and all later callbacks remain fenced.
+      if (!isAcceptedHandoff?.(value)) {
+        assertInvocationCurrent?.();
+      }
+      return value;
+    };
+    return isPromiseLike(result)
+      ? (Promise.resolve(result).then(settle) as T) // SAFETY: Promise-like callbacks keep the resolved value unchanged.
+      : settle(result);
   };
   const prepare = tool.prepareArguments;
   const callbacks = {
@@ -93,11 +102,13 @@ export function bindPluginToolCallbacks(
       if (pending) {
         await racePromiseWithAbortSignal(pending, signal);
       }
-      return invoke(() => {
-        const execute = (executionSignal?: AbortSignal) =>
-          tool.execute(toolCallId, params, executionSignal, onUpdate);
-        return signal ? runWithTrackedCancellation(signal, execute) : execute();
-      });
+      return runWithSessionToolHandoffSettlement((isAcceptedHandoff) =>
+        invoke(() => {
+          const execute = (executionSignal?: AbortSignal) =>
+            tool.execute(toolCallId, params, executionSignal, onUpdate);
+          return signal ? runWithTrackedCancellation(signal, execute) : execute();
+        }, isAcceptedHandoff),
+      );
     },
     ...(prepare
       ? { prepareArguments: (args: unknown) => invoke(() => prepare.call(tool, args)) }
@@ -156,6 +167,7 @@ export function bindPluginToolCallbacks(
     preventExtensions: () => false,
   });
   copyPluginToolMeta(tool, wrapped);
+  copyAgentToolAvailability(tool, wrapped);
   return wrapped;
 }
 

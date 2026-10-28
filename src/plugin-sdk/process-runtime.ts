@@ -52,3 +52,32 @@ export {
   readDarwinProcessCommandLine,
   type DarwinProcess,
 } from "../process/darwin-process-inspection.js";
+
+export { hasErrnoCode } from "../infra/errno.js";
+export { resolveExecutablePath } from "../infra/executable-path.js";
+export { mergeProcessEnv, resolveEnvironmentValue } from "../infra/process-env.js";
+export { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+
+export { quoteCliArg, quotePowerShellArg } from "../cli/quote-cli-arg.js";
+export { getShellConfig } from "../agents/shell-utils.js";
+
+export {
+  executeGitCommand,
+  gitNullConfigPath,
+  requireGitCommandOutput,
+  type GitCommandOptions,
+} from "../infra/git-exec.js";
+
+export { withGitNetworkRetry, type GitOperationStarter } from "../infra/git-network-retry.js";
+
+export { withGitRepositoryRepair } from "../infra/git-repository-repair.js";
+
+export {
+  CommandProcessCleanupError,
+  hasCommandProcessCleanupError,
+  readCommandProcessFailure,
+} from "../process/exec-result.js";
+
+export { getAsyncWorkSignal } from "../shared/async-work-scope.js";
+
+export { ProjectCloneError } from "../projects/project-clone-contract.js";

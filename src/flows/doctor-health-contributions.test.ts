@@ -40,7 +40,6 @@ const mocks = vi.hoisted(() => {
     isDefaultInstallIdentity: vi.fn(() => true),
     isContainerEnvironment: vi.fn(() => false),
     maybeRunConfiguredPluginInstallReleaseStep: vi.fn(),
-    registerBundledHealthChecks: vi.fn((): HealthFinding[] => []),
     runDoctorHealthRepairs: vi.fn(),
     maybeMigrateAuthProfileJsonStoresToSqlite: vi.fn<() => Promise<unknown>>(async () => ({
       detected: [],
@@ -229,7 +228,8 @@ vi.mock("../commands/doctor/shared/plugin-runtime-symlinks.js", () => ({
 }));
 
 vi.mock("./bundled-health-checks.js", () => ({
-  registerBundledHealthChecks: mocks.registerBundledHealthChecks,
+  registerBundledHealthChecks: () => [],
+  collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),
 }));
 
 vi.mock("./doctor-repair-flow.js", () => ({

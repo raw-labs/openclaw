@@ -4,7 +4,6 @@ import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion"
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 import type { SessionSourceAssertion } from "../config/sessions/session-source-authority.js";
 import { recordDiagnosticToolExecutionDeadline } from "../infra/diagnostic-tool-execution-liveness.js";
-import type { EventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import {
   DEFAULT_EXEC_APPROVAL_TIMEOUT_MS,
   resolveExecApprovalAllowedDecisions,
@@ -14,29 +13,21 @@ import {
   execRequestAbortSignal,
   retainExecRequestProcess,
   withExecRequestOwners,
-  type ExecRequestOwner,
 } from "../infra/exec-request-context.js";
 import { findPathKey, mergePathPrepend } from "../infra/path-prepend.js";
 import { logWarn } from "../logger.js";
 import { redactToolPayloadText } from "../logging/redact.js";
 import { withChildProcessOperation } from "../process/spawn-diagnostics.js";
-import type { SpawnInitiation } from "../process/spawn-initiation.js";
 import { getProcessSupervisor, type ManagedRun } from "../process/supervisor/index.js";
 import type { RunExit, SpawnInput, TerminationReason } from "../process/supervisor/types.js";
-import type {
-  SecretEgressProcessGrant,
-  SecretEgressSentinelBinding,
-} from "../secrets/egress-proxy/proxy-server.js";
+import type { SecretEgressProcessGrant } from "../secrets/egress-proxy/proxy-server.js";
 import { registerSecretEgressProxyProcess } from "../secrets/egress-proxy/registry.js";
 /**
  * Spawns host/sandbox processes, manages session updates/backgrounding,
  * approval messaging constants, environment safety, and exit outcome shaping.
  */
 import { formatFencedCodeBlock } from "../shared/markdown-code.js";
-import {
-  normalizeDeliveryContext,
-  type DeliveryContext,
-} from "../utils/delivery-context.shared.js";
+import { normalizeDeliveryContext } from "../utils/delivery-context.shared.js";
 import { resolveSafeTimeoutDelayMs } from "../utils/timer-delay.js";
 import {
   captureAgentToolSourceExecutionGuard,
@@ -62,14 +53,12 @@ import {
 } from "./bash-tools.exec-output.js";
 import { settleExecProcessExit } from "./bash-tools.exec-settlement.js";
 import type {
+  ExecProcessStartOptions,
   ExecExitFailureKind,
   ExecProcessOutcome,
-  ExecToolDetails,
 } from "./bash-tools.exec-types.js";
-import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import { chunkString, clampWithDefault, readEnvInt } from "./bash-tools.shared.js";
 import { recordAgentCleanupFailure } from "./run-cleanup-timeout.js";
-import type { AgentToolResult } from "./runtime/index.js";
 import { createSessionSlug } from "./session-slug.js";
 import { createStreamingBinaryOutputSanitizer } from "./shell-utils.js";
 import {
@@ -332,52 +321,7 @@ export async function runExecProcess({
   releaseSpawn: initialReleaseSpawn,
   onSettledBeforeNotify: initialOnSettledBeforeNotify,
   ...opts
-}: {
-  command: string;
-  // Execute this instead of `command` (which is kept for display/session/logging).
-  // Used to sanitize safeBins execution while preserving the original user input.
-  execCommand?: string;
-  workdir: string;
-  env: Record<string, string>;
-  secretEgressBindings?: readonly SecretEgressSentinelBinding[];
-  /** Host-selected managed profile; never inferred from the requested environment. */
-  githubProfileDir?: string;
-  pathPrepend?: string[];
-  sandbox?: BashSandboxConfig;
-  containerWorkdir?: string | null;
-  usePty: boolean;
-  warnings: string[];
-  maxOutput: number;
-  pendingMaxOutput: number;
-  cleanupMs?: number;
-  notifyOnExit: boolean;
-  /** Start-time subagent identity resolved from the persisted spawn envelope. */
-  subagentSession?: boolean;
-  notifyOnExitEmptySuccess?: boolean;
-  requestOwners?: readonly ExecRequestOwner[];
-  scopeKey?: string;
-  sessionKey?: string;
-  agentId?: string;
-  /** Start-time routing policy for detached exec system events. */
-  eventRouting?: EventSessionRoutingPolicy;
-  notifyDeliveryContext?: DeliveryContext;
-  /** The command was started by a conversation turn, not heartbeat or automation work. */
-  notifyFromConversationTurn?: boolean;
-  timeoutSec: number | null;
-  /** Whether exec may return a supervised session for later continuation. */
-  processContinuationAvailable?: boolean;
-  /** Cancels startup only; background process lifetime belongs to the supervisor. */
-  startupSignal?: AbortSignal;
-  onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
-  /** Runs after process finalization and before the exit wake is queued. */
-  onSettledBeforeNotify?: (outcome: ExecProcessOutcome) => void | Promise<void>;
-  /** Revalidates authorization after async preparation, immediately before each spawn attempt. */
-  beforeSpawn?: () => Promise<AgentToolResult<ExecToolDetails> | undefined>;
-  /** Rechecks host policy at the supervisor's final synchronous spawn boundary. */
-  assertCurrent?: () => void;
-  initiateSpawn?: SpawnInitiation;
-  releaseSpawn?: (reason?: "retry") => void;
-}): Promise<ExecProcessHandle> {
+}: ExecProcessStartOptions): Promise<ExecProcessHandle> {
   const requestSignal = execRequestAbortSignal(opts.requestOwners);
   const startupSignal =
     requestSignal && initialStartupSignal
@@ -664,6 +608,7 @@ export async function runExecProcess({
         assertSourceCurrent?.();
         assertOperatorCurrent?.();
         assertRuntimeCurrent?.();
+        opts.assertExecutionEnvironmentCurrent?.();
       };
       // Source authority covers construction; approval policy ends at native launch.
       assertCurrent();
@@ -677,7 +622,12 @@ export async function runExecProcess({
           withoutGatewayToolCallerIdentity(() =>
             supervisor.spawn({
               ...input,
-              env: resolveExecLaunchEnv(input.env, Boolean(opts.sandbox), grant?.env),
+              env: resolveExecLaunchEnv(
+                input.env,
+                Boolean(opts.sandbox),
+                grant?.env,
+                opts.transportCredentialScrubEnv,
+              ),
               onCancel: () => {
                 beginSandboxTermination();
                 grant?.revoke();

@@ -16,12 +16,13 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests } from "./control-ui-contract.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
-import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
+import { startGitHubSessionPresentation } from "./control-ui-session-pr-presentation.js";
+import { createRepositorySessionReadHost } from "./control-ui-session-pr-runtime.js";
 import {
   spyOnSessionPrLoader,
   type SessionPrLoader,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
+import { repositorySessionPrTarget } from "./control-ui-session-pr-target.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { createGatewayConnectionState } from "./server-connection-state.js";
@@ -127,28 +128,39 @@ export async function createFixture(
   if (!useDefaultLoader) {
     spyOnSessionPrLoader(load);
   }
-  const subscriptions = createControlUiSessionPullRequestSubscriptions({
-    scheduler,
-    getSessionRowProjection: () => getSessionRowProjection(context),
-    broadcastToConnIds: connections.broadcastToConnIds,
-    isConnectionActive: connections.isConnectionActive,
-    prepareRead: async (connId, session) => {
-      const client = connections.clients.getByConnectionId(connId);
-      return client
-        ? createControlUiSessionPrRead({
-            allowOwnImportedPullRequest: true,
-            client,
-            ...session,
-            getRuntimeConfig,
-            getSessionRowProjection: () => getSessionRowProjection(context),
-            isCurrentClient: () => connections.clients.getByConnectionId(connId) === client,
-          })
-        : undefined;
-    },
-  });
-  const context = createGatewayRequestContext(makeContextParams(connections));
+  const contextParams = makeContextParams(connections);
+  const context = createGatewayRequestContext(contextParams);
   context.getRuntimeConfig = getRuntimeConfig;
-  context.controlUiSessionPullRequests = subscriptions;
+  const resolveGatewayContext = () => context;
+  context.resolveGatewayContext = resolveGatewayContext;
+  const readHost = createRepositorySessionReadHost({
+    signal: scheduler.signal,
+    getRuntimeConfig,
+    getSessionRowProjection: () => getSessionRowProjection(context),
+    getClient: (connId) => connections.clients.getByConnectionId(connId),
+    resolveGatewayContext,
+    broadcastToConnIds: connections.broadcastToConnIds,
+  });
+  contextParams.runtime.runtimeState.repositorySessions = readHost;
+  const reads = readHost.bindService(scheduler.signal, () => scheduler.signal.throwIfAborted());
+  const native = startGitHubSessionPresentation({ scheduler, getConfig: getRuntimeConfig, reads });
+  const services = {
+    stop: async () => {
+      await native.stop();
+      await scheduler.stop();
+    },
+  };
+  const presentation = native.presentation;
+  const subscriptions = {
+    ...presentation,
+    readPrepared: (
+      target:
+        | Parameters<typeof repositorySessionPrTarget>[0]
+        | ReturnType<typeof repositorySessionPrTarget>,
+      admitLoad?: () => boolean,
+    ) =>
+      presentation.readPrepared("observation" in target ? target.observation : target, admitLoad),
+  };
   await initializeSessionReadContext(context);
   const reader = addReader("guest-publication-reader");
   const projection = getSessionRowProjection(context);
@@ -168,6 +180,10 @@ export async function createFixture(
     seed,
     load,
     subscriptions,
+    sessionReads: reads,
+    presentation,
+    readHost,
+    services,
     context,
     async changeReader(change: (typeof readerChanges)[number], key = sessionKey) {
       if (change === "role") {
@@ -217,7 +233,7 @@ export async function createFixture(
       expect(respond).toHaveBeenCalledWith(true, { subscribed: keys.length > 0 }, undefined);
     },
     async close() {
-      await subscriptions.stop();
+      await services.stop();
       await scheduler.stop();
       connections.clients.clear();
       detachProjection();

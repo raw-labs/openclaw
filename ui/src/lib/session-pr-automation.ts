@@ -1,7 +1,7 @@
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "../../../src/cron/service/list-page-validation.js";
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { CronJob, CronJobsListResult } from "../api/types.ts";
 import {

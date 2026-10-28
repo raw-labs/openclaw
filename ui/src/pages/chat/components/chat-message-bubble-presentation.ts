@@ -202,6 +202,7 @@ export function prepareGroupedMessage(
     codeBlockChrome: role === "user" ? "none" : "copy",
     codeBlockInteraction: role === "assistant" ? "interactive" : "static",
     fileLinks: true,
+    textReferences: role === "assistant" ? opts.textReferences : undefined,
     githubRepo: role === "assistant" ? (opts.githubRepo ?? null) : null,
     humanMentions: markdown === displayMarkdown ? humanMentions : undefined,
     ...(role === "assistant" && opts.githubRepositories

@@ -70,6 +70,7 @@ export function createViewRuntime(
   const host = {
     signal: abort.signal,
     request,
+    requests: {},
     sessions: {},
     agents: {},
     navigation: {},

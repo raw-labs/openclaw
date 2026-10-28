@@ -1,6 +1,5 @@
 /* @vitest-environment jsdom */
-import { describe, expect, it, onTestFinished, vi } from "vitest";
-import type { ControlUiHost } from "../../../src/plugin-sdk/control-ui.js";
+import { describe, expect, it, vi } from "vitest";
 import type { GatewayBrowserClient, GatewayControlUiPluginTab } from "../api/gateway.ts";
 import type {
   ControlUiContributions,
@@ -16,6 +15,7 @@ import {
   mountSidebarContext,
   type SidebarLifecycleState,
 } from "../test-helpers/app-sidebar.ts";
+import { createTestControlUiPluginHost } from "../test-helpers/control-ui-plugin-host.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
 
 const dailyKey = "plugin:briefing/daily";
@@ -55,19 +55,15 @@ async function fixture() {
   };
   publishTab();
   const listeners = new Set<() => void>();
-  const abort = new AbortController();
-  onTestFinished(() => abort.abort());
-  const openPage = vi.fn();
-  // This external registry fixture exposes only navigation, the host service used by these links.
-  const host = {
-    navigation: { pageHref: () => "/plugin/fleet/overview", openPage },
-  } as unknown as ControlUiHost;
+  const host = createTestControlUiPluginHost(context, "fleet");
+  vi.spyOn(host.navigation, "pageHref").mockReturnValue("/plugin/fleet/overview");
+  const openPage = vi.spyOn(host.navigation, "openPage").mockImplementation(() => {});
   const fleet: ControlUiRegistration<ControlUiContributions["navigation"]> = {
     key: "fleet/overview",
     pluginId: "fleet",
     value: { id: "overview", label: "OpenClaw Fleet", icon: "server", page: { id: "overview" } },
     host,
-    signal: abort.signal,
+    signal: host.signal,
   };
   const registrations: {
     [K in keyof ControlUiContributions]: ControlUiRegistration<ControlUiContributions[K]>[];
@@ -77,6 +73,7 @@ async function fixture() {
     panels: [],
     actions: [],
     accessories: [],
+    textReferences: [],
     widgets: [],
     replacements: [],
   };

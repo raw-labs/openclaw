@@ -1,21 +1,24 @@
-import type { JSX } from "@solidjs/web";
-import { children, createMemo, For, onSettled, Show } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js";
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../../../src/gateway/control-ui-contract.js";
 import { observeScrollState } from "../../../components/scroll-state-observer.ts";
 import { progressCardPresentation } from "../../../components/session-progress-card.ts";
-import { BrandIcon, Icon, type IconName } from "../../../components/solid/icon.tsx";
+import {
+  ActivityPill,
+  ActivityGlyph,
+  type PillView,
+} from "../../../components/solid/activity-pill.tsx";
+import { Icon } from "../../../components/solid/icon.tsx";
 import { registerChatGoalsEnglish } from "../../../i18n/locales/en-chat-goals.ts";
 import { registerChatSessionEnglish } from "../../../i18n/locales/en-chat-session.ts";
 import { registerGitHubEnglish } from "../../../i18n/locales/en-github.ts";
 import { fnv1aUtf16 } from "../../../lib/fnv1a.ts";
-import { elementRef } from "../../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
-import { createScrollStateRef } from "../../../lib/reactive/scroll-state.ts";
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type { ChatActivityPillsProps } from "./chat-activity-pills-types.ts";
 import { hasVisibleChatActivityPills } from "./chat-activity-pills-visibility.ts";
 import { chatPullRequestId } from "./chat-pull-requests.ts";
@@ -26,74 +29,7 @@ registerEnglishCatalog(registerChatSessionEnglish);
 registerEnglishCatalog(registerChatGoalsEnglish);
 registerEnglishCatalog(registerGitHubEnglish);
 
-type OpenActivity = NonNullable<ChatActivityPillsProps["subagents"]>["onOpen"];
-
-type Tone = "normal" | "muted" | "ok" | "warn" | "danger" | "purple";
-type Glyph = IconName | "goal" | "bot" | "filledStop" | "spinner" | "github";
-type Badge = { icon: Glyph; tone: Tone; label: string };
-type PillView = {
-  label: string;
-  icon: Glyph;
-  tone?: Tone;
-  badge?: Badge;
-  attention?: boolean;
-  shine?: boolean;
-  count?: string;
-  description?: string;
-};
-
-function ActivityGlyph(props: { name: Glyph }) {
-  const nativeName = () => {
-    const name = props.name;
-    return name === "goal" ||
-      name === "pause" ||
-      name === "bot" ||
-      name === "filledStop" ||
-      name === "spinner" ||
-      name === "github"
-      ? undefined
-      : name;
-  };
-  return (
-    <Show when={props.name !== "spinner"} fallback={<span class="activity-pill__spinner" />}>
-      <Show when={props.name !== "github"} fallback={<BrandIcon name="github" />}>
-        <Show
-          when={
-            props.name === "goal" ||
-            props.name === "pause" ||
-            props.name === "bot" ||
-            props.name === "filledStop"
-          }
-          fallback={<Show when={nativeName()}>{(name) => <Icon name={name()} />}</Show>}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <Show when={props.name === "goal"}>
-              <path d="M12 13V2l8 4-8 4M20.561 10.222a9 9 0 1 1-12.55-5.29M8.002 9.997a5 5 0 1 0 8.9 2.02" />
-            </Show>
-            <Show when={props.name === "pause"}>
-              <path d="M9 5v14M15 5v14" />
-            </Show>
-            <Show when={props.name === "bot"}>
-              <rect x="4" y="7" width="16" height="13" rx="2" />
-              <path d="M12 3v4M9 12v3m6-3v3M1 11v5m22-5v5" />
-            </Show>
-            <Show when={props.name === "filledStop"}>
-              <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" stroke="none" />
-            </Show>
-          </svg>
-        </Show>
-      </Show>
-    </Show>
-  );
-}
+type Badge = NonNullable<PillView["badge"]>;
 
 function goalView(input: NonNullable<ChatActivityPillsProps["goal"]>): PillView {
   const goal = input.value;
@@ -346,100 +282,6 @@ function publicationView(view: GitHubPublicationView): PillView {
   };
 }
 
-function ActivityPill(props: {
-  family: "subagents" | "goal" | "progress" | "pull-request" | "publication";
-  view: PillView;
-  onOpen: OpenActivity;
-  registerButton: (button: HTMLButtonElement) => () => void;
-  leading?: JSX.Element;
-  trailing?: JSX.Element;
-  flow?: boolean;
-}) {
-  const leading = children(() => props.leading);
-  let button!: HTMLButtonElement;
-  const labelRef = createScrollStateRef(
-    (element, state) => element.toggleAttribute("data-overflow", state.scrollable),
-    { horizontal: true, trackScroll: false, content: () => props.view.label },
-  );
-  const accessibleLabel = () =>
-    props.view.description ??
-    (props.view.badge
-      ? t("chat.activityPills.withBadge", {
-          label: props.view.label,
-          badge: props.view.badge.label,
-        })
-      : props.view.label);
-  onSettled(() => {
-    const observer = new IntersectionObserver(([entry]) =>
-      button.toggleAttribute("data-out-of-view", !entry?.isIntersecting),
-    );
-    observer.observe(button);
-    return () => observer.disconnect();
-  });
-  return (
-    <button
-      ref={[
-        (element) => {
-          button = element;
-        },
-        elementRef<HTMLButtonElement>((element) => props.registerButton(element)),
-      ]}
-      class={[
-        "activity-pill",
-        { "activity-pill--attention": props.view.attention, "activity-pill--flow": props.flow },
-      ]}
-      data-family={props.family}
-      data-tone={props.view.tone ?? "normal"}
-      data-counted={props.view.count ? "true" : "false"}
-      type="button"
-      aria-haspopup="dialog"
-      aria-label={accessibleLabel()}
-      title={accessibleLabel()}
-      onClick={(event) => props.onOpen(event.currentTarget)}
-    >
-      <Show when={props.flow}>
-        <span class="activity-pill__flow" aria-hidden="true">
-          <span class="activity-pill__atlas" />
-        </span>
-      </Show>
-      <Show
-        when={leading()}
-        fallback={
-          <span class="activity-pill__leading" aria-hidden="true">
-            <span class="activity-pill__composite">
-              <ActivityGlyph name={props.view.icon} />
-              <Show when={props.view.badge}>
-                {(badge) => (
-                  <span class="activity-pill__badge" data-tone={badge().tone}>
-                    <ActivityGlyph name={badge().icon} />
-                  </span>
-                )}
-              </Show>
-            </span>
-          </span>
-        }
-      >
-        {leading()}
-      </Show>
-      <span
-        ref={labelRef}
-        class={["activity-pill__label", { "activity-pill__label--shine": props.view.shine }]}
-      >
-        {props.view.label}
-        <Show when={props.view.shine}>
-          <span class="activity-pill__shimmer" aria-hidden="true">
-            {props.view.label}
-          </span>
-        </Show>
-      </span>
-      <Show when={props.view.count}>
-        {(count) => <span class="activity-pill__count">{count()}</span>}
-      </Show>
-      {props.trailing}
-    </button>
-  );
-}
-
 // Identity determines artwork colors, not current position or execution status.
 const avatarPalette = [
   ["#34383b", "#bdc3c7"],
@@ -462,6 +304,15 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
   let strip!: HTMLDivElement;
   let row!: HTMLDivElement;
   const buttons = new Set<HTMLButtonElement>();
+  const sources = new Set<() => readonly HTMLElement[]>();
+  const [contributionPresent, setContributionPresent] = createSignal(false, { ownedWrite: true });
+  const currentButtons = () =>
+    new Set([
+      ...buttons,
+      ...[...sources]
+        .flatMap((read) => read())
+        .filter((control): control is HTMLButtonElement => control instanceof HTMLButtonElement),
+    ]);
   let resize: ResizeObserver | undefined;
   let scheduleLayout: (() => void) | undefined;
   const registerButton = (button: HTMLButtonElement) => {
@@ -487,7 +338,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
       (state) => {
         strip.toggleAttribute("data-fade-left", !state.atStart);
         strip.toggleAttribute("data-fade-right", !state.atEnd);
-        props.onLayout?.({ strip, pills: buttons });
+        props.onLayout?.({ strip, pills: currentButtons() });
       },
       true,
     );
@@ -503,7 +354,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
       resize?.disconnect();
       resize = undefined;
       scheduleLayout = undefined;
-      props.onLayout?.({ strip, pills: buttons }, true);
+      props.onLayout?.({ strip, pills: currentButtons() }, true);
       stopVisibility();
     };
   });
@@ -514,7 +365,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
       return;
     }
-    const orderedButtons = [...buttons]
+    const orderedButtons = [...currentButtons()]
       .filter((button) => button.isConnected)
       .toSorted((left, right) =>
         left === right
@@ -557,7 +408,7 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
         strip = element;
       }}
       class="chat-activity-pills"
-      hidden={!hasVisibleChatActivityPills(props)}
+      hidden={!hasVisibleChatActivityPills(props) && !contributionPresent()}
       data-presented={props.presented ? "true" : "false"}
       role="group"
       aria-label={t("chat.activityPills.label")}
@@ -569,6 +420,32 @@ export function ChatActivityPills(props: ChatActivityPillsProps) {
         }}
         class="chat-activity-pills__row"
       >
+        <Show when={!props.approvalPending && props.contributions}>
+          {(contributions) => (
+            <PluginContributions
+              kind="session-mobile-activity"
+              sessionKey={contributions().sessionKey}
+              agentId={contributions().agentId}
+              facts={contributions().facts}
+              presented={props.presented}
+              onOpenDetailsPage={contributions().onOpenDetailsPage}
+              onPresenceChange={setContributionPresent}
+              onContentChange={(phase) => {
+                if (phase === "after") {
+                  scheduleLayout?.();
+                }
+              }}
+              registerControls={(read) => {
+                sources.add(read);
+                scheduleLayout?.();
+                return () => {
+                  sources.delete(read);
+                  scheduleLayout?.();
+                };
+              }}
+            />
+          )}
+        </Show>
         <Show when={!props.approvalPending && working().length > 0}>
           <ActivityPill
             registerButton={registerButton}

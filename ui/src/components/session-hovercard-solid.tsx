@@ -12,6 +12,7 @@ import {
   orderSessionPullRequests,
   sessionPullRequestStateIcons,
 } from "../lib/session-pull-request-presentation.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import { formatGitHubItemReference } from "./github-link-target.ts";
 import { PersonAvatarLink, PersonName } from "./person-activity-link-solid.tsx";
 import { personActivityLink, type PersonActivityRouting } from "./person-activity-link.ts";
@@ -71,6 +72,8 @@ export type SessionHovercardInput = SessionHovercardContextInput & {
   avatarAuth?: SessionHovercardAvatarAuth;
   personActivity?: PersonActivityRouting;
   pullRequests?: ControlUiSessionPullRequestSnapshot;
+  session?: { sessionKey: string; agentId?: string };
+  onContentChange?: (phase: "before" | "after") => void;
   progressCard?: ProgressCard | null;
 };
 function ParticipantLink(props: {
@@ -482,7 +485,7 @@ export function SessionHovercard(props: SessionHovercardInput) {
   const preview = () =>
     props.progressCard ? undefined : props.row?.lastMessagePreview?.trim() || undefined;
   return (
-    <Show when={Boolean(props.row || hasPullRequests() || props.progressCard)}>
+    <Show when={Boolean(props.row || props.session || hasPullRequests() || props.progressCard)}>
       <div class="session-hovercard">
         <Show when={props.row}>
           <section class="session-hovercard__section session-hovercard__section--header">
@@ -511,6 +514,18 @@ export function SessionHovercard(props: SessionHovercardInput) {
               </div>
             </Show>
           </section>
+        </Show>
+        <Show when={props.session}>
+          {(session) => (
+            <PluginContributions
+              kind="session-hovercard"
+              sessionKey={session().sessionKey}
+              agentId={session().agentId}
+              presented={true}
+              registerControls={controls?.registerSource}
+              onContentChange={props.onContentChange}
+            />
+          )}
         </Show>
         <Show when={preview()}>
           <section class="session-hovercard__section session-hovercard__section--optional">

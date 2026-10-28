@@ -1,6 +1,10 @@
 import type { BoardGetParams } from "@openclaw/gateway-protocol";
-import type { ControlUiAction, ControlUiSession } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiActionV2 as ControlUiAction,
+  ControlUiSession,
+} from "../../../src/plugin-sdk/control-ui.js";
 import type { PluginSessionMenuAction } from "../components/session-menu-solid.tsx";
+import { listen } from "../lib/reactive/listener.ts";
 import type { ControlUiPluginCapability } from "./control-ui-capability.ts";
 import { scopeControlUiHost } from "./control-ui-scope.ts";
 
@@ -25,6 +29,9 @@ export function pluginSessionMenuActions(
                 id: entry.key,
                 label: state?.label ?? entry.value.label,
                 disabled: state?.disabled,
+                icon: entry.value.icon,
+                shortcut: entry.value.shortcut,
+                opensExternal: entry.value.opensExternal,
               },
             ];
       } catch (error) {
@@ -84,4 +91,91 @@ export async function runControlUiPluginAction(
     signal,
   });
   check();
+}
+
+/** Observe active session actions without retaining a hidden menu or a retired plugin. */
+export function observeSessionMenuActions(
+  runtime: ControlUiPluginCapability,
+  session: ControlUiSession,
+  notify: () => void,
+): () => void {
+  let live = true;
+  const observed = new Map<AbortSignal, () => void>();
+  const changed = () => {
+    if (live) {
+      notify();
+    }
+  };
+  const reconcile = () => {
+    const entries = runtime
+      .registrations("actions")
+      .filter(
+        (entry) =>
+          entry.value.placement === "session" && entry.value.observe && !entry.signal.aborted,
+      );
+    const current = new Set(entries.map((entry) => entry.signal));
+    for (const [signal, stop] of observed) {
+      if (!current.has(signal)) {
+        observed.delete(signal);
+        stop();
+      }
+    }
+    for (const entry of entries) {
+      if (observed.has(entry.signal) || !entry.value.observe) {
+        continue;
+      }
+      const lifetime = new AbortController();
+      const signal = AbortSignal.any([entry.signal, lifetime.signal]);
+      let ended = false;
+      let stop: (() => void) | undefined;
+      const retire = () => {
+        if (ended) {
+          return;
+        }
+        ended = true;
+        stopAbort();
+        lifetime.abort();
+        stop?.();
+      };
+      // Register custody before calling plugin code, which may synchronously withdraw itself.
+      observed.set(entry.signal, retire);
+      const stopAbort = listen(entry.signal, "abort", retire, { once: true });
+      try {
+        const cleanup = entry.value.observe(
+          {
+            sessionKey: session.key,
+            agentId: session.agentId,
+            session: structuredClone(session),
+            signal,
+          },
+          () => {
+            if (!signal.aborted) {
+              changed();
+            }
+          },
+        );
+        if (ended) {
+          cleanup();
+        } else {
+          stop = cleanup;
+        }
+      } catch (error) {
+        retire();
+        runtime.reportError(entry.pluginId, error);
+      }
+    }
+  };
+  const stopRuntime = runtime.subscribe(() => {
+    reconcile();
+    changed();
+  });
+  reconcile();
+  return () => {
+    live = false;
+    stopRuntime();
+    for (const stop of observed.values()) {
+      stop();
+    }
+    observed.clear();
+  };
 }

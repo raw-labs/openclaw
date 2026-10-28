@@ -13,7 +13,9 @@
     "../../src/node-host/**/*.test.ts",
     "../../src/node-host/**/*.test.tsx",
     "../../src/worker/**/*.test.ts",
-    "../../src/worker/**/*.test.tsx"
+    "../../src/worker/**/*.test.tsx",
+    "../../src/gateway/node-*.test.ts",
+    "../../src/gateway/node-*.test.tsx"
   ],
   "exclude": [
     "../../src/gateway/server/**/*.test.ts",

@@ -40,3 +40,8 @@ export {
   redactToolPayloadText,
 } from "../logging/redact.js";
 export { redactIdentifier } from "@openclaw/normalization-core/node-crypto";
+
+/** Register acquired credentials for exact-value redaction across logging egress. */
+export { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
+
+export { warnPluginSdkDeprecation } from "../plugins/sdk-deprecation.js";

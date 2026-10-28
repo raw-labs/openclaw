@@ -1,13 +1,14 @@
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import type {
   ControlUiDisposer,
-  ControlUiHost,
+  ControlUiHostV2 as ControlUiHost,
   ControlUiPageNavigationOptions,
   ControlUiPageTarget,
 } from "../../../src/plugin-sdk/control-ui.js";
 import { serializeSidebarEntry } from "../app-navigation.ts";
 import { isRouteId, pathForRoute, pluginTabLocation } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
+import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { hasOperatorReadAccess, readGatewayOperatorAccess } from "../app/operator-access.ts";
 import {
   PLUGIN_PANEL_TOGGLE_EVENT,
@@ -16,12 +17,19 @@ import {
 import { rememberSessionPanelToggle } from "../components/session-panel-toggle-buffer.ts";
 import { i18n } from "../i18n/index.ts";
 import { redactToolDetail } from "../lib/browser-redact.ts";
+import { openExternalUrlSafe } from "../lib/open-external-url.ts";
+import { readSessionMethodAccess } from "../lib/session-method-access.ts";
 import { openPreferredApplicationSession } from "../lib/sessions/route-navigation.ts";
 import {
   normalizeSessionKeyForUiComparison,
   parseAgentSessionKey,
+  scopedSessionArtifactKey,
+  uiSessionEventMatches,
 } from "../lib/sessions/session-key.ts";
 import { createControlUiComponents } from "./control-ui-components.ts";
+import { createControlUiNativeHost } from "./control-ui-native-host.tsx";
+import { createControlUiPresentationHost } from "./control-ui-presentation-host.tsx";
+import { createControlUiRequests } from "./control-ui-requests.ts";
 import type { ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
 
 export function createControlUiPluginHost(
@@ -91,6 +99,7 @@ export function createControlUiPluginHost(
   let dockCloseRetained = false;
   return {
     apiVersion: 1,
+    capabilitiesVersion: 2,
     pluginId: owner.descriptor.pluginId,
     signal: owner.abort.signal,
     get basePath() {
@@ -100,16 +109,26 @@ export function createControlUiPluginHost(
       return i18n.getLocale();
     },
     redact: redactToolDetail,
+    requests: createControlUiRequests({ current, signal: owner.abort.signal, retain }),
+    native: createControlUiNativeHost(owner.abort.signal),
+    presentation: createControlUiPresentationHost(current, owner.abort.signal),
     components: createControlUiComponents({
       current,
       signal: owner.abort.signal,
       onError: (error) => runtime.reportError(owner.descriptor.pluginId, error),
     }),
     get connection() {
-      const snapshot = current().gateway.snapshot;
+      const gateway = current().gateway;
+      const snapshot = gateway.snapshot;
       const access = readGatewayOperatorAccess(snapshot);
       return {
         connected: snapshot.phase === "connected",
+        readScopeKey: JSON.stringify([
+          gatewayPresentationScope(gateway).key,
+          snapshot.hello?.auth?.role,
+          [...(snapshot.hello?.auth?.scopes ?? [])].toSorted(),
+          snapshot.hello?.features?.methods?.toSorted(),
+        ]),
         canRead: hasOperatorReadAccess(snapshot.hello?.auth ?? null),
         canWrite: access.canWrite,
         canGrant: access.canGrantApprovals,
@@ -154,6 +173,27 @@ export function createControlUiPluginHost(
       return retain(() => stops.forEach((stop) => stop()));
     },
     sessions: {
+      methodAccess: (session, request) =>
+        readSessionMethodAccess(current().gateway.snapshot, { ...request, session }).allowed,
+      attachOperation: (row, factory) =>
+        current().sessions.retainedOperations.attach(row, factory, owner.descriptor.pluginId, {
+          signal: owner.abort.signal,
+          onError: (error) => runtime.reportError(owner.descriptor.pluginId, error),
+        }),
+      artifactKey: ({ sessionKey, agentId }) => scopedSessionArtifactKey(sessionKey, agentId),
+      agentId: (key) => parseAgentSessionKey(key)?.agentId,
+      matches: ({ sessionKey, agentId }, eventKey, eventAgentId) => {
+        const snapshot = current().gateway.snapshot;
+        return uiSessionEventMatches(
+          {
+            assistantAgentId: agentId ?? snapshot.assistantAgentId,
+            hello: snapshot.hello,
+            sessionKey,
+          },
+          eventKey,
+          eventAgentId,
+        );
+      },
       get rows() {
         return structuredClone(current().sessions.state.result?.sessions ?? []);
       },
@@ -278,6 +318,10 @@ export function createControlUiPluginHost(
         }
       : undefined,
     navigation: {
+      openExternal(url) {
+        current();
+        openExternalUrlSafe(url);
+      },
       openPage(target, options) {
         const location = pageLocation(target, options);
         const context = current();
@@ -354,6 +398,7 @@ export function createControlUiPluginHost(
       },
       registerAction: (value) => runtime.register(owner, "actions", value),
       registerAccessory: (value) => runtime.register(owner, "accessories", value),
+      registerTextReferenceProvider: (value) => runtime.register(owner, "textReferences", value),
       registerWidget: (value) => runtime.register(owner, "widgets", value),
       registerReplacement: (value) => runtime.register(owner, "replacements", value),
       selectReplacement(surface, id) {

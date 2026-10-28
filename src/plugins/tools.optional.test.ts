@@ -22,8 +22,10 @@ import { createEmptyPluginRegistry } from "./registry-empty.js";
 import { markPluginRegistryRetired } from "./registry-lifecycle.js";
 import type { PluginRegistry } from "./registry-types.js";
 import { createPluginRecord } from "./status.test-helpers.js";
-import { appendRuntimePluginToolGrant } from "./tool-grant-allowlist.js";
 import {
+  createContext,
+  createResolveToolsParams,
+  createToolManifest,
   createNamedToolEntry,
   createFeishuToolManifest,
   createToolRegistry,
@@ -107,35 +109,6 @@ let setCurrentPluginMetadataSnapshot: typeof import("./current-plugin-metadata.t
 let getPluginRuntimeGatewayRequestScope: typeof import("./runtime/gateway-request-scope.js").getPluginRuntimeGatewayRequestScope;
 let withPluginRuntimeGatewayRequestScope: typeof import("./runtime/gateway-request-scope.js").withPluginRuntimeGatewayRequestScope;
 
-function createToolManifest(
-  id: string,
-  toolNames: readonly string[],
-  overrides: Record<string, unknown> = {},
-) {
-  return {
-    id,
-    origin: "bundled" as const,
-    enabledByDefault: true,
-    channels: [],
-    providers: [],
-    contracts: { tools: [...toolNames] },
-    ...overrides,
-  };
-}
-
-function createContext(): { config: OpenClawConfig; workspaceDir: string } {
-  return {
-    config: {
-      plugins: {
-        enabled: true,
-        load: { paths: ["/tmp/plugin.js"] },
-        slots: { memory: "none" },
-      },
-    },
-    workspaceDir: "/tmp",
-  };
-}
-
 function createConfiguredFeishuToolContext<T extends string>(conversationReadOrigin: T) {
   const context = createContext();
   return {
@@ -148,33 +121,6 @@ function createConfiguredFeishuToolContext<T extends string>(conversationReadOri
       },
     },
     conversationReadOrigin,
-  };
-}
-
-function createResolveToolsParams(params?: {
-  context?: ReturnType<typeof createContext> & Record<string, unknown>;
-  clientCaps?: string[];
-  toolAllowlist?: readonly string[];
-  toolDenylist?: readonly string[];
-  existingToolNames?: Set<string>;
-  env?: NodeJS.ProcessEnv;
-  suppressNameConflicts?: boolean;
-  allowGatewaySubagentBinding?: boolean;
-  runtimePluginToolGrant?: { pluginId: string; toolNames: readonly string[] };
-}) {
-  const toolAllowlist = appendRuntimePluginToolGrant(
-    [...(params?.toolAllowlist ?? [])],
-    params?.runtimePluginToolGrant,
-  );
-  return {
-    context: (params?.context ?? createContext()) as never,
-    ...(params?.clientCaps ? { clientCaps: params.clientCaps } : {}),
-    ...(toolAllowlist.length > 0 ? { toolAllowlist } : {}),
-    ...(params?.toolDenylist ? { toolDenylist: [...params.toolDenylist] } : {}),
-    ...(params?.existingToolNames ? { existingToolNames: params.existingToolNames } : {}),
-    ...(params?.env ? { env: params.env } : {}),
-    ...(params?.suppressNameConflicts ? { suppressNameConflicts: true } : {}),
-    ...(params?.allowGatewaySubagentBinding ? { allowGatewaySubagentBinding: true } : {}),
   };
 }
 
@@ -1407,6 +1353,38 @@ describe("resolvePluginTools optional tools", () => {
     expect(optionalFactory).not.toHaveBeenCalled();
     expect(loadOpenClawPluginsMock).not.toHaveBeenCalled();
   });
+
+  it.each(["group:sessions", "group:openclaw"])(
+    "resolves manifest tool group %s before constructing a plugin",
+    (group) => {
+      const context = createContext();
+      const factory = vi.fn(() => makeTool("repository_publish"));
+      setRegistry(
+        [createNamedToolEntry("repository", "repository_publish", { factory })],
+        context.config,
+      );
+      installToolManifestSnapshot({
+        config: context.config,
+        plugin: createToolManifest("repository", ["repository_publish"], {
+          toolMetadata: {
+            repository_publish: {
+              profiles: ["coding"],
+              policyGroups: ["group:sessions", "group:openclaw"],
+            },
+          },
+        }),
+      });
+      const tools = resolvePluginTools(
+        createResolveToolsParams({ context, toolAllowlist: [group] }),
+      );
+      expectResolvedToolNames(tools, ["repository_publish"]);
+      expect(factory).toHaveBeenCalledTimes(1);
+      expect(getPluginToolMeta(expectDefined(tools[0], "repository tool"))?.policyGroups).toEqual([
+        "group:sessions",
+        "group:openclaw",
+      ]);
+    },
+  );
 
   it.each(["default", "allowlist", "changing-auth"] as const)(
     "reprojects manifest-optional sibling availability and metadata: %s",

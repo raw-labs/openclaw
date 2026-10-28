@@ -47,10 +47,14 @@ export type OpenClawPluginToolOptions = Pick<
   | "sandboxed"
   | "allowGatewaySubagentBinding"
   | "toolBindings"
+  | "inheritToolPolicy"
   | "sandbox"
   | "abortSignal"
   | "pluginExecutionSkillsSnapshot"
   | "pluginExecutionAuthority"
+  | "githubPublicationAvailable"
+  | "sessionControlAuthority"
+  | "onYield"
 > & { activeProjectKeys?: readonly string[]; approvalReviewerDeviceId?: string };
 
 export function resolveOpenClawPluginToolInputs(params: {
@@ -111,6 +115,7 @@ export function resolveOpenClawPluginToolInputs(params: {
           ? [options.approvalReviewerDeviceId]
           : undefined,
       toolBindings: options?.toolBindings,
+      inheritToolPolicy: options?.inheritToolPolicy,
       activeProjectKeys: options?.activeProjectKeys,
       conversationRecall: options?.conversationRecall,
       activeModel,

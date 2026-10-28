@@ -548,6 +548,7 @@ describe("chat sidebar region", () => {
         actions: new Map(),
         replacements: new Map(),
         accessories: new Map(),
+        textReferences: new Map(),
         widgets: new Map(),
       },
       selections: new Map(),

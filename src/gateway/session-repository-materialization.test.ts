@@ -21,6 +21,7 @@ import * as sessionEntries from "../config/sessions/session-accessor.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { createRepositorySourceFixture } from "../plugins/repository-source.test-support.js";
 import * as cloneRuntime from "../projects/project-clone-runtime.js";
 import { ProjectCloneError } from "../projects/project-clone-runtime.js";
 import * as projectCloning from "../projects/project-clone.js";
@@ -264,6 +265,7 @@ it.each([
 
 it.each([
   "enterprise",
+  "plugin",
   "revoked",
   "postcommit failure",
   "publication unavailable",
@@ -300,8 +302,24 @@ it.each([
     await git(source, ["add", "."]);
     await git(source, ["commit", "-m", "base"]);
     const baseCommit = await git(source, ["rev-parse", "HEAD"]);
-    const url = `https://${outcome === "enterprise" ? "ghe.example.test" : "github.com"}/openclaw/materialization-fixture.git`;
-    await registerClonedProjectRegistry({ path: source, name: "Fixture", originUrl: url });
+    const url = `https://${outcome === "plugin" ? "code.example.test" : outcome === "enterprise" ? "ghe.example.test" : "github.com"}/openclaw/materialization-fixture.git`;
+    const project = await registerClonedProjectRegistry({
+      path: source,
+      name: "Fixture",
+      originUrl: url,
+    });
+    const pluginSource =
+      outcome === "plugin"
+        ? createRepositorySourceFixture({
+            id: "repositories",
+            resolve: (candidate) => (candidate === url ? { url, name: "Fixture" } : undefined),
+            async prepare(input) {
+              expect(input.requiredCommit).toBe(baseCommit);
+              input.assertCurrent();
+              return { project, assertCurrent: input.assertCurrent, refresh: async () => {} };
+            },
+          })
+        : undefined;
     const base = await captureWorkspaceManifest({ root: source, baseCommit });
     const remote = state.path("remote");
     await exec("git", ["clone", "--", source, remote]);
@@ -314,7 +332,7 @@ it.each([
     const current = await captureWorkspaceManifest({ root: remote, baseCommit });
     const publicationStagingRoot = state.path("publication-snapshot");
     const publicationDigest =
-      outcome === "publication unavailable"
+      outcome === "publication unavailable" || outcome === "plugin"
         ? undefined
         : (
             await exec(process.execPath, [
@@ -368,7 +386,11 @@ it.each([
     const readEntry = () =>
       owner ? owner.readSession(scope.sessionKey, authority)?.entry : loadSessionEntry(scope);
     try {
-      const entry = { sessionId, repositoryWorkspaceId: repository.workspaceId };
+      const entry = {
+        sessionId,
+        repositoryWorkspaceId: repository.workspaceId,
+        ...(pluginSource ? { repositorySourceId: pluginSource.id } : {}),
+      };
       if (actor) {
         const created = await actor.storage!.mutate(
           {
@@ -404,12 +426,14 @@ it.each([
           },
         );
       }
-      const operation = materializeSessionRepositoryWorkspaceOnGateway({
-        ...scope,
-        cfg,
-        sessionId,
-        assertCurrent,
-      });
+      const materialize = () =>
+        materializeSessionRepositoryWorkspaceOnGateway({
+          ...scope,
+          cfg,
+          sessionId,
+          assertCurrent,
+        });
+      const operation = pluginSource ? pluginSource.run(materialize) : materialize();
       if (outcome === "revoked") {
         await expect(operation).rejects.toThrow("move authority revoked");
         expect(readEntry()?.repositoryWorkspaceId).toBe(repository.workspaceId);
@@ -421,6 +445,10 @@ it.each([
           await operation;
         }
         const materialized = readEntry()!;
+        expect(materialized.repositorySourceId).toBe(pluginSource?.id);
+        if (pluginSource) {
+          expect(repositoryGitHubIdentity.prepareRepositoryGitHubIdentity).not.toHaveBeenCalled();
+        }
         const worktree = (await managedWorktrees.findLiveByOwner("session", scope.sessionKey))!;
         expect(materialized.repositoryWorkspaceId).toBeUndefined();
         expect(worktree.baseRef).toBe(outcome === "requested topic" ? "topic" : "HEAD");

@@ -42,7 +42,9 @@ export async function materializeSessionRepositoryWorkspaceOnGateway(params: {
   const initial = await retainGatewaySessionEntryReadOnly(
     params.sessionKey,
     params.agentId,
-    (previous, current) => previous.repositoryWorkspaceId === current.repositoryWorkspaceId,
+    (previous, current) =>
+      previous.repositoryWorkspaceId === current.repositoryWorkspaceId &&
+      previous.repositorySourceId === current.repositorySourceId,
     params.cfg,
   );
   try {
@@ -78,6 +80,25 @@ async function materializeCapturedRepositoryWorkspace(
     !repository.baseCommit
   ) {
     throw new Error("Repository workspace has no pinned source; retry its cloud preparation");
+  }
+  if (initial.entry.repositorySourceId) {
+    return (
+      await import("./session-repository-source-materialization.js")
+    ).materializePluginRepositoryWorkspace({
+      ...params,
+      initial,
+      repository,
+      repositorySourceId: initial.entry.repositorySourceId,
+      assertRepositoryCurrent: () => {
+        assertEntryCurrent();
+        preparedRepository.assertSourceCurrent();
+        if (preparedRepository.current()?.revision !== repository.revision) {
+          throw new Error(
+            "Repository workspace changed during Gateway materialization; retry move",
+          );
+        }
+      },
+    });
   }
   const githubHost = resolveConfiguredGitHubHost(params.cfg);
   const remote = parseGitHubRemoteUrl(repository.url, githubHost);

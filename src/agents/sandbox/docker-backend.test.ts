@@ -4,6 +4,12 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import {
+  activateDisabledExecutionExclusions,
+  createExecutionEnvironmentFixture,
+} from "../../plugins/execution-environment.test-support.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
+import { prepareSandboxExecutionEnvironment } from "../execution-environment.js";
 import { managedGitHubIdentityEnvironment } from "../github-tool-identity-env.js";
 import type { CreateSandboxBackendParams, SandboxBackendHandle } from "./backend.types.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
@@ -91,6 +97,90 @@ async function createDockerExecBackend() {
   provision();
   return createDockerSandboxBackend(backendParams({ scopeKey, readOnlyResourceMounts }));
 }
+
+it.each(["docker", "podman"] as const)(
+  "%s applies plugin launch adapters without staging inherited credentials",
+  async (engine) => {
+    provision();
+    const plugin = createExecutionEnvironmentFixture({
+      id: "container",
+      prepare: () => ({ credentialScrubEnv: {}, localIdentityEnv: {}, excludedStoreNames: [] }),
+      prepareSandbox: async () => ({
+        credentialScrubEnv: { EXAMPLE_CREDENTIAL: "" },
+        localIdentityEnv: { EXAMPLE_IDENTITY: "selected" },
+        readOnlyResourceMounts: [],
+        inheritedEnvironmentNames: ["EXAMPLE_CREDENTIAL"],
+        wrapLocalLaunch: (argv) => ["example-private-launch", ...argv],
+      }),
+    });
+    const environment = await prepareSandboxExecutionEnvironment(
+      { config: {}, agentId: "main", backend: engine, scope: "agent", assertCurrent() {} },
+      plugin.registry,
+    );
+    const createBackend =
+      engine === "docker" ? createDockerSandboxBackend : createPodmanSandboxBackend;
+    const backend = await createBackend(
+      backendParams({ cfg: resolveSandboxConfigForAgent(createConfig(engine, false)) }),
+      undefined,
+      undefined,
+      environment,
+    );
+    const spec = await backend.buildExecSpec({
+      command: "printf reviewed-command",
+      env: { EXAMPLE_IDENTITY: "request", EXAMPLE_CREDENTIAL: "request-credential" },
+      usePty: false,
+    });
+    try {
+      expect(spec.argv[0]).toBe("example-private-launch");
+      expect(spec.argv).toContain("EXAMPLE_CREDENTIAL");
+      const staged = fs.readFileSync(envFile(spec), "utf8");
+      assertStaged(staged, { EXAMPLE_IDENTITY: "selected", EXAMPLE_CREDENTIAL: "" });
+      expect(staged).not.toContain("request-credential");
+      spec.assertCurrent?.();
+      await plugin.instance.dispose();
+      expect(() => spec.assertCurrent?.()).toThrow("reloaded or disabled");
+    } finally {
+      await finalize(backend, spec.finalizeToken);
+    }
+  },
+);
+
+it("scrubs exclusion-only container and transport environments without a provider", async () => {
+  provision();
+  await activateDisabledExecutionExclusions(createConfig("docker", false));
+  const environment = await prepareSandboxExecutionEnvironment(
+    { config: {}, agentId: "main", backend: "docker", scope: "agent", assertCurrent() {} },
+    undefined,
+    undefined,
+    getActiveSecretsRuntimeConfigSnapshot()?.executionEnvironmentExclusions,
+  );
+  const backend = await createDockerSandboxBackend(
+    backendParams(),
+    undefined,
+    undefined,
+    environment,
+  );
+  const spec = await backend.buildExecSpec({
+    command: "printf reviewed-command",
+    env: {
+      EXECUTION_EXCLUDED_VALUE: "synthetic-inherited-value",
+      EXECUTION_EXCLUDED_STORED: "synthetic-stored-value",
+      EXAMPLE_ALLOWED_VALUE: "visible",
+    },
+    usePty: false,
+  });
+  try {
+    assertStaged(fs.readFileSync(envFile(spec), "utf8"), {
+      EXECUTION_EXCLUDED_VALUE: "",
+      EXECUTION_EXCLUDED_STORED: "",
+      EXAMPLE_ALLOWED_VALUE: "visible",
+    });
+    expect(spec.env.EXECUTION_EXCLUDED_VALUE).toBe("");
+    expect(spec.env.EXECUTION_EXCLUDED_STORED).toBe("");
+  } finally {
+    await finalize(backend, spec.finalizeToken);
+  }
+});
 
 const finalize = (backend: SandboxBackendHandle, token: unknown) =>
   backend.finalizeExec?.({ ...completed, token });

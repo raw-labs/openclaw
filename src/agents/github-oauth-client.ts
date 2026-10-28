@@ -5,8 +5,11 @@ import { readResponseWithLimit } from "../infra/http-body.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
 import { registerSecretValueForRedaction } from "../logging/secret-redaction-registry.js";
 import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
+import type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 import type { GitHubToolAccount } from "./github-tool-account.js";
+
+export type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";
@@ -54,15 +57,6 @@ type GitHubOAuthDeviceAuthorization = {
   verificationUri: typeof GITHUB_OAUTH_VERIFICATION_URL;
   expiresInSeconds: number;
   intervalSeconds: number;
-};
-
-export type GitHubOAuthTokenPair = {
-  accessToken: string;
-  tokenType: "bearer";
-  scopes: string[];
-  expiresInSeconds: number;
-  refreshToken: string;
-  refreshTokenExpiresInSeconds: number;
 };
 
 const GITHUB_OAUTH_ERROR_CODES = [

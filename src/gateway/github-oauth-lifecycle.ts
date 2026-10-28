@@ -4,34 +4,17 @@ import type {
   ToolsGitHubAuthorizePollResult,
   ToolsGitHubAuthorizeStartResult,
 } from "../../packages/gateway-protocol/src/index.js";
-import {
-  captureAgentLifecycleBinding,
-  matchesAgentLifecycleBindingAsync,
-} from "../agents/agent-lifecycle-registry.js";
 import { resolveAgentConfig } from "../agents/agent-scope.js";
 import {
   clearGitHubCredentialVerificationCache,
   refreshGitHubOAuthToken,
   type GitHubOAuthTokenPair,
 } from "../agents/github-oauth-client.js";
-import {
-  createGitHubOAuthRecord,
-  deleteGitHubDeviceAuthorizationRecord,
-  deleteGitHubOAuthRecord,
-  inspectGitHubOAuthRecord,
-  listGitHubDeviceAuthorizationRecords,
-  readGitHubDeviceAuthorizationRecord,
-  type GitHubDeviceAuthorizationRecord,
-  type GitHubIdentityScope,
-  type GitHubOAuthRecord,
-  writeGitHubDeviceAuthorizationRecord,
-  writeGitHubOAuthRecord,
+import type {
+  GitHubDeviceAuthorizationRecord,
+  GitHubIdentityScope,
+  GitHubOAuthRecord,
 } from "../agents/github-oauth-records.js";
-import {
-  deleteGitHubDeviceAuthorizationRecordNative,
-  deleteGitHubOAuthRecordNative,
-  readGitHubDeviceAuthorizationRecordNative,
-} from "../agents/github-oauth-records.native.js";
 import { clearNativeGitHubTokenCache } from "../agents/github-read-identity.js";
 import type { GitHubToolAccount } from "../agents/github-tool-account.js";
 import {
@@ -44,7 +27,6 @@ import {
   resolveGitHubToolIdentityStatus,
   resolveManagedGitHubProfileDir,
 } from "../agents/github-tool-identity.js";
-import { registerRuntimeConfigWriteListener } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { formatErrorMessage } from "../infra/errors.js";
@@ -60,7 +42,6 @@ import {
   authorizationStillOwnedAsync,
   configuredOAuthIdentities,
   captureGitHubOAuthAuthorizationIdentity,
-  createGitHubOAuthInventoryReader,
   identityStillSelected,
   MAINTENANCE_INTERVAL_MS,
   nextGitHubOAuthMaintenanceAtMs,
@@ -69,6 +50,7 @@ import {
   SHUTDOWN_DRAIN_TIMEOUT_MS,
   type ConfiguredOAuthIdentity,
 } from "./github-oauth-lifecycle-helpers.js";
+import { createRepositoryOAuthStateHostV1 } from "./github-oauth-lifecycle-host.js";
 import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
 import { updateGitHubToolIdentityConfig } from "./github-tool-identity-config.js";
 
@@ -102,6 +84,14 @@ export function createGitHubOAuthLifecycle(params: {
   warn: (message: string) => void;
   scheduler: GatewayScheduler;
 }) {
+  const settlement = new AbortController();
+  const host = createRepositoryOAuthStateHostV1(settlement.signal);
+  const {
+    captureAgentLifecycleBinding,
+    matchesAgentLifecycleBindingAsync,
+    registerRuntimeConfigWriteListener,
+  } = host.authority;
+  const records = host.records;
   const personal = createPersonalGitHubOAuthLifecycle();
   const deviceController = new AbortController();
   const devicePolls = new Map<string, Promise<ToolsGitHubAuthorizePollResult>>();
@@ -116,7 +106,7 @@ export function createGitHubOAuthLifecycle(params: {
   let maintenanceScope: GatewaySchedulerScope | undefined;
   let stopping = false;
   let nextMaintenanceAtMs = Number.POSITIVE_INFINITY;
-  const oauthInventory = createGitHubOAuthInventoryReader(() => {
+  const oauthInventory = host.inventory.createReader(() => {
     scheduleMaintenance(Date.now() + MAINTENANCE_INTERVAL_MS);
   });
   const unsubscribeConfig = registerRuntimeConfigWriteListener(() => {
@@ -137,7 +127,7 @@ export function createGitHubOAuthLifecycle(params: {
 
   const queueDeviceCleanup = async (requestId: string) => {
     try {
-      await deleteGitHubDeviceAuthorizationRecord(requestId);
+      await records.deleteGitHubDeviceAuthorizationRecord(requestId);
       pendingCleanup.delete(requestId);
     } catch {
       pendingCleanup.add(requestId);
@@ -147,7 +137,7 @@ export function createGitHubOAuthLifecycle(params: {
   const queueOAuthCleanup = async (profileId: string) => {
     clearNativeGitHubTokenCache();
     try {
-      await deleteGitHubOAuthRecord(profileId);
+      await records.deleteGitHubOAuthRecord(profileId);
     } catch {
       // The failed deletion invalidates inventory for the next retry.
     }
@@ -195,7 +185,7 @@ export function createGitHubOAuthLifecycle(params: {
         token: tokens.accessToken,
         retainProfileOnCommitFailure: true,
         commitConfig: async (account) => {
-          const pending = await readGitHubDeviceAuthorizationRecord(record.requestId);
+          const pending = await records.readGitHubDeviceAuthorizationRecord(record.requestId);
           if (
             !pending ||
             pending.createdAtMs !== record.createdAtMs ||
@@ -215,7 +205,7 @@ export function createGitHubOAuthLifecycle(params: {
               ? { agentLifecycleBinding: record.agentLifecycleBinding }
               : {}),
           } as const;
-          const nextRecord = createGitHubOAuthRecord({
+          const nextRecord = records.createGitHubOAuthRecord({
             profileId,
             scope: record.scope,
             agentId: record.agentId,
@@ -224,7 +214,7 @@ export function createGitHubOAuthLifecycle(params: {
             now: Date.now(),
             pendingInitial,
           });
-          await writeGitHubOAuthRecord(nextRecord);
+          await records.writeGitHubOAuthRecord(nextRecord);
           initialRecord = nextRecord;
           const identity: GitHubToolIdentityConfig = {
             profileId,
@@ -245,12 +235,12 @@ export function createGitHubOAuthLifecycle(params: {
               ? { agentLifecycleBinding: record.agentLifecycleBinding }
               : {}),
           });
-          const inspected = await inspectGitHubOAuthRecord(profileId);
+          const inspected = await records.inspectGitHubOAuthRecord(profileId);
           if (inspected.state !== "valid" || !inspected.record.pendingInitial) {
             throw new Error("GitHub OAuth initial record is unavailable.");
           }
           const { pendingInitial: _pendingInitial, ...settledRecord } = inspected.record;
-          await writeGitHubOAuthRecord(settledRecord);
+          await records.writeGitHubOAuthRecord(settledRecord);
           initialRecord = settledRecord;
         },
       });
@@ -276,7 +266,7 @@ export function createGitHubOAuthLifecycle(params: {
           });
           if (persistedIdentity?.profileId === profileId && persistedIdentity.kind === "oauth") {
             if (initialRecord.pendingInitial) {
-              await writeGitHubOAuthRecord({ ...initialRecord, pendingInitial: undefined });
+              await records.writeGitHubOAuthRecord({ ...initialRecord, pendingInitial: undefined });
             }
             return await completeAuthorization(persistedConfig);
           }
@@ -300,7 +290,7 @@ export function createGitHubOAuthLifecycle(params: {
   };
 
   const pollOnce = async (requestId: string): Promise<ToolsGitHubAuthorizePollResult> => {
-    const record = await readGitHubDeviceAuthorizationRecord(requestId);
+    const record = await records.readGitHubDeviceAuthorizationRecord(requestId);
     const now = Date.now();
     if (!record || record.expiresAtMs <= now) {
       await queueDeviceCleanup(requestId);
@@ -311,7 +301,7 @@ export function createGitHubOAuthLifecycle(params: {
       return { status: "failed", reason: "identity_changed" };
     }
     const result = await pollGitHubDeviceFlow(record, deviceController.signal);
-    const currentRecord = await readGitHubDeviceAuthorizationRecord(requestId);
+    const currentRecord = await records.readGitHubDeviceAuthorizationRecord(requestId);
     if (!currentRecord) {
       return { status: "expired" };
     }
@@ -327,7 +317,7 @@ export function createGitHubOAuthLifecycle(params: {
       return await installDeviceTokens(currentRecord, result.tokens);
     }
     if (result.kind === "waiting") {
-      await writeGitHubDeviceAuthorizationRecord({
+      await records.writeGitHubDeviceAuthorizationRecord({
         ...currentRecord,
         pollIntervalMs: result.pollIntervalMs,
         nextPollAtMs: result.nextPollAtMs,
@@ -356,7 +346,7 @@ export function createGitHubOAuthLifecycle(params: {
       });
     } catch (error) {
       if (error instanceof GitHubAccountMismatchError) {
-        await writeGitHubOAuthRecord({
+        await records.writeGitHubOAuthRecord({
           ...record,
           pendingRefresh: undefined,
           refreshFailure: "expired",
@@ -364,7 +354,7 @@ export function createGitHubOAuthLifecycle(params: {
       }
       return;
     }
-    await writeGitHubOAuthRecord({
+    await records.writeGitHubOAuthRecord({
       ...record,
       login: account.login,
       pendingRefresh: undefined,
@@ -374,7 +364,7 @@ export function createGitHubOAuthLifecycle(params: {
 
   const refreshOne = async (configured: ConfiguredOAuthIdentity): Promise<void> => {
     const profileId = configured.identity.profileId;
-    const inspected = await inspectGitHubOAuthRecord(profileId);
+    const inspected = await records.inspectGitHubOAuthRecord(profileId);
     if (inspected.state !== "valid") {
       return;
     }
@@ -403,13 +393,13 @@ export function createGitHubOAuthLifecycle(params: {
       });
     } catch {
       if (!currentRecord.pendingRefresh) {
-        await writeGitHubOAuthRecord({ ...currentRecord, refreshFailure: "failed" });
+        await records.writeGitHubOAuthRecord({ ...currentRecord, refreshFailure: "failed" });
       }
       return;
     }
     if (refreshed.status === "error") {
       const refreshFailure = refreshed.code === "bad_refresh_token" ? "expired" : "failed";
-      await writeGitHubOAuthRecord({
+      await records.writeGitHubOAuthRecord({
         ...currentRecord,
         pendingRefresh: undefined,
         refreshFailure,
@@ -431,7 +421,7 @@ export function createGitHubOAuthLifecycle(params: {
       accessToken: refreshed.tokens.accessToken,
     });
     try {
-      await writeGitHubOAuthRecord(rotatedRecord);
+      await records.writeGitHubOAuthRecord(rotatedRecord);
     } catch {
       return;
     }
@@ -490,7 +480,7 @@ export function createGitHubOAuthLifecycle(params: {
           continue;
         }
         if (await pendingInitialOAuthIdentitySelected(persistedConfig, record)) {
-          await writeGitHubOAuthRecord({ ...record, pendingInitial: undefined });
+          await records.writeGitHubOAuthRecord({ ...record, pendingInitial: undefined });
           if (record.pendingInitial.expectedIdentity?.kind === "oauth") {
             await queueOAuthCleanup(record.pendingInitial.expectedIdentity.profileId);
           }
@@ -532,7 +522,7 @@ export function createGitHubOAuthLifecycle(params: {
       left.localeCompare(right),
     )) {
       try {
-        await writeGitHubOAuthRecord(pending.record);
+        await records.writeGitHubOAuthRecord(pending.record);
         pendingRefreshes.delete(profileId);
         await applyPendingRefresh(pending.record, pending.accessToken);
       } catch {
@@ -597,13 +587,13 @@ export function createGitHubOAuthLifecycle(params: {
       ) {
         throw new Error("GitHub identity changed while authorization was starting.");
       }
-      for (const existing of await listGitHubDeviceAuthorizationRecords()) {
+      for (const existing of await records.listGitHubDeviceAuthorizationRecords()) {
         if (existing.record?.scope === input.scope && existing.record.agentId === input.agentId) {
           await queueDeviceCleanup(existing.requestId);
         }
       }
       const requestId = `github-device-${randomBytes(16).toString("hex")}`;
-      await writeGitHubDeviceAuthorizationRecord({
+      await records.writeGitHubDeviceAuthorizationRecord({
         version: 1,
         requestId,
         ...authorization,
@@ -634,9 +624,9 @@ export function createGitHubOAuthLifecycle(params: {
       if (committingRequests.has(requestId)) {
         return false;
       }
-      const existed = readGitHubDeviceAuthorizationRecordNative(requestId) !== undefined;
+      const existed = records.readGitHubDeviceAuthorizationRecordNative(requestId) !== undefined;
       try {
-        deleteGitHubDeviceAuthorizationRecordNative(requestId);
+        records.deleteGitHubDeviceAuthorizationRecordNative(requestId);
         pendingCleanup.delete(requestId);
       } catch {
         pendingCleanup.add(requestId);
@@ -644,7 +634,7 @@ export function createGitHubOAuthLifecycle(params: {
       return existed;
     },
     cancelAuthorizationAsync: async (requestId: string): Promise<boolean> => {
-      const existed = (await readGitHubDeviceAuthorizationRecord(requestId)) !== undefined;
+      const existed = (await records.readGitHubDeviceAuthorizationRecord(requestId)) !== undefined;
       if (committingRequests.has(requestId)) {
         return false;
       }
@@ -661,7 +651,7 @@ export function createGitHubOAuthLifecycle(params: {
       });
       clearNativeGitHubTokenCache();
       try {
-        deleteGitHubOAuthRecordNative(profileId);
+        records.deleteGitHubOAuthRecordNative(profileId);
       } catch {
         // Orphan cleanup retries on its next scheduled scan.
       }
@@ -718,7 +708,10 @@ export function createGitHubOAuthLifecycle(params: {
         if (pendingRefreshes.size > 0) {
           await runMaintenance();
         }
-      })();
+      })().finally(() => {
+        // A timeout ends the caller's wait, not custody of an already-rotated token.
+        settlement.abort();
+      });
       await settlesWithin(drain, SHUTDOWN_DRAIN_TIMEOUT_MS);
     },
   };

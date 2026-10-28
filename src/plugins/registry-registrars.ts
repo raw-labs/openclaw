@@ -10,6 +10,7 @@ import { createProviderRegistrars } from "./registry-registrars-providers.js";
 import { createToolHookRegistrars } from "./registry-registrars-tools-hooks.js";
 import type { PluginRegistryState } from "./registry-state.js";
 import type { PluginRecord } from "./registry-types.js";
+import { createRepositorySourceRegistrar } from "./repository-source-registration.js";
 import { defaultSlotIdForKey, hasKind } from "./slots.js";
 import type { OpenClawPluginApi, PluginRegistrationMode } from "./types.js";
 
@@ -277,6 +278,7 @@ export function createPluginRegistrars(state: PluginRegistryState) {
     ...createNetworkRegistrars(state),
     ...providers,
     ...createOperationRegistrars(state),
+    registerRepositorySource: createRepositorySourceRegistrar(state),
     ...createHostRegistrars(state),
     registerMemoryCapability,
     registerMemoryPromptSupplement,

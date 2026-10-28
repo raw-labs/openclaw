@@ -13,6 +13,7 @@ export async function prepareHostExecSpawn(params: {
   env: Record<string, string>;
   pathPrepend?: string[];
   githubProfileDir?: string;
+  wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
   usePty: boolean;
 }) {
   const { shell, args: shellArgs } = getShellConfig();
@@ -46,13 +47,12 @@ export async function prepareHostExecSpawn(params: {
     env,
   });
   const shellArgv = [shell, ...shellArgs, commandWithShellSnapshot];
+  const nativeArgv = params.githubProfileDir
+    ? buildGitHubExecLaunchArgv(shellArgv, params.githubProfileDir, { githubHost: env.GH_HOST })
+    : shellArgv;
   return {
     mode: params.usePty ? ("pty" as const) : ("child" as const),
-    argv: params.githubProfileDir
-      ? buildGitHubExecLaunchArgv(shellArgv, params.githubProfileDir, {
-          githubHost: env.GH_HOST,
-        })
-      : shellArgv,
+    argv: params.wrapLocalLaunch ? [...params.wrapLocalLaunch(nativeArgv)] : nativeArgv,
     env,
     cwd: params.workdir,
     stdinMode: params.usePty ? ("pipe-open" as const) : ("pipe-closed" as const),
@@ -64,7 +64,10 @@ export function resolveExecLaunchEnv(
   env: NodeJS.ProcessEnv | undefined,
   sandboxed: boolean,
   grantEnv?: Record<string, string>,
+  credentialScrubEnv?: Readonly<Record<string, string>>,
 ): NodeJS.ProcessEnv | undefined {
   const launchEnv = env && !sandboxed ? omitGatewayCredentialEnv(env) : env;
-  return grantEnv ? { ...launchEnv, ...grantEnv } : launchEnv;
+  return (credentialScrubEnv && Object.keys(credentialScrubEnv).length > 0) || grantEnv
+    ? { ...launchEnv, ...credentialScrubEnv, ...grantEnv }
+    : launchEnv;
 }

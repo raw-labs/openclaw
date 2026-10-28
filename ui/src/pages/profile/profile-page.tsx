@@ -38,6 +38,7 @@ import { useApplication } from "../../lib/reactive/context.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
 import { assertUploadsEnabled } from "../../lib/uploads.ts";
+import { ControlUiSettingsSlot } from "../../plugins/control-ui-settings-slot.solid.tsx";
 import "../../styles/profile.css";
 import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import { processProfileAvatar, ProfileAvatarError } from "./avatar-processing.ts";
@@ -573,6 +574,7 @@ export function ProfilePage() {
               }
             />
             <GitHubConnections />
+            <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />
             <SettingsGroup>
               <SettingsNavRow
                 title={t("profilePage.usageStatistics")}

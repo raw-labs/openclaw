@@ -68,6 +68,7 @@ type ChatMobileActivities = {
     "executionConfirmed" | "hidden" | "onOpen"
   >;
   onOpenProgress?: NonNullable<ChatActivityPillsProps["progress"]>["onOpen"];
+  onOpenDetailsPage?: NonNullable<ChatActivityPillsProps["contributions"]>["onOpenDetailsPage"];
   onOpenPullRequest?: NonNullable<ChatActivityPillsProps["pullRequests"]>["onOpen"];
   /** Eligibility is decided by the publication owner, including retained outcomes. */
   publication?: {

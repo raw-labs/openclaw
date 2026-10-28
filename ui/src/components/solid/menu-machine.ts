@@ -63,6 +63,8 @@ export type MenuBinding = {
 
 export type MenuNavigationOptions = {
   ids?: MenuProps["ids"];
+  /** Resolve native containment before admitting an embedded independent menu. */
+  overlayParent?: () => Overlay | undefined;
   surface?: "menu" | "listbox";
   /** Searchable lists keep focus in their input while Zag moves the highlight. */
   focus?: "item" | "retain";
@@ -265,6 +267,9 @@ export function useMenuMachine(
     closeOnSelect: false,
     "aria-label": overlay.id,
     onOpenChange({ open }) {
+      if (open && options.overlayParent) {
+        overlay.setParent(options.overlayParent());
+      }
       // Keyboard entry must focus a submenu that pointer hover already opened.
       if (open && overlay.open && focusFromKeyboard) {
         focusItem(service.service);

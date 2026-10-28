@@ -1,7 +1,9 @@
 import type {
   ControlUiDisposer,
   ControlUiPlugin,
+  ControlUiPluginV2,
   ControlUiSettingsView,
+  ControlUiContributedSettingsView,
   ControlUiChannelSettingsView,
 } from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
@@ -42,6 +44,13 @@ export async function initializeControlUiPlugin(
   if (module.default?.id !== descriptor.pluginId || typeof module.default.activate !== "function") {
     throw new Error("Native UI entry must export its matching defineControlUiPlugin definition.");
   }
+  if (
+    module.default.apiVersion !== undefined &&
+    module.default.apiVersion !== 1 &&
+    module.default.apiVersion !== 2
+  ) {
+    throw new Error("This plugin UI requires an unsupported capability version.");
+  }
   const stop = await module.default.activate(complete.host);
   if (stop) {
     complete.disposers.add(stop);
@@ -55,9 +64,13 @@ export async function initializeControlUiPlugin(
 }
 
 export type ControlUiPluginModule = {
-  default?: ControlUiPlugin;
+  default?: ControlUiPlugin | ControlUiPluginV2;
   pluginId?: string;
-  settingsViews?: readonly (ControlUiSettingsView | ControlUiChannelSettingsView)[];
+  settingsViews?: readonly (
+    | ControlUiSettingsView
+    | ControlUiContributedSettingsView
+    | ControlUiChannelSettingsView
+  )[];
 };
 
 /** Both activation and packaged Settings presentations share one asset loader. */

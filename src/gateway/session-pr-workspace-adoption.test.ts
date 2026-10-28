@@ -25,6 +25,7 @@ import {
   upsertSessionEntryCore,
 } from "../config/sessions/session-accessor.js";
 import { projectPublicSessionEntry } from "../config/sessions/session-entry-projection.js";
+import { buildSessionCreationStamp } from "../config/sessions/session-entry-provenance.js";
 import { rewritePreparedTranscriptMessageAtAnchor } from "../config/sessions/session-message-rewrite.js";
 import { readSessionTranscriptAnchorsAsync } from "../config/sessions/session-transcript-anchor-read.js";
 import { waitForSessionTranscriptProjection } from "../config/sessions/session-transcript-reconcile.js";
@@ -34,21 +35,22 @@ import {
   retireSessionControllerInput,
 } from "../sessions/session-controller.mailbox.js";
 import { captureSessionTarget } from "../sessions/session-controller.target.js";
+import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
+import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import {
-  performSessionGitHubPreparation,
-  preparePullRequestSession,
-} from "./github-pr-workspace-preparation.js";
-import * as availability from "./github-publication-availability.js";
+import { preparePullRequestSession } from "./github-pr-workspace-preparation.js";
 import * as baseRefresh from "./github-publication-base-refresh.js";
-import * as inspect from "./github-publication-inspect.js";
-import * as preflight from "./github-publication-pr-preflight.js";
-import * as requester from "./github-publication-requester.js";
+import { createGitHubPublicationProvider } from "./github-publication-provider.js";
+import { createGitHubPublicationCoordinator } from "./github-publication.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { sessionsFilesHandlers } from "./server-methods/sessions-files.js";
+import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
+import { prepareGatewayConnectOperatorAccess } from "./server/ws-connection/connect-operator-access.js";
 import { adoptUnboundPullRequestWorkspace } from "./session-pr-workspace-adoption.js";
 import * as allocation from "./session-worktree-preparation.js";
+import { createWorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -431,8 +433,19 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
       sessionKey: "agent:main:adopt-handler",
       storePath: resolveSessionStorePathCore(undefined, { agentId: "main" }),
     };
+    const profile = await syncCanonicalGitHubIdentity({
+      identity: { accountId: 9, login: "guest" },
+      authenticationAlias: { kind: "email", email: "adoption@example.test" },
+    });
+    const catalog = await prepareUserProfileCatalog();
+    using catalogLifetime = { [Symbol.dispose]: () => catalog.release() };
+    void catalogLifetime;
     // Any earlier turn records a skills snapshot before the PR link arrives.
     await upsertSessionEntryCore(target, {
+      ...buildSessionCreationStamp({
+        via: "operator",
+        actor: { type: "human", source: "profile", id: profile.id },
+      }),
       sessionId: "adopt-handler",
       updatedAt: 1,
       sessionRoot: state.workspaceDir,
@@ -454,19 +467,28 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
     };
     // GitHub I/O and the container runtime stay synthetic; the handler, its session read,
     // allocation, binding, file-source checks and the PR association write are real.
-    vi.spyOn(requester, "prepareGitHubPublicationRequesterV2").mockResolvedValue({
-      requester: { assertCurrent() {} },
-      release() {},
-    } as never);
-    vi.spyOn(inspect, "inspectOwnGitHubPullRequest").mockResolvedValue({
-      result: pullRequest,
+    const provider = createGitHubPublicationProvider({
+      getConfig: () => cfg,
+      refreshIdentity: async () => {},
+      refreshPersonal: async () => {},
+      assertCurrent: () => {},
+      signal: new AbortController().signal,
+    });
+    vi.spyOn(provider, "inspectPullRequest").mockResolvedValue({
+      result: { ...pullRequest, author: { accountId: 9, login: "guest" }, state: "open" },
       assertCurrent() {},
-    } as never);
-    vi.spyOn(availability, "prepareCurrentGitHubPublicationIdentity").mockResolvedValue({
-      account: { accountId: 9 },
-    } as never);
-    vi.spyOn(availability, "matchesCurrentGitHubPublicationIdentity").mockReturnValue(true);
-    vi.spyOn(preflight, "assertExistingPullRequestWriteAccess").mockResolvedValue(undefined);
+      assertSource() {},
+      async verifyWriteAccess() {},
+    });
+    vi.spyOn(provider, "preparePublisher").mockResolvedValue({
+      provenance: { source: "system-detected", account: { accountId: 1, login: "fixture" } },
+      author: { name: "Guest", email: "guest@example.test" },
+      assertCurrent() {},
+      async refresh() {},
+      async authorizeGit() {
+        throw new Error("Source admission does not publish Git");
+      },
+    });
     vi.spyOn(sandboxContext, "resolveSandboxContext").mockImplementation(
       async (params) =>
         ({
@@ -492,7 +514,18 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
         review: { mode: "local", base: "b".repeat(40) },
       };
     });
+    const client = createOperatorWsClient({ scopes: ["operator.admin"] });
+    client.authenticatedUserProfile = {
+      profileId: profile.id,
+      displayName: null,
+      hasAvatar: false,
+      avatarRevision: "none",
+      updatedAt: 1,
+    };
+    prepareGatewayConnectOperatorAccess(client);
     const context = Object.assign(createDirectChatContext({ getRuntimeConfig: () => cfg }), {
+      getClientConnIds: (filter?: (candidate: typeof client) => boolean) =>
+        new Set(!filter || filter(client) ? [client.connId] : []),
       workerSessionPlacementService: {
         withWorkspaceExclusion: async () => {
           throw new Error("An unbound conversation reserves a new local workspace");
@@ -502,6 +535,11 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
           run: (assertOwned: () => void) => Promise<unknown>,
         ) => await run(() => {}),
       },
+    });
+    context.githubPublicationService = createGitHubPublicationCoordinator({
+      provider,
+      placements: createWorkerSessionPlacementStore({ database: openOpenClawStateDatabase() }),
+      getCommittedRuntimeConfig: () => cfg,
     });
     const sandbox = createSandboxTestContext({
       overrides: {
@@ -522,18 +560,22 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
           workspacePrAdoptionSessionId: "adopt-handler",
         },
         () =>
-          performSessionGitHubPreparation({
-            req: { type: "req", id: "prepare", method: "sessions.github.action" },
-            params: {
-              sessionKey: target.sessionKey,
-              action: "prepare_pr",
-              pullRequestUrl: pullRequest.url,
+          handleGatewayRequest({
+            req: {
+              type: "req",
+              id: "prepare",
+              method: "sessions.github.action",
+              params: {
+                sessionKey: target.sessionKey,
+                action: "prepare_pr",
+                pullRequestUrl: pullRequest.url,
+              },
             },
             context,
-            client: null,
+            client,
             isWebchatConnect: () => false,
             respond,
-          } as never),
+          }),
       );
       worktree = await managedWorktrees.findLiveByOwner("session", target.sessionKey);
       expect(respond).toHaveBeenCalledWith(

@@ -1,4 +1,4 @@
-import type { ControlUiPanel } from "../../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiPanelV2 as ControlUiPanel } from "../../../../src/plugin-sdk/control-ui.js";
 import type { IconName } from "../../components/solid/icon.tsx";
 import { t } from "../../i18n/index.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";

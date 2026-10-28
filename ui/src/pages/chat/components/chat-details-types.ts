@@ -4,6 +4,7 @@ import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../../../src/gateway/control-ui-contract.js";
+import type { ControlUiSessionHeaderFacts } from "../../../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import type { ChatSessionProgressProps } from "./chat-composer-types.ts";
@@ -89,6 +90,7 @@ export type ChatDetailsProps = ChatSessionProgressProps &
     | "personActivity"
     | "onScrollPortRef"
   > & {
+    sessionHeaderFacts?: ControlUiSessionHeaderFacts;
     desktopPresentation?: ChatDetailsDesktopPresentation;
     desktopDisclosures?: ChatDetailsDesktopDisclosures;
     environment?: ChatDetailsEnvironmentData;

@@ -1,7 +1,7 @@
 import type { ControlUiFocusBuildTarget } from "@openclaw/session-url-contract";
 import type { SessionObserverDigest } from "../../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { ControlUiSessionPullRequest } from "../../../../src/gateway/control-ui-contract.js";
-import type { ControlUiPanel } from "../../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiPanelV2 as ControlUiPanel } from "../../../../src/plugin-sdk/control-ui.js";
 import type { ControlUiLinkReaderDescriptor } from "../../../../src/shared/control-ui-link-reader.js";
 import type {
   BrowserTabSelection,

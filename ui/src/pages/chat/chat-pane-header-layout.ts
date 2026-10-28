@@ -1,6 +1,8 @@
 import { merge, type Element } from "solid-js";
+import type { ControlUiSessionHeaderFacts } from "../../../../src/plugin-sdk/control-ui.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
+import { isCloudWorkerPlacementState } from "../../components/session-row-badges.ts";
 import { t } from "../../i18n/index.ts";
 import { registerChatSessionEnglish } from "../../i18n/locales/en-chat-session.ts";
 import type { PresentationValue } from "../../lib/presentation.ts";
@@ -13,7 +15,9 @@ import {
 } from "./chat-history-branches.ts";
 import type { ChatMobileHost, MobileDetailsRoute } from "./chat-mobile-host.ts";
 import { ChatPaneBrowserAnnotationRender } from "./chat-pane-browser-annotation-render.ts";
+import type { ChatPaneConnectionScope } from "./chat-pane-shared.ts";
 import type { ChatPageHost } from "./chat-state-host.ts";
+import { selectedChatSessionRow } from "./chat-state-route.ts";
 import { listSubagents } from "./chat-subagent-wait.ts";
 import type { ChatProps } from "./chat-view.tsx";
 import type { ChatDetailsProps } from "./components/chat-details-types.ts";
@@ -27,6 +31,7 @@ import {
 } from "./components/chat-session-workspace-state.ts";
 import { resolveSessionDiffSidebarContent } from "./components/chat-session-workspace.ts";
 import type { SidebarPanelDefinition } from "./components/chat-sidebar-region-types.ts";
+import { hasAbortableSessionRun } from "./run-lifecycle.ts";
 import {
   sidebarActivePanel,
   sidebarMainPanel,
@@ -56,6 +61,38 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
     this.dashboardControls = action;
   };
 
+  protected captureSessionHeaderFacts(
+    state: ChatPageHost,
+    selectedSession: GatewaySessionRow | undefined,
+    readPublicationRow: () => ControlUiSessionHeaderFacts["session"],
+    publicationScope: ChatPaneConnectionScope | null,
+    sessionParticipationBlocked: boolean,
+    workspaceConflict: boolean,
+  ): ControlUiSessionHeaderFacts {
+    const placement = selectedSession?.placement;
+    const sessionHeaderFacts: ControlUiSessionHeaderFacts = {
+      session: readPublicationRow(),
+      participationBlocked: sessionParticipationBlocked,
+      hasActiveRun: hasAbortableSessionRun(state),
+      workspaceReady:
+        !isCloudWorkerPlacementState(placement?.state) ||
+        (Boolean(readPublicationRow()?.repositoryWorkspaceId) && placement?.state === "active"),
+      workspaceConflict,
+      readCurrent: () =>
+        publicationScope &&
+        this.isConnectionScopeCurrent(publicationScope) &&
+        this.state === state &&
+        selectedChatSessionRow(state) === selectedSession
+          ? {
+              ...sessionHeaderFacts,
+              session: readPublicationRow(),
+              hasActiveRun: hasAbortableSessionRun(state),
+            }
+          : undefined,
+    };
+    return sessionHeaderFacts;
+  }
+
   protected mobileChatActivities(
     state: ChatPageHost,
     selectedSession: GatewaySessionRow | undefined,
@@ -70,7 +107,12 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
             ? { backTo: { area: "details" as const } }
             : {}),
           page: {
-            key: details.kind === "pull-request" ? details.id : details.kind,
+            key:
+              details.kind === "contribution"
+                ? `${details.pluginId}:${details.id}`
+                : details.kind === "pull-request"
+                  ? details.id
+                  : details.kind,
             title: details.kind === "publication" ? t("chat.pullRequests.publishPr") : title,
             details,
           },
@@ -92,6 +134,8 @@ export abstract class ChatPaneHeaderLayout extends ChatPaneBrowserAnnotationRend
       },
       onOpenProgress: (source) =>
         openDetailsPage({ kind: "task-progress" }, t("sessionProgressCard.composerTitle"), source),
+      onOpenDetailsPage: (pluginId, page, source) =>
+        openDetailsPage({ kind: "contribution", pluginId, id: page.id }, page.title, source),
       onOpenPullRequest: (request) =>
         openDetailsPage({ kind: "pull-request", id: chatPullRequestId(request) }, request.title),
       publication: chatProps.githubPublication

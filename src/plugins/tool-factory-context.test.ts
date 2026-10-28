@@ -292,3 +292,35 @@ it.each(["allowed", "owner-close", "run-close", "plugin-close"] as const)(
     expect(effect).toHaveBeenCalledTimes(mode === "allowed" ? 1 : 0);
   },
 );
+
+it("rejects an authored yield-shaped result after its invocation closes", async () => {
+  let current = true;
+  const registration = register(
+    {
+      contextVersion: 2,
+      create: () => ({
+        ...probe(() => {}),
+        async execute() {
+          current = false;
+          return { content: [], details: { status: "started", async: true, yielded: true } };
+        },
+      }),
+    },
+    { assertInvocationCurrent: () => assert(current, "run closed") },
+  );
+  await expect(registration.tool().execute("authored-yield", {})).rejects.toThrow("run closed");
+});
+
+it("limits child policy declarations to the current plugin registration", () => {
+  const inherited = vi.fn();
+  const f = register(() => null, { context: { inheritToolPolicy: inherited } });
+  const declaration = probe(() => {});
+  f.context.inheritToolPolicy?.(declaration);
+  expect(inherited).toHaveBeenCalledExactlyOnceWith(declaration);
+  expect(() => f.context.inheritToolPolicy?.({ ...declaration, name: "another_tool" })).toThrow(
+    "undeclared tool",
+  );
+  markPluginRegistryRetired(f.registry);
+  expect(() => f.context.inheritToolPolicy?.(declaration)).toThrow("no longer active");
+  expect(inherited).toHaveBeenCalledOnce();
+});

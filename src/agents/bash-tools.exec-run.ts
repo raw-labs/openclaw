@@ -496,6 +496,8 @@ export function createExecTool(defaults?: ExecToolDefaults) {
           host === "gateway" && preparedRunEnvironment.managedLocalIdentity
             ? preparedRunEnvironment.localIdentityEnv.GH_CONFIG_DIR
             : undefined;
+        const wrapLocalLaunch =
+          host === "gateway" ? preparedRunEnvironment.wrapLocalLaunch : undefined;
 
         if (host === "gateway" && !bypassApprovals) {
           gatewayApproval = await processGatewayAllowlist({
@@ -503,6 +505,9 @@ export function createExecTool(defaults?: ExecToolDefaults) {
             workdir,
             secretEgressBindings,
             githubProfileDir,
+            wrapLocalLaunch,
+            assertExecutionEnvironmentCurrent: preparedRunEnvironment.assertCurrent,
+            transportCredentialScrubEnv: preparedRunEnvironment.credentialScrubEnv,
             pathPrepend: defaultPathPrepend,
             pty: params.pty === true && !sandbox,
             safeBins,
@@ -554,6 +559,9 @@ export function createExecTool(defaults?: ExecToolDefaults) {
           env,
           secretEgressBindings,
           githubProfileDir,
+          wrapLocalLaunch,
+          assertExecutionEnvironmentCurrent: preparedRunEnvironment.assertCurrent,
+          transportCredentialScrubEnv: preparedRunEnvironment.credentialScrubEnv,
           pathPrepend: defaultPathPrepend,
           sandbox,
           containerWorkdir,

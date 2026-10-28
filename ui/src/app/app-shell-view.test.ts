@@ -4,7 +4,7 @@ import { createRouter, definePage } from "@openclaw/uirouter";
 import { render } from "@solidjs/testing-library";
 import { createComponent, createRoot, flush, onSettled } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
-import type { ControlUiHost, ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
 import { GatewayBrowserClient } from "../api/gateway.ts";
 import "../components/app-sidebar.tsx";
 import * as settingsSidebar from "../components/settings-sidebar-shell.tsx";
@@ -14,6 +14,7 @@ import "../plugins/control-ui-view.solid.tsx";
 import type { ChatRouteData } from "../pages/chat/session-route-data.ts";
 import type { ControlUiRegistration } from "../plugins/control-ui-capability.ts";
 import { setupSidebarTest } from "../test-helpers/app-sidebar-setup.ts";
+import { createTestControlUiPluginHost } from "../test-helpers/control-ui-plugin-host.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
 import { waitForSolid } from "../test-helpers/solid-settle.ts";
 import { equalShellRouteState, selectShellRouteState } from "./app-host-route-state.ts";
@@ -733,20 +734,11 @@ it("restores the delegated shell after a pending update and can select another w
   const { runtime, owner, view } = await mountShell();
   const shell = view.container.querySelector(".shell");
   const sidebar = view.container.querySelector("openclaw-app-sidebar");
-  const abort = new AbortController();
-  // This fixture delegates the built-in view without calling plugin services.
-  const host = {
-    signal: abort.signal,
-    sessions: {},
-    agents: {},
-    navigation: {},
-    ui: {},
-    components: {},
-  } as unknown as ControlUiHost;
+  const host = createTestControlUiPluginHost(runtime.context, "fixture");
   const replacement: ControlUiRegistration<ControlUiReplacement> = {
     key: "fixture/workspace",
     pluginId: "fixture",
-    signal: abort.signal,
+    signal: host.signal,
     host,
     value: {
       id: "workspace",

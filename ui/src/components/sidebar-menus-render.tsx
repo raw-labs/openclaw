@@ -32,10 +32,8 @@ import {
   runSessionNavigationAction,
 } from "../lib/sessions/session-menu-navigation.ts";
 import { showToast } from "../lib/toast.ts";
-import {
-  pluginSessionMenuActions,
-  runControlUiPluginAction,
-} from "../plugins/control-ui-actions.ts";
+import { createSessionMenuActionsProjection } from "../plugins/control-ui-action-observation.solid.ts";
+import { runControlUiPluginAction } from "../plugins/control-ui-actions.ts";
 import { renderSidebarAgentMenu as SidebarAgentMenu } from "./app-sidebar-agent-menu.tsx";
 import { renderSidebarIdentityMenu as SidebarIdentityMenu } from "./app-sidebar-identity-menu.tsx";
 import { SidebarDropdown, renderSidebarMenuAction } from "./app-sidebar-nav-menus.tsx";
@@ -468,6 +466,10 @@ export function renderSidebarSessionMenuForMenus(
       ? selection()
       : null,
   );
+  const pluginActions = createSessionMenuActionsProjection(() => ({
+    runtime: !batchRows() ? context()?.plugins : undefined,
+    session: !batchRows() ? currentPluginSession() : undefined,
+  }));
   const rows = createMemo(() => batchRows() ?? [session()]);
   const archiveAllowed = createMemo(() =>
     rows().every((row) => canArchiveSessionRow(row, mainKey())),
@@ -563,11 +565,7 @@ export function renderSidebarSessionMenuForMenus(
       groups={host.knownSessionGroups()}
       currentOwner={session().owner?.actor ?? null}
       work={batchRows() ? null : menus.sessionMenuWork}
-      pluginActions={
-        !batchRows() && context()?.plugins && currentPluginSession()
-          ? pluginSessionMenuActions(context()!.plugins, currentPluginSession()!)
-          : []
-      }
+      pluginActions={pluginActions()}
       onClose={() => {
         if (menus.sessionMenu === menu) {
           menus.closeSessionMenu();

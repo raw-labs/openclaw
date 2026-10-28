@@ -256,6 +256,8 @@ export function createAgentHarnessHostCapabilities(params: {
     sessionKey: attempt.sessionKey,
     sandboxAgentId: attempt.sandboxAgentId,
     installationTarget,
+    assertCurrent: assertActive,
+    signal: bindAbortSignal(attempt.abortSignal),
   });
   const skillUsagePaths = attempt.sandbox?.skillUsagePaths
     ? cloneSnapshot(attempt.sandbox.skillUsagePaths)
@@ -495,6 +497,7 @@ export function createAgentHarnessHostCapabilities(params: {
     ...bindHarnessTrajectory(attempt, assertActive, assertActive.assertScopeCurrent),
     preparedEnvironment: () => {
       assertActive();
+      preparedRunEnvironment.assertCurrent();
       return preparedRunEnvironment;
     },
     activeComputerContext: () => {

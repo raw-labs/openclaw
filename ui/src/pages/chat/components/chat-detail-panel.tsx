@@ -17,6 +17,7 @@ import {
   chatDetailPanelProperties,
   createFilePresentationActions,
   createFilePresentationState,
+  createFileTextReferences,
   renderFilePanelPresentation,
 } from "./chat-detail-file-presentation.ts";
 import { createFileCopy } from "./chat-file-copy.ts";
@@ -29,7 +30,6 @@ import type {
   FileSidebarContent,
   ChatDetailPanelContent,
   FileReaderDraftState,
-  FileReaderInteraction,
   FileReaderViewRequest,
 } from "./chat-sidebar-content-types.ts";
 import { buildRawContent, SidebarPanel, type SidebarPanelProps } from "./chat-sidebar-content.tsx";
@@ -40,6 +40,7 @@ registerEnglishCatalog(registerFilePreviewEnglish);
 
 function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
   const fileAttachment = createFileSessionAttachment(props);
+  const textReferences = createFileTextReferences(props, host);
   const gateways = nativeGatewaysCapability();
   const nativeGateways = gateways && projectOwner(gateways, (owner) => owner);
   let disposed = false;
@@ -83,6 +84,7 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
   let draftListener: ChatDetailPanelProps["onFileDraftChange"];
 
   const {
+    interact,
     syncFileEditor,
     restoreFileReadingPresentation,
     showRequestedReadingMode,
@@ -107,23 +109,12 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
     afterCommit,
     isConnected,
     invalidate,
-    interact,
     fileCopy,
     content: () => visibleContent,
     editor: () => fileEditor,
     editing: () => fileEditing,
     reloading: () => fileReloading,
   });
-
-  function interact(interaction: FileReaderInteraction) {
-    if (
-      visibleContent?.kind === "file" ||
-      visibleContent?.kind === "image" ||
-      visibleContent?.kind === "attachment"
-    ) {
-      props.onFileInteraction?.(visibleContent, interaction);
-    }
-  }
 
   function publishDraft() {
     const listener = props.onFileDraftChange;
@@ -646,6 +637,7 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanel) {
 
     t("common.loading");
     return renderFilePanelPresentation({
+      textReferences: textReferences(),
       fileAttachment: fileAttachment(),
       props,
       presentation,

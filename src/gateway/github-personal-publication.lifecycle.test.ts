@@ -38,7 +38,7 @@ import {
   personalPublicationAccount as account,
   preparePersonalPublicationFixtureAction,
 } from "./github-personal-publication.test-support.js";
-import { readLocalGitHubPublicationWorktreeOwner } from "./github-publication-availability.js";
+import { readAcceptedRepositoryPublicationWorktree } from "./github-publication-availability.js";
 
 function holdReceiptDeletion(afterPreparation?: () => Promise<void>) {
   const waiting = createDeferredCore();
@@ -135,7 +135,16 @@ describe("personal publication session lifecycle", () => {
 
   it("revokes captured publication authority after committed receipt cleanup", async () => {
     const { session, receipt } = await publishReceipt();
-    const owner = await readLocalGitHubPublicationWorktreeOwner(receipt!);
+    const owner = await readAcceptedRepositoryPublicationWorktree({
+      requestId: receipt!.request_id,
+      kind: "personal",
+      sessionId: receipt!.session_id,
+      sessionKey: receipt!.session_key,
+      agentId: receipt!.agent_id,
+      worktreeId: receipt!.worktree_id,
+      repositoryFingerprint: receipt!.repository_fingerprint,
+      branch: receipt!.branch,
+    });
     try {
       expect(() => owner.assertCurrent()).not.toThrow();
       const remove = await preparePersonalGitHubSessionReceiptDeletion({

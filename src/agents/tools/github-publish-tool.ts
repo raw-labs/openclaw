@@ -24,9 +24,9 @@ import { resolveReplyRunForCurrentSessionId } from "../../sessions/session-contr
 import { findSessionControllerOperationByRunId } from "../../sessions/session-controller.queries.js";
 import { bindAgentToolAvailability } from "../agent-tool-availability.js";
 import {
-  canPrepareGitHubPullRequest,
-  canRefreshGitHubPublicationBase,
-  canUploadGitHubPublicationEvidence,
+  canPrepareRepositoryWorkspace,
+  canRefreshWorkspacePublicationBase,
+  canReadWorkspaceArtifactSource,
 } from "../sandbox/github-publication.js";
 import type { SandboxContext } from "../sandbox/types.js";
 import { stringEnum } from "../schema/string-enum.js";
@@ -111,11 +111,11 @@ export function createGitHubPublishTool(
 ): AnyAgentTool {
   const publicationAvailable = options.publicationAvailable !== false;
   const actionsAvailable = options.actionsAvailable === true;
-  const prepareAvailable = canPrepareGitHubPullRequest(options.sandbox);
+  const prepareAvailable = canPrepareRepositoryWorkspace(options.sandbox);
   // An unbound sandboxed conversation prepares by yielding and adopting a managed workspace.
   const adopting = prepareAvailable && options.sandbox?.workspaceSource !== "managed-worktree";
-  const refreshBaseAvailable = canRefreshGitHubPublicationBase(options.sandbox);
-  const evidenceAvailable = canUploadGitHubPublicationEvidence(options.sandbox);
+  const refreshBaseAvailable = canRefreshWorkspacePublicationBase(options.sandbox);
+  const evidenceAvailable = canReadWorkspaceArtifactSource(options.sandbox);
   const workspaceActions = publicationWorkspaceActions.filter(
     (action) =>
       (action !== "prepare_pr" || prepareAvailable) &&

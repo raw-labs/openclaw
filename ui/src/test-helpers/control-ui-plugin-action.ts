@@ -1,15 +1,24 @@
 import { vi } from "vitest";
-import type { ControlUiAction, ControlUiHost } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiActionV2 as ControlUiAction,
+  ControlUiHostV2 as ControlUiHost,
+} from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
+import { createControlUiRequests } from "../plugins/control-ui-requests.ts";
 
 export function registerSessionPluginAction(
-  context: Pick<ApplicationContext, "plugins">,
+  context: Pick<ApplicationContext, "plugins" | "gateway">,
   action: ControlUiAction,
 ) {
   const lifetime = new AbortController();
   const open = vi.fn<ControlUiHost["sessions"]["open"]>();
   const host = {
     signal: lifetime.signal,
+    requests: createControlUiRequests({
+      current: () => context,
+      signal: lifetime.signal,
+      retain: (dispose) => dispose,
+    }),
     sessions: { open },
     agents: {},
     navigation: {},

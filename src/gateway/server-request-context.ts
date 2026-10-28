@@ -29,6 +29,8 @@ import { getHealthCache } from "./server/health-state.js";
 import { invalidateGatewayPolicyClient } from "./server/ws-policy-close.js";
 import { resolveSessionRequestTargets } from "./session-request-targets.js";
 import { bindSessionRowProjection } from "./session-row-projection-access.js";
+import { bindWorkspacePublicationHost } from "./workspace-publication-binding.js";
+import type { WorkspacePublicationHost } from "./workspace-publication-provider.js";
 
 type GatewayCoreRuntime = Awaited<ReturnType<typeof startGatewayCoreRuntime>>;
 
@@ -100,6 +102,8 @@ type GatewayRequestContextRuntime = Pick<
     | "workerPlacementControlAvailable"
     | "getAttachedGatewayMethodRegistry"
   > & {
+    repositorySources?: import("./repository-sources.js").RepositorySources;
+    workspacePublicationHost?: WorkspacePublicationHost;
     sessionObserver: NonNullable<GatewayRequestContext["sessionObserver"]>;
     sessionActivitySummaries?: GatewayRequestContext["sessionActivitySummaries"];
     channelAdmissionAudit?: GatewayRequestContext["channelAdmissionAudit"];
@@ -112,7 +116,7 @@ type GatewayRequestContextRuntime = Pick<
     connectionWork: Pick<GatewayCoreRuntime["connectionWork"], "track">;
     runtimeState: Pick<
       GatewayCoreRuntime["runtimeState"],
-      "cronState" | "controlUiSessionPullRequests" | "sessionViewerPresence"
+      "cronState" | "repositorySessions" | "sessionViewerPresence"
     > & {
       configReloader: Pick<
         GatewayCoreRuntime["runtimeState"]["configReloader"],
@@ -295,7 +299,9 @@ export function createGatewayRequestContext(
     get gatewayTlsFingerprint() {
       return runtime.gatewayTls.enabled ? runtime.gatewayTls.fingerprintSha256 : undefined;
     },
-    controlUiSessionPullRequests: runtimeState.controlUiSessionPullRequests,
+    get repositorySessions() {
+      return runtimeState.repositorySessions;
+    },
     sessionViewerPresence: runtimeState.sessionViewerPresence,
     sessionCompanion: runtime.sessionCompanion,
     sessionObserver,
@@ -531,9 +537,10 @@ export function createGatewayRequestContext(
     ...(runtime.workerPlacementControlAvailable
       ? { workerPlacementDispatchService: runtime.workerPlacementControlAvailable }
       : {}),
-    ...(runtime.githubPublicationService
-      ? { githubPublicationService: runtime.githubPublicationService }
-      : {}),
+    get githubPublicationService() {
+      return runtime.workspacePublicationHost?.coordinator ?? runtime.githubPublicationService;
+    },
+    repositorySources: runtime.repositorySources,
     terminalSessions: runtime.terminalSessions,
     agentRunSeq: runtime.agentRunSeq,
     chatRunState: runtime.chatRunState,
@@ -550,7 +557,7 @@ export function createGatewayRequestContext(
       runtime.toolEventRecipients.removeConnection(connId);
       sessionObserver.removeConnection(connId);
       // PR replace-sets share this websocket cleanup boundary with session events.
-      runtimeState.controlUiSessionPullRequests?.unsubscribe(connId);
+      runtimeState.repositorySessions?.presentation?.unsubscribe(connId);
       runtimeState.sessionViewerPresence?.unsubscribe(connId);
     },
     getSessionEventSubscriberConnIds: sessionEventSubscribers.getAll,
@@ -574,5 +581,8 @@ export function createGatewayRequestContext(
     broadcastVoiceWakeRoutingChanged: runtime.broadcastVoiceWakeRoutingChanged,
     unavailableGatewayMethods: runtime.unavailableGatewayMethods,
   };
+  if (runtime.workspacePublicationHost) {
+    bindWorkspacePublicationHost(context, runtime.workspacePublicationHost);
+  }
   return bindSessionRowProjection(context, runtime.getSessionRowProjection);
 }

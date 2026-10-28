@@ -27,8 +27,9 @@ function isAgentTool<T extends NamedTool>(tool: T): tool is T & AnyAgentTool {
 function filterTools<T extends NamedTool>(
   tools: readonly T[],
   toolsAllow?: string[],
-  toolMeta: (tool: T) => { pluginId: string } | undefined = (tool) =>
-    isAgentTool(tool) ? getPluginToolMeta(tool) : undefined,
+  toolMeta: (tool: T) => { pluginId: string; policyGroups?: readonly string[] } | undefined = (
+    tool,
+  ) => (isAgentTool(tool) ? getPluginToolMeta(tool) : undefined),
 ): T[] {
   return toolsAllow === undefined
     ? [...tools]

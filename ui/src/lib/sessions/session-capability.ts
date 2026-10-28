@@ -3,11 +3,11 @@ import type { GatewaySessionRow } from "../../api/types.ts";
 import type { BootRecord } from "../../app/boot-record.ts";
 import type { BootRoster } from "./session-boot-roster.ts";
 import type { createSessionDeletions } from "./session-deletions.ts";
-import type { createSessionGitHubPublication } from "./session-github-publication.ts";
 import type { createSessionGroupCatalog } from "./session-group-catalog.ts";
 import type { createSessionMutations } from "./session-mutations.ts";
 import type { createSessionPermissionProjection } from "./session-permission-projection.ts";
 import type { createSessionReconciliation } from "./session-reconciliation.ts";
+import type { createSessionRetainedOperations } from "./session-retained-operations.ts";
 import type { createSessionRosterRefresh } from "./session-roster-refresh.ts";
 import type { SessionRunTerminal } from "./session-run-terminal.ts";
 import type { createSessionScopedOperations } from "./session-scoped-operations.ts";
@@ -71,7 +71,7 @@ export type SessionCapability = Pick<
   Pick<ReturnType<typeof createSessionDeletions>, "delete" | "deleteMany" | "deletionState"> & {
     [K in SessionGroupMethod as `groups${Capitalize<K>}`]: SessionGroups[K];
   } & {
-    readonly githubPublication: Pick<ReturnType<typeof createSessionGitHubPublication>, "attach">;
+    readonly retainedOperations: Pick<ReturnType<typeof createSessionRetainedOperations>, "attach">;
     readonly state: SessionState;
     /** Broad observer outage, independent of query and operation errors. */
     readonly eventSubscriptionError: string | null;

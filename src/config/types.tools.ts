@@ -7,6 +7,7 @@ import type {
   ToolsSchema,
   ToolPolicySchema,
 } from "./zod-schema.agent-runtime.js";
+import type { GitHubToolIdentitySchema } from "./zod-schema.github-identity.js";
 type SchemaToolsConfig = NonNullable<z.input<typeof ToolsSchema>>;
 // The web security preprocess erases input inference; parsed output retains its optional authoring shape.
 type ParsedToolsConfig = NonNullable<z.output<typeof ToolsSchema>>;
@@ -114,7 +115,7 @@ export type ExecToolConfig = Omit<NonNullable<SchemaToolsConfig["exec"]>, "safeB
   safeBinProfiles?: Record<string, SafeBinProfileFixture>;
 };
 
-export type GitHubToolIdentityConfig = NonNullable<SchemaToolsConfig["github"]>;
+export type GitHubToolIdentityConfig = NonNullable<z.input<typeof GitHubToolIdentitySchema>>;
 
 export type AgentToolsConfig = Omit<
   NonNullable<z.input<typeof AgentEntrySchema>["tools"]>,

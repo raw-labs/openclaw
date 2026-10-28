@@ -374,7 +374,8 @@ export function createWorkerPlacementDispatchStartup(options: {
         if (project && "source" in project) {
           if (
             params.workspace.kind !== "repository" ||
-            project.source.url !== params.workspace.repository.url
+            project.source.url !== params.workspace.repository.url ||
+            project.source.repositorySourceId !== params.workspace.repositorySourceId
           ) {
             throw new Error("Prepared repository does not match this session's source");
           }
@@ -400,6 +401,7 @@ export function createWorkerPlacementDispatchStartup(options: {
             ? await syncSessionRepositoryWorkspace({
                 markPhase: params.markPhase,
                 repository: params.workspace.repository,
+                repositorySourceId: params.workspace.repositorySourceId,
                 preparedRepository,
                 tunnel,
                 sessionId: request.sessionId,

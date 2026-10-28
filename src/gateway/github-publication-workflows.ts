@@ -1,29 +1,10 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { getOrCreatePromise } from "../shared/lazy-promise.js";
-import { roleScopesAllow } from "../shared/operator-scope-compat.js";
-import {
-  GitHubPublicationKnownFailure,
-  GitHubPublicationWorkflowChangesError,
-} from "./github-publication-failure.js";
-import type { GitHubPublicationRequesterPolicy } from "./github-publication-requester.js";
-import type { GitHubRepositoryPublicationSnapshot } from "./github-repository-publication-snapshot.js";
+import { getOrCreatePromise } from "../plugin-sdk/lazy-runtime.js";
+import { NativeGitHubPublicationChangePermissionError as RepositoryPublicationChangePermissionError } from "../plugin-sdk/native-github-publication-host.js";
+import type { NativeGitHubPublicationObjectPlan as RepositoryPublicationObjectPlan } from "../plugin-sdk/native-github-publication-host.js";
+import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
+import { GitHubPublicationKnownFailure } from "./github-publication-failure.js";
 
 const workflowDirectory = ".github/workflows/";
-
-export function assertGitHubPublicationWorkflowChangesAllowed(
-  requester: GitHubPublicationRequesterPolicy,
-): void {
-  requester.assertCurrent();
-  if (
-    !roleScopesAllow({
-      role: "operator",
-      requestedScopes: ["operator.write"],
-      allowedScopes: requester.snapshot.scopes,
-    })
-  ) {
-    throw new GitHubPublicationWorkflowChangesError();
-  }
-}
 
 export function isGitHubPublicationWorkflowPath(file: string): boolean {
   return (
@@ -40,7 +21,10 @@ export async function prepareGitHubPublicationWorkflowGuard(
   try {
     assertWorkflowChangesAllowed();
   } catch (error) {
-    if (!(error instanceof GitHubPublicationWorkflowChangesError) || (await hasWorkflowChanges())) {
+    if (
+      !(error instanceof RepositoryPublicationChangePermissionError) ||
+      (await hasWorkflowChanges())
+    ) {
       throw error;
     }
     return () => {};
@@ -86,7 +70,7 @@ function unavailableWorkflowTree() {
 
 /** Compare executable definitions before the accepted checkpoint creates any GitHub objects. */
 export async function hasRepositoryGitHubPublicationWorkflowChanges(params: {
-  snapshot: GitHubRepositoryPublicationSnapshot;
+  snapshot: Pick<RepositoryPublicationObjectPlan["snapshot"], "baseTree" | "entries">;
   sourceRepository: string;
   comparisonRepository: string;
   comparisonTree: string;

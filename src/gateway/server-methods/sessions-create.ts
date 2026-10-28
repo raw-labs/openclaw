@@ -56,10 +56,10 @@ import {
 } from "./session-create-initial-turn.js";
 import {
   normalizeSessionProjectGitUrl,
+  resolveSessionCreateProjectSelection,
   prepareSessionRepositoryWorkspace,
   resolveSessionRepositoryCreation,
   validateSessionProjectPreparation,
-  validateSessionWorktreeSelection,
 } from "./session-create-project.js";
 import {
   assertRequiredWorkerSessionCreateCurrent,
@@ -111,6 +111,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return;
     }
     const p = structuredClone(params);
+    const repositorySelection = resolveSessionCreateProjectSelection(p);
+    if (!repositorySelection.ok) {
+      respond(false, undefined, repositorySelection.error);
+      return;
+    }
     const requiredWorker = prepareRequiredWorkerSessionCreate(p, context.getRuntimeConfig());
     if (requiredWorker.error) {
       respond(false, undefined, requiredWorker.error);
@@ -124,11 +129,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       ? { ...client.internal.operatorRoleActor }
       : undefined;
     const emptyWorkspace = p.worktreeSource === "empty";
-    const worktreeSelectionError = validateSessionWorktreeSelection(p);
-    if (worktreeSelectionError) {
-      respond(false, undefined, worktreeSelectionError);
-      return;
-    }
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     const creation = resolveOperatorSessionCreation(client, { allowTrustedHint: true });
     if (p.surface && creation.via !== "operator") {
@@ -190,6 +190,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     // that committed session under its retained request and session authority.
     const deviceFolderAuthority: { assertCurrent?: () => void } = {};
     const commitGuard = () => {
+      repositorySelection.value?.assertCurrent();
       assertSessionCreateCurrent();
       if (agentCreated) {
         toolRequester?.assertCurrent?.();
@@ -322,6 +323,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       gitUrl: requestedProjectGitUrl,
       hasInitialTurn,
       projectId: requestedProjectId,
+      repositorySourceId: p.repositorySource,
     });
     if (projectPreparationError) {
       respond(false, undefined, projectPreparationError);
@@ -516,7 +518,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       fastMode: p.fastMode,
       projectId: requestedProjectId,
       deviceFolder,
-      pendingProjectGitUrl: normalizeSessionProjectGitUrl(requestedProjectGitUrl),
+      pendingProjectGitUrl: normalizeSessionProjectGitUrl(
+        requestedProjectGitUrl,
+        p.repositorySource,
+      ),
+      repositorySourceId: repositorySelection.value?.id,
       incognito: p.incognito,
       ...(client?.connect ? { requestingOperatorScopes: clientScopes } : {}),
       ...(requestingOperatorProfileId ? { requestingOperatorProfileId } : {}),

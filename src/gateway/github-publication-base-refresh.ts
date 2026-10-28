@@ -5,24 +5,25 @@ import path from "node:path";
 import { writeTextAtomic } from "@openclaw/fs-safe/atomic";
 import type { SessionGitHubBaseRefreshResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { prepareGitCoauthorAttribution } from "../agents/git-coauthor-attribution.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type { SandboxContext } from "../agents/sandbox/types.js";
 import { withWorktreeGitConfig } from "../agents/worktrees/checkout-git-config.js";
 import { resolveGitMetadataPath } from "../agents/worktrees/git.js";
-import { gitNullConfigPath } from "../infra/git-exec.js";
-import { currentGitHubPublicationConfig } from "./github-publication-availability.js";
+import { readRuntimeConfig as currentGitHubPublicationConfig } from "../config/runtime-snapshot.js";
+import { readRepositoryPublicationTargetFacts } from "./github-publication-availability.js";
 import {
   assertSafeGitPublicationWorkspace,
   captureSettledGitHubPublicationWorkspaceSnapshot,
   createGitHubPublicationCommandRunner,
-  readGitHubPublicationBaseSha,
   requireGitHubPublicationCommit,
 } from "./github-publication-git-transport.js";
-import { prepareGitHubPublicationTarget } from "./github-publication-target.js";
 import {
   prepareManagedWorkspaceReviewBase,
   readManagedSandboxGitState,
 } from "./github-publication-workspace-review.js";
+import type {
+  RepositoryPublicationProvider,
+  RepositoryPublicationPublisher,
+} from "./repository-publication-contract.js";
 import { prepareLocalWorkspaceCheckout } from "./worker-environments/local-workspace-checkout.js";
 import { withLocalWorkspaceProjection } from "./worker-environments/local-workspace-projection.js";
 import type { LocalWorkspaceOwner } from "./worker-environments/local-workspace-types.js";
@@ -42,7 +43,8 @@ import {
 /** The host owns merge ancestry; the projection owns only admitted source bytes. */
 type ManagedWorkspaceIntegrationParams = {
   owner: LocalWorkspaceOwner;
-  identity: PreparedGitHubPublicationIdentity;
+  provider: RepositoryPublicationProvider;
+  publisher: RepositoryPublicationPublisher;
   sandbox: SandboxContext;
   signal?: AbortSignal;
   assertCurrent: () => void;
@@ -72,7 +74,8 @@ export async function integrateManagedWorkspaceSource(
     };
   },
 ): Promise<SessionGitHubBaseRefreshResult> {
-  const { owner, identity, sandbox } = params;
+  const { owner, publisher, provider, sandbox } = params;
+  const identity = publisher.provenance;
   const action = params.source ? "prepare_pr" : "refresh_base";
   const reviewPreparationError = `Source integration is saved, but sandbox review-base preparation failed. Resolve any pending sandbox Git merge or index lock, then retry ${action} before tests and Auto Review.`;
   const attribution = await prepareGitCoauthorAttribution({
@@ -86,6 +89,8 @@ export async function integrateManagedWorkspaceSource(
     params.signal?.throwIfAborted();
     owner.assertCurrent();
     params.assertCurrent();
+    publisher.assertCurrent();
+    provider.assertCurrent();
     if (!attribution.isCurrent()) {
       throw new Error(`Contributor credit changed; retry ${action}.`);
     }
@@ -101,13 +106,19 @@ export async function integrateManagedWorkspaceSource(
   await assertSafeGitPublicationWorkspace(owner.worktree.path, run);
   const target = params.source
     ? {
+        pushRepository: params.source.repository,
         repository: params.source.repository,
+        branch: params.source.branch,
+        remoteUrl: `https://${params.source.githubHost}/${params.source.repository}.git`,
         baseBranch: params.source.branch,
-        githubHost: params.source.githubHost,
+        baseRemoteUrl: `https://${params.source.githubHost}/${params.source.repository}.git`,
       }
-    : await prepareGitHubPublicationTarget({
-        worktree: owner.worktree,
-        identity,
+    : await provider.prepareTarget({
+        ...(await readRepositoryPublicationTargetFacts({
+          worktree: owner.worktree,
+          assertCurrent,
+        })),
+        publisher,
         assertCurrent,
       });
   const initialImport = params.source?.initial === true;
@@ -163,10 +174,10 @@ export async function integrateManagedWorkspaceSource(
         async (policy) => {
           const cwd = owner.worktree.path;
           const env = {
-            GIT_AUTHOR_NAME: identity.account.login,
-            GIT_COMMITTER_NAME: identity.account.login,
-            GIT_AUTHOR_EMAIL: `${identity.account.accountId}+${identity.account.login}@users.noreply.github.com`,
-            GIT_COMMITTER_EMAIL: `${identity.account.accountId}+${identity.account.login}@users.noreply.github.com`,
+            GIT_AUTHOR_NAME: publisher.author.name,
+            GIT_COMMITTER_NAME: publisher.author.name,
+            GIT_AUTHOR_EMAIL: publisher.author.email,
+            GIT_COMMITTER_EMAIL: publisher.author.email,
           };
           const git = (args: string[], input?: string) =>
             policy.require(cwd, args, { env, input, beforeRun: check });
@@ -234,13 +245,7 @@ export async function integrateManagedWorkspaceSource(
             }
             baseCommit =
               params.source?.commit ??
-              (await readGitHubPublicationBaseSha(
-                run,
-                target.repository,
-                target.baseBranch,
-                target.githubHost,
-                identity.env,
-              ));
+              (await provider.readBase({ target, publisher, assertCurrent }));
           }
           const initialHead = await git(["rev-parse", "HEAD"]);
           const recoveredImport =
@@ -249,20 +254,16 @@ export async function integrateManagedWorkspaceSource(
             (continuingIntegration ||
               (initialHead === baseCommit && state.current().base_commit === baseCommit));
           const prepareContents = (commit: string, commitPresent: boolean) =>
-            requireGitHubPublicationCommit(
-              run,
-              target.repository,
-              commit,
-              target.githubHost,
+            requireGitHubPublicationCommit({
+              publisher,
+              remoteUrl: `https://${params.source?.githubHost ?? new URL(target.baseRemoteUrl).hostname}/${target.repository}.git`,
+              sha: commit,
               cwd,
-              {
-                ...identity.env,
-                GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-                GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-              },
-              `The selected repository base contents could not be fetched; retry ${action}.`,
-              { contents: true, commitPresent },
-            );
+              assertCurrent,
+              failure: `The selected repository base contents could not be fetched; retry ${action}.`,
+              contents: true,
+              commitPresent,
+            });
           await prepareContents(baseCommit, continuingIntegration);
           if (initialImport && !recoveredImport) {
             const source = params.source!;
@@ -291,19 +292,14 @@ export async function integrateManagedWorkspaceSource(
                 throw new Error(pristineError);
               }
             } else {
-              await requireGitHubPublicationCommit(
-                run,
-                source.review.repository,
-                source.review.commit,
-                target.githubHost,
+              await requireGitHubPublicationCommit({
+                publisher,
+                remoteUrl: `https://${params.source?.githubHost ?? new URL(target.baseRemoteUrl).hostname}/${source.review.repository}.git`,
+                sha: source.review.commit,
                 cwd,
-                {
-                  ...identity.env,
-                  GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-                  GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-                },
-                `The selected PR base ancestry could not be fetched; retry ${action}.`,
-              );
+                assertCurrent,
+                failure: `The selected PR base ancestry could not be fetched; retry ${action}.`,
+              });
               const fromBase = await probe([
                 "merge-base",
                 "--is-ancestor",
@@ -619,20 +615,15 @@ export async function integrateManagedWorkspaceSource(
   let reviewCommit = result.baseCommit;
   if (params.source) {
     const source = params.source;
-    await requireGitHubPublicationCommit(
-      run,
-      params.source.review.repository,
-      params.source.review.commit,
-      target.githubHost,
-      owner.worktree.path,
-      {
-        ...identity.env,
-        GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-        GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-      },
-      reviewPreparationError,
-      { contents: true },
-    );
+    await requireGitHubPublicationCommit({
+      publisher,
+      remoteUrl: `https://${params.source?.githubHost ?? new URL(target.baseRemoteUrl).hostname}/${params.source.review.repository}.git`,
+      sha: params.source.review.commit,
+      cwd: owner.worktree.path,
+      assertCurrent,
+      failure: reviewPreparationError,
+      contents: true,
+    });
     // Importing an older PR head does not merge the current base tip into its files.
     // Review its changes from their common ancestor, not as deletions of newer base work.
     reviewCommit = await withWorktreeGitConfig(
@@ -644,20 +635,16 @@ export async function integrateManagedWorkspaceSource(
           beforeRun: assertCurrent,
         }),
     );
-    await requireGitHubPublicationCommit(
-      run,
-      params.source.review.repository,
-      reviewCommit,
-      target.githubHost,
-      owner.worktree.path,
-      {
-        ...identity.env,
-        GIT_CONFIG_GLOBAL: gitNullConfigPath(),
-        GIT_CONFIG_SYSTEM: gitNullConfigPath(),
-      },
-      reviewPreparationError,
-      { contents: true, commitPresent: true },
-    );
+    await requireGitHubPublicationCommit({
+      publisher,
+      remoteUrl: `https://${params.source?.githubHost ?? new URL(target.baseRemoteUrl).hostname}/${params.source.review.repository}.git`,
+      sha: reviewCommit,
+      cwd: owner.worktree.path,
+      assertCurrent,
+      failure: reviewPreparationError,
+      contents: true,
+      commitPresent: true,
+    });
   }
   return {
     ...result,

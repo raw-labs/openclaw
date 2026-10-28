@@ -1,11 +1,16 @@
 import { createRoot, onCleanup } from "solid-js";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
-import type { ControlUiHost, ControlUiNavigationItem } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiHostV2 as ControlUiHost,
+  ControlUiNavigationItem,
+} from "../../../src/plugin-sdk/control-ui.js";
+import { bootstrapApplication } from "../app/bootstrap.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { iconData } from "../components/icon-data.ts";
 import type { SidebarMenusOwner } from "../components/sidebar-menus-types.ts";
 import { createSidebarMenus } from "../components/sidebar-menus.tsx";
 import { createApplicationContextProvider } from "../test-helpers/application-context.ts";
+import { createTestControlUiPluginHost } from "../test-helpers/control-ui-plugin-host.ts";
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { flush, waitForSolid } from "../test-helpers/solid-settle.ts";
 import type { ControlUiRegistration } from "./control-ui-capability.ts";
@@ -16,19 +21,28 @@ const pointer = (init: MouseEventInit = {}) =>
   new MouseEvent("contextmenu", { bubbles: true, cancelable: true, ...init });
 const keyboard = (key: string, init: KeyboardEventInit = {}) =>
   new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, ...init });
-const registrations =
-  (navigation: Partial<ControlUiHost["navigation"]>, signal = new AbortController().signal) =>
-  (
+function registrations(
+  navigation: Partial<ControlUiHost["navigation"]>,
+  signal = new AbortController().signal,
+) {
+  const application = bootstrapApplication();
+  onTestFinished(() => application.stop());
+  return (
     id: string,
     value: Partial<ControlUiNavigationItem> = {},
     pluginId = "example",
-  ): ControlUiRegistration<ControlUiNavigationItem> => ({
-    key: `${pluginId}/${id}`,
-    pluginId,
-    signal,
-    host: { navigation } as unknown as ControlUiHost,
-    value: { id, label: id, page: { id: "boards" }, ...value },
-  });
+  ): ControlUiRegistration<ControlUiNavigationItem> => {
+    const host = createTestControlUiPluginHost(application.context, pluginId);
+    Object.assign(host.navigation, navigation);
+    return {
+      key: `${pluginId}/${id}`,
+      pluginId,
+      signal,
+      host,
+      value: { id, label: id, page: { id: "boards" }, ...value },
+    };
+  };
+}
 const contribution = (key: string) =>
   Object.assign(document.createElement("openclaw-plugin-contributions"), {
     kind: "navigation",

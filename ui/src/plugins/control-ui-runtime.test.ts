@@ -1,8 +1,10 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { createEffect, createRoot, flush } from "solid-js";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type { PluginsControlUiCatalog } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import { CONTROL_UI_BOOTSTRAP_CONFIG_ATTRIBUTE } from "../../../src/gateway/control-ui-bootstrap-contract.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { GatewayRequestError } from "../api/gateway.ts";
+import type { GatewaySessionRow } from "../api/types.ts";
 import { createApplicationConfigCapability } from "../app/config.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import {
@@ -11,11 +13,17 @@ import {
   GATEWAY_STORE_TEST_HELLO,
   stubGatewayStoreTestGlobals,
 } from "../app/gateway-store.test-support.ts";
+import {
+  observeSessionMenuActions,
+  pluginSessionMenuActions,
+  runControlUiPluginAction,
+} from "./control-ui-actions.ts";
 import { controlUiPluginAssetUrls } from "./control-ui-assets.ts";
 import type { ControlUiPluginDistribution } from "./control-ui-distribution.ts";
 import { createControlUiPluginHost } from "./control-ui-host.ts";
 import * as controlUiLoader from "./control-ui-loader.ts";
 import { ControlUiPluginRuntime } from "./control-ui-runtime.ts";
+import { createTextReferenceProjection } from "./control-ui-text-references.solid.ts";
 
 vi.spyOn(controlUiLoader, "initializeControlUiPlugin").mockResolvedValue(undefined);
 const packaged = vi.hoisted(() => [] as ControlUiPluginDistribution[]);
@@ -690,5 +698,241 @@ it.each(["plugins.changed", "plugins.controlUi.changed"] as const)(
       runtime.dispose();
       gateway.stop();
     }
+  },
+);
+
+it("bounds action observations and effect authority to live registrations", async () => {
+  let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
+  const context = connectedContext(
+    {
+      gatewayUrl: localGateway(),
+      request: async (method) =>
+        method === "plugins.controlUi.list" ? catalog(descriptors) : { ok: true },
+    },
+    configForRuntime(),
+  );
+  let available = false;
+  let announce = () => {};
+  let interests = 0;
+  let withdraw = () => {};
+  let withdrawDuringResolve = false;
+  let withdrawDuringObserve = false;
+  const run = vi.fn();
+  vi.mocked(controlUiLoader.initializeControlUiPlugin).mockImplementation(
+    async (getContext, runtime, owner) => {
+      const host = createControlUiPluginHost(getContext, runtime, owner);
+      withdraw = host.ui.registerAction({
+        id: "review",
+        label: "Review",
+        placement: "session",
+        resolve() {
+          if (withdrawDuringResolve) {
+            withdraw();
+          }
+          return { hidden: !available };
+        },
+        observe(_target, changed) {
+          announce = changed;
+          interests++;
+          if (withdrawDuringObserve) {
+            withdraw();
+          }
+          return () => {
+            interests--;
+          };
+        },
+        run,
+      });
+      return Object.assign(owner, { host });
+    },
+  );
+  const runtime = runtimeFor(context);
+  runtime.start();
+  await runtime.refresh();
+  const session = {
+    key: "agent:main:review",
+    agentId: "main",
+    kind: "direct",
+    updatedAt: 1,
+  } satisfies GatewaySessionRow;
+  const notified = vi.fn();
+  const close = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(1);
+  expect(pluginSessionMenuActions(runtime, session)).toEqual([]);
+  const invoke = () =>
+    runControlUiPluginAction({
+      runtime,
+      id: "review/review",
+      placement: "session",
+      sessionKey: session.key,
+      session,
+      signal: new AbortController().signal,
+    });
+  await expect(invoke()).rejects.toThrow("currently unavailable");
+  expect(run).not.toHaveBeenCalled();
+  available = true;
+  announce();
+  expect(notified).toHaveBeenCalledOnce();
+  expect(pluginSessionMenuActions(runtime, session)).toMatchObject([{ label: "Review" }]);
+  await invoke();
+  expect(run).toHaveBeenCalledOnce();
+  const retiredCallback = announce;
+  close();
+  expect(interests).toBe(0);
+  const notifications = notified.mock.calls.length;
+  retiredCallback();
+  expect(notified).toHaveBeenCalledTimes(notifications);
+  const closeAgain = observeSessionMenuActions(runtime, session, notified);
+  withdrawDuringResolve = true;
+  await expect(invoke()).rejects.toThrow();
+  expect(run).toHaveBeenCalledOnce();
+  expect(interests).toBe(0);
+  closeAgain();
+  withdrawDuringResolve = false;
+  descriptors = [pluginDescriptor("two", `${assetPath("two")}index.js`)];
+  await runtime.refresh();
+  withdrawDuringObserve = true;
+  const synchronous = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(0);
+  synchronous();
+  expect(interests).toBe(0);
+  withdrawDuringObserve = false;
+  descriptors = [pluginDescriptor("three", `${assetPath("three")}index.js`)];
+  await runtime.refresh();
+  const replacement = observeSessionMenuActions(runtime, session, notified);
+  expect(interests).toBe(1);
+  descriptors = [];
+  await runtime.refresh();
+  expect(interests).toBe(0);
+  expect(pluginSessionMenuActions(runtime, session)).toEqual([]);
+  replacement();
+});
+
+it.each(["review", "reader"])(
+  "admits references only with declared reader owner %s and retires observations and retained resolvers",
+  async (readerPluginId) => {
+    let descriptors = [pluginDescriptor("one", `${assetPath()}index.js`)];
+    let context = connectedContext(
+      {
+        gatewayUrl: localGateway(),
+        request: async (method) =>
+          method === "plugins.controlUi.list" ? catalog(descriptors) : { ok: true },
+      },
+      configForRuntime(),
+    );
+    const listeners = new Set<() => void>();
+    context.gateway.subscribe = (changed) => {
+      const notify = () => changed(context.gateway.snapshot);
+      listeners.add(notify);
+      return () => listeners.delete(notify);
+    };
+    const publish = () => {
+      listeners.forEach((changed) => changed());
+      flush();
+    };
+    const reader = {
+      pluginId: "review",
+      id: "items",
+      label: "Review",
+      linkReader: {
+        hosts: ["github.com"],
+        pathPattern: "^/acme/current/pull/[0-9]+$",
+        detailMethod: "review.detail",
+      },
+    };
+    const setReader = (pluginId?: string) => {
+      Object.assign(context.gateway.snapshot, {
+        hello: { auth: { role: "operator", scopes: ["operator.read"] } },
+        pluginCapabilities: {
+          methods: ["review.detail"],
+          controlUiLinkReaders: pluginId ? [{ ...reader, pluginId }] : [],
+        },
+      });
+      publish();
+    };
+    let interests = 0;
+    let releases = 0;
+    let withdraw = () => {};
+    let synchronouslyWithdraw = false;
+    vi.mocked(controlUiLoader.initializeControlUiPlugin).mockImplementation(
+      async (getContext, runtime, owner) => {
+        const host = createControlUiPluginHost(getContext, runtime, owner);
+        withdraw = host.ui.registerTextReferenceProvider({
+          id: "shorthand",
+          reader: { pluginId: readerPluginId, id: "items" },
+          snapshot: () => ({
+            key: "same",
+            resolve: () => [
+              { start: 0, end: 5, url: "https://github.com/acme/current/pull/1" },
+              { start: 6, end: 11, url: "https://other.example/pull/2" },
+            ],
+          }),
+          observe() {
+            interests++;
+            if (synchronouslyWithdraw) {
+              withdraw();
+            }
+            return () => {
+              interests--;
+              releases++;
+            };
+          },
+        });
+        return Object.assign(owner, { host });
+      },
+    );
+    const runtime = new ControlUiPluginRuntime(() => context);
+    runtimes.push(runtime);
+    context = { ...context, plugins: runtime };
+    runtime.start();
+    await runtime.refresh();
+    let latest: ReturnType<ReturnType<typeof createTextReferenceProjection>> = [];
+    const dispose = createRoot((stopRoot) => {
+      const references = createTextReferenceProjection(() => ({
+        context,
+        session: { sessionKey: "agent:main:one" },
+        presented: true,
+      }));
+      createEffect(references, (value) => {
+        latest = value;
+      });
+      return stopRoot;
+    });
+    onTestFinished(dispose);
+    flush();
+    expect(latest).toEqual([]);
+    expect(interests).toBe(0);
+    setReader("foreign");
+    expect(latest).toEqual([]);
+    setReader(readerPluginId);
+    expect(interests).toBe(1);
+    const stable = latest;
+    publish();
+    expect(latest).toBe(stable);
+    const retained = latest[0]!;
+    expect(retained.resolve({ text: "PR #1", links: [] })).toHaveLength(1);
+    setReader();
+    expect(latest).toEqual([]);
+    expect(interests).toBe(0);
+    expect(releases).toBe(1);
+    expect(retained.resolve({ text: "PR #1", links: [] })).toEqual([]);
+    setReader(readerPluginId);
+    expect(interests).toBe(1);
+    descriptors = [pluginDescriptor("two", `${assetPath("two")}index.js`)];
+    synchronouslyWithdraw = true;
+    await runtime.refresh();
+    flush();
+    expect(interests).toBe(0);
+    expect(latest).toEqual([]);
+    // A provider may withdraw inside observe before returning its cleanup.
+    expect(releases).toBe(3);
+    synchronouslyWithdraw = false;
+    descriptors = [pluginDescriptor("three", `${assetPath("three")}index.js`)];
+    await runtime.refresh();
+    flush();
+    expect(interests).toBe(1);
+    dispose();
+    expect(interests).toBe(0);
+    expect(releases).toBe(4);
   },
 );

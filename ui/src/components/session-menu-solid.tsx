@@ -3,6 +3,7 @@ import { t } from "../lib/reactive/i18n.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import type { SessionCreatedActor } from "../lib/session-owner.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
+import { iconData, type IconName } from "./icon-data.ts";
 import { activateMenuShortcut } from "./menu-shortcut-activation.ts";
 import {
   EMPTY_SESSION_MENU_DATA,
@@ -36,7 +37,18 @@ export type SessionMenuAction =
   | { kind: "plugin"; id: string }
   | { kind: "stop-cloud-worker" };
 export type SessionMenuActionKind = SessionMenuAction["kind"];
-export type PluginSessionMenuAction = { id: string; label: string; disabled?: boolean };
+export type PluginSessionMenuAction = {
+  id: string;
+  label: string;
+  disabled?: boolean;
+  icon?: string;
+  shortcut?: string;
+  opensExternal?: boolean;
+};
+function pluginActionIcon(name?: string): IconName {
+  // SAFETY: the host icon inventory admits only existing native icon keys.
+  return name && Object.hasOwn(iconData, name) ? (name as IconName) : "plug";
+}
 
 type SessionMenuProps = {
   session: SessionMenuData;
@@ -169,12 +181,20 @@ function SessionMenuContent(
             class: "session-menu__item",
             labelClass: "session-menu__text",
             disabled: actionDisabled("plugin", action.disabled),
-            attributes: { title: props.actionDisabledReasons.plugin },
+            attributes: {
+              title: props.actionDisabledReasons.plugin,
+              "data-new-tab-action": action.opensExternal ? "" : undefined,
+              "data-shortcut": action.shortcut,
+              "aria-keyshortcuts": action.shortcut?.toUpperCase(),
+            },
             icon: (
               <span class="session-menu__icon" aria-hidden="true">
-                <Icon name="plug" />
+                <Icon name={pluginActionIcon(action.icon)} />
               </span>
             ),
+            details: action.shortcut ? (
+              <SessionMenuShortcut shortcut={action.shortcut} />
+            ) : undefined,
             closeOnSelect: false,
           }))
         : []),

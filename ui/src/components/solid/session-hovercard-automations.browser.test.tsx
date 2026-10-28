@@ -48,17 +48,19 @@ it.each([1, 2])("keeps inspection focus and retires %i disconnected jobs", async
   const view = mountSolid(
     () => (
       <HovercardControlsContext value={controlsForHovercard(card)}>
-        <div class="session-hovercard__context">
-          <SessionHovercardAutomations
-            automation={{
-              gateway: source.gateway,
-              sessionKey: "agent:main:task",
-              agentId: "main",
-              href: "/automations?session=agent%3Amain%3Atask&agent=main",
-              navigate: () => undefined,
-            }}
-          />
-        </div>
+        <section class="session-hovercard__section session-hovercard__section--optional">
+          <div class="session-hovercard__context">
+            <SessionHovercardAutomations
+              automation={{
+                gateway: source.gateway,
+                sessionKey: "agent:main:task",
+                agentId: "main",
+                href: "/automations?session=agent%3Amain%3Atask&agent=main",
+                navigate: () => undefined,
+              }}
+            />
+          </div>
+        </section>
       </HovercardControlsContext>
     ),
     { container: card },

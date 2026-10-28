@@ -56,7 +56,10 @@ import { createDashboardTool } from "./tools/dashboard-tool.js";
 import { createDecisionTool } from "./tools/decision-tool.js";
 import { createEmbeddedCallGateway } from "./tools/embedded-gateway-stub.js";
 import { createGitHubIdentityStatusTool } from "./tools/github-identity-status-tool.js";
-import { createGitHubPublishTool } from "./tools/github-publish-tool.js";
+import {
+  createGitHubPublishTool,
+  githubPublishToolDefinition,
+} from "./tools/github-publish-tool.js";
 import {
   createCreateGoalTool,
   createGetGoalTool,
@@ -440,6 +443,9 @@ function* createOpenClawToolsSteps(
       })
     : null;
   const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
+  if (options?.githubPublicationAvailable === false) {
+    options.inheritToolPolicy?.(githubPublishToolDefinition);
+  }
   const githubActionsAvailable = hasSessionControlAuthority(options?.sessionControlAuthority);
   const tools: AnyAgentTool[] = [
     ...createInstalledSkillTools(options?.installedSkills ?? []),

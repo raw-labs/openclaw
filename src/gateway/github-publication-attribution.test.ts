@@ -33,7 +33,7 @@ import { syncGitHubIdentity } from "../state/user-profile-writes.worker.js";
 import * as publicationExecutor from "./github-publication-executor.js";
 import { readRepositoryGitHubPublicationFixture as readRepositoryGitHubPublication } from "./github-publication-store.test-support.js";
 import { readGitHubPublicationRequest } from "./github-publication-store.worker.js";
-import * as repositoryPublicationExecutor from "./github-repository-publication-executor.js";
+import * as repositoryPublicationExecutor from "./github-repository-publication-dispatch.js";
 import { createRepositoryPublicationFixture } from "./github-repository-publication.test-support.js";
 import { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
 
@@ -99,7 +99,7 @@ function afterEffect(
       observe(effect, observed);
     };
   const executeLocal = publicationExecutor.executeGitHubPublication;
-  const executeRepository = repositoryPublicationExecutor.executeRepositoryGitHubPublication;
+  const executeRepository = repositoryPublicationExecutor.executeRepositoryPublication;
   const intercepted =
     surface === "local"
       ? vi.spyOn(publicationExecutor, "executeGitHubPublication").mockImplementation((params) =>
@@ -109,7 +109,7 @@ function afterEffect(
           }),
         )
       : vi
-          .spyOn(repositoryPublicationExecutor, "executeRepositoryGitHubPublication")
+          .spyOn(repositoryPublicationExecutor, "executeRepositoryPublication")
           .mockImplementation((params) =>
             executeRepository({
               ...params,

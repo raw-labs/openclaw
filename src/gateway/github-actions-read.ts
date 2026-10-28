@@ -4,13 +4,11 @@ import { BoardValidationError } from "../boards/board-layout.js";
 import { resolveGitHubActionsRequest } from "../boards/github-actions-capability.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
 import { logWarn } from "../logger.js";
-import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
+import type { PluginDashboardDataBindingHost } from "../plugins/dashboard-data-binding.types.js";
 import { getAsyncWorkSignal } from "../shared/async-work-scope.js";
-import type { BoardCapabilityAuthority } from "./board-host-tools.js";
 import { BoardGatewayUnavailableError } from "./board-view-ticket.js";
 import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
 import { gitHubPublicApi } from "./github-public-api.js";
-import type { GatewayRequestContext, RespondFn } from "./server-methods/types.js";
 
 const CACHE_TTL_MS = 30_000;
 const CACHE_LIMIT = 32;
@@ -47,7 +45,7 @@ type ActionsCache = {
   active: number;
   results: ReturnType<typeof createStaleWhileRevalidateCache<ActionsResult>>;
 };
-const gatewayCaches = new WeakMap<GatewayRequestContext, ActionsCache>();
+const gatewayCaches = new WeakMap<object, ActionsCache>();
 
 function actionsFailure(error: unknown): Error {
   if (
@@ -79,22 +77,18 @@ function actionsFailure(error: unknown): Error {
 }
 
 /** Pinning and reads share the same source-config scrub, refresh, and current credential check. */
-export async function prepareBoardGitHubIdentity(
-  context: GatewayRequestContext,
-  authority: Pick<BoardCapabilityAuthority, "boardSession" | "assertActive"> &
-    Partial<Pick<BoardCapabilityAuthority, "useCurrent">>,
-) {
+export async function prepareBoardGitHubIdentity(host: PluginDashboardDataBindingHost) {
   try {
-    const config = context.getRuntimeConfig();
+    const config = host.getConfig();
     return await prepareGitHubReadIdentity({
       config,
-      sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig ?? config,
-      agentId: authority.boardSession.agentId,
+      sourceConfig: host.getSourceConfig(),
+      agentId: host.agentId,
       issuer: "github.com",
-      getCurrentConfig: () => context.getRuntimeConfig(),
-      assertActive: authority.assertActive,
-      startActive: authority.useCurrent,
-      refresh: () => requestCurrentGitHubOAuthRefresh(authority.boardSession.agentId),
+      getCurrentConfig: host.getConfig,
+      assertActive: host.assertCurrent,
+      startActive: host.useCurrent,
+      refresh: () => requestCurrentGitHubOAuthRefresh(host.agentId),
     });
   } catch (error) {
     if (
@@ -110,13 +104,12 @@ export async function prepareBoardGitHubIdentity(
 
 export async function readBoardGitHubActions(
   params: Record<string, unknown>,
-  context: GatewayRequestContext,
-  authority: BoardCapabilityAuthority,
-  publish: RespondFn,
+  host: PluginDashboardDataBindingHost,
+  publish: (value: unknown) => void,
 ): Promise<void> {
   const request = resolveGitHubActionsRequest(params);
-  const cache = await authority.useCurrent(() => {
-    const admitted: ActionsCache = gatewayCaches.get(context) ?? {
+  const cache = await host.useCurrent(() => {
+    const admitted: ActionsCache = gatewayCaches.get(host.cacheScope) ?? {
       active: 0,
       results: createStaleWhileRevalidateCache<ActionsResult>({
         maxEntries: CACHE_LIMIT,
@@ -125,7 +118,7 @@ export async function readBoardGitHubActions(
         onBackgroundError: (error) => logWarn(`board: ${actionsFailure(error).message}`),
       }),
     };
-    gatewayCaches.set(context, admitted);
+    gatewayCaches.set(host.cacheScope, admitted);
     if (admitted.active >= MAX_CONCURRENT_READS) {
       throw new Error("GitHub Actions reads are busy; retry shortly.");
     }
@@ -133,13 +126,13 @@ export async function readBoardGitHubActions(
     return admitted;
   });
   try {
-    const identity = await prepareBoardGitHubIdentity(context, authority);
+    const identity = await prepareBoardGitHubIdentity(host);
     const key = JSON.stringify([identity.cacheScope, request.url]);
     const result = await identity.start(() => {
       // Creation is synchronous, so the checked caller admits the fetch. Shared transport
       // must not inherit that widget's lifetime; every caller gates delivery below.
       return cache.results.read(key, () =>
-        context.trackExecution(async () => {
+        host.trackExecution(async () => {
           const response = await gitHubPublicApi.fetchGitHubApi(
             request.url,
             fetch,
@@ -189,7 +182,7 @@ export async function readBoardGitHubActions(
       );
     });
     await identity.start(() =>
-      publish(true, structuredClone({ ...result.value, ...(result.stale ? { stale: true } : {}) })),
+      publish(structuredClone({ ...result.value, ...(result.stale ? { stale: true } : {}) })),
     );
   } catch (error) {
     throw actionsFailure(error);

@@ -20,7 +20,8 @@ import {
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { reportGitHubPublicationTranscript } from "./github-publication-transcript.js";
+import { formatGitHubPublicationTranscript } from "./github-publication-report.js";
+import { reportRepositoryPublicationTranscript } from "./github-publication-transcript.js";
 
 const reportFault = useSqliteWorkerFault([
   {
@@ -66,10 +67,10 @@ function report(
   result: SessionGitHubPublicationResult,
   markReportedAsync: (requestId: string) => Promise<void>,
 ) {
-  return reportGitHubPublicationTranscript(
+  return reportRepositoryPublicationTranscript(
     () => import("./session-utils.js"),
-    { markReportedAsync },
-    { ...identity, result },
+    markReportedAsync,
+    { ...identity, requestId: result.requestId, ...formatGitHubPublicationTranscript(result) },
   );
 }
 
@@ -159,16 +160,16 @@ describe("GitHub publication transcript reporting", () => {
       const markReportedAsync = vi.fn().mockResolvedValue(undefined);
       const sql = observeHostDataSql();
       try {
-        await reportGitHubPublicationTranscript(
-          loadRuntime,
-          { markReportedAsync },
-          { ...session, result },
-        );
-        await reportGitHubPublicationTranscript(
-          loadRuntime,
-          { markReportedAsync },
-          { ...session, result },
-        );
+        await reportRepositoryPublicationTranscript(loadRuntime, markReportedAsync, {
+          ...session,
+          requestId: result.requestId,
+          ...formatGitHubPublicationTranscript(result),
+        });
+        await reportRepositoryPublicationTranscript(loadRuntime, markReportedAsync, {
+          ...session,
+          requestId: result.requestId,
+          ...formatGitHubPublicationTranscript(result),
+        });
         const events = await loadTranscriptEvents({
           ...session,
           storePath: location.path,

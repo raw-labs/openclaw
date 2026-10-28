@@ -330,7 +330,10 @@ export function buildSidebarSessionNavigationState(input: {
 export function buildReconciledSidebarZone(input: {
   sidebarEntries: readonly string[];
   rows: SidebarRecentSession[];
-  pluginNavigation: readonly ControlUiRegistration<ControlUiNavigationItem>[];
+  pluginNavigation: readonly Pick<
+    ControlUiRegistration<ControlUiNavigationItem>,
+    "key" | "pluginId" | "value"
+  >[];
   pluginTabs: readonly GatewayControlUiPluginTab[] | undefined;
   snapshot?: { model: SidebarSnapshotModel; selectedKey: string };
   pendingPlugins?: Pick<SidebarSnapshotModel, "entries" | "plugins"> | null;

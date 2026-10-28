@@ -517,7 +517,12 @@ describe("loadControlUiSessionPullRequests", () => {
         return revision;
       }
       if (operation.type === "checkout.context") {
-        return { ...context, branch, root: operation.input.root, defaultBranch: "main" };
+        return {
+          originUrl: `https://github.com/${context.owner}/${context.repo}`,
+          branch,
+          root: operation.input.root,
+          defaultBranch: "main",
+        };
       }
       if (operation.type === "pull-request.branch-facts") {
         return { creatable: true, stats: null };

@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectCloneFailureCause } from "../../packages/gateway-protocol/src/index.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import {
   executeGitCommand,
@@ -19,6 +18,9 @@ import {
 } from "../process/exec-result.js";
 import { runCommandWithTimeout } from "../process/exec.js";
 import { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+import { ProjectCloneError } from "./project-clone-contract.js";
+
+export { ProjectCloneError } from "./project-clone-contract.js";
 
 const PROJECT_CLONE_TIMEOUT_MS = 10 * 60_000;
 type ProjectCloneOptions = {
@@ -32,16 +34,6 @@ type ProjectCloneOptions = {
 };
 const PROJECT_FETCH_TIMEOUT_MS = 60_000;
 const PROJECT_REF_INVENTORY_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-
-export class ProjectCloneError extends Error {
-  constructor(
-    readonly failure: ProjectCloneFailureCause,
-    message: string,
-  ) {
-    super(message);
-    this.name = "ProjectCloneError";
-  }
-}
 
 function cloneCommandEnv(
   repositoryUrl: string | undefined,

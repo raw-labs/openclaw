@@ -13,6 +13,9 @@ export type ProcessGatewayAllowlistParams = ExecHostCommandParams & {
   workdir: string;
   secretEgressBindings?: readonly SecretEgressSentinelBinding[];
   githubProfileDir?: string;
+  wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
+  assertExecutionEnvironmentCurrent?: () => void;
+  transportCredentialScrubEnv?: Readonly<Record<string, string>>;
   pathPrepend?: string[];
   pty: boolean;
   safeBins: Set<string>;

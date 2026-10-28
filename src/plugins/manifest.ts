@@ -14,6 +14,7 @@ import { normalizeConfigGroups } from "./manifest-config-groups.js";
 import { normalizeManifestModelCatalog } from "./manifest-decision-catalog.js";
 import * as modelProviderNormalizers from "./manifest-model-provider-normalizers.js";
 import { normalizeManifestPlatforms } from "./manifest-platforms.js";
+import { normalizeManifestRepositorySources } from "./manifest-repository-sources.js";
 import * as setupNormalizers from "./manifest-setup-normalizers.js";
 import { normalizeManifestThemes } from "./manifest-themes.js";
 import type {
@@ -339,6 +340,10 @@ export function loadPluginManifest(
     return fail(`invalid plugin manifest dashboard: ${dashboardResult.error}`);
   }
   const uiCapabilities = validatePluginUiCapabilities(raw.uiCapabilities);
+  const repositorySources = normalizeManifestRepositorySources(raw.repositorySources);
+  if (!repositorySources.ok) {
+    return fail(`invalid plugin manifest repositorySources: ${repositorySources.error}`);
+  }
   const controlUiResult = loadPluginControlUiDeclaration({
     rootDir,
     controlUi: raw.controlUi,
@@ -364,8 +369,10 @@ export function loadPluginManifest(
       : {}),
     manifest: {
       ...manifestBeforeDashboard,
+      ...(raw.securityAuditConfig === true ? { securityAuditConfig: true } : {}),
       dashboard: dashboardResult.dashboard,
       controlUi: controlUiResult.value,
+      repositorySources: repositorySources.value,
       ...(uiCapabilities.ok && uiCapabilities.capabilities !== undefined
         ? { uiCapabilities: uiCapabilities.capabilities }
         : {}),
