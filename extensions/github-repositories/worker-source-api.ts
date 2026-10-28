@@ -399,8 +399,8 @@ async function prepareGitHubWorkerSource(
               input.assertCurrent();
               assertCurrent();
             };
-            assertFetchCurrent();
-            await revalidate(input.signal);
+            // The host revalidates the lease around this transport; retain the
+            // selected credential's own assertion at the Git effect boundary.
             assertFetchCurrent();
             const readIdentity = identity;
             const token = readIdentity.token;
@@ -418,8 +418,6 @@ async function prepareGitHubWorkerSource(
                 readIdentity.assertSelected();
               },
             });
-            assertFetchCurrent();
-            await revalidate(input.signal);
             assertFetchCurrent();
             return pack;
           },

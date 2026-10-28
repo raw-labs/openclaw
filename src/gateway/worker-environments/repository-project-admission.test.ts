@@ -393,7 +393,7 @@ describe("repository project admission", () => {
     ).rejects.toThrow("identity changed");
   });
 
-  it("prepares an authenticated pack for an internal enterprise repository", async () => {
+  it("revalidates an enterprise repository once before and after its authenticated pack", async () => {
     setRuntimeConfigSnapshot({
       gateway: {},
       plugins: {
@@ -414,6 +414,12 @@ describe("repository project admission", () => {
     });
 
     expect(admitted).toHaveProperty("prepareGitPack");
+    fetchImpl.mockClear();
+    let requestsBeforePack: string[] = [];
+    mocks.prepareGitPack.mockImplementationOnce(async () => {
+      requestsBeforePack = requestPaths();
+      return "/synthetic/source.pack";
+    });
     await expect(
       admitted.prepareGitPack?.({
         temporaryRoot: "/synthetic/temporary",
@@ -426,6 +432,9 @@ describe("repository project admission", () => {
         httpAuthorization: `Basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`,
       }),
     );
+    const revalidation = ["/api/graphql", "/api/v3/repos/acme/project"];
+    expect(requestsBeforePack).toEqual(revalidation);
+    expect(requestPaths()).toEqual([...revalidation, ...revalidation]);
   });
 
   it.each(["HEAD", "refs/tags/v1", "feature/ready"])(

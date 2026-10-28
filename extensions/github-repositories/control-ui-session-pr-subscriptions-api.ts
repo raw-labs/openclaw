@@ -1,7 +1,4 @@
-import {
-  AsyncWorkScope,
-  createConcurrencyLimit as pLimit,
-} from "openclaw/plugin-sdk/concurrency-runtime";
+import { AsyncWorkScope, createPermitPool } from "openclaw/plugin-sdk/concurrency-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-contracts";
 import type {
   ControlUiSessionPullRequestSnapshot,
@@ -61,9 +58,10 @@ export function createControlUiSessionPullRequestSubscriptions(deps: Subscriptio
     }
   >();
   const scheduler = deps.scheduler.scope();
-  const limit = pLimit(CONTROL_UI_SESSION_PR_LOAD_CONCURRENCY);
+  const loadPermits = createPermitPool(CONTROL_UI_SESSION_PR_LOAD_CONCURRENCY);
+  const limit = <T>(run: () => Promise<T>) => withPermit(loadPermits, run);
   // Loads revalidate watchers while holding a slot, so reads use their own bounded queue.
-  const limitReads = pLimit(CONTROL_UI_SESSION_PR_LOAD_CONCURRENCY);
+  const readPermits = createPermitPool(CONTROL_UI_SESSION_PR_LOAD_CONCURRENCY);
   const withSource = createControlUiSessionPrSourceRead({
     reads: deps.reads,
     keyStates,
@@ -117,7 +115,7 @@ export function createControlUiSessionPullRequestSubscriptions(deps: Subscriptio
     const watched = subscriptions.get(connId)?.get(sessionKey);
     const target = !deps.reads.isViewerConnected(connId)
       ? undefined
-      : await limitReads(() => watched?.readCurrent());
+      : await withPermit(readPermits, () => watched?.readCurrent());
     const subscription = subscriptions.get(connId);
     if (scope.isClosing || subscription?.get(sessionKey) !== watched) {
       return undefined;
@@ -726,6 +724,18 @@ export function createControlUiSessionPullRequestSubscriptions(deps: Subscriptio
     pollNow,
     stop,
   };
+}
+
+async function withPermit<T>(pool: ReturnType<typeof createPermitPool>, run: () => T | Promise<T>) {
+  const release = await pool.acquire();
+  if (!release) {
+    throw new Error("Session pull-request work could not acquire a permit.");
+  }
+  try {
+    return await run();
+  } finally {
+    release();
+  }
 }
 
 /** An older delivery must not overtake its replacement for the same watched source. */

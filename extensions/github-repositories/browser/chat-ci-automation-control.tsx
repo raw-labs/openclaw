@@ -14,7 +14,11 @@ import type {
   CiAutomationOptions,
   CiAutomationTarget,
 } from "./session-pr-automation-spec.ts";
-import { createCiAutomationApi, type CiAutomationJobs } from "./session-pr-automation.ts";
+import {
+  loadCiAutomationJobs,
+  setCiAutomationEnabled,
+  type CiAutomationJobs,
+} from "./session-pr-automation.ts";
 
 type CronStatus = {
   enabled: boolean;
@@ -32,9 +36,6 @@ export function ChatCiAutomation(props: ChatCiAutomationProps) {
   const services = useContext(RepositoryCiContext);
   const presentation = useContext(PresentationContext);
   const formatUiError = presentation.formatError;
-  const { loadCiAutomationJobs, setCiAutomationEnabled } = createCiAutomationApi(
-    presentation.declarationDigest,
-  );
   let element!: HTMLElement;
   type Props = ChatCiAutomationProps;
   type AutomationState = {

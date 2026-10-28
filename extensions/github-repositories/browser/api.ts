@@ -38,9 +38,14 @@ export type { ChatCiDetailsProps } from "./chat-ci-details.tsx";
 export { ChatCiAutomation } from "./chat-ci-automation-control.tsx";
 export type { ChatCiAutomationProps } from "./chat-ci-automation-control.tsx";
 export { RepositoryCiContext } from "./ci-context.ts";
-export { createCiAutomationSpec, CI_AUTOMATION_OPTIONS } from "./session-pr-automation-spec.ts";
+export {
+  ciAutomationDeclarationKey,
+  ciAutomationJobSpec,
+  ciAutomationJobMatches,
+  CI_AUTOMATION_OPTIONS,
+} from "./session-pr-automation-spec.ts";
 export type { CiAutomationTarget, CiAutomationOption } from "./session-pr-automation-spec.ts";
-export { createCiAutomationApi } from "./session-pr-automation.ts";
+export { loadCiAutomationJobs, setCiAutomationEnabled } from "./session-pr-automation.ts";
 
 export { ChatCiAutomationView } from "./chat-ci-automation.tsx";
 export { GitHubPublicationMobile } from "./chat-github-publication-mobile.tsx";

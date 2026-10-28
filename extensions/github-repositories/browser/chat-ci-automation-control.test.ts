@@ -1,17 +1,12 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
 /* @vitest-environment jsdom */
 import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { GatewayBrowserClient } from "../../../ui/src/api/gateway.ts";
 import type { CronJob } from "../../../ui/src/api/types.ts";
-import type { CiAutomationOption } from "./api.ts";
-import { createCiAutomationSpec } from "./api.ts";
-const { ciAutomationJobSpec } = createCiAutomationSpec((value) =>
-  bytesToHex(sha256(new TextEncoder().encode(value))),
-);
 import type { CiAutomationTestElement as ChatCiAutomationElement } from "../../../ui/src/test-helpers/repository-ci.test-support.tsx";
 import { waitForSolid } from "../../../ui/src/test-helpers/solid-settle.ts";
+import type { CiAutomationOption } from "./api.ts";
+import { ciAutomationJobSpec } from "./api.ts";
 import "../../../ui/src/test-helpers/repository-ci.test-support.tsx";
 import {
   createHello as hello,

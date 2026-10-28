@@ -1,24 +1,18 @@
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
-import {
-  createCiAutomationSpec,
-  createCiAutomationApi,
-  CI_AUTOMATION_OPTIONS,
-  type CiAutomationOption,
-  type CiAutomationTarget,
-} from "./api.ts";
-const digest = (value: string) => bytesToHex(sha256(new TextEncoder().encode(value)));
-const {
-  ciAutomationDeclarationKey: declarationKeyFor,
-  ciAutomationJobMatches: matchesJob,
-  ciAutomationJobSpec: jobSpec,
-} = createCiAutomationSpec(digest);
-const { loadCiAutomationJobs, setCiAutomationEnabled } = createCiAutomationApi(digest);
 import { Value } from "typebox/value";
 import { beforeEach, expect, it, vi } from "vitest";
 import { CronAddParamsSchema } from "../../../packages/gateway-protocol/src/schema/cron.js";
 import type { GatewayBrowserClient } from "../../../ui/src/api/gateway.ts";
 import type { CronJob, CronJobsListResult } from "../../../ui/src/api/types.ts";
+import {
+  ciAutomationDeclarationKey as declarationKeyFor,
+  ciAutomationJobMatches as matchesJob,
+  ciAutomationJobSpec as jobSpec,
+  loadCiAutomationJobs,
+  setCiAutomationEnabled,
+  CI_AUTOMATION_OPTIONS,
+  type CiAutomationOption,
+  type CiAutomationTarget,
+} from "./api.ts";
 
 const target: CiAutomationTarget = {
   agentId: "main",
@@ -180,6 +174,12 @@ it("never creates a disabled row or retries an uncertain mutation", async () => 
 });
 it("bounds declaration keys and separates every ownership dimension and action", () => {
   const prefix = declarationKey();
+  expect(prefix).toBe(
+    "session-pr:v1:fbf650e39d0b6852f8accafc8523ed9bd105338ca91af3fa1d254f85148df91c:autoMerge",
+  );
+  expect(declarationKeyFor(target, "autoArchive")).toBe(
+    "session-pr:v1:601b2256a0e8f1834e3050aaa9d5e34117cfbd922378fb8d51972ff98355062e:autoArchive",
+  );
   expect(declarationKey({ ...target })).toBe(prefix);
   expect(
     declarationKey({ owner: target.owner.toUpperCase(), repo: target.repo.toUpperCase() }),

@@ -1,10 +1,8 @@
 import path from "node:path";
-import { sha256 } from "@noble/hashes/sha2.js";
-import { bytesToHex } from "@noble/hashes/utils.js";
 import { withTimeout } from "@openclaw/fs-safe/advanced";
 import type { Locator, Page } from "playwright";
 import { expect, it } from "vitest";
-import { createCiAutomationSpec } from "../../../extensions/github-repositories/browser/api.ts";
+import { ciAutomationJobSpec as jobSpec } from "../../../extensions/github-repositories/browser/api.ts";
 import type { CiAutomationOption } from "../../../extensions/github-repositories/browser/api.ts";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../extensions/github-repositories/session-pull-requests-api.ts";
 import {
@@ -25,9 +23,6 @@ import {
 } from "./chat-details.test-support.ts";
 import { waitForWatchedSessionKey } from "./chat-github-publication.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
-
-const digest = (value: string) => bytesToHex(sha256(new TextEncoder().encode(value)));
-const { ciAutomationJobSpec: jobSpec } = createCiAutomationSpec(digest);
 
 const DETAILS_METHOD = "controlUi.sessionPullRequests.checks";
 const headSha = "a".repeat(40);

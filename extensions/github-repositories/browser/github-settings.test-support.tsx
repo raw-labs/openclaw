@@ -22,7 +22,6 @@ export function settingsTestContext(
   return {
     apiVersion: 2,
     readConfig: () => undefined,
-    readAgentConfig: () => null,
     signal,
     props: {
       agentId: "main",

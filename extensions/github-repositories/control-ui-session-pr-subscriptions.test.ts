@@ -259,26 +259,46 @@ describe("control UI session PR subscriptions", () => {
     expectPublication("conn-a", "shared");
   });
 
-  it("shares the four-load limit across connections, hydration, and polling", async () => {
+  it("shares four FIFO load slots across connections, hydration, watcher reads, and polling", async () => {
     vi.useFakeTimers();
     const releases: Array<() => void> = [];
-    const load = vi.fn(
-      async () =>
-        await new Promise<Snapshot>((resolve) => {
+    let loading = 0;
+    let peak = 0;
+    const load = vi.fn(async (_params: LoadParams) => {
+      loading++;
+      peak = Math.max(peak, loading);
+      try {
+        return await new Promise<Snapshot>((resolve) => {
           releases.push(() => resolve(READY));
-        }),
-    );
+        });
+      } finally {
+        loading--;
+      }
+    });
     const active = start({ load });
     const sessionKeys = Array.from({ length: 6 }, (_value, index) => `session-${index}`);
 
-    const finishLimitedLoads = async (operation: Promise<unknown>, total = 6) => {
-      for (const count of [4, total]) {
+    const finishLimitedLoads = async (
+      operation: Promise<unknown>,
+      total = 6,
+      queuedKeys?: string[],
+    ) => {
+      for (let count = 4; count < total; count++) {
         await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(count));
-        for (const release of releases.splice(0)) {
-          release();
-        }
+        expect(loading).toBe(4);
+        const release = releases.shift();
+        expect(release).toBeTypeOf("function");
+        release?.();
+      }
+      await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(total));
+      if (queuedKeys) {
+        expect(load.mock.calls.slice(4).map(([params]) => params.sessionKey)).toEqual(queuedKeys);
+      }
+      for (const release of releases.splice(0)) {
+        release();
       }
       await operation;
+      expect([peak, loading]).toEqual([4, 0]);
     };
 
     await finishLimitedLoads(
@@ -286,8 +306,11 @@ describe("control UI session PR subscriptions", () => {
         active.replace("conn-a", sessionKeys.slice(0, 3)),
         active.replace("conn-b", sessionKeys.slice(3)),
       ]),
+      6,
+      sessionKeys.slice(4),
     );
     load.mockClear();
+    peak = 0;
     await finishLimitedLoads(
       Promise.all([active.pollNow(), active.replace("conn-c", ["new-1", "new-2"])]),
       8,
