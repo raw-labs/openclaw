@@ -547,6 +547,9 @@ export async function prepareAndDispatchEmbeddedRunAttempt(input: {
       params.config,
     ),
     resolvedApiKey: resolvedAttemptApiKey,
+    resolveRequestApiKey: runtime.pluginHarnessOwnsTransport
+      ? undefined
+      : preparedRuntime.createRequestApiKeyResolver(),
     authProfileId: runtime.lastProfileId,
     authProfileIdSource,
     initialReplayState: input.replayState,

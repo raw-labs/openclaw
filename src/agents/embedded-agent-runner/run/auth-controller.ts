@@ -42,6 +42,7 @@ import {
 } from "./helpers.js";
 import type { resolveEmbeddedRunEffectiveModel } from "./model-harness.js";
 import type { RunEmbeddedAgentParams } from "./params.js";
+import { createEmbeddedRequestApiKeyResolver } from "./request-auth.js";
 
 export type EmbeddedRunAuthState = {
   readonly models: {
@@ -116,6 +117,7 @@ export function resolveEmbeddedAuthCooldownProbePolicy(params: {
  */
 export function createEmbeddedRunAuthController(params: {
   config: RunEmbeddedAgentParams["config"];
+  assertCurrent?: () => void;
   agentDir: string;
   workspaceDir: string;
   authStore: AuthProfileStore;
@@ -667,6 +669,7 @@ export function createEmbeddedRunAuthController(params: {
   };
 
   return {
+    createRequestApiKeyResolver: () => createEmbeddedRequestApiKeyResolver(params),
     applyAuthProfileCandidate: applyApiKeyInfo,
     advanceAuthProfile,
     initializeAuthProfile,

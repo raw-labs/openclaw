@@ -525,6 +525,7 @@ export async function prepareEmbeddedAttemptTransport(input: {
     signal: input.abortSignal,
     model: attempt.model,
     resolvedApiKey: attempt.resolvedApiKey,
+    resolveRequestApiKey: attempt.resolveRequestApiKey,
     transportAuthAvailable: Boolean(transportApiKey?.trim()),
     authProfileId: attempt.runtimePlan?.auth.forwardedAuthProfileId,
     authStorage: attempt.authStorage,

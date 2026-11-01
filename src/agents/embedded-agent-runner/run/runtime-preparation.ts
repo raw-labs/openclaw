@@ -342,6 +342,7 @@ export async function prepareEmbeddedRunRuntime(input: {
         }
       : undefined;
   const authController = createEmbeddedRunAuthController({
+    assertCurrent: input.assertCurrent,
     config: params.config,
     agentDir: input.agentDir,
     workspaceDir: input.workspaceDir,
@@ -541,6 +542,7 @@ export async function prepareEmbeddedRunRuntime(input: {
     advanceAttemptAuthProfile,
     maybeRefreshRuntimeAuthForAuthError: authController.maybeRefreshRuntimeAuthForAuthError,
     stopRuntimeAuthRefreshTimer: authController.stopRuntimeAuthRefreshTimer,
+    createRequestApiKeyResolver: authController.createRequestApiKeyResolver,
     getApiKeyInfo: () => authState.apiKeyInfo,
     setThinkLevel: (next: ThinkLevel) => {
       authState.thinkLevel = next;
