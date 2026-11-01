@@ -165,6 +165,7 @@ function makeDispatchInput(
       modelRegistry: {},
       attemptAuthProfileStore: authProfileStore,
       resolveRunAttemptAuthProfileStore: () => authProfileStore,
+      createRequestApiKeyResolver: () => undefined,
       snapshot: () => runtime,
     },
     sessionPromptState: {

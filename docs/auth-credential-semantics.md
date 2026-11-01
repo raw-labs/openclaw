@@ -155,6 +155,16 @@ settlement.
 Canceled callers cannot start a later queued refresh or return its credentials.
 Callers that omit the signal retain the existing wait behavior.
 
+Embedded ChatGPT token-sharing requests resolve the selected OAuth profile again
+before each model request, including requests after tools finish. The canonical
+credential owner renews expired credentials; captured attempt keys and static
+request overrides cannot replace a failed renewable lookup. Resolution stays on
+the same profile and verified account, and cancellation or profile rotation
+rejects late results. A structured `token_expired` HTTP 401 before any output permits
+one forced renewal and retry of that request only. Settled tools are not rerun.
+Other authentication errors, failures after output, static credentials, runtime
+exchange credentials, and native harness authentication keep their existing paths.
+
 Workers certify committed SQLite visibility before rows enter the cache. Reads
 with unpublished or trailing WAL frames return normally without being retained.
 

@@ -2,8 +2,9 @@
  * Resolves provider stream functions and API keys for embedded agents.
  */
 import type { LlmRuntime } from "@openclaw/ai";
+import { createAssistantMessageEventStream } from "@openclaw/ai/event-stream";
 import { notifyLlmRequestActivity, onLlmRequestActivity } from "@openclaw/ai/internal/runtime";
-import { stripSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
+import { projectProviderError, stripSystemPromptCacheBoundary } from "@openclaw/ai/internal/shared";
 import { createBoundaryAwareStreamFnForModel } from "@openclaw/ai/transports";
 import { hasNonEmptyString as hasResolvedRuntimeApiKey } from "@openclaw/normalization-core/string-coerce";
 import { getStreamLlmRuntime } from "../../llm/model-runtime-binding.js";
@@ -11,6 +12,11 @@ import "../ai-transport-runtime-host.js";
 import { createAnthropicVertexStreamFnForModel } from "../anthropic-vertex-stream.js";
 import type { StreamFn } from "../runtime/index.js";
 import type { EmbeddedRunAttemptParams } from "./run/types.js";
+
+export type EmbeddedRequestApiKeyResolver = (options: {
+  forceRefresh: boolean;
+  signal?: AbortSignal;
+}) => Promise<string>;
 
 const embeddedAgentBaseStreamFnCache = new WeakMap<object, StreamFn | undefined>();
 
@@ -109,6 +115,7 @@ type EmbeddedAgentStreamParams = EmbeddedStreamRuntimeOwner & {
   model: EmbeddedRunAttemptParams["model"];
   resolvedApiKey?: string;
   transportAuthAvailable?: boolean;
+  resolveRequestApiKey?: EmbeddedRequestApiKeyResolver;
   authProfileId?: string;
   authStorage?: { getApiKey(provider: string): Promise<string | undefined> };
   assertCurrent?: () => void;
@@ -143,6 +150,8 @@ export function selectEmbeddedAgentStream(params: EmbeddedAgentStreamParams): {
   const wrapRunApiKey = (streamFn: StreamFn) =>
     wrapEmbeddedAgentStreamApiKey(streamFn, {
       providerId: params.model.provider,
+      resolveRequestApiKey: params.resolveRequestApiKey,
+      runSignal: params.signal,
       resolvedApiKey: params.resolvedApiKey,
       authStorage: params.authStorage,
       assertCurrent: params.assertCurrent,
@@ -293,11 +302,95 @@ function wrapEmbeddedAgentStreamApiKey(
   inner: StreamFn,
   params: {
     providerId: string;
+    resolveRequestApiKey?: EmbeddedRequestApiKeyResolver;
+    runSignal?: AbortSignal;
     resolvedApiKey?: string;
     authStorage?: { getApiKey(provider: string): Promise<string | undefined> };
     assertCurrent?: () => void;
   },
 ): StreamFn {
+  if (params.resolveRequestApiKey) {
+    const resolveRequestApiKey = params.resolveRequestApiKey;
+    return async (model, context, options) => {
+      const signal =
+        options?.signal && params.runSignal
+          ? composeRunSignal(options.signal, params.runSignal)
+          : (options?.signal ?? params.runSignal);
+      const assertCurrent = () => {
+        signal?.throwIfAborted();
+        params.assertCurrent?.();
+      };
+      assertCurrent();
+      const apiKey = await resolveRequestApiKey({ forceRefresh: false, signal });
+      assertCurrent();
+      const stream = createAssistantMessageEventStream();
+      // The producer owns settlement even when consumers only await result().
+      void (async () => {
+        let key = apiKey;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          assertCurrent();
+          const innerStream = await inner(model, context, {
+            ...options,
+            apiKey: key,
+            // Captured model/config Authorization must not shadow renewable auth.
+            headers: { ...options?.headers, Authorization: `Bearer ${key}` },
+            signal,
+          });
+          assertCurrent();
+          let outputStarted = false;
+          let retry = false;
+          for await (const event of innerStream) {
+            assertCurrent();
+            if (
+              event.type === "error" &&
+              attempt === 0 &&
+              !outputStarted &&
+              event.error.errorCode === "token_expired" &&
+              /^401(?:\s|:)/.test(event.error.errorMessage ?? "")
+            ) {
+              retry = true;
+              continue;
+            }
+            outputStarted = true;
+            stream.push(event);
+          }
+          const result = await innerStream.result();
+          assertCurrent();
+          if (!retry) {
+            stream.end(result);
+            return;
+          }
+          key = await resolveRequestApiKey({ forceRefresh: true, signal });
+          assertCurrent();
+        }
+      })().catch((error: unknown) => {
+        const projection = projectProviderError(error, signal);
+        stream.push({
+          type: "error",
+          reason: projection.stopReason,
+          error: {
+            role: "assistant",
+            content: [],
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            timestamp: Date.now(),
+            ...projection,
+          },
+        });
+        stream.end();
+      });
+      return stream;
+    };
+  }
   if (!params.authStorage && !params.resolvedApiKey) {
     return inner;
   }
