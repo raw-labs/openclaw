@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import os from "node:os";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import { captureWorktreeRegistryReadGuard } from "../agents/worktrees/registry-read.js";
 import { captureWorktreeRunEndContext } from "../agents/worktrees/run-end-lifecycle.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.js";
@@ -15,11 +14,6 @@ import { gitNullConfigPath } from "../infra/git-exec.js";
 import { resolveRuntimeProcessEntrypointUrl } from "../infra/runtime-process-url.js";
 import { resolveRuntimeWorkerArgv } from "../infra/runtime-worker-url.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import {
-  readProjectCheckoutRemoteHead,
-  ProjectCloneError,
-} from "../projects/project-clone-runtime.js";
-import { materializeProjectClone } from "../projects/project-clone.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import type { SessionRepositoryWorkspaceRecord } from "../state/session-repository-workspaces.types.js";
 import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
@@ -28,8 +22,8 @@ import {
   createGitHubPublicationCommandRunner,
 } from "./github-publication-git-transport.js";
 import { readRepositoryGitHubPublicationBranchAsync } from "./github-publication-store-async.js";
-import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { prepareRepositoryPublicationRestore } from "./github-repository-publication-restore.js";
+import type { RepositorySources } from "./repository-sources.js";
 import { retainGatewaySessionEntryReadOnly } from "./session-utils-read-lifetime.js";
 import type { GatewaySessionEntryRead } from "./session-utils-store.js";
 import { prepareSessionWorktree } from "./session-worktree-preparation.js";
@@ -38,7 +32,6 @@ import type {
   WorkerSessionPlacementStore,
   WorkerSessionTurnClaim,
 } from "./worker-environments/placement-store.js";
-import { prepareRepositoryGitHubIdentity } from "./worker-environments/repository-github-identity.js";
 import { captureRepositoryDiskCheckpoint } from "./worker-environments/repository-workspace-snapshot.js";
 import {
   readSessionRepositoryArtifacts,
@@ -53,11 +46,13 @@ export function createRepositoryGatewayMovePreparation(options: {
   placements: WorkerSessionPlacementStore;
   environments: Parameters<typeof captureRepositoryDiskCheckpoint>[0]["environments"];
   getConfig: () => OpenClawConfig;
+  getRepositorySources?: () => RepositorySources;
 }): NonNullable<PlacementRecoveryDeps["prepareGatewayMove"]> {
   return (identity) =>
     options.placements.withWorkspaceExclusion(identity.sessionId, async (assertOwned) =>
       materializeSessionRepositoryWorkspaceOnGateway({
         cfg: options.getConfig(),
+        getRepositorySources: options.getRepositorySources,
         ...identity,
         ...(identity.diskResult
           ? { diskMove: { claim: identity.diskResult, placements: options.placements } }
@@ -99,6 +94,7 @@ export function createRepositoryGatewayMovePreparation(options: {
 
 export type RepositoryGatewayMaterializationParams = {
   cfg: OpenClawConfig;
+  getRepositorySources?: () => RepositorySources;
   sessionId: string;
   sessionKey: string;
   agentId: string;
@@ -266,12 +262,19 @@ async function materializeCapturedRepositoryWorkspace(
   ) {
     throw new Error("Repository workspace has no pinned source; retry its cloud preparation");
   }
-  if (initial.entry.repositorySourceId) {
+  const sourceOwner = params
+    .getRepositorySources?.()
+    .resolve(repository.url, initial.entry.repositorySourceId);
+  if (!sourceOwner) {
+    throw new Error("Repository source service is unavailable; retry after Gateway startup.");
+  }
+  if (!sourceOwner.supportsPublicationRestoration) {
     const assertRepositoryCurrent = composeSessionSourceAssertion(
       [params.assertCurrent, assertEntryCurrent],
       (assertSources) => {
         params.signal?.throwIfAborted();
         assertSources();
+        sourceOwner.assertCurrent();
         preparedRepository.assertSourceCurrent();
         if (preparedRepository.current()?.revision !== repository.revision) {
           throw new Error(
@@ -302,7 +305,8 @@ async function materializeCapturedRepositoryWorkspace(
       ...params,
       initial,
       repository,
-      repositorySourceId: initial.entry.repositorySourceId,
+      repositorySourceId: sourceOwner.id,
+      source: sourceOwner,
       assertRepositoryCurrent,
       snapshot: diskExport?.snapshot ?? {
         checkpointRef: repository.checkpointRef,
@@ -317,17 +321,12 @@ async function materializeCapturedRepositoryWorkspace(
       "Moving this repository to the Gateway requires a fresh disk export; preserve the original runner and retry after export support is available.",
     );
   }
-  const githubHost = resolveConfiguredGitHubHost(params.cfg);
-  const remote = parseGitHubRemoteUrl(repository.url, githubHost);
-  if (!remote) {
-    throw new Error(
-      `Repository workspace does not match the configured GitHub host (${githubHost}); restore its GitHub configuration before retrying the Gateway move`,
-    );
-  }
+  // The admitted source owns URL policy; the retained publication receipt owns its repository path.
+  const publicationRepository = new URL(sourceOwner.url).pathname.slice(1).replace(/\.git$/u, "");
   const branchInput = {
     workspaceId,
     branch: repository.branch,
-    pushRepository: `${remote.owner}/${remote.repo}`,
+    pushRepository: publicationRepository,
   };
   const selected = await readRepositoryGitHubPublicationBranchAsync(branchInput);
   const published = selected.head;
@@ -338,6 +337,7 @@ async function materializeCapturedRepositoryWorkspace(
   }
   const assertOtherOwners = () => {
     params.signal?.throwIfAborted();
+    sourceOwner.assertCurrent();
     if (preparedRepository.current()?.revision !== repository.revision) {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");
     }
@@ -346,7 +346,8 @@ async function materializeCapturedRepositoryWorkspace(
     if (
       current?.sessionId !== params.sessionId ||
       current.lifecycleRevision !== initial.entry?.lifecycleRevision ||
-      current.repositoryWorkspaceId !== workspaceId
+      current.repositoryWorkspaceId !== workspaceId ||
+      current.repositorySourceId !== initial.entry?.repositorySourceId
     ) {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");
     }
@@ -358,25 +359,25 @@ async function materializeCapturedRepositoryWorkspace(
       storePath: initial.storePath,
     },
     readSource: initial.capturedReadSource,
-    fields: ["sessionId", "lifecycleRevision", "repositoryWorkspaceId"],
+    fields: ["sessionId", "lifecycleRevision", "repositoryWorkspaceId", "repositorySourceId"],
     expected: initial.entry,
     assertCurrent: assertEntryCurrent,
     refuse: () => {
       throw new Error("Repository workspace changed during Gateway materialization; retry move");
     },
   });
-  const assertCurrent = composeSessionSourceAssertion(
+  const assertSessionCurrent = composeSessionSourceAssertion(
     [params.assertCurrent, entrySource],
     (assertSources) => {
       assertSources();
       assertOtherOwners();
     },
   );
-  assertCurrent();
+  assertSessionCurrent();
   if (repository.diskAuthority && !diskExport && exportDisk) {
     return await exportDisk(
       repository,
-      assertCurrent,
+      assertSessionCurrent,
       async (snapshot, verifyCurrent) =>
         await materializeCapturedRepositoryWorkspace(params, initial, assertEntryCurrent, {
           snapshot,
@@ -388,45 +389,25 @@ async function materializeCapturedRepositoryWorkspace(
     checkpointRef: repository.checkpointRef,
     manifestHash: repository.manifestHash,
   };
-  assertCurrent();
-  const github = await prepareRepositoryGitHubIdentity(params.agentId, assertCurrent);
-  assertCurrent();
-  const cloneOptions = {
+  assertSessionCurrent();
+  const restored = await sourceOwner.restoreWorker({
+    agentId: params.agentId,
+    requiredCommit: published?.pushed_head_commit ?? repository.baseCommit,
     signal: params.signal,
-    token: github.token,
-    assertCurrent: github.assertSelected,
-  };
-  const requiredCommit = published?.pushed_head_commit ?? repository.baseCommit;
-  const project = await github
-    .start(() =>
-      materializeProjectClone(
-        {
-          cfg: params.cfg,
-          gitUrl: repository.url,
-          requiredCommit,
-        },
-        cloneOptions,
-      ),
-    )
-    .catch((error: unknown) => {
-      if (error instanceof ProjectCloneError && error.failure === "auth_required") {
-        throw new ProjectCloneError(
-          error.failure,
-          "GitHub could not authenticate this repository with the selected shared GitHub identity. Check its repository access or reconnect it in Settings, then retry the Gateway move.",
-        );
-      }
-      throw error;
-    });
+    assertCurrent: assertSessionCurrent,
+  });
+  const assertCurrent = composeSessionSourceAssertion([assertSessionCurrent], (assertSources) => {
+    assertSources();
+    restored.assertCurrent();
+  });
   assertCurrent();
+  const project = restored.project;
   const {
     step,
     require: command,
     run,
   } = createGitHubPublicationCommandRunner(assertCurrent, "session.materialize");
-  const source = { url: repository.url, target: project.repoRoot };
-  const remoteHead = await step(() =>
-    readProjectCheckoutRemoteHead({ ...source, branch: repository.branch }, cloneOptions),
-  );
+  const remoteHead = await step(() => restored.readRemoteHead(repository.branch));
   if (remoteHead !== (published?.pushed_head_commit ?? undefined)) {
     throw new Error(
       "Repository publication branch differs from its recorded push; review the remote branch before retrying the Gateway move",
@@ -435,10 +416,7 @@ async function materializeCapturedRepositoryWorkspace(
   const requestedBase = parseGitHubPublicationBaseBranch(repository.requestedRef ?? "HEAD", "HEAD");
   const baseRef =
     published?.base_branch ??
-    (requestedBase !== "HEAD" &&
-    (await step(() =>
-      readProjectCheckoutRemoteHead({ ...source, branch: requestedBase }, cloneOptions),
-    ))
+    (requestedBase !== "HEAD" && (await step(() => restored.readRemoteHead(requestedBase)))
       ? requestedBase
       : "HEAD");
   if (published?.pushed_head_commit) {

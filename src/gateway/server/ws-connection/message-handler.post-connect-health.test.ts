@@ -28,8 +28,8 @@ import {
   withOpenClawTestState,
 } from "../../../test-utils/openclaw-test-state.js";
 import type { AuthRateLimiter } from "../../auth-rate-limit.js";
-import { gitHubPublicApi } from "../../github-public-api.js";
 import type { HealthSummary } from "../../health/types.js";
+import { gitHubAccountApi } from "../../native-github-account-api.js";
 import { getOperatorApprovalRuntimeToken } from "../../operator-approval-runtime-token.js";
 import {
   HEALTH_REFRESH_INTERVAL_MS,
@@ -1330,7 +1330,7 @@ describe("attachGatewayWsMessageHandler post-connect health refresh", () => {
       retryAfterMs: 1_000,
     },
     {
-      error: new gitHubPublicApi.ControlUiGitHubError(429, "private upstream failure", {
+      error: new gitHubAccountApi.ControlUiGitHubError(429, "private upstream failure", {
         retryAtMs: 1_800_000_090_000,
       }),
       message: "GitHub is rate limiting profile verification",

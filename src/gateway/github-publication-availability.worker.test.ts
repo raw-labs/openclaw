@@ -8,6 +8,7 @@ import {
   insertRegistryWorktree,
   updateRegistryWorktree,
 } from "../agents/worktrees/registry.js";
+import "../test-utils/prepare-compiled-subprocesses.js";
 import { findLiveRegistryWorktreeByOwner } from "../agents/worktrees/registry.test-support.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
@@ -36,9 +37,11 @@ import {
   prepareGitHubPublicationWorkspaceOwner,
 } from "./github-publication-availability.js";
 import { createRepositoryPublicationDiscovery } from "./github-publication-discovery.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
+import { loadGitHubRepositoryRuntimeFixture } from "./github-repository-fixture-api.test-support.js";
 import type { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 import { prepareRepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
+
+const { createGitHubPublicationProvider } = await loadGitHubRepositoryRuntimeFixture();
 
 let service: AbortController;
 function provider() {
@@ -162,7 +165,7 @@ vi.mock("../agents/worktrees/service.js", () => ({
   },
 }));
 // mock-isolation: Control identity preparation without credential discovery.
-vi.mock("../agents/github-tool-identity.js", () => ({
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", () => ({
   prepareGitHubPublicationIdentity: mocks.identity,
   prepareGitHubPublicationOptionsIdentity: mocks.identity,
   matchesPreparedGitHubPublicationIdentity: () => true,
@@ -170,7 +173,7 @@ vi.mock("../agents/github-tool-identity.js", () => ({
   onManagedGitHubProfileChanged: () => () => {},
 }));
 // mock-isolation: Exclude OAuth credentials and network activity from this reader fixture.
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("../../extensions/github-repositories/account-runtime-api.js", () => ({
   requestCurrentGitHubOAuthRefresh: async () => {},
 }));
 // mock-isolation: Use synthetic configuration without loading operator configuration.
@@ -495,7 +498,9 @@ it("retains the memory session outside its async scope and rejects a replacement
 });
 
 it("requalifies cached physical origins when the selected provider host changes", async () => {
-  let providerConfig: OpenClawConfig = { gateway: { github: { host: "github.com" } } };
+  let providerConfig: OpenClawConfig = {
+    plugins: { entries: { "github-repositories": { config: { host: "github.com" } } } },
+  };
   const selected = createGitHubPublicationProvider({
     getConfig: () => providerConfig,
     refreshIdentity: async () => {},
@@ -516,7 +521,9 @@ it("requalifies cached physical origins when the selected provider host changes"
   if (!first.ok) {
     throw first.cause;
   }
-  providerConfig = { gateway: { github: { host: "engineering.ghe.com" } } };
+  providerConfig = {
+    plugins: { entries: { "github-repositories": { config: { host: "engineering.ghe.com" } } } },
+  };
   expect(first.assertCurrent).toThrow("target support changed");
   const second = await qualifyGitHubPublicationSource(session, () => {}, prepared.readCurrent, {
     supportsOrigin: selected.supportsOrigin,

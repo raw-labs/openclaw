@@ -34,7 +34,6 @@ import type {
   MockGatewayWindow,
 } from "./control-ui-e2e-contract.ts";
 import { createMockGatewayControls, installMockGatewayScript } from "./control-ui-e2e-controls.ts";
-import { defaultControlUiFeatureMethods } from "./control-ui-e2e-defaults.ts";
 import {
   installControlUiE2ePageDiagnosticRing,
   installControlUiE2eUnhandledRejectionRing,
@@ -2399,44 +2398,21 @@ function installControlUiMockGateway(
   });
 }
 
-export async function prepareControlUiMockGatewayScenario(
-  scenario: ControlUiMockGatewayScenario = {},
-) {
-  if (!scenario.nativePlugins?.length) {
-    return { scenario, assets: new Map<string, { body: Buffer; contentType: string }>() };
-  }
-  const { prepareNativeControlUiPluginFixtures } = await import("./control-ui-plugin-fixture.ts");
-  const { catalog, assets } = await prepareNativeControlUiPluginFixtures(scenario.nativePlugins);
-  const preparedScenario = catalog.plugins.length
-    ? {
-        ...scenario,
-        featureMethods: [
-          ...new Set([
-            ...(scenario.featureMethods ?? defaultControlUiFeatureMethods),
-            "plugins.controlUi.list",
-            "plugins.controlUi.report",
-          ]),
-        ],
-        methodResponses: {
-          ...scenario.methodResponses,
-          "plugins.controlUi.list": catalog,
-          "plugins.controlUi.report": { ok: true },
-        },
-      }
-    : scenario;
-  return { scenario: preparedScenario, assets };
-}
-
 export async function installMockGateway(
   page: Page,
   scenario: ControlUiMockGatewayScenario = {},
   options: ControlUiMockGatewayInstallOptions = {},
 ): Promise<MockGatewayControls> {
+  const { prepareControlUiMockGatewayScenario } = await import("./control-ui-plugin-fixture.ts");
   const prepared = await prepareControlUiMockGatewayScenario(scenario);
   if (prepared.assets.size) {
     await page.route(`**${controlUiPluginAssetRoot()}**`, async (route) => {
       const asset = prepared.assets.get(new URL(route.request().url()).pathname);
-      await route.fulfill(asset ? { status: 200, ...asset } : { status: 404 });
+      if (asset) {
+        await route.fulfill({ status: 200, ...asset });
+      } else {
+        await route.fallback();
+      }
     });
   }
   const normalizedScenario = normalizeScenario(prepared.scenario);

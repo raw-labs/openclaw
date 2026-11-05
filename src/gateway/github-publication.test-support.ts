@@ -39,14 +39,14 @@ import {
 } from "../state/openclaw-state-db.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { currentGitHubPublicationConfig } from "./github-publication-identity.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
+import { resolveBundledPluginPublicModulePath } from "../test-utils/bundled-plugin-public-surface.js";
 import {
   prepareGitHubPublicationRequesterV2,
   type GitHubPublicationRequesterV2,
 } from "./github-publication-requester.js";
 import { createGitHubPublicationRuntime as createRuntime } from "./github-publication-runtime.js";
 import { createGitHubPublicationCoordinator as createCoordinator } from "./github-publication.js";
+import { loadGitHubRepositoryRuntimeFixture } from "./github-repository-fixture-api.test-support.js";
 import { REQUEST } from "./worker-environments/placement-dispatch-test-fixtures.js";
 import {
   createWorkerSessionPlacementStore,
@@ -72,21 +72,33 @@ const mocks = vi.hoisted(() => ({
 
 export const githubPublicationTestMocks = () => mocks;
 
-vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../agents/github-tool-identity.js")>();
-  return {
-    ...actual,
-    matchesPreparedGitHubPublicationIdentity: mocks.matchesIdentity,
-    prepareGitHubPublicationIdentity: mocks.prepareIdentity,
-    prepareGitHubPublicationOptionsIdentity: mocks.prepareIdentity,
-  };
-});
+vi.doMock(
+  resolveBundledPluginPublicModulePath({
+    pluginId: "github-repositories",
+    artifactBasename: "tool-identity-api.ts",
+  }),
+  async (importOriginal) => {
+    const actual = await importOriginal<Record<string, unknown>>();
+    return {
+      ...actual,
+      matchesPreparedGitHubPublicationIdentity: mocks.matchesIdentity,
+      prepareGitHubPublicationIdentity: mocks.prepareIdentity,
+      prepareGitHubPublicationOptionsIdentity: mocks.prepareIdentity,
+    };
+  },
+);
 
-vi.mock("./github-oauth-lifecycle.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./github-oauth-lifecycle.js")>()),
-  requestCurrentGitHubOAuthRefresh: mocks.refreshIdentity,
-  requestCurrentPersonalGitHubRefresh: mocks.refreshIdentity,
-}));
+vi.doMock(
+  resolveBundledPluginPublicModulePath({
+    pluginId: "github-repositories",
+    artifactBasename: "account-runtime-api.ts",
+  }),
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    requestCurrentGitHubOAuthRefresh: mocks.refreshIdentity,
+    requestCurrentPersonalGitHubRefresh: mocks.refreshIdentity,
+  }),
+);
 
 // Git transport is synthetic in this harness; keep real SQLite lease exclusion.
 vi.mock("../agents/worktrees/git-lock.js", async (importOriginal) => ({
@@ -174,6 +186,10 @@ vi.mock("./github-publication-git-index.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./github-publication-git-index.js")>()),
   updateGitHubPublicationBranchAndIndex: mocks.updateIndex,
 }));
+
+const { currentGitHubPublicationConfig, createGitHubPublicationProvider } =
+  await loadGitHubRepositoryRuntimeFixture();
+export { currentGitHubPublicationConfig };
 
 export let systemPublicationRequester: GitHubPublicationRequesterV2;
 
@@ -705,6 +721,9 @@ export function installGitHubPublicationTestHarness(
   });
 
   afterEach(async () => {
+    const { stopTestRegisteredPublicationProviders } =
+      await import("./github-account-service.test-support.js");
+    await stopTestRegisteredPublicationProviders();
     await closePublicationTestAgentDatabases();
     clearRuntimeConfigSnapshot();
     closeOpenClawAgentDatabasesForTest();

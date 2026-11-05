@@ -10,6 +10,7 @@ import {
   prepareGitHubPublicationRequesterV2,
 } from "./github-publication-requester.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
+import { readWorkspacePublicationHost } from "./workspace-publication-binding.js";
 
 type Options = Omit<GatewayRequestHandlerOptions, "params"> & {
   params: Exclude<
@@ -57,7 +58,7 @@ export async function performSessionGitHubAction(options: Options): Promise<void
   if (params.action === "merge" && !params.mergeMethod) {
     throw new Error("Select the repository's intended mergeMethod before merging.");
   }
-  const service = context.githubPublicationService;
+  const service = readWorkspacePublicationHost(context)?.readApi();
   if (!service) {
     throw new Error("GitHub publication is unavailable on this Gateway.");
   }
@@ -79,7 +80,7 @@ export async function performSessionGitHubAction(options: Options): Promise<void
   resources.defer(admitted.release);
   const authority = captureGitHubPublicationActionAuthority(admitted.requester);
   const assertRequester = () => {
-    if (context.githubPublicationService !== service) {
+    if (readWorkspacePublicationHost(context)?.readApi() !== service) {
       throw new Error("The repository publisher stopped; inspect the current PR before retrying.");
     }
     target.assertCurrent();

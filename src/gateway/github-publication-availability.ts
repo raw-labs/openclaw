@@ -22,10 +22,10 @@ import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worke
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import type { PreparedRepositoryWorkspace } from "../state/session-repository-workspaces.publication.js";
 import {
-  GitHubPublicationWorkspaceChangedError,
-  GitHubPublicationSessionBranchMismatchError,
-  GitHubPublicationSessionChangedError,
-} from "./github-publication-failure.js";
+  RepositoryPublicationFailureError,
+  RepositoryPublicationWorkspaceChangedError as GitHubPublicationWorkspaceChangedError,
+  RepositoryPublicationSessionChangedError as GitHubPublicationSessionChangedError,
+} from "./github-publication-errors.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import type {
   PublicationSessionIdentity,
@@ -643,10 +643,13 @@ export async function readRepositoryPublicationTargetFacts(params: {
   );
   params.assertCurrent();
   if (branch !== params.worktree.branch) {
-    throw new GitHubPublicationSessionBranchMismatchError({
-      session: params.worktree.branch,
-      checkedOut: branch,
-    });
+    throw new RepositoryPublicationFailureError(
+      `The session worktree has branch ${branch} checked out, but this session publishes branch ${params.worktree.branch}.`,
+      {
+        code: "workspace_changed",
+        nextAction: `In the session worktree, rename the branch back with \`git branch -m ${branch} ${params.worktree.branch}\`, or switch to it with \`git switch ${params.worktree.branch}\` if it still exists, then request publication again. Publication only pushes the session branch.`,
+      },
+    );
   }
   return { originUrl: identity.originUrl, branch, baseRef: params.worktree.baseRef };
 }
@@ -672,4 +675,3 @@ export function readAcceptedRepositoryPublicationWorktree(row: {
     branch: row.branch,
   });
 }
-export { currentGitHubPublicationConfig } from "./github-publication-identity.js";

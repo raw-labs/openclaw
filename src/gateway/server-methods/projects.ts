@@ -1,21 +1,13 @@
 import path from "node:path";
 import {
   ErrorCodes,
-  GatewayErrorDetailCodes,
   errorShape,
   type ProjectRecord,
-  validateProjectsAddParams,
   validateProjectsListParams,
   validateProjectsCheckoutOptionsParams,
   validateProjectsRegisterParams,
   validateProjectsRemoveParams,
-  validateProjectsSearchRemoteParams,
 } from "../../../packages/gateway-protocol/src/index.js";
-import {
-  resolveConfiguredGitHubApiBaseUrl,
-  resolveConfiguredGitHubHost,
-} from "../../agents/github-host.js";
-import { readCachedNativeGitHubToken } from "../../agents/github-read-identity.js";
 import { readRegistryWorktrees } from "../../agents/worktrees/registry-read.js";
 import {
   captureWorktreeRegistryAuthority,
@@ -26,12 +18,7 @@ import { loadCombinedSessionStoreForGatewayCoreAsync } from "../../config/sessio
 import type { SessionEntry } from "../../config/sessions/types.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { isPathInside } from "../../infra/path-guards.js";
-import { ProjectCloneError } from "../../projects/project-clone-runtime.js";
-import {
-  materializeProjectClone,
-  removeClonedProjectCheckout,
-} from "../../projects/project-clone.js";
-import { parseProjectGitUrl } from "../../projects/project-git-url.js";
+import { removeClonedProjectCheckout } from "../../projects/project-clone.js";
 import {
   listProjectRegistry,
   listWorkspaceProjects,
@@ -40,24 +27,18 @@ import {
   removeProjectRegistry,
   resolveProjectRegistry,
 } from "../../projects/project-registry.js";
-import { isTrustedSecretSurfaceUnavailableError } from "../../secrets/runtime-degraded-state.js";
 import {
   prepareCurrentUserProfileAliases,
   UserProfileDisclosureChangedError,
 } from "../../state/user-profile-reads.js";
 import { configuredDefaultRepository } from "../configured-default-repository.js";
 import {
-  CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE,
-  gitHubPublicApi,
-  githubApiToken,
-} from "../github-public-api.js";
-import {
   WRITE_SCOPE,
   authorizeOperatorScopesForMethod,
   authorizeOperatorScopesForRequiredScope,
 } from "../method-scopes.js";
+import { resolveConfiguredGitHubHost } from "../native-github-host-realm.js";
 import { authorizeGatewaySessionCreation, resolveCreatorSandbox } from "../operator-role-policy.js";
-import { searchRemoteProjects } from "../project-github-search.js";
 import { resolveOperatorSessionCreation } from "../session-creation-provenance.js";
 import { resolveSessionCreateAgentId } from "../session-request-agent.js";
 import {
@@ -149,7 +130,7 @@ export const projectsHandlers: GatewayRequestHandlers = {
     // Each attempt binds one config publication; a race restarts the read instead of failing it.
     const list = async () => {
       const cfg = context.getRuntimeConfig();
-      const defaultRepository = configuredDefaultRepository(cfg);
+      const defaultRepository = configuredDefaultRepository(cfg, context.repositorySources);
       const requesterProfileId = client?.authenticatedUserProfile?.profileId;
       const requesterUserId = client?.authenticatedUserId;
       const assertCurrent = () => {
@@ -166,17 +147,26 @@ export const projectsHandlers: GatewayRequestHandlers = {
         assertMemoryProjectStoresCurrent(memoryStores, keys, assertCurrent);
       const registryProjects = await listProjectRegistry(cfg);
       diagnostics?.mark("sessions");
-      const githubHost = resolveConfiguredGitHubHost(cfg);
+      const assertRepositoryDisplaysCurrent: Array<() => void> = [];
       const projects = registryProjects.map((project) => {
-        // The registry already owns discovery. Project identity never grants repository access.
-        const repository = project.originUrl
-          ? parseProjectGitUrl(project.originUrl, githubHost)
-          : null;
+        let repositoryIdentity: string | undefined;
+        if (project.originUrl) {
+          try {
+            const selected = context.repositorySources?.resolve(project.originUrl);
+            if (selected) {
+              selected.assertCurrent();
+              repositoryIdentity = selected.display?.identity;
+              if (repositoryIdentity) {
+                assertRepositoryDisplaysCurrent.push(selected.assertCurrent);
+              }
+            }
+          } catch {
+            // Optional source presentation does not hide an already discoverable project.
+          }
+        }
         return {
           ...sanitizeProjectRecord(project),
-          ...(repository
-            ? { repositoryIdentity: new URL(repository.url).pathname.slice(1, -4) }
-            : {}),
+          ...(repositoryIdentity ? { repositoryIdentity } : {}),
         };
       });
       const canWrite = () =>
@@ -245,6 +235,13 @@ export const projectsHandlers: GatewayRequestHandlers = {
           ...(writable && observedProjects ? observedProjects.usedSessions : []),
         ]),
       );
+      try {
+        for (const assertDisplayCurrent of assertRepositoryDisplaysCurrent) {
+          assertDisplayCurrent();
+        }
+      } catch {
+        throw new ProjectListingChangedError();
+      }
       // Read-safe identity describes only already discoverable projects. Host paths, origins,
       // folders, and observed checkouts remain write-scoped placement details.
       respond(
@@ -398,86 +395,6 @@ export const projectsHandlers: GatewayRequestHandlers = {
       );
     },
     projectCheckoutError,
-  ),
-  "projects.add": defineValidatedGatewayHandler(
-    "projects.add",
-    validateProjectsAddParams,
-    async ({ params, respond, context, signal }) => {
-      const cfg = context.getRuntimeConfig();
-      respond(
-        true,
-        await materializeProjectClone(
-          { cfg, gitUrl: params.gitUrl, name: params.name },
-          { signal, token: githubApiToken(process.env, cfg) },
-        ),
-        undefined,
-      );
-    },
-    (error) => {
-      const failure = isTrustedSecretSurfaceUnavailableError(error)
-        ? { cause: "auth_required", message: CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE }
-        : error instanceof ProjectCloneError
-          ? { cause: error.failure, message: error.message }
-          : undefined;
-      return failure
-        ? errorShape(
-            failure.cause === "invalid_url" ? ErrorCodes.INVALID_REQUEST : ErrorCodes.UNAVAILABLE,
-            failure.message,
-            {
-              details: {
-                code: GatewayErrorDetailCodes.PROJECT_CLONE_FAILED,
-                cause: failure.cause,
-              },
-              retryable: failure.cause === "network" || failure.cause === "clone_failed",
-            },
-          )
-        : errorShape(ErrorCodes.UNAVAILABLE, formatErrorMessage(error));
-    },
-  ),
-  "projects.searchRemote": defineValidatedGatewayHandler(
-    "projects.searchRemote",
-    validateProjectsSearchRemoteParams,
-    async ({ params, respond, context, signal, hasCurrentClientAuthority }) => {
-      const cfg = context.getRuntimeConfig();
-      const host = resolveConfiguredGitHubHost(cfg);
-      const apiBaseUrl = resolveConfiguredGitHubApiBaseUrl(cfg);
-      const assertCurrent = () => {
-        signal?.throwIfAborted();
-        if (hasCurrentClientAuthority?.() === false) {
-          throw new Error("Project requester authority changed during search");
-        }
-        if (context.getRuntimeConfig() !== cfg) {
-          throw new gitHubPublicApi.ControlUiGitHubError(
-            502,
-            "GitHub host changed during project search",
-          );
-        }
-      };
-      assertCurrent();
-      const nativeToken =
-        cfg.gateway?.projects?.nativeGitHubSearch === true
-          ? await readCachedNativeGitHubToken(process.env)
-          : undefined;
-      assertCurrent();
-      const result = await searchRemoteProjects(params.query, {
-        assertCurrent,
-        trackExecution: (run) => context.trackExecution(run),
-        signal,
-        host,
-        apiBaseUrl,
-        ...(cfg.gateway?.projects?.nativeGitHubSearch === true ? { token: nativeToken ?? "" } : {}),
-      });
-      assertCurrent();
-      respond(true, result, undefined);
-    },
-    (error) => {
-      const { message, ...details } =
-        error instanceof gitHubPublicApi.ControlUiGitHubError ||
-        isTrustedSecretSurfaceUnavailableError(error)
-          ? gitHubPublicApi.formatControlUiGitHubPreviewError(error)
-          : { message: "GitHub project search is unavailable. Retry shortly.", retryable: true };
-      return errorShape(ErrorCodes.UNAVAILABLE, message, details);
-    },
   ),
   "projects.remove": async ({ params, respond, context }) => {
     if (!assertValidParams(params, validateProjectsRemoveParams, "projects.remove", respond)) {

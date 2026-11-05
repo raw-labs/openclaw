@@ -249,7 +249,6 @@ function renderCatalogHostGroup(
                   sessionKey={key()}
                   agentId={params.snapshot.newSessionAgentId}
                   artifact={readSession().pullRequest}
-                  nativeBadges={{ pullRequest: readSession().pullRequest }}
                   onChange={() => params.host.sessionData.requestSessionDataUpdate()}
                 />
               </span>

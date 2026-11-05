@@ -11,7 +11,6 @@ import {
   matchesGitHubPublicationRequester,
 } from "../state/github-publication-requester.js";
 import type { SessionRepositoryWorkspaceRecord } from "../state/session-repository-workspaces.types.js";
-import type { PreparedRepositoryPublicationStatus } from "./github-personal-publication-status.js";
 import {
   preparePersonalRepositoryPublicationStatus as preparePersonalStatus,
   createRepositoryPersonalPublicationStatus,
@@ -58,6 +57,7 @@ import {
 } from "./github-repository-publication-workspace.js";
 import { matchesRepositoryGitHubPublicationClaim } from "./github-repository-publication.kernel.js";
 import type {
+  PreparedRepositoryPublicationStatus,
   RepositoryPublicationProvider,
   RepositoryPublicationPersonalAction as PersonalGitHubAction,
 } from "./repository-publication-contract.js";

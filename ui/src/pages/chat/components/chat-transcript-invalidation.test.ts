@@ -1,5 +1,5 @@
-/* @vitest-environment jsdom */
 import { expectDefined } from "@openclaw/normalization-core/expect";
+/* @vitest-environment jsdom */
 import { createComponent } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { resolveThemeBranding } from "../../../../../packages/gateway-protocol/src/theme.ts";
@@ -335,50 +335,6 @@ describe("chat transcript invalidation", () => {
         expect(find(container, ".chat-video-preview img")).toBeInstanceOf(HTMLImageElement);
       },
     );
-  });
-
-  it("keeps explicit destinations stable as history, catalog rows, and sessions change", () => {
-    const { pane } = createTestChatPane({ client: createGatewayBrowserClientFixture() });
-    const original = {
-      role: "assistant",
-      content: "PR acme/research#126 and https://github.com/other/project/issues/126. PR #126.",
-      timestamp: 1_000,
-    };
-    const props = threadProps("pane-github", "agent:main:github", [original]);
-    const { container, rerender } = threadFixture(props);
-    const links = () =>
-      [...container.querySelectorAll<HTMLAnchorElement>("a.markdown-github-item")].map(
-        (a) => a.href,
-      );
-    const expected = [
-      "https://github.com/acme/research/pull/126",
-      "https://github.com/other/project/issues/126",
-    ];
-    rerender();
-    expect(links()).toEqual(expected);
-    for (const type of ["toolResult", "toolCall", "reasoning"] as const) {
-      const catalogMessage = pane.catalogItemMessage({
-        id: type,
-        type,
-        text: "https://github.com/unrelated/example/pull/126",
-      });
-      props.messages = [catalogMessage, original];
-      rerender();
-      expect(links()).toContain(expected[0]);
-      expect(links()).toContain(expected[1]);
-      expect(container.textContent).toContain("PR #126");
-    }
-    props.messages = [
-      { role: "assistant", content: "https://github.com/history/older/pull/126", timestamp: 500 },
-      original,
-    ];
-    rerender();
-    expect(links()).toContain(expected[0]);
-    expect(links()).toContain(expected[1]);
-    props.sessionKey = "agent:main:another-checkout";
-    props.messages = [original];
-    rerender();
-    expect(links()).toEqual(expected);
   });
 
   it("does not renormalize projected historical messages", () => {

@@ -5,6 +5,7 @@ import {
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
 } from "../../../src/gateway/control-ui-contract.js";
 import { CHAT_TRANSCRIPT_END_THRESHOLD_PX } from "../pages/chat/scroll.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -14,7 +15,6 @@ import {
 import {
   chatThreadDistanceFromBottom,
   createChatFlowE2eSuite,
-  installMockGateway,
   newChatPage,
   scrollChatThreadToTop,
   waitForChatScrollIdle,

@@ -1,11 +1,13 @@
 import path from "node:path";
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import * as publicationTransport from "openclaw/plugin-sdk/process-runtime";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 import { readAdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import { createOpenClawCodingToolsAsync } from "../../agents/agent-tools.js";
 import { withPreparedEmbeddedGatewayTools } from "../../agents/embedded-agent-runner/run/attempt-gateway-tools.js";
 import { applyEmbeddedAttemptToolsAllow } from "../../agents/embedded-agent-runner/run/attempt-tool-construction-plan.js";
 import type { RunEmbeddedAgentParams } from "../../agents/embedded-agent-runner/run/params.js";
+import { resolveGitHubPluginToolsFixture } from "../../agents/github-plugin-tools.test-support.js";
 import { createAgentRunRestartAbortError } from "../../agents/run-termination.js";
 import { AUTOMATIONS_TOOL_NAME } from "../../agents/tools/automations-tool-name.js";
 import {
@@ -18,10 +20,9 @@ import { setRuntimeConfigSnapshot } from "../../config/config.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import { captureGatewayAuthPolicy } from "../../gateway/auth-policy.js";
-import * as publicationIdentity from "../../gateway/github-publication-identity.js";
-import { createNativeGitHubPublicationProvider } from "../../gateway/github-publication-provider.js";
-import * as publicationTransport from "../../gateway/github-publication-remote.js";
+import { installPublicationRpcFixture } from "../../gateway/github-account-service.test-support.js";
 import { createGitHubPublicationCoordinator } from "../../gateway/github-publication.js";
+import { loadGitHubRepositoryRuntimeFixture } from "../../gateway/github-repository-fixture-api.test-support.js";
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { cronHandlers } from "../../gateway/server-methods/cron.js";
 import {
@@ -39,6 +40,10 @@ import { createSyntheticPluginRuntimeClient } from "../../gateway/server-plugin-
 import { createWorkerSessionPlacementStore } from "../../gateway/worker-environments/placement-store.js";
 import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import {
+  bindLegacyPluginSdkResourceHost,
+  LegacyPluginSdkResourceHost,
+} from "../../plugins/legacy-sdk-resource-host.js";
+import {
   bindGatewayContextResolver,
   clearGatewayContextResolver,
   withPluginRuntimeGatewayRequestScope,
@@ -49,6 +54,7 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { runOpenClawStateWriteTransaction } from "../../state/openclaw-state-db.js";
 import { setCanonicalUserProfileRole } from "../../state/user-profile-writes.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
+import { loadBundledPluginFacade } from "../../test-utils/bundled-plugin-public-surface.js";
 import { createGatewaySchedulerClock } from "../../test-utils/gateway-scheduler-clock.js";
 import type { CronEvent } from "../service.js";
 import { resolveCronRequesterExecutionRevision } from "../service/jobs-tool-policy.js";
@@ -78,6 +84,16 @@ vi.mock("../../agents/embedded-agent-runner/run.js", () => ({
   runEmbeddedAgent: sessionRunner.runEmbedded,
 }));
 
+// mock-isolation: Discovery is synthetic; plugin factories and scheduled authority stay real.
+vi.mock("../../agents/openclaw-plugin-tools.js", () => ({
+  resolveOpenClawPluginToolsForOptions: (
+    params: Parameters<typeof resolveGitHubPluginToolsFixture>[0],
+  ) => resolveGitHubPluginToolsFixture(params),
+  resolveOpenClawPluginToolsForOptionsAsync: async (
+    params: Parameters<typeof resolveGitHubPluginToolsFixture>[0],
+  ) => resolveGitHubPluginToolsFixture(params),
+}));
+
 const runCronIsolatedAgentTurn = await loadRunCronIsolatedAgentTurn();
 await Promise.all([
   import("../../auto-reply/dispatch.js"),
@@ -85,6 +101,27 @@ await Promise.all([
     runtime.prewarmConfigDrivenReplyRuntime(),
   ),
 ]);
+const { createGitHubPublicationProvider } = await loadGitHubRepositoryRuntimeFixture();
+type PublicationIdentity = {
+  source: "system-detected" | "system-configured" | "agent-override" | "personal";
+  profileId?: string;
+  host?: string;
+  account: { accountId: number; login: string; avatarUrl: string | null };
+  env: NodeJS.ProcessEnv;
+  stale?: true;
+  accessExpiresAtMs?: number;
+};
+const publicationIdentity = await loadBundledPluginFacade<{
+  prepareCurrentGitHubPublicationIdentity(
+    agentId: string,
+    assertCurrent?: () => void,
+  ): Promise<PublicationIdentity>;
+  matchesCurrentGitHubPublicationIdentity(input: {
+    agentId: string;
+    identity: PublicationIdentity;
+  }): boolean;
+}>({ pluginId: "github-repositories", artifactBasename: "publication-availability-api.js" });
+
 const session = await vi.importActual<typeof import("./session.js")>("./session.js");
 const accessor = await vi.importActual<typeof import("../../config/sessions/session-accessor.js")>(
   "../../config/sessions/session-accessor.js",
@@ -96,7 +133,7 @@ const toolConstructionPlan = {
   includeShellTools: false,
   includeChannelTools: false,
   includeOpenClawTools: true,
-  includePluginTools: false,
+  includePluginTools: true,
 };
 
 beforeEach(() => {
@@ -152,6 +189,9 @@ it.each([
   const { context } = fixture;
   const resolveGatewayContext = () => context;
   context.resolveGatewayContext = resolveGatewayContext;
+  const resources = new LegacyPluginSdkResourceHost();
+  bindLegacyPluginSdkResourceHost(resolveGatewayContext, resources);
+  onTestFinished(() => resources.close());
   const profile = ensureProfileForEmail("scheduled-operator@example.test");
   const client = createOperatorClient({
     profileId: profile.id,
@@ -403,15 +443,18 @@ it.each([
 
   // Publication creation/storage and actual GitHub credentials are outside this regression.
   const coordinator = createGitHubPublicationCoordinator({
-    provider: createNativeGitHubPublicationProvider({
+    provider: createGitHubPublicationProvider({
       signal: new AbortController().signal,
       assertCurrent() {},
       getConfig: () => config,
+      refreshIdentity: async () => {},
+      refreshPersonal: async () => {},
     }),
     placements: createWorkerSessionPlacementStore(),
     getCommittedRuntimeConfig: () => config,
   });
   context.githubPublicationService = coordinator;
+  await installPublicationRpcFixture(context, coordinator);
   const receipt = vi
     .spyOn(coordinator, "latestShared")
     .mockResolvedValue({ result: publication, confirmation: null });
@@ -425,9 +468,8 @@ it.each([
   let reads = 0;
   const writes: unknown[] = [];
   const github = vi
-    .spyOn(publicationTransport, "runGitHubPublicationCommand")
+    .spyOn(publicationTransport, "runCommandBuffered")
     .mockImplementation(async (argv, options) => {
-      options?.beforeRun?.();
       if (selfRemoving) {
         expect(context.cron.getJob(job.id)).toBeUndefined();
       }

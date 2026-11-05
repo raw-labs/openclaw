@@ -9,7 +9,6 @@ import { openEditor } from "../lib/editor-links.ts";
 import { formatUiError } from "../lib/format-error.ts";
 import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../lib/gateway-methods.ts";
 import type { IdentityAvatars } from "../lib/identity-avatar-loader.ts";
-import { openExternalUrlSafe } from "../lib/open-external-url.ts";
 import { projectGateway, projectOverlays } from "../lib/reactive/application.ts";
 import { projectAgents } from "../lib/reactive/domain-capabilities.ts";
 import { t } from "../lib/reactive/i18n.ts";
@@ -466,9 +465,6 @@ function renderSidebarMenus(
                 return;
               }
               switch (action.kind) {
-                case "open-pr":
-                  openExternalUrlSafe(action.url);
-                  break;
                 case "open-in":
                   openEditor(action.editor, action.path);
                   break;

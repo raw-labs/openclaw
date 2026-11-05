@@ -190,24 +190,38 @@ describe("DraftPlaceState repository selection", () => {
     expect(f.state.worktree).toBe(true);
   });
 
-  it("retires a restored repository on host change", () => {
-    const f = createRepositoryFixture();
-    let host = "a.ghe.example.test";
-    vi.spyOn(f.browser, "projectsReady", "get").mockReturnValue(true);
-    vi.spyOn(f.browser, "githubHost", "get").mockImplementation(() => host);
-    const remote = { ...REMOTE_PROJECT, cloneUrl: "https://a.ghe.example.test/acme/private.git" };
-    f.readPreference.mockReturnValue({ remoteProject: remote });
-    f.state.adoptAgentDefaults();
-    f.state.restorePreferenceSelections();
-    expect(f.browser.remoteProject).toEqual(remote);
-    f.state.setBaseRef("retired-host-branch");
-    f.state.setWorktreeName("retired-host-task");
-    host = "b.ghe.example.test";
-    f.state.restorePreferenceSelections();
-    expect(f.browser.remoteProject).toBeNull();
-    expect(f.state.remoteRepository).toBeUndefined();
-    expect(f.state).toMatchObject({ baseRef: "", worktreeName: "" });
-  });
+  it.each(["restored", "selected"])(
+    "preserves %s repository when its source is disabled",
+    (selection) => {
+      const f = createRepositoryFixture();
+      vi.spyOn(f.browser, "projectsReady", "get").mockReturnValue(true);
+      const remote = { ...REMOTE_PROJECT, sourceId: "fixture/repos" };
+      f.readPreference.mockReturnValue(selection === "restored" ? { remoteProject: remote } : {});
+      f.state.adoptAgentDefaults();
+      if (selection === "selected") {
+        f.state.selectRemoteProject(remote);
+      }
+      f.state.restorePreferenceSelections();
+      expect(f.browser.remoteProject).toEqual(remote);
+      f.state.setBaseRef("retired-host-branch");
+      f.state.setWorktreeName("retired-host-task");
+      const sources = f.browser.repositorySources;
+      f.setRepositorySources([]);
+      f.state.restorePreferenceSelections();
+      expect(f.browser.remoteProject).toEqual(remote);
+      expect(f.state.folderSubmissionBlocked()).toBe(true);
+      expect(f.state.currentCheckoutUnavailableReason).toContain(
+        "repository source is unavailable",
+      );
+      expect(f.state).toMatchObject({
+        baseRef: "retired-host-branch",
+        worktreeName: "retired-host-task",
+      });
+      f.setRepositorySources(sources);
+      expect(f.browser.repositorySourceStatus).toBeUndefined();
+      expect(f.browser.remoteProject).toEqual(remote);
+    },
+  );
 
   it("preserves an explicit contributed repository owner in local and hosted creation", () => {
     const { state, browser } = createRepositoryFixture();

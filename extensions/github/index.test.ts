@@ -9,9 +9,23 @@ import type { ControlUiGitHubPreview } from "./api.js";
 import plugin from "./index.js";
 import manifest from "./openclaw.plugin.json" with { type: "json" };
 
-vi.mock("openclaw/plugin-sdk/gateway-method-runtime", () => ({
+vi.mock("openclaw/plugin-sdk/gateway-method-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/gateway-method-runtime")>()),
   dispatchGatewayMethod: vi.fn(),
 }));
+const reader = vi.hoisted(() => ({ preview: vi.fn(), detail: vi.fn() }));
+vi.mock("@openclaw/github-repositories/public-api.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@openclaw/github-repositories/public-api.js")>();
+  return {
+    ...actual,
+    gitHubPublicApi: {
+      ...actual.gitHubPublicApi,
+      loadControlUiGitHubPreview: reader.preview,
+      loadGitHubDetail: reader.detail,
+    },
+  };
+});
 
 const date = "2026-09-13T12:00:00Z";
 const closedAt = "2026-09-03T12:00:00Z";
@@ -23,11 +37,19 @@ const pullTarget = { kind: "pull", owner: "octocat", repo: "repo", number: 1 } a
 const avatar = "data:image/png;base64,iVBORw==";
 const meta = { source: "host-preview" };
 type Respond = GatewayRequestHandlerOptions["respond"];
-type HostReply = Awaited<ReturnType<typeof dispatchGatewayMethod>>;
 function registered(host?: string) {
-  const fixture = createPluginRegistryFixture(
-    host ? { gateway: { github: { host, apiBaseUrl: `https://${host}/api/v3` } } } : {},
-  );
+  const fixture = createPluginRegistryFixture({
+    agents: { entries: { "selected-agent": {} } },
+    ...(host
+      ? {
+          plugins: {
+            entries: {
+              "github-repositories": { config: { host, apiBaseUrl: `https://${host}/api/v3` } },
+            },
+          },
+        }
+      : {}),
+  });
   registerVirtualTestPlugin({
     ...fixture,
     ...plugin,
@@ -51,8 +73,9 @@ function preview(
   };
 }
 
-function hostSuccess(payload: unknown, info?: HostReply["meta"]) {
-  vi.mocked(dispatchGatewayMethod).mockResolvedValueOnce({ ok: true, payload, meta: info });
+function readerSuccess(payload: unknown) {
+  reader.preview.mockResolvedValueOnce(payload);
+  reader.detail.mockResolvedValueOnce(payload);
 }
 
 const redirect = (location: string) => new Response(null, { status: 302, headers: { location } });
@@ -72,15 +95,21 @@ function expectReader(registry: ReturnType<typeof registered>, host?: string) {
   });
 }
 
-async function request(method: string, params: Record<string, unknown>) {
-  const registry = registered();
+async function request(method: string, params: Record<string, unknown>, host?: string) {
+  const registry = registered(host);
+  const handler = registry.registry.gatewayHandlers[method];
+  if (!handler) {
+    throw new Error("Missing registered method " + method);
+  }
   const respond = vi.fn<Respond>();
   await registry.registry.gatewayHandlers[method]!({
     params,
     respond,
     req: { id: "1", type: "req", method, params },
     client: null,
-    context: {} as never,
+    context: {
+      getRuntimeConfig: () => ({ agents: { entries: { "selected-agent": {} } } }),
+    } as never,
     isWebchatConnect: () => false,
   });
   registry.rollbackPluginGlobalSideEffects("github", registry.registry.plugins[0]!);
@@ -105,6 +134,8 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
   vi.mocked(dispatchGatewayMethod).mockReset();
+  reader.preview.mockReset();
+  reader.detail.mockReset();
   vi.stubEnv("GH_TOKEN", "");
   vi.stubEnv("GITHUB_TOKEN", "");
 });
@@ -202,22 +233,36 @@ it.each([
   expect(fetchMock).not.toHaveBeenCalled();
 });
 
-it.each([undefined, "overview"])("adapts %s documents with files expanded", async (section) => {
-  vi.stubEnv("GH_TOKEN", "unused-ambient-token");
-  hostSuccess(document());
-  const url = `${pullUrl}/files?view=split#diff-example`;
-  const options = { agentId: "selected-agent", refresh: true, ...(section ? { section } : {}) };
-  const respond = await request("github.detail", { url, ...options });
-  expectSuccess(respond, {
-    url,
-    body: "**Public**",
-    filesExpanded: true,
-  });
-  expect(dispatchGatewayMethod).toHaveBeenCalledExactlyOnceWith("controlUi.githubDetail", {
-    ...pullTarget,
-    ...options,
-  });
-});
+it.each([undefined, "overview", "checks", "files", "discussion"])(
+  "adapts %s documents with files expanded",
+  async (section) => {
+    vi.stubEnv("GH_TOKEN", "unused-ambient-token");
+    readerSuccess(document());
+    const url = `${pullUrl}/files?view=split#diff-example`;
+    const respond = await request("github.detail", {
+      url,
+      agentId: "selected-agent",
+      refresh: true,
+      ...(section ? { section } : {}),
+    });
+    expectSuccess(respond, {
+      url,
+      title: "Plugin reader",
+      body: "**Public**",
+      filesExpanded: true,
+    });
+    expect(reader.detail).toHaveBeenCalledExactlyOnceWith(
+      pullTarget,
+      undefined,
+      undefined,
+      true,
+      expect.objectContaining({ assertActive: expect.any(Function) }),
+      section,
+    );
+    expect(dispatchGatewayMethod).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  },
+);
 
 it.each([
   ["github.preview", preview({ number: 2 }), { code: "UNAVAILABLE" }],
@@ -227,8 +272,8 @@ it.each([
     {},
     { code: "UNAVAILABLE", message: expect.stringContaining("invalid response") },
   ],
-] as const)("rejects invalid host payloads for %s", async (method, payload, error) => {
-  hostSuccess(payload);
+] as const)("rejects mismatched reader payloads for %s", async (method, payload, error) => {
+  readerSuccess(payload);
   await expectUnavailable(method, pullUrl, error);
 });
 
@@ -247,45 +292,38 @@ it.each([
     kind === "commit"
       ? "https://github.com/octocat/repo/commit/abcdef0123456789#diff-example"
       : pullUrl;
-  hostSuccess(
-    {
-      ...preview({ state, draft, mergedAt, closedAt: closed }),
-      ...target,
-      ...(kind === "commit" ? { number: undefined } : {}),
-      stale: true,
-      additions: 3,
-      deletions: 1,
-      coAuthors: [{ login: "ada", avatarDataUrl: avatar }],
-      coAuthorCount: 2,
-    },
-    meta,
-  );
+  readerSuccess({
+    ...preview({ state, draft, mergedAt, closedAt: closed }),
+    ...target,
+    ...(kind === "commit" ? { number: undefined } : {}),
+    stale: true,
+    additions: 3,
+    deletions: 1,
+    coAuthors: [{ login: "ada", avatarDataUrl: avatar }],
+    coAuthorCount: 2,
+  });
   const respond = await request("github.preview", { url });
-  expectSuccess(
-    respond,
-    {
-      url,
-      title: "Plugin reader",
-      ...(kind === "commit" ? { subtitle: "octocat/repo · abcdef012345" } : {}),
-      badge: { label, tone, timestamp: mergedAt ?? closed },
-      stale: true,
-      author: "octocat",
-      authorUrl: "https://github.com/octocat",
-      coAuthors: [{ name: "ada", imageUrl: avatar }],
-      coAuthorCount: 2,
-      metadata: [
-        { label: "", value: "+3", tone: "positive" },
-        { label: "", value: "−1", tone: "negative" },
-      ],
-    },
-    meta,
-  );
-  expect(dispatchGatewayMethod).toHaveBeenCalledWith("controlUi.githubPreview", target);
+  expectSuccess(respond, {
+    url,
+    title: "Plugin reader",
+    ...(kind === "commit" ? { subtitle: "octocat/repo · abcdef012345" } : {}),
+    badge: { label, tone, timestamp: mergedAt ?? closed },
+    stale: true,
+    author: "octocat",
+    authorUrl: "https://github.com/octocat",
+    coAuthors: [{ name: "ada", imageUrl: avatar }],
+    coAuthorCount: 2,
+    metadata: [
+      { label: "", value: "+3", tone: "positive" },
+      { label: "", value: "−1", tone: "negative" },
+    ],
+  });
+  expect(dispatchGatewayMethod).not.toHaveBeenCalled();
   expect(respond.mock.calls[0]?.[1]).not.toHaveProperty("kind");
 });
 
 it.each([undefined, 0])("shows closed issues with comment count %s", async (comments) => {
-  hostSuccess(
+  readerSuccess(
     preview({ kind: "issue", state: "closed", stateReason: "completed", closedAt, comments }),
   );
   expectSuccess(await request("github.preview", { url: issueUrl }), {
@@ -295,7 +333,7 @@ it.each([undefined, 0])("shows closed issues with comment count %s", async (comm
   });
 });
 
-it("forwards the host error envelope unchanged without an identity fallback", async () => {
+it("preserves session admission errors without a public identity fallback", async () => {
   const error = {
     code: "UNAVAILABLE",
     message: "Rate limited",
@@ -304,7 +342,15 @@ it("forwards the host error envelope unchanged without an identity fallback", as
   };
   const payload = { status: "unavailable" };
   vi.mocked(dispatchGatewayMethod).mockResolvedValueOnce({ ok: false, payload, error, meta });
-  const respond = await request("github.detail", { url: issueUrl, agentId: "alternate" });
+  const respond = await request(
+    "github.sessionDetail",
+    {
+      url: "https://ghe.example.test/octocat/repo/issues/1",
+      agentId: "selected-agent",
+      sessionKey: "agent:selected-agent:main",
+    },
+    "ghe.example.test",
+  );
   expect(respond).toHaveBeenCalledExactlyOnceWith(false, payload, error, meta);
   expect(fetchMock).not.toHaveBeenCalled();
   expect(dispatchGatewayMethod).toHaveBeenCalledTimes(1);

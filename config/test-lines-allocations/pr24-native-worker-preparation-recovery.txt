@@ -1,0 +1,2 @@
+179
+# Preserve native worker cache identities through recovery, drift refusal, and retention; adapt parent lifecycle cases to the plugin-owned source resolver.

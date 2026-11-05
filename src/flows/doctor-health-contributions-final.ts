@@ -19,7 +19,6 @@ import {
   runGatewayDaemonHealth,
   runGatewayServicesHealth,
   runHostDesktopHealth,
-  runGitHubProjectHealth,
   runOpenAIOAuthTlsHealth,
   runSecurityHealth,
   runStartupChannelMaintenanceHealth,
@@ -210,10 +209,6 @@ export function resolveFinalDoctorHealthContributions(params: {
     createDoctorHealthContribution("doctor:bundle-lsp-env", "Bundle LSP environment", {
       updateWork: { kind: "inspection", scope: "agent" },
       run: runBundleLspEnvHealth,
-    }),
-    createDoctorHealthContribution("doctor:github-projects", "GitHub projects", {
-      updateWork: { kind: "standalone" },
-      run: runGitHubProjectHealth,
     }),
     createDoctorHealthContribution("doctor:plugin-health", "Plugin health", {
       updateWork: { kind: "standalone" },

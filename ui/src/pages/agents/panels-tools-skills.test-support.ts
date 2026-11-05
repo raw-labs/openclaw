@@ -1,7 +1,6 @@
 import { flush } from "solid-js";
 import { vi } from "vitest";
 import type { ToolsCatalogResult, ToolsEffectiveResult } from "../../api/types.ts";
-import { githubIdentityViewFixture } from "../../features/github-connections/github-identity.test-support.ts";
 import { createAgentViewTestProps } from "./agents-view.test-helpers.ts";
 import type { AgentTools } from "./panels-tools-skills.tsx";
 
@@ -20,8 +19,7 @@ export function openToolGroups(container: HTMLElement) {
 }
 
 export function createBaseParams(overrides: Partial<Params> = {}): Params {
-  const githubIdentity = githubIdentityViewFixture();
-  return {
+  const params: Params = {
     readData() {
       return { ...createAgentViewTestProps().readData(), ...this };
     },
@@ -51,12 +49,12 @@ export function createBaseParams(overrides: Partial<Params> = {}): Params {
     effectiveRequest: null,
     runtimeSessionKey: "main",
     runtimeSessionMatchesSelectedAgent: true,
-    githubIdentity,
-    onOpenGitHubConnections: vi.fn(),
+    renderSettings: () => document.createElement("fixture-agent-settings"),
     onProfileChange: () => undefined,
     onOverridesChange: () => undefined,
     ...overrides,
   };
+  return params;
 }
 
 export function createReadToolCatalog(agentId = "main", label = "read"): ToolsCatalogResult {

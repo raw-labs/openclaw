@@ -154,7 +154,7 @@ export function createGitHubPublicationCoordinator(params: {
       input: Parameters<RepositoryPublicationProvider["inspectPullRequest"]>[0],
     ) => provider.inspectPullRequest(input),
     async preparePullRequest(
-      input: import("./github-pr-workspace-preparation.js").PullRequestPreparationInput,
+      input: import("./repository-publication-contract.js").PullRequestPreparationInput,
     ) {
       assertAvailable();
       assertCurrent();

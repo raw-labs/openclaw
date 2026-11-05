@@ -239,11 +239,6 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanelElement) 
     );
   }
 
-  const toggleHtmlSource = () => {
-    presentation.fileSearchOpen = false;
-    htmlPreview.toggle();
-  };
-
   function scrollToFileLine(content: FileSidebarContent) {
     const line = props.fileNavigation?.line ?? content.line;
     if (visibleContent === content && !rawView && line != null) {
@@ -666,7 +661,6 @@ function DetailPanel(props: ChatDetailPanelProps, host: ChatDetailPanelElement) 
         ...fileActions,
         currentFileText,
         retryFileEditor,
-        toggleHtmlSource,
         interact,
         discardFileEdits,
         editFile,

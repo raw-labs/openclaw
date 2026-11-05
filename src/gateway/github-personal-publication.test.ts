@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "./github-repository-fixture-api.test-support.js";
 // Register the shared Git transport before any publication or run-lease consumer.
 // oxfmt-ignore
 import {
@@ -41,6 +42,7 @@ import {
   callPersonalPublicationRpc,
   createForeignPublicationSession,
   createPersonalPublicationFixture,
+  createPersonalPublicationRequests,
   preparePersonalPublicationProfileCatalog,
   readPersonalPublicationFixtureStatus,
   personalPublicationAccount as account,
@@ -73,21 +75,10 @@ describe("personal publication authority and recovery", () => {
   let generation: string;
   let placements: ReturnType<typeof createWorkerSessionPlacementStore>;
   let coordinator: ReturnType<typeof createTestGitHubPublicationCoordinator>;
-  const request = () => ({
-    sessionKey: SESSION_KEY,
-    idempotencyKey: "personal-publish",
-    selection: { source: "personal" as const, generation, account },
-  });
+  const { request, confirmation } = createPersonalPublicationRequests(() => generation);
   const readReceipt = (requestId: string) =>
     readPersonalGitHubPublicationInDatabase(openOpenClawStateDatabase().db, owner, { requestId });
 
-  const confirmation = (requestId: string, requestDigest: string) => ({
-    sessionKey: SESSION_KEY,
-    requestId,
-    requestDigest,
-    generation,
-    account,
-  });
   const status = (requestId: string) =>
     readPersonalPublicationFixtureStatus({ coordinator, action }, requestId);
 
@@ -396,8 +387,17 @@ describe("personal publication authority and recovery", () => {
     action = await preparePersonalPublicationFixtureV2({ client, context });
     setRuntimeConfigSnapshot({
       ...getRuntimeConfigSnapshot(),
-      gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
+      gateway: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              ...readGitHubConfig(getRuntimeConfigSnapshot()),
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+            },
+          },
+        },
       },
     });
     const db = openOpenClawStateDatabase().db;

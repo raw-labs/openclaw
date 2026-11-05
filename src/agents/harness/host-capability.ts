@@ -254,6 +254,7 @@ export function createAgentHarnessHostCapabilities(params: {
     ...attempt,
     config,
     installationTarget,
+    pluginRegistry: attempt.preparedModelRuntime?.pluginRegistry,
     assertCurrent: assertActive,
     signal: bindAbortSignal(attempt.abortSignal),
   });

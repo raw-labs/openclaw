@@ -5,11 +5,11 @@ import {
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
 } from "../../../src/gateway/control-ui-contract.js";
 import { navigationDrawerToggle } from "../test-helpers/control-ui-navigation.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   chatSessionListResponse,
   controlUiSessionUrl,
   createChatFlowE2eSuite,
-  installMockGateway,
 } from "./chat-flow.test-support.ts";
 
 const suite = createChatFlowE2eSuite();

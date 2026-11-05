@@ -20,5 +20,13 @@
     "extensions": [
       "./index.ts"
     ]
+  },
+  "dependencies": {
+    "@openclaw/github-repositories": "workspace:*"
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./api.js": "./api.ts",
+    "./targets-api.js": "./targets-api.ts"
   }
 }

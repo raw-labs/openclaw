@@ -14,7 +14,6 @@ import { getSessionRepositoryWorkspaceStore } from "../../state/session-reposito
 import { setCanonicalUserProfileRole } from "../../state/user-profile-writes.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
 import * as availability from "../github-publication-availability.js";
-import { prepareGitHubPublicationTarget } from "../github-publication-target.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import * as sessionStoreWorker from "../session-utils-store-worker.js";
 import {
@@ -25,7 +24,6 @@ import {
   mockPublicationIdentity,
   optionsResult,
   publisher,
-  publisherIdentity,
   receipt,
   sessionKey,
   withHeldReceipt,
@@ -203,17 +201,7 @@ describe("registered guest publication target discovery", () => {
       expectReply(await options(fixture), sharedOptions);
       expect(lookup).toHaveBeenCalledOnce();
       await expect(
-        (async () => {
-          const source = await availability.readRepositoryPublicationTargetFacts({
-            worktree,
-            assertCurrent: () => {},
-          });
-          return prepareGitHubPublicationTarget({
-            source,
-            identity: { ...publisherIdentity(), env: {} },
-            assertCurrent: () => {},
-          });
-        })(),
+        availability.readRepositoryPublicationTargetFacts({ worktree, assertCurrent: () => {} }),
       ).rejects.toThrow(repositoryChanged);
       now += 1;
       expectFailure(await options(fixture), { message: repositoryChanged });

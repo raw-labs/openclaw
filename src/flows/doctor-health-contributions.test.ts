@@ -239,7 +239,8 @@ vi.mock("../commands/doctor/shared/plugin-runtime-symlinks.js", () => ({
     mocks.collectStalePluginRuntimeSymlinkHealthFindings,
 }));
 
-vi.mock("./bundled-health-checks.js", () => ({
+vi.mock("./bundled-health-checks.js", async (original) => ({
+  ...(await original<typeof import("./bundled-health-checks.js")>()),
   registerBundledHealthChecks: mocks.registerBundledHealthChecks,
   collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),
 }));
@@ -1762,38 +1763,6 @@ describe("doctor health contributions", () => {
     expect(mocks.maybeScanExtraGatewayServices).not.toHaveBeenCalled();
     expect(mocks.maybeResolveDuelingSystemdGatewayScopes).not.toHaveBeenCalled();
     expect(mocks.maybeRepairGatewayServiceConfig).not.toHaveBeenCalled();
-    expect(mocks.note).not.toHaveBeenCalled();
-  });
-
-  it("hints how to enable authenticated GitHub project search", async () => {
-    const contribution = requireDoctorContribution("doctor:github-projects");
-    const ctx = createDoctorContext({
-      env: {},
-      configPath: "/tmp/openclaw.json",
-    });
-
-    await contribution.run(ctx);
-    expect(mocks.note).toHaveBeenCalledWith(
-      expect.stringContaining("gateway.controlUi.github.host matching gateway.github.host"),
-      "GitHub projects",
-    );
-
-    mocks.note.mockClear();
-    await contribution.run({ ...ctx, env: { GH_TOKEN: "configured" } });
-    expect(mocks.note).not.toHaveBeenCalled();
-
-    await contribution.run({
-      ...ctx,
-      cfg: {
-        gateway: {
-          controlUi: {
-            github: {
-              token: { source: "store", provider: "default", id: "CONTROL_UI_GITHUB" },
-            },
-          },
-        },
-      },
-    });
     expect(mocks.note).not.toHaveBeenCalled();
   });
 

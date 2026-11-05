@@ -1,6 +1,3 @@
-/* The route host must hand the bounded shell height to the fill-height
-   workspace; otherwise a populated stream expands the main page and defeats
-   its own scroll/auto-follow owner. */
 main.content:where(.content--activity-page) {
   overflow: hidden;
 }
@@ -26,8 +23,6 @@ main.content:where(.content--activity-page) .content-header {
   flex: 0 0 auto;
 }
 
-/* Fill-height chain: the section, group, and stream absorb the remaining
-   viewport height inside .settings-workspace--fill-height (settings.css). */
 .settings-workspace--fill-height .activity-page {
   flex: 1 1 auto;
   min-height: 0;
@@ -109,7 +104,6 @@ a.activity-current-work__row:hover {
   padding: var(--space-3) var(--space-4);
 }
 
-/* The toolbar and feed sit on the page edge; the extra clip room keeps focus rings whole. */
 .activity-feed {
   overflow: hidden;
   width: calc(100% + 2 * var(--space-1));
@@ -131,7 +125,6 @@ a.activity-current-work__row:hover {
   padding-inline: 0;
 }
 
-/* Reserve feedback outside the scroll content so errors and retries never shift results. */
 .activity-feed__feedback {
   display: flex;
   flex: 0 0 var(--settings-control-height);
@@ -237,25 +230,6 @@ a.activity-current-work__row:hover {
   position: relative;
   display: inline-flex;
   flex: none;
-}
-
-.activity-feed__presence-dot {
-  position: absolute;
-  right: -1px;
-  bottom: -1px;
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--bg-elevated);
-  border-radius: var(--radius-full);
-  background: var(--ok);
-}
-
-.activity-feed__presence-dot[data-presence-activity="idle"] {
-  background: var(--presence-idle);
-}
-
-.activity-feed__presence-dot[data-presence-activity="unknown"] {
-  background: var(--muted);
 }
 
 .activity-feed__unknown-avatar {
@@ -420,7 +394,6 @@ a.activity-current-work__row:hover {
   background: var(--accent);
 }
 
-/* One cell per bar keeps each label under the bucket it names. */
 .activity-pulse__axis {
   display: flex;
   gap: 3px;
@@ -515,16 +488,12 @@ a.activity-current-work__row:hover {
   margin-top: var(--space-1);
 }
 
-.activity-feed__note,
-.activity-feed__git {
+.activity-feed__note {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
   font-size: var(--control-ui-text-xs);
-}
-
-.activity-feed__note {
   color: var(--muted);
 }
 
@@ -548,69 +517,6 @@ a.activity-current-work__row:hover {
 .activity-feed__note-action:disabled {
   color: var(--muted);
   text-decoration: none;
-}
-
-.activity-feed__git {
-  padding: 0 var(--space-4) var(--space-3) calc(var(--space-4) + 28px + var(--space-3));
-}
-
-.activity-feed__pr,
-.activity-feed__branch {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  min-width: 0;
-  padding: 3px 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  background: var(--bg-elevated);
-  line-height: 1.4;
-}
-
-.activity-feed__pr:hover,
-.activity-feed__pr:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-  text-decoration: none;
-}
-
-.activity-feed__git-icon,
-.activity-feed__git-stale {
-  display: inline-flex;
-  flex: none;
-  color: var(--muted);
-}
-
-.activity-feed__git-icon svg,
-.activity-feed__git-stale svg {
-  width: 14px;
-  height: 14px;
-}
-
-.activity-feed__pr[data-state="open"] .activity-feed__git-icon,
-.activity-feed__additions {
-  color: var(--ok);
-}
-
-.activity-feed__pr[data-state="merged"] .activity-feed__git-icon {
-  color: var(--pr-merged);
-}
-
-.activity-feed__pr[data-state="closed"] .activity-feed__git-icon,
-.activity-feed__deletions {
-  color: var(--danger);
-}
-
-.activity-feed__additions,
-.activity-feed__deletions {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-}
-
-.activity-feed__git-stale {
-  color: var(--warn);
 }
 
 .activity-feed__automation-group {
@@ -651,8 +557,6 @@ a.activity-current-work__row:hover {
   transform: rotate(90deg);
 }
 
-/* The whole row is the hover surface: recap, git chips and media highlight
-   together with the header link. Rows without a navigation target stay flat. */
 .activity-feed__session-row--link:hover,
 .activity-feed__session-row:focus-within {
   background: var(--surface-hover);
@@ -848,8 +752,6 @@ a.activity-current-work__row:hover {
   gap: 4px;
 }
 
-/* The credit is a license term for the default database, so it stays visible
-   next to the value it describes rather than living in a settings page. */
 .activity-feed__device-attribution {
   display: inline-flex;
   width: 16px;
@@ -1159,7 +1061,6 @@ a.activity-current-work__row:hover {
 }
 
 @media (max-width: 640px) {
-  /* Search and person share a row; the time range takes the full row below. */
   .activity-feed__search,
   .activity-live-search {
     flex: 1 1 0;
@@ -1225,7 +1126,6 @@ a.activity-current-work__row:hover {
     justify-content: space-between;
   }
 
-  /* The panel's labels read as one set: statuses, Tool and Auto-follow. */
   .activity-live-filter-popover__panel .field > span,
   .activity-live-autofollow {
     color: var(--text);
@@ -1233,13 +1133,10 @@ a.activity-current-work__row:hover {
     font-weight: var(--control-ui-font-weight-normal);
   }
 
-  /* Tapping a checkbox in the popover should not draw the keyboard focus ring. */
   .activity-status-filter:focus-within:not(:has(:focus-visible)) {
     outline: none;
   }
 
-  /* The page scrolls here, so Active sessions takes the height it needs instead of
-     clipping a row inside a second scroller. */
   .activity-current-work {
     max-height: none;
   }
@@ -1248,7 +1145,6 @@ a.activity-current-work__row:hover {
     overflow: clip;
   }
 
-  /* Live rows separate by spacing, not hairlines. */
   .activity-stream {
     border-top: 0;
   }
@@ -1261,8 +1157,6 @@ a.activity-current-work__row:hover {
     margin-top: var(--space-1);
   }
 
-  /* Feedback keeps its reserved box but no longer holds a gap open: it floats over
-     the content when there is something to say, so results still never shift. */
   .activity-feed__feedback {
     position: relative;
     z-index: 1;
@@ -1286,7 +1180,6 @@ a.activity-current-work__row:hover {
     padding-top: 0;
   }
 
-  /* Rows: title, one meta line, recap, with Inspect run closing the last line. */
   .activity-feed__session {
     align-items: start;
   }
@@ -1341,8 +1234,6 @@ a.activity-current-work__row:hover {
     vertical-align: baseline;
   }
 
-  /* Inspect run shares a short recap's line; otherwise it wraps below at one fixed gap,
-     so text, loading and note states all place it the same way. */
   .activity-feed__recap:not(.activity-feed__recap-skeleton) {
     display: flex;
     flex-wrap: wrap;

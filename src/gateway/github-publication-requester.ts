@@ -17,6 +17,7 @@ import type { UserProfileAccessFacts } from "../state/user-profiles.types.js";
 import { RepositoryPublicationRequesterUnavailableError } from "./github-publication-errors.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import {
+  type GitHubPublicationRequesterPreparation,
   registerGitHubPublicationRequesterV2,
   type GitHubPublicationRequesterPolicy,
   type GitHubPublicationRequester,
@@ -36,7 +37,6 @@ import {
   resolveOperatorRolePolicyForAssignment,
 } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
-import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 import { prepareSessionCreatorProfile } from "./session-creator.js";
 import {
@@ -45,7 +45,7 @@ import {
 } from "./session-sharing-policy.js";
 import { prepareSessionMutationFacts } from "./session-sharing-preparation.js";
 
-type PublicationSession = { sessionKey: string; agentId: string };
+type PublicationSession = Parameters<GitHubPublicationRequesterPreparation>[1];
 type PreparedProfileIdentity = Awaited<ReturnType<typeof prepareUserProfileIdentity>>;
 type PreparedPublicationSession = Awaited<ReturnType<typeof prepareSessionMutationFacts>>;
 
@@ -266,10 +266,9 @@ function prepareRequesterSource(
 
 /** Capture from the admitted caller, never request arguments, publisher, or session attribution. */
 export async function prepareGitHubPublicationRequesterV2(
-  options: Parameters<typeof captureGatewayOperatorRunAuthority>[0] &
-    Pick<GatewayRequestHandlerOptions, "signal" | "sessionMutationAuthorization">,
+  options: Parameters<GitHubPublicationRequesterPreparation>[0],
   session: PublicationSession,
-): Promise<{ requester: GitHubPublicationRequesterV2; release: () => void }> {
+): ReturnType<GitHubPublicationRequesterPreparation> {
   options.signal?.throwIfAborted();
   options.sessionMutationAuthorization?.assertCurrent();
   const source = await captureGatewayOperatorRunAuthority(options);

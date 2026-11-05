@@ -12,7 +12,7 @@ import { resolveGatewayServiceCgroupDirectory } from "../../process/linux-exec-c
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { mockProcessPlatform } from "../../test-utils/vitest-spies.js";
 import { prepareSandboxExecutionEnvironment } from "../execution-environment.js";
-import { managedGitHubIdentityEnvironment } from "../github-tool-identity-env.js";
+import { createGitHubExecutionFixture } from "../execution-environment.test-support.js";
 import type { CreateSandboxBackendParams, SandboxBackendHandle } from "./backend.types.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 import type { SandboxContainerEngineTarget } from "./container-engine.js";
@@ -125,7 +125,6 @@ it.each(["docker", "podman"] as const)(
     const backend = await createBackend(
       backendParams({ cfg: resolveSandboxConfigForAgent(createConfig(engine, false)) }),
       undefined,
-      undefined,
       environment,
     );
     const spec = await backend.buildExecSpec({
@@ -154,15 +153,9 @@ it("scrubs exclusion-only container and transport environments without a provide
   const environment = await prepareSandboxExecutionEnvironment(
     { config: {}, agentId: "main", backend: "docker", scope: "agent", assertCurrent() {} },
     undefined,
-    undefined,
     getActiveSecretsRuntimeConfigSnapshot()?.executionEnvironmentExclusions,
   );
-  const backend = await createDockerSandboxBackend(
-    backendParams(),
-    undefined,
-    undefined,
-    environment,
-  );
+  const backend = await createDockerSandboxBackend(backendParams(), undefined, environment);
   const spec = await backend.buildExecSpec({
     command: "printf reviewed-command",
     env: {
@@ -579,8 +572,44 @@ it.skipIf(process.platform === "win32").each([
     const requestedPath = "$(touch /tmp/openclaw-path-injection)";
     const root = tempDirs.make("github-sandbox-launch-");
     writeFakeSystemdScope(root);
-    const profile = path.join(root, "profile");
-    fs.mkdirSync(profile, { mode: 0o700 });
+    vi.stubEnv("OPENCLAW_STATE_DIR", root);
+    const config: OpenClawConfig = {
+      ...createConfig(engine, false),
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host,
+              apiBaseUrl:
+                host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+              agents: {
+                release: {
+                  profileId: "ghp_11111111111111111111111111111111",
+                  allowInSandbox: true,
+                  gitAuthor: { name: "Release Agent", email: "release@example.test" },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const execution = createGitHubExecutionFixture(config);
+    const prepared = await prepareSandboxExecutionEnvironment(
+      { config, agentId: "release", backend: engine, scope: "session", assertCurrent() {} },
+      execution.registry,
+      { credentialScrubEnv: { PREVIEW_TOKEN: "" }, excludedStoreNames: [] },
+    );
+    if (!prepared) {
+      throw new Error("Expected the registered GitHub sandbox environment");
+    }
+    const profile = prepared.readOnlyResourceMounts.find(
+      (mount) => mount.containerPath === "/openclaw/github",
+    )?.hostPath;
+    if (!profile) {
+      throw new Error("Expected the registered GitHub profile mount");
+    }
+    fs.mkdirSync(profile, { recursive: true, mode: 0o700 });
     const hosts = path.join(profile, "hosts.yml");
     fs.writeFileSync(hosts, `${host}:\n  oauth_token: synthetic-before-launch\n`, {
       mode: 0o600,
@@ -612,19 +641,10 @@ process.stdout.write(JSON.stringify({
         scopeKey: "agent:release:main",
         workspaceDir: root,
         agentWorkspaceDir: root,
-        cfg: resolveSandboxConfigForAgent(createConfig(engine, false)),
+        cfg: resolveSandboxConfigForAgent(config),
       }),
       undefined,
-      {
-        managedLocalIdentity: true,
-        credentialScrubEnv: { GH_TOKEN: "", GITHUB_TOKEN: "", PREVIEW_TOKEN: "" },
-        localIdentityEnv: managedGitHubIdentityEnvironment({
-          profileDir: profile,
-          host,
-          gitAuthor: { name: "Release Agent", email: "release@example.test" },
-        }),
-        excludedStoreNames: [],
-      },
+      prepared,
     );
     const spec = await backend.buildExecSpec({
       command: "printf '%s' '$HOME space \"quotes\" ${HOME}'",

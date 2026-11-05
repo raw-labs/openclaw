@@ -25,6 +25,7 @@ import {
   persistPublicationTestSession,
   SESSION_KEY,
 } from "./github-publication.test-support.js";
+import { loadActualGitHubIdentityFixture } from "./github-repository-fixture-api.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { createContext as createRequestContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
@@ -439,11 +440,19 @@ describe("session PR actions through the agent tool and registered Gateway metho
     const f = await fixture();
     const original = structuredClone(f.state);
     const identity = await mocks.prepareIdentity();
-    const actual = await vi.importActual<typeof import("../agents/github-tool-identity.js")>(
-      "../agents/github-tool-identity.js",
-    );
+    const actual = await loadActualGitHubIdentityFixture();
     mocks.matchesIdentity.mockImplementation(actual.matchesPreparedGitHubPublicationIdentity);
-    const config = { ...f.config, tools: { github: { profileId: identity.profileId } } };
+    const configForProfile = (profileId: string | undefined) => ({
+      ...f.config,
+      plugins: {
+        ...f.config.plugins,
+        entries: {
+          ...f.config.plugins?.entries,
+          "github-repositories": { config: { system: { profileId } } },
+        },
+      },
+    });
+    const config = configForProfile(identity.profileId);
     for (const change of ["url", "repository", "branch", "publisher", "profile"]) {
       Object.assign(f.state, structuredClone(original));
       f.state.head.sha = "b".repeat(40);
@@ -464,10 +473,7 @@ describe("session PR actions through the agent tool and registered Gateway metho
           f.state.head.ref = "other-branch";
         }
         if (change === "profile") {
-          setRuntimeConfigSnapshot({
-            ...config,
-            tools: { github: { profileId: "ghp_22222222222222222222222222222222" } },
-          });
+          setRuntimeConfigSnapshot(configForProfile("ghp_22222222222222222222222222222222"));
         }
       });
       await expect(

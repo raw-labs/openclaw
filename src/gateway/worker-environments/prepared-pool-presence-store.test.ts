@@ -16,14 +16,31 @@ import {
 } from "./prepared-pool-presence-store.worker.js";
 import {
   readPreparedPoolPresenceDemand as readDemand,
-  writePreparedPoolPresenceDemand as writeDemand,
+  writePreparedPoolPresenceDemand,
 } from "./prepared-pool-presence-worker.js";
 import type { PreparedPoolPresenceDemand } from "./prepared-pool-presence.types.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
+
+const writeDemand = (value: PreparedPoolPresenceDemand | null, assertCurrent: () => void) =>
+  writePreparedPoolPresenceDemand(value, assertCurrent, createRepositorySourcesFixture());
 import { presenceDemand } from "./prepared-pool.test-support.js";
 
 const PRESENCE_KEY = "cloudWorkers.preparedPool.humanPresenceDemand";
 const INVALID = "Prepared-pool presence demand is invalid";
-const selectHost = (host: string) => setRuntimeConfigSnapshot({ gateway: { github: { host } } });
+const selectHost = (host: string) =>
+  setRuntimeConfigSnapshot({
+    gateway: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: {
+            host,
+            apiBaseUrl: host === "github.com" ? "https://api.github.com" : `https://${host}/api/v3`,
+          },
+        },
+      },
+    },
+  });
 
 function demand(): PreparedPoolPresenceDemand {
   const value = structuredClone(presenceDemand());
@@ -44,6 +61,7 @@ const insert = (key: string, value: unknown) =>
     .run(key, JSON.stringify(value), 1);
 
 beforeEach(async () => {
+  selectHost("github.com");
   root = tempDirs.make("prepared-presence-");
   vi.stubEnv("OPENCLAW_STATE_DIR", root);
   database = open();

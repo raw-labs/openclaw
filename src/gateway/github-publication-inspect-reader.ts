@@ -1,10 +1,10 @@
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import { readRuntimeConfig } from "../config/runtime-snapshot.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
 import { captureGitHubPublicationActionAuthority } from "./github-publication-requester.js";
 import type { GitHubPublicationRequesterPolicyV2 } from "./github-publication-requester.js";
 import type { PublicationSessionIdentity } from "./github-publication-session.types.js";
 import { readSharedGitHubPublication } from "./github-publication-shared-read.js";
+import { resolveConfiguredGitHubHost } from "./native-github-host-realm.js";
 import type { RepositoryPublicationOwnPullRequestReader } from "./repository-session-read.types.js";
 
 /** Full-write assistance retains live action authority; ordinary readers require linked identity. */

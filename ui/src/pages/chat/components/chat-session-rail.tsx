@@ -2,7 +2,6 @@ import { createMemo, For, lazy, onSettled, Show } from "solid-js";
 import "../../../styles/chat/session-rail.css";
 import "../../../styles/chat/working-indicator.css";
 import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
-import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../../../api/gateway.ts";
 import type { ChatSendShortcut } from "../../../app/settings.ts";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
@@ -71,7 +70,6 @@ export function ChatSessionRailPanel(
       digest={props.digest}
       running={Boolean(props.activeRunId)}
       activeRunId={props.activeRunId}
-      pullRequests={props.pullRequests}
       companion={props.companion}
       modelControls={modelControls()}
       client={props.state.connected ? props.state.client : null}
@@ -88,19 +86,6 @@ export function ChatSessionRailPanel(
   );
 }
 
-function checksSummary(pullRequest: ControlUiSessionPullRequest): string | null {
-  const checks = pullRequest.checks;
-  if (!checks) {
-    return null;
-  }
-  if (checks.state === "passing") {
-    return t("chat.rail.checksPassing", { count: String(checks.passed) });
-  }
-  if (checks.state === "failing") {
-    return t("chat.rail.checksFailing", { count: String(checks.failed) });
-  }
-  return t("chat.rail.checksPending", { count: String(checks.running) });
-}
 const COMPANION_HINT_KEYS = {
   busy: "chat.rail.askBusy",
   "history-unavailable": "chat.rail.askHistoryUnavailable",
@@ -146,7 +131,6 @@ type ChatSessionRailProps = {
   digest: SessionObserverDigest | null;
   running: boolean;
   activeRunId: string | null;
-  pullRequests: ControlUiSessionPullRequest[];
   companion: ChatSessionCompanionThread;
   modelControls?: ChatModelControlsProps;
   client: GatewayBrowserClient | null;
@@ -268,7 +252,7 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
     assistantName: props.assistantName,
     agentId: props.agentId ?? undefined,
   }));
-  const showPullRequests = () =>
+  const summaryVisible = () =>
     props.digest &&
     (!props.running || (props.activeRunId && props.digest.runId === props.activeRunId));
   return (
@@ -285,29 +269,8 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       <PluginContributions
         kind="session-summary"
         sessionKey={props.sessionKey}
-        presented={props.presented}
+        presented={props.presented && Boolean(summaryVisible())}
       />
-      {showPullRequests() && props.pullRequests.length > 0 && (
-        <div class="chat-session-rail__prs" aria-label={t("chat.rail.pullRequests")}>
-          <For each={props.pullRequests.slice(0, 2)} keyed={(pr) => pr.url}>
-            {(pullRequest) => (
-              <a
-                class="chat-session-rail__pr"
-                href={pullRequest().url}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={pullRequest().title}
-              >
-                <span>#{pullRequest().number}</span>
-                <span>{t(`chat.pullRequests.${pullRequest().state}`)}</span>
-                {checksSummary(pullRequest()) && (
-                  <span class="chat-session-rail__pr-checks">{checksSummary(pullRequest())}</span>
-                )}
-              </a>
-            )}
-          </For>
-        </div>
-      )}
       <div
         class="chat-session-rail__thread"
         style={{
@@ -426,7 +389,7 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
         props={attachmentProps()}
         disabled={Boolean(attachmentProps().disabled)}
         sessionKey={props.sessionKey}
-        presented={props.presented}
+        presented={props.presented && Boolean(summaryVisible())}
       />
       <SessionRailComposer
         textareaRef={(element) => (textarea = element)}
@@ -464,7 +427,6 @@ export const ChatSessionRail = defineSolidBridge<ChatSessionRailProps>(
       digest: { default: null, attribute: false },
       running: { default: false, attribute: false },
       activeRunId: { default: null, attribute: false },
-      pullRequests: { default: [], attribute: false },
       companion: { default: { turns: [], loading: false, draft: "" }, attribute: false },
       modelControls: { default: undefined, attribute: false },
       client: { default: null, attribute: false },

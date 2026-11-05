@@ -37,7 +37,7 @@ type EnglishCatalog = TranslationMap & {
   mcpApp: TranslationMap;
   linkReader: TranslationMap;
   agentTools: TranslationMap;
-  githubPublication: TranslationMap & Record<"newAction" | "capacity", string>;
+  githubPublication: TranslationMap;
   githubConnections: TranslationMap &
     Record<"title" | "mine" | "system" | "forMe" | "forSystem", string>;
   board: TranslationMap & { announcement: TranslationMap; widget: TranslationMap };
@@ -134,7 +134,7 @@ type EnglishCatalog = TranslationMap & {
           | "errorSender",
           string
         >;
-      pullRequests: TranslationMap & Record<"open" | "draft" | "merged" | "closed", string>;
+      pullRequests: TranslationMap;
       processesPanel: TranslationMap;
     };
   aboutPage: TranslationMap &
@@ -1285,11 +1285,7 @@ const startupEnglish = {
     showing: "Showing {shown} of {total}",
     viewingNow: "Viewing now",
   },
-  githubPublication: {
-    newAction: "Choose a new publication",
-    capacity:
-      'Too many publications are awaiting review. Finish an existing publication, then select "{newAction}" to make room. Existing retries remain available.',
-  },
+  githubPublication: {},
   githubConnections: {
     title: "GitHub connections",
     mine: "My GitHub",
@@ -1664,12 +1660,7 @@ const startupEnglish = {
     openCodexSettings: "Open settings",
     catalog: {},
     taskSuggestions: {},
-    pullRequests: {
-      open: "Open",
-      draft: "Draft",
-      merged: "Merged",
-      closed: "Closed",
-    },
+    pullRequests: {},
     usageRemaining: "Usage Remaining",
     view: {},
 

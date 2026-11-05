@@ -1,19 +1,11 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-target.js";
-import { loadControlUiSessionPullRequests } from "./control-ui-session-prs.js";
-import {
-  withTestSessionPrRead,
-  githubJson,
-  pullListItem,
-  requestUrl,
-} from "./control-ui-session-prs.test-support.js";
+import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
 async function withReader(run: (fixture: Fixture) => Promise<void>) {
@@ -103,10 +95,7 @@ it.each([false, true])(
         const secondReader = f.addReader("second-publication-reader");
         const targets = await Promise.all(
           [f.client, secondReader.client].map(async (client) => {
-            const capture = createControlUiSessionPrRead(
-              f.sessionReads.createViewerRead(client.connId!, { sessionKey }),
-              getRuntimeConfig,
-            );
+            const capture = f.sessionReads.createViewerRead(client.connId!, { sessionKey });
             const target = await capture?.();
             if (!target) {
               throw new Error("Fixture reader was not admitted");
@@ -114,14 +103,23 @@ it.each([false, true])(
             return target;
           }),
         );
-        const load = (target: (typeof targets)[number], refresh = false) =>
-          withTestSessionPrRead(target, (read) =>
-            loadControlUiSessionPullRequests({ sessionKey, refresh }, { read }),
-          );
-        const first = load(targets[0]!);
+        const first = f.presentation.read(targets[0]!, targets[0]!.assertCurrent);
         const rejected = expect(first).rejects.toThrow("target changed");
         await started.promise;
-        const second = load(targets[1]!, forced);
+        const second = forced
+          ? (async () => {
+              await f.presentation.replace(
+                secondReader.client.connId!,
+                [sessionKey],
+                new Set([sessionKey]),
+              );
+              const snapshot = f.presentation.readPrepared(targets[1]!, () => false);
+              if (!snapshot) {
+                throw new Error("Forced native refresh did not publish a snapshot");
+              }
+              return snapshot;
+            })()
+          : f.presentation.read(targets[1]!, targets[1]!.assertCurrent);
         await Promise.resolve();
         f.client.invalidated = true;
         gate.resolve(githubJson([publicationPull()]));
@@ -158,10 +156,16 @@ it.each([false, true])(
       vi.stubGlobal("fetch", provider);
       setRuntimeConfigSnapshot({
         ...f.cfg,
-        gateway: {
-          ...f.cfg.gateway,
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: { github: { host: "ghe.example.test", token: "synthetic-enterprise-token" } },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-token" },
+              },
+            },
+          },
         },
       });
       await seedRepository(f, sessionKey, enterprise ? "ghe.example.test" : "github.com");

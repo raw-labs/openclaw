@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { i18n } from "../i18n/index.ts";
 import type { MarkdownRenderOptions } from "./markdown-render-options.ts";
+import {
+  prepareMarkdownTextReferenceSnapshot,
+  prepareMarkdownTextReferences,
+} from "./markdown-text-references.ts";
 import { htmlFragment, withControlUiBasePath } from "./markdown.test-support.ts";
 import { toSanitizedMarkdownHtml } from "./markdown.ts";
 
@@ -21,6 +25,72 @@ function texts(root: ParentNode, selector: string) {
 }
 
 describe("toSanitizedMarkdownHtml", () => {
+  it("uses immutable snapshot identity even when a provider reuses its key", () => {
+    const snapshot = (repo: string) => ({
+      key: "same",
+      resolve: () => [{ start: 0, end: 5, url: `https://github.com/acme/${repo}/pull/1` }],
+    });
+    expect(
+      render("PR #1", {
+        textReferences: prepareMarkdownTextReferences([
+          prepareMarkdownTextReferenceSnapshot(snapshot("first")),
+        ]),
+      }).querySelector("a")?.href,
+    ).toBe("https://github.com/acme/first/pull/1");
+    expect(
+      render("PR #1", {
+        textReferences: prepareMarkdownTextReferences([
+          prepareMarkdownTextReferenceSnapshot(snapshot("second")),
+        ]),
+      }).querySelector("a")?.href,
+    ).toBe("https://github.com/acme/second/pull/1");
+  });
+
+  it("keeps code and authored links outside provider prose and enforces UTF-16 spans", () => {
+    const resolve = vi.fn(({ text }: { text: string }) => [
+      {
+        start: text.indexOf("PR #1"),
+        end: text.indexOf("PR #1") + 5,
+        url: "https://github.com/acme/current/pull/1",
+      },
+    ]);
+    const fragment = render("😀 PR #1, `PR #1`, [PR #1](https://example.com).", {
+      textReferences: prepareMarkdownTextReferences([
+        prepareMarkdownTextReferenceSnapshot({ key: "utf16", resolve }),
+      ]),
+    });
+    expect(fragment.textContent).toContain("😀");
+    expect(fragment.querySelectorAll("a")).toHaveLength(2);
+    expect(fragment.querySelector("code")?.textContent).toBe("PR #1");
+    expect(fragment.querySelector('a[href="https://example.com"]')?.textContent).toBe("PR #1");
+    expect(resolve.mock.calls.every(([input]) => !input.text.includes("`"))).toBe(true);
+  });
+
+  it("rejects overlapping, out-of-bounds and split-surrogate provider spans", () => {
+    const fragment = render("😀 PR #1", {
+      textReferences: prepareMarkdownTextReferences([
+        prepareMarkdownTextReferenceSnapshot({
+          key: "invalid",
+          resolve: () => [
+            { start: 1, end: 2, url: "https://example.com/split" },
+            { start: -1, end: 3, url: "https://example.com/negative" },
+            { start: 3, end: 100, url: "https://example.com/bounds" },
+            { start: 3, end: 8, url: "https://example.com/one" },
+            { start: 4, end: 8, url: "https://example.com/two" },
+          ],
+        }),
+      ]),
+    });
+    expect(fragment.querySelector("a")).toBeNull();
+    expect(fragment.textContent).toContain("😀 PR #1");
+  });
+
+  it("does not stamp presentation classes on links whose href contains 'tail'", () => {
+    const link = render("[tailscale docs](https://docs.openclaw.ai/tailscale)").querySelector("a");
+    expect(link?.getAttribute("href")).toBe("https://docs.openclaw.ai/tailscale");
+    expect(link?.classList.contains("chat-link-tail-blur")).toBe(false);
+  });
+
   it("normalizes Unicode and CR line breaks before rendering", () => {
     const fragment = render("## Unicode\u2028\u2028- alpha\u2029- beta\r- gamma\r\n- delta");
     expectText(fragment, "h2").toBe("Unicode");

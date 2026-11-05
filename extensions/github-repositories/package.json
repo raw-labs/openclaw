@@ -1,0 +1,54 @@
+{
+  "name": "@openclaw/github-repositories",
+  "version": "2026.10.5",
+  "private": true,
+  "description": "OpenClaw GitHub Settings and repository integration artifacts",
+  "type": "module",
+  "dependencies": {
+    "typebox": "1.4.3",
+    "@openclaw/fs-safe": "0.27.0",
+    "@openclaw/gateway-protocol": "workspace:*",
+    "@solidjs/web": "2.0.0-rc.18",
+    "solid-js": "2.0.0-rc.18",
+    "yaml": "2.9.1",
+    "zod": "4.6.7",
+    "@openclaw/gateway-client": "workspace:*",
+    "@openclaw/github": "workspace:*",
+    "p-limit": "7.3.3"
+  },
+  "devDependencies": {
+    "@noble/hashes": "2.4.0",
+    "@openclaw/plugin-sdk": "workspace:*",
+    "@solidjs/compiler": "2.0.0-rc.18",
+    "esbuild": "0.28.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "controlUi": "./browser/index.tsx",
+    "assetScripts": {
+      "build": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/github-repositories",
+      "copy": "cd ../.. && node --import ./scripts/tsx.mjs scripts/build-plugin-control-ui.mts extensions/github-repositories --copy",
+      "buildOutputs": [
+        "dist/openclaw.plugin.json"
+      ]
+    }
+  },
+  "exports": {
+    ".": "./index.ts",
+    "./config-api.js": "./config-api.ts",
+    "./english-api.js": "./english-api.ts",
+    "./public-api.js": "./public-api.ts",
+    "./remote-api.js": "./remote-api.ts",
+    "./reader-identity-api.js": "./reader-identity-api.ts",
+    "./tool-identity-api.js": "./tool-identity-api.ts",
+    "./account-runtime-api.js": "./account-runtime-api.ts",
+    "./host-api.js": "./host-api.ts",
+    "./host-runtime-api.js": "./host-runtime-api.ts",
+    "./project-url-api.js": "./project-url-api.ts",
+    "./publication-availability-api.js": "./publication-availability-api.ts",
+    "./publication-relevance-api.js": "./publication-relevance-api.ts",
+    "./read-identity-api.js": "./read-identity-api.ts"
+  }
+}

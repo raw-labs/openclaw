@@ -84,8 +84,6 @@ const CORE_TOOL_DESCRIPTIONS = {
   conversations_turn: "Send and wait for a correlated external reply",
   sessions_send: SESSIONS_SEND_TOOL_DISPLAY_SUMMARY,
   sessions_spawn: SESSIONS_SPAWN_TOOL_DISPLAY_SUMMARY,
-  github_identity_status: "Inspect the effective GitHub identity and credential health",
-  github_publish: "Publish the reconciled session worktree as a draft GitHub pull request",
   agents_wait: AGENTS_WAIT_TOOL_DISPLAY_SUMMARY,
   sessions_yield: "End turn to receive sub-agent results",
   subagents: "Background work: subagents, media gen, automation runs. list/cancel.",

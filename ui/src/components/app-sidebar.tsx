@@ -14,7 +14,6 @@ import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.
 import { PluginSurface } from "../plugins/control-ui-surfaces.solid.tsx";
 import { appSidebarProperties, type AppSidebarProps } from "./app-sidebar-base.ts";
 import { AppSidebarOwner } from "./app-sidebar-owner.tsx";
-import { createSessionPullRequestIndicators } from "./app-sidebar-session-pr-indicators.ts";
 import {
   loadStoredHiddenSessionCatalogIds,
   SIDEBAR_HIDDEN_SESSION_CATALOGS_CHANGED_EVENT,
@@ -281,14 +280,6 @@ function AppSidebarContent(
     owner.sidebarMenus.bindCatalogMenuView(owner.sidebarMenus.catalogMenu.createView(hostView)),
   );
   [owner.sessionData, owner.sessionOrganizer, owner.people].forEach(observe);
-  owner.sessionPullRequests = createSessionPullRequestIndicators({
-    getConnected: () => prepared().isConnected && props.connected,
-    getPresented: () => props.navigationVisible && !prepared().sidebarSnapshot,
-    getRows: () => prepared().readSessionPullRequestRows(),
-    getSelectedAgentId: () => prepared().selectedAgentIdForSessions(),
-    getGateway: () => prepared().sessionDataContext?.gateway,
-    getSessions: () => prepared().sessionDataContext?.sessions,
-  });
   const SessionBody = () => hostView.renderSessionsBody();
   const Sessions = () => (
     <PluginSurface

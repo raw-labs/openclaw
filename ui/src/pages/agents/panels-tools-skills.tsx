@@ -27,7 +27,6 @@ import {
   SettingsToggle,
   SettingsLoadingSkeleton,
 } from "../../components/solid/settings-ui.tsx";
-import { GitHubIdentity } from "../../features/github-connections/github-identity-view.tsx";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { resolveAgentConfig } from "../../lib/agents/display.ts";
 import {
@@ -556,10 +555,6 @@ export function AgentTools(
           />
         )}
       </EffectiveBoundary>
-      <GitHubIdentity
-        identity={params.githubIdentity}
-        onOpenConnections={params.onOpenGitHubConnections}
-      />
       <Show when={params.renderSettings} keyed>
         {(render) => render()}
       </Show>

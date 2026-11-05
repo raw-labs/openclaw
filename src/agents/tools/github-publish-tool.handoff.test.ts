@@ -1,12 +1,12 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 import type { SessionGitHubPublicationResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { withinTest } from "../../../test/helpers/promise.js";
 import { createTestReplyOperation } from "../../auto-reply/reply/reply-run-registry.test-helpers.js";
 import * as events from "../../auto-reply/reply/session-event-handoff.js";
 import {
-  readSessionEventTargetOperatorAuthority,
   readSessionEventTargetOwnerContinuation,
+  readSessionEventTargetOperatorAuthority,
 } from "../../auto-reply/reply/session-event-target.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
 import { resolveSessionStorePathCore } from "../../config/sessions/paths.js";
@@ -17,6 +17,7 @@ import { prepareGitHubPublicationRequesterV2 } from "../../gateway/github-public
 import type { OperatorScope } from "../../gateway/operator-scopes.js";
 import type { GatewayRequestHandler } from "../../gateway/server-methods/types.js";
 import * as gatewayContinuation from "../../gateway/server-plugin-in-process-dispatch.js";
+import { withOperatorToolGatewayAuthority } from "../../gateway/server-plugin-in-process-dispatch.js";
 import {
   createContext,
   createOperatorClient,
@@ -24,10 +25,11 @@ import {
 import { readSessionMessagesAsync } from "../../gateway/session-transcript-readers.js";
 import * as exec from "../../infra/exec-request-context.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
-import { createPluginRuntimeMock } from "../../plugin-sdk/test-helpers/plugin-runtime-mock.js";
-import { createTestPluginRegistry } from "../../plugins/registry-runtime.test-helpers.js";
+import {
+  bindLegacyPluginSdkResourceHost,
+  LegacyPluginSdkResourceHost,
+} from "../../plugins/legacy-sdk-resource-host.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
-import { createPluginRecord } from "../../plugins/status.test-helpers.js";
 import { createPluginToolFactoryContext } from "../../plugins/tool-factory-context.js";
 import { bindPluginToolCallbacks } from "../../plugins/tool-factory-runtime.js";
 import { resetGatewayWorkAdmission } from "../../process/gateway-work-admission.js";
@@ -43,8 +45,13 @@ import { applyCodeModeCatalog } from "../code-mode.js";
 import { createCodeModeHarness } from "../code-mode.test-support.js";
 import { SESSIONS_YIELD_ABORT_REASON } from "../embedded-agent-runner/run/attempt-sessions-yield.js";
 import { runEmbeddedAgent } from "../embedded-agent.js";
+import { createGitHubExecutionFixture } from "../execution-environment.test-support.js";
+import type { OpenClawToolsOptions } from "../openclaw-tools.types.js";
 import { createOperationalRunInstanceRef } from "../operational-run-instance.js";
+import { preparePluginToolExecutionCapabilities } from "../plugin-tool-execution.js";
+import { preparePluginToolGatewayCapability } from "../plugin-tool-gateway.js";
 import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
+import { createGitHubPublishTool } from "../test-helpers/github-plugin-tools.js";
 import { clearToolSearchCatalog } from "../tool-search.js";
 import {
   captureGatewayToolCallerAssertion,
@@ -53,10 +60,9 @@ import {
   resolveGatewayToolOperatorSelection,
   withGatewayToolCallerIdentity,
 } from "./gateway-caller-context.js";
-import { createGitHubPublishTool } from "./github-publish-tool.js";
 import { callAgentToolGatewayRequest } from "./in-process-gateway.js";
 
-// mock-isolation: Preserve real event admission and Gateway dispatch; replace only model execution.
+// mock-isolation: Keep actual handoff admission and dispatch; replace only model execution.
 vi.mock("../embedded-agent-runner/run.js", () => ({ runEmbeddedAgent: vi.fn() }));
 const runEmbeddedAgentMock = vi.mocked(runEmbeddedAgent);
 await Promise.all([
@@ -67,26 +73,38 @@ await Promise.all([
 ]);
 
 function bindPublicationTool(
-  tool: ReturnType<typeof createGitHubPublishTool>,
+  options: Pick<OpenClawToolsOptions, "sandbox" | "sessionId" | "runId" | "onYield">,
   assertInvocationCurrent: () => void,
 ) {
-  const builder = createTestPluginRegistry(createPluginRuntimeMock());
-  const record = createPluginRecord({
-    id: "publication-fixture",
-    contracts: { tools: [tool.name] },
+  const { registry } = createGitHubExecutionFixture({});
+  const entry = expectDefined(
+    registry.tools.find((registered) => registered.names?.includes("github_publish")),
+    "registered publication factory",
+  );
+  const bindGateway = preparePluginToolGatewayCapability(
+    { ...options, githubPublicationAvailable: true },
+    {},
+  );
+  const bindExecution = preparePluginToolExecutionCapabilities({
+    sandbox: options.sandbox?.enabled ? options.sandbox : undefined,
   });
-  builder.registry.plugins.push(record);
-  builder
-    .createApi(record, { config: {}, registrationMode: "full" })
-    .registerTool({ contextVersion: 2, create: () => tool }, { name: tool.name });
-  const entry = expectDefined(builder.registry.tools[0], "registered publication factory");
   const context = createPluginToolFactoryContext({
     entry,
-    registry: builder.registry,
+    registry,
     context: {},
     assertInvocationCurrent,
+    bindExecutionCapabilities: (assertCurrent, signal) => ({
+      ...bindExecution(assertCurrent, signal),
+      gateway: bindGateway(assertCurrent, signal, [
+        "tools.github.status",
+        "sessions.github.action",
+        "sessions.github.publish",
+      ]),
+    }),
   });
-  return bindPluginToolCallbacks(entry, builder.registry, tool, context.assertInvocationCurrent);
+  const created = entry.factory(context);
+  const tool = expectDefined(Array.isArray(created) ? created[0] : created, "publication tool");
+  return bindPluginToolCallbacks(entry, registry, tool, context.assertInvocationCurrent);
 }
 
 afterEach(() => {
@@ -243,7 +261,11 @@ it.for([
           ],
           () => config,
         );
-        context.resolveGatewayContext = () => context;
+        const resolveGatewayContext = () => context;
+        context.resolveGatewayContext = resolveGatewayContext;
+        const resources = new LegacyPluginSdkResourceHost();
+        bindLegacyPluginSdkResourceHost(resolveGatewayContext, resources);
+        onTestFinished(() => resources.close());
         runEmbeddedAgentMock.mockReset().mockImplementation(async (params) => {
           const admission = expectDefined(params.preparedRunAdmission, "resumed guest admission");
           const admittedRunContext = await admission.admit("gateway", params.runId);
@@ -370,7 +392,7 @@ it.for([
           const wrapped = withSessionControllerOwner(operation, () =>
             wrapToolWithAbortSignal(
               bindPublicationTool(
-                createGitHubPublishTool({
+                {
                   sessionId,
                   runId,
                   // An ordinary local Docker conversation, as the visibility rule admits.
@@ -392,7 +414,7 @@ it.for([
                       }),
                     );
                   },
-                }),
+                },
                 expectDefined(captureGatewayToolCallerAssertion(), "publication caller authority"),
               ),
               runAbort.signal,
@@ -496,13 +518,12 @@ it.for([
             {
               client,
               context,
-              resolveGatewayContext: () => context,
+              resolveGatewayContext,
               isWebchatConnect: () => false,
             },
             () =>
-              gatewayContinuation.withOperatorToolGatewayAuthority({ scopes }, () =>
+              withOperatorToolGatewayAuthority({ scopes }, () =>
                 exec.withExecRequestTurn({ identity: { ...scope, sessionId, runId } }, () =>
-                  // Production callers carry the turn batch receipt and the run abort signal.
                   withGatewayToolCallerIdentity(
                     {
                       ...scope,

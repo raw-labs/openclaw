@@ -1,12 +1,21 @@
 /* @vitest-environment jsdom */
 
+import type {
+  ControlUiSessionPullRequest,
+  ControlUiSessionPullRequestSnapshot,
+} from "@openclaw/gateway-protocol";
 import { createSignal } from "solid-js";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createSessionGoalFixture } from "../../../../../src/gateway/session-goal.test-support.js";
+import type { ApplicationContext } from "../../../app/context.ts";
 import { i18n } from "../../../i18n/index.ts";
+import { ApplicationProvider } from "../../../lib/reactive/context.ts";
+import { createContext, createGateway, createSessions } from "../../../test-helpers/app-sidebar.ts";
+import { createTestGatewayClient } from "../../../test-helpers/gateway-client.ts";
 import { cleanupSolid, mountSolid } from "../../../test-helpers/mount-solid.ts";
 import { restorePropertyDescriptor } from "../../../test-helpers/property-descriptor.ts";
-import { flush } from "../../../test-helpers/solid-settle.ts";
+import { installRepositoryPresentation } from "../../../test-helpers/repository-presentation.test-support.ts";
+import { flush, waitForSolid } from "../../../test-helpers/solid-settle.ts";
 import type { ChatActivityPillsProps } from "./chat-activity-pills-types.ts";
 import { ChatActivityPills } from "./chat-activity-pills.tsx";
 
@@ -26,7 +35,7 @@ afterEach(() => {
   restorePropertyDescriptor(document, "fonts", fontsDescriptor);
 });
 
-function mountPills(initial: Partial<ChatActivityPillsProps>) {
+function mountPills(initial: Partial<ChatActivityPillsProps>, context?: ApplicationContext) {
   let publish: (next: Partial<ChatActivityPillsProps>) => void;
   const view = mountSolid(() => {
     const [props, setProps] = createSignal<ChatActivityPillsProps>({
@@ -35,7 +44,13 @@ function mountPills(initial: Partial<ChatActivityPillsProps>) {
       ...initial,
     });
     publish = (next) => setProps((current) => ({ ...current, ...next }));
-    return <ChatActivityPills {...props()} />;
+    return context ? (
+      <ApplicationProvider value={context}>
+        <ChatActivityPills {...props()} />
+      </ApplicationProvider>
+    ) : (
+      <ChatActivityPills {...props()} />
+    );
   });
   flush();
   return {
@@ -126,10 +141,8 @@ it("retains the goal action while approval hides subagent activity, then restore
   expect(onSubagents).toHaveBeenCalledExactlyOnceWith(subagentButton);
 });
 
-it("follows the current pill order after pull requests move or leave the strip", () => {
-  const pullRequest = (
-    number: number,
-  ): NonNullable<ChatActivityPillsProps["pullRequests"]>["items"][number] => ({
+it("follows the current contributed pill order after pull requests move or leave the strip", async () => {
+  const pullRequest = (number: number): ControlUiSessionPullRequest => ({
     number,
     owner: "example",
     repo: "project",
@@ -143,11 +156,32 @@ it("follows the current pill order after pull requests move or leave the strip",
   const third = pullRequest(3);
   const fourth = pullRequest(4);
   const onOpen = vi.fn();
-  const pullRequests = (items: NonNullable<ChatActivityPillsProps["pullRequests"]>["items"]) => ({
-    pullRequests: { items, status: "ready" as const, onOpen },
-  });
-  const view = mountPills(pullRequests([first, second, third]));
-  const button = (number: number) => view.button(new RegExp(`Review change ${number}`));
+  let snapshot: ControlUiSessionPullRequestSnapshot = {
+    pullRequests: [first, second, third],
+    status: "ready",
+    rateLimited: false,
+  };
+  const context = createContext(
+    createGateway(createTestGatewayClient(async () => ({}))),
+    createSessions("main", []),
+  );
+  const presentation = installRepositoryPresentation(context, () => snapshot);
+  const props: ChatActivityPillsProps = {
+    presented: true,
+    approvalPending: false,
+    contributions: { sessionKey: "agent:main:pills", onOpenDetailsPage: onOpen },
+  };
+  const view = mountPills(props, presentation.context);
+  const update = (items: ControlUiSessionPullRequest[]) => {
+    snapshot = { ...snapshot, pullRequests: items };
+    presentation.notify();
+    flush();
+  };
+  await waitForSolid(() =>
+    expect(view.queryByRole("button", { name: /Review change 1/ })).not.toBeNull(),
+  );
+  const button = (number: number) =>
+    view.getByRole<HTMLButtonElement>("button", { name: new RegExp(`Review change ${number}`) });
   const press = (key: string, shiftKey = false) => {
     const event = new KeyboardEvent("keydown", { key, shiftKey, bubbles: true, cancelable: true });
     document.activeElement!.dispatchEvent(event);
@@ -159,14 +193,14 @@ it("follows the current pill order after pull requests move or leave the strip",
   press("ArrowRight");
   expect(document.activeElement).toBe(thirdButton);
 
-  view.update(pullRequests([third, first, second]));
+  update([third, first, second]);
   expect(button(1)).toBe(firstButton);
   expect(button(3)).toBe(thirdButton);
   thirdButton.focus();
   press("ArrowRight");
   expect(document.activeElement).toBe(firstButton);
 
-  view.update(pullRequests([third, second, fourth]));
+  update([third, second, fourth]);
   button(2).focus();
   press("Home");
   expect(document.activeElement).toBe(thirdButton);
@@ -177,5 +211,9 @@ it("follows the current pill order after pull requests move or leave the strip",
   expect(press("ArrowLeft", true).defaultPrevented).toBe(false);
   expect(document.activeElement).toBe(button(2));
   button(4).click();
-  expect(onOpen).toHaveBeenCalledExactlyOnceWith(fourth, button(4));
+  expect(onOpen).toHaveBeenCalledExactlyOnceWith(
+    "github-repositories",
+    { id: "pull-request:example/project#4", title: fourth.title },
+    button(4),
+  );
 });

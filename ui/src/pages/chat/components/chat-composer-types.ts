@@ -67,12 +67,6 @@ type ChatMobileActivities = {
   goal?: Pick<NonNullable<ChatActivityPillsProps["goal"]>, "executionConfirmed" | "onOpen">;
   onOpenProgress?: NonNullable<ChatActivityPillsProps["progress"]>["onOpen"];
   onOpenDetailsPage?: NonNullable<ChatActivityPillsProps["contributions"]>["onOpenDetailsPage"];
-  onOpenPullRequest?: NonNullable<ChatActivityPillsProps["pullRequests"]>["onOpen"];
-  /** Eligibility is decided by the publication owner, including retained outcomes. */
-  publication?: {
-    eligible: boolean;
-    onOpen: NonNullable<ChatActivityPillsProps["publication"]>["onOpen"];
-  };
 };
 
 export type ChatComposerDisabledBanner = {

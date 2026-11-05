@@ -5,7 +5,7 @@ import {
 } from "../../packages/gateway-protocol/src/schema/board.js";
 import { normalizeSandboxHostCsp } from "../agents/sandbox-host.js";
 import { BoardValidationError } from "./board-layout.js";
-import { normalizeGitHubActionsGrant } from "./github-actions-capability.js";
+import { normalizeGitHubActionsGrant } from "./legacy-github-actions-grant.js";
 
 const MAX_DECLARED_ORIGINS = 32;
 const MAX_DECLARED_TOOLS = 64;

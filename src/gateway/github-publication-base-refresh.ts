@@ -79,7 +79,6 @@ export async function integrateManagedWorkspaceSource(
   },
 ): Promise<SessionGitHubBaseRefreshResult> {
   const { owner, publisher, provider, sandbox } = params;
-  const { agentId, sessionKey, sessionId, lifecycleRevision } = owner;
   const identity = publisher.provenance;
   const integrationSource = params.source ?? params.verifiedBase;
   const action = params.source ? "prepare_pr" : "refresh_base";
@@ -110,6 +109,7 @@ export async function integrateManagedWorkspaceSource(
     ].join("\n");
   const { run } = createGitHubPublicationCommandRunner(assertCurrent);
   await assertSafeGitPublicationWorkspace(owner.worktree.path, run);
+  const { agentId, sessionKey, sessionId, lifecycleRevision } = owner;
   const target = integrationSource
     ? {
         pushRepository: integrationSource.repository,

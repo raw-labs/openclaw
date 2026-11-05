@@ -1,3 +1,4 @@
+import path from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { GIT_COAUTHOR_PREFERENCE_KEY } from "../../packages/gateway-protocol/src/index.js";
 import { captureRuntimeConfigAsyncReader } from "../config/io.js";
@@ -5,6 +6,10 @@ import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { recordSessionParticipant } from "../config/sessions/session-accessor.sqlite-participants.native.js";
 import type { ExecutionEnvironmentProviderV1 } from "../plugins/execution-environment-types.js";
 import { createExecutionEnvironmentFixture } from "../plugins/execution-environment.test-support.js";
+import { loadOpenClawPluginsAsync } from "../plugins/loader.js";
+import { getPluginInstance } from "../plugins/plugin-instance-scope.js";
+import type { PluginRegistry } from "../plugins/registry-types.js";
+import { withPluginRuntimeRegistryScope } from "../plugins/runtime/gateway-request-scope.js";
 import { AsyncWorkScope } from "../shared/async-work-scope.js";
 import { openOpenClawAgentDatabase } from "../state/openclaw-agent-db.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
@@ -23,13 +28,36 @@ import {
 import { resolveSessionGitCoauthorPrompt } from "./git-coauthor-prompt.js";
 
 let sharedState: OpenClawTestState;
+let githubRegistry: PluginRegistry;
 
 beforeAll(async () => {
   sharedState = await createOpenClawTestState({ scenario: "minimal" });
   await captureRuntimeConfigAsyncReader()();
+  githubRegistry = await loadOpenClawPluginsAsync({
+    config: {
+      plugins: {
+        allow: ["github-repositories"],
+        load: {
+          paths: [path.resolve(import.meta.dirname, "../../extensions/github-repositories")],
+        },
+        entries: { "github-repositories": { enabled: true } },
+      },
+    },
+    onlyPluginIds: ["github-repositories"],
+    activate: false,
+    cache: false,
+    pluginSdkResolution: "src",
+    preferBuiltPluginArtifacts: false,
+  });
+  expect(githubRegistry.plugins.find((entry) => entry.id === "github-repositories")?.status).toBe(
+    "loaded",
+  );
 });
 
 afterAll(async () => {
+  for (const record of githubRegistry.plugins) {
+    await getPluginInstance(record)?.dispose();
+  }
   await sharedState.cleanup();
 });
 
@@ -43,7 +71,9 @@ async function withSession<T>(
   const work = new AsyncWorkScope();
   try {
     const scope = sessionScope(`agent:main:${sessionId}`);
-    return await work.track(() => fn(scope, sharedState));
+    return await withPluginRuntimeRegistryScope(githubRegistry, () =>
+      work.track(() => fn(scope, sharedState)),
+    );
   } finally {
     await work.drain();
   }
@@ -186,10 +216,16 @@ it("derives exact bounded trailers only from canonical profile-backed humans", a
     const read = (email: string, excludeAccountId?: number) =>
       readCredit(scope, {
         config: {
-          tools: {
-            github: {
-              profileId: "ghp_11111111111111111111111111111111",
-              gitAuthor: { email },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  system: {
+                    profileId: "ghp_11111111111111111111111111111111",
+                    gitAuthor: { email },
+                  },
+                },
+              },
             },
           },
         },
@@ -271,6 +307,11 @@ it("uses current identity and consent for inherited credit without counting it t
     setCredit(later.id, true);
     expect((await read())?.logins).toEqual(["current-contributor", "later-contributor"]);
     expect(await readCredit(scope, { sessionId: "replaced-child" })).toBeUndefined();
+    expect(
+      await readCredit(scope, {
+        config: { plugins: { entries: { "github-repositories": { enabled: false } } } },
+      }),
+    ).toBeUndefined();
   });
 });
 

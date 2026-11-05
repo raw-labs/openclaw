@@ -7,11 +7,16 @@ import {
   SESSION_KEY,
 } from "./github-publication.test-support.js";
 import { randomUUID } from "node:crypto";
-import { assert, expect, vi } from "vitest";
+import { assert, expect, onTestFinished, vi } from "vitest";
 import type { SandboxContext } from "../agents/sandbox/types.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
+import {
+  bindLegacyPluginSdkResourceHost,
+  LegacyPluginSdkResourceHost,
+} from "../plugins/legacy-sdk-resource-host.js";
+import { installGitHubAccountFixture } from "./github-account-service.test-support.js";
 import {
   createGitHubPublicationRequesterFixture,
   createRequesterPublicationFixture,
@@ -200,8 +205,12 @@ export function createPublicationActionInvoker(
     const context = Object.assign(
       createGatewayContext([], principal.context.getRuntimeConfig),
       principal.context,
-      { githubPublicationService: f.coordinator },
     );
+    context.resolveGatewayContext = () => context;
+    const resources = new LegacyPluginSdkResourceHost();
+    bindLegacyPluginSdkResourceHost(context.resolveGatewayContext, resources);
+    onTestFinished(() => resources.close());
+    await installGitHubAccountFixture(context, f.account.oauth, f.coordinator);
     const operator = await captureGatewayOperatorRunAuthority({ client, context });
     const callGateway: InProcessGatewayCaller = async <T>(
       method: string,

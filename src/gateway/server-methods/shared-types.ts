@@ -38,6 +38,7 @@ import type {
 import type { GatewayConfigRevisionProjector } from "../config-revision-token.js";
 import type { ScopeUpgradeCoordinator } from "../device-scope-upgrade.js";
 import type { ExecApprovalManager, ExecApprovalRecord } from "../exec-approval-manager.js";
+import type { LegacyGitHubOAuthService } from "../github-oauth-lifecycle-host.types.js";
 import type { HealthSummary } from "../health/types.js";
 import type { LiveTextProjectionText } from "../live-text-continuity.js";
 import type { MentionInbox } from "../mention-inbox.contracts.js";
@@ -429,9 +430,8 @@ type GatewayResidentBridgeContext = {
     typeof import("../worker-environments/repository-workspace-mutation.js").createRepositoryWorkspaceMutationService
   >;
   githubPublicationService?: import("../github-publication.js").GitHubPublicationCoordinator;
-  githubOAuthService?: ReturnType<
-    typeof import("../github-oauth-lifecycle.js").createGitHubOAuthLifecycle
-  >;
+  /** @deprecated Retained through 2026-12-31; new code uses caller-bound GitHub Gateway methods. */
+  githubOAuthService?: LegacyGitHubOAuthService;
   repositorySources?: RepositorySources;
   modelAccountConnectService?: ReturnType<
     typeof import("../model-account-connect.js").createModelAccountConnectService

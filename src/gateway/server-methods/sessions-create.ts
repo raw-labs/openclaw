@@ -60,10 +60,11 @@ import {
 } from "./session-create-initial-turn.js";
 import {
   normalizeSessionProjectGitUrl,
-  resolveSessionCreateProjectSelection,
+  resolveSessionCreateRepositorySource,
   prepareSessionRepositoryWorkspace,
   resolveSessionRepositoryCreation,
   validateSessionProjectPreparation,
+  validateSessionWorktreeSelection,
 } from "./session-create-project.js";
 import {
   assertRequiredWorkerSessionCreateCurrent,
@@ -114,7 +115,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return respond(false, undefined, uploadError);
     }
     const p = structuredClone(params);
-    const repositorySelection = resolveSessionCreateProjectSelection(p);
+    const repositorySelection = resolveSessionCreateRepositorySource(p, context.repositorySources);
     if (!repositorySelection.ok) {
       respond(false, undefined, repositorySelection.error);
       return;
@@ -131,6 +132,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       ? { ...client.internal.operatorRoleActor }
       : undefined;
     const emptyWorkspace = p.worktreeSource === "empty";
+    const worktreeSelectionError = validateSessionWorktreeSelection(p);
+    if (worktreeSelectionError) {
+      return respond(false, undefined, worktreeSelectionError);
+    }
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     const creation = resolveOperatorSessionCreation(client, { allowTrustedHint: true });
     if (p.surface && creation.via !== "operator") {
@@ -192,8 +197,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     // that committed session under its retained request and session authority.
     const deviceFolderAuthority: { assertCurrent?: () => void } = {};
     const commitGuard = () => {
-      repositorySelection.value?.assertCurrent();
       assertSessionCreateCurrent();
+      repositorySelection.value?.assertCurrent();
       if (agentCreated) {
         toolRequester?.assertCurrent?.();
       }
@@ -318,7 +323,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       gitUrl: p.projectGitUrl,
       hasInitialTurn,
       projectId: requestedProjectId,
-      repositorySourceId: p.repositorySource,
     });
     if (projectPreparationError) {
       respond(false, undefined, projectPreparationError);
@@ -338,11 +342,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return;
     }
     requestedCwd = preparedCwd.value;
-    const worktreeBaseRef = normalizeOptionalString(p.worktreeBaseRef);
-    const requestedWorktreeName = normalizeOptionalString(p.worktreeName);
-    const explicitSessionLabel = normalizeOptionalString(p.label);
-    const preparedDisplayName = normalizeOptionalString(p.displayName);
-    const titleAgentId = explicitlyRequestedAgent.agentId;
     if (!authority.ensureActive()) {
       return;
     }
@@ -351,11 +350,15 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           await loadGatewaySessionEntryReadOnlyInWorker({
             cfg,
             key: explicitlyRequestedKey,
-            agentId: titleAgentId,
+            agentId: explicitlyRequestedAgent.agentId,
           })
         ).entry
       : undefined;
-    const reuseError = sessionWorkspaceReuseError(p, automaticEmptyWorkspace, existingTargetEntry);
+    const reuseError = sessionWorkspaceReuseError(
+      { ...p, repositorySource: repositorySelection.value?.id },
+      automaticEmptyWorkspace,
+      existingTargetEntry,
+    );
     if (reuseError) {
       respond(false, undefined, reuseError);
       return;
@@ -377,7 +380,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       sessionKey ??= buildDashboardSessionKey(sessionAgentId, { incognito: p.incognito });
     }
     let preparedWorktree: PreparedGatewaySessionLifecycle | undefined;
-    const sessionExecCwd = requestedExecNode ? requestedCwd : undefined;
     let sessionCwd = requestedExecNode ? undefined : (projectRoot ?? requestedCwd);
     let prepareLifecycle: Parameters<typeof createGatewaySession>[0]["prepareLifecycle"];
     // Worktree creation validates its own source; the default may exist only on a worker.
@@ -456,10 +458,10 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           workspace: emptyWorkspace ? { kind: "empty" } : (projectRoot ?? requestedCwd),
           inheritParentKey: inheritParentWorktree ? spawnRequesterSessionKey : undefined,
           projectGitUrl: p.projectGitUrl,
-          name: requestedWorktreeName,
-          baseRef: worktreeBaseRef,
+          name: normalizeOptionalString(p.worktreeName),
+          baseRef: normalizeOptionalString(p.worktreeBaseRef),
           deferWorktree,
-          label: explicitSessionLabel ?? preparedDisplayName,
+          label: normalizeOptionalString(p.label) ?? normalizeOptionalString(p.displayName),
           titleSource: buildDashboardSessionTitleSource({ message: message ?? "", attachments }),
           currentUserMessage: message,
           useRequestedTitleSelection: Boolean(requestedModel && !personalModelSelection),
@@ -498,7 +500,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       creationOperation: options.sessionCreationOperation,
       agentId: sessionAgentId,
       label: p.label,
-      displayName: preparedDisplayName,
+      displayName: normalizeOptionalString(p.displayName),
       category: p.category,
       ...(catalogTarget
         ? { catalogTarget: catalogTarget.target }
@@ -511,7 +513,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       fastMode: p.fastMode,
       projectId: requestedProjectId,
       deviceFolder,
-      pendingProjectGitUrl: normalizeSessionProjectGitUrl(p.projectGitUrl, p.repositorySource),
+      pendingProjectGitUrl: normalizeSessionProjectGitUrl(p.projectGitUrl),
       repositorySourceId: repositorySelection.value?.id,
       incognito: p.incognito,
       ...(client?.connect ? { requestingOperatorScopes: clientScopes } : {}),
@@ -535,7 +537,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           `failed to finalize session worktree lifecycle: ${formatErrorMessage(error)}`,
         ),
       execNode: requestedExecNode,
-      execCwd: sessionExecCwd,
+      execCwd: requestedExecNode ? requestedCwd : undefined,
       clearExecBinding: !requestedExecNode,
       // A plain New Chat with no cwd must not inherit the prior session cwd.
       clearSpawnedCwd: p.worktree !== true && !sessionCwd,

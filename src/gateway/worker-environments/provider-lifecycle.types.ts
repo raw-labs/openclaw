@@ -38,6 +38,7 @@ export type WorkerProviderLifecycleInputOptions = {
     options: { signal: AbortSignal; assertCurrent: () => void },
   ) => Promise<void>;
   getConfig: () => OpenClawConfig;
+  getRepositorySources?: () => import("../repository-sources.js").RepositorySources;
   resolveProvider: (providerId: string) => WorkerProvider | undefined;
   prepareInstallation: (
     install: WorkerInstallationArtifact["install"],

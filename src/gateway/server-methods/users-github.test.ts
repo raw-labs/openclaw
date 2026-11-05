@@ -1,6 +1,6 @@
 // Install synthetic OAuth and subprocess transport before RPC modules load.
 // oxfmt-ignore
-import { createGitHubTestClient, network, resetPersonalGitHubNetwork, tokens } from "./users-github.test-support.js";
+import { createGitHubTestClient, network, resetPersonalGitHubNetwork, tokens, useCredentialEnvironment, readGitHubConfig, prepareGitHubToolEnvironment, resolveManagedGitHubProfileDir, writeManagedGitHubProfileFiles } from "./users-github.test-support.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { StatementSync } from "node:sqlite";
@@ -15,18 +15,15 @@ import {
   writeGitHubDeviceAuthorizationRecord,
 } from "../../agents/github-oauth-records.js";
 import {
-  prepareGitHubToolEnvironment,
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
-import { cleanupRetiredManagedGitHubProfiles } from "../../agents/github-tool-profile-cleanup.js";
-import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import {
+  bindLegacyPluginSdkResourceHost,
+  LegacyPluginSdkResourceHost,
+} from "../../plugins/legacy-sdk-resource-host.js";
 import { withPluginRuntimePluginScope } from "../../plugins/runtime/gateway-request-scope.js";
-import { resolveCommandEnv } from "../../process/exec-spawn.js";
 import * as secretsRuntime from "../../secrets/runtime-state.js";
 import {
   listSecretStoreEntries,
@@ -42,6 +39,7 @@ import * as stateLease from "../../state/openclaw-state-lease.js";
 import { observeUserGitHubConnectionAuthority } from "../../state/user-github-connection-events.js";
 import {
   observeUserGitHubProfileRetirement,
+  prepareUserGitHubConnection,
   readUserGitHubConnectionAsync as readConnection,
 } from "../../state/user-github-connections.js";
 import { resolvePersonalGitHubOwnerInDatabase } from "../../state/user-github-connections.kernel.js";
@@ -55,31 +53,35 @@ import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { linkCanonicalUserProfileEmail } from "../../state/user-profile-writes.js";
 import { linkEmail, setUserProfileRole } from "../../state/user-profile-writes.worker.js";
 import { ensureGatewayOwnerProfile, ensureProfileForEmail } from "../../state/user-profiles.js";
-import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withoutMainThreadSql } from "../../test-utils/main-thread-sql-spies.test-support.js";
 import { requireNativeSqliteDatabase } from "../../test-utils/native-sqlite.js";
 import {
   createOpenClawTestState,
   type OpenClawTestState,
 } from "../../test-utils/openclaw-test-state.js";
-import { GitHubCliUnavailableError } from "../github-cli-preflight.js";
-import { createGitHubOAuthLifecycle } from "../github-oauth-lifecycle.js";
-import { bindPersonalGitHubPublicationSelection } from "../github-personal-publication-selection.js";
+import {
+  callGitHubAccountFixtureRpc,
+  installPublicationRpcFixture,
+} from "../github-account-service.test-support.js";
+import type { LegacyGitHubOAuthService } from "../github-oauth-lifecycle-host.types.js";
 import { invalidateOperatorRolePolicy } from "../operator-role-policy.js";
-import { handleGatewayRequest } from "../server-methods.js";
+import { createContext } from "../server-plugin-in-process-dispatch.test-support.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 import {
   expectReceiptBackedPersonalGitHubAuthority,
   preparePersonalGitHubPoll,
+  preparePendingPersonalGitHubRefresh,
 } from "./users-github.authority.test-support.js";
 
 type AuthorityChange = Parameters<Parameters<typeof observeUserGitHubConnectionAuthority>[0]>[0];
 
 let state: OpenClawTestState;
-let lifecycle: ReturnType<typeof createGitHubOAuthLifecycle>;
+let lifecycle: LegacyGitHubOAuthService;
+let registered: Awaited<ReturnType<typeof installPublicationRpcFixture>>;
 let config: OpenClawConfig;
 let clients: Set<GatewayClient>;
 let context: GatewayRequestContext;
+let resources: LegacyPluginSdkResourceHost;
 let alice: GatewayClient;
 let bob: GatewayClient;
 let profileCatalog: Awaited<ReturnType<typeof prepareUserProfileCatalog>>;
@@ -92,25 +94,15 @@ function user(email: string, scopes = ["operator.read"]): GatewayClient {
 const owner = (client = alice): string => client.authenticatedUserProfile!.profileId;
 const resolveOwner = (profile: string, db = openOpenClawStateDatabase().db) =>
   resolvePersonalGitHubOwnerInDatabase(profile, db);
-async function rpc(client: GatewayClient, method: string, params: Record<string, unknown> = {}) {
-  const respond = vi.fn();
-  await handleGatewayRequest({
-    req: { type: "req", id: `rpc-${method}`, method, params },
-    client,
-    context,
-    respond,
-    isWebchatConnect: () => false,
-  });
-  return respond;
-}
+const rpc = (client: GatewayClient, method: string, params: Record<string, unknown> = {}) =>
+  callGitHubAccountFixtureRpc(context, client, method, params);
+
 async function start(client = alice): Promise<UsersGitHubAuthorizeStartResult> {
   const respond = await rpc(client, "users.github.authorize.start");
   expect(respond.mock.calls[0]?.[0]).toBe(true);
   return respond.mock.calls[0]![1] as UsersGitHubAuthorizeStartResult;
 }
-function preparePoll(client = alice) {
-  preparePersonalGitHubPoll(owner(client));
-}
+const preparePoll = (client = alice) => preparePersonalGitHubPoll(owner(client));
 async function connect(client = alice) {
   const started = await start(client);
   preparePoll(client);
@@ -134,42 +126,34 @@ function blockAlice() {
   setUserProfileRole(owner(), "blocked");
   invalidateOperatorRolePolicy(owner());
 }
-async function pendingRefresh() {
-  expireUserGitHubAccessToken(owner());
-  const refresh = createDeferredCore<{ status: "refreshed"; tokens: typeof tokens }>();
-  network.refresh.mockReturnValueOnce(refresh.promise);
-  const pending = lifecycle.personal.refresh(owner());
-  await vi.waitFor(() => expect(network.refresh).toHaveBeenCalledOnce());
-  return { refresh, pending };
-}
+const pendingRefresh = () => preparePendingPersonalGitHubRefresh(owner(), lifecycle.personal);
 
 beforeEach(async () => {
   state = await createOpenClawTestState({ scenario: "minimal", applyEnv: true });
-  config = { agents: { entries: { main: { workspace: state.workspaceDir } } } };
+  config = {
+    agents: { entries: { main: { workspace: state.workspaceDir } } },
+    plugins: { entries: { "github-repositories": { config: {} } } },
+  };
   setRuntimeConfigSnapshot(config);
   clients = new Set();
   alice = user("alice@example.test");
   bob = user("bob@example.test");
   profileCatalog = await prepareUserProfileCatalog();
   resetPersonalGitHubNetwork();
-  lifecycle = createGitHubOAuthLifecycle({
-    scheduler: createTestGatewayScheduler(),
-    getConfig: () => config,
-    getPersistedConfig: async () => config,
-    warn: vi.fn(),
-  });
-  context = {
-    getRuntimeConfig: () => config,
-    githubOAuthService: lifecycle,
-    getClientConnIds: (filter?: (client: GatewayClient) => boolean) =>
-      new Set(
-        [...clients].filter((client) => !filter || filter(client)).map((client) => client.connId!),
-      ),
-    logGateway: { warn: vi.fn() },
-  } as unknown as GatewayRequestContext;
+  context = createContext([], () => config);
+  context.getClientConnIds = (filter) =>
+    new Set(
+      [...clients].filter((client) => !filter || filter(client)).map((client) => client.connId!),
+    );
+  context.resolveGatewayContext = () => context;
+  resources = new LegacyPluginSdkResourceHost();
+  bindLegacyPluginSdkResourceHost(context.resolveGatewayContext, resources);
+  registered = await installPublicationRpcFixture(context, {});
+  lifecycle = registered.oauth;
 });
 afterEach(async () => {
-  await lifecycle.stop();
+  await registered.stop();
+  await resources.close();
   profileCatalog.release();
   await state.cleanup();
   clearRuntimeConfigSnapshot();
@@ -186,25 +170,27 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     });
   });
 
-  it("revokes prepared publication credentials from the disconnect receipt without host reads", async () => {
-    const connection = await connect();
-    const bound = await bindPersonalGitHubPublicationSelection(
-      {
-        owner: owner(),
-        assertCurrent() {},
-      },
-      { generation: connection.generation, account: connection.selection },
-    );
+  it("revokes a prepared native connection snapshot from the disconnect receipt without host reads", async () => {
+    await connect();
+    const bound = await prepareUserGitHubConnection(owner());
     const reads = observeSqliteReadSql(StatementSync.prototype);
     try {
-      expect(bound.assertCurrent().accountId).toBe(101);
-      expect(reads.queries).toEqual([]);
-      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-        disconnected: true,
+      expect(bound.read()?.selection).toMatchObject({
+        kind: "connected",
+        account: { accountId: 101 },
       });
+      expect(reads.queries).toEqual([]);
+      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+        true,
+        {
+          disconnected: true,
+        },
+        undefined,
+        undefined,
+      );
       // Disconnect also retires profile files under a native SQLite lease.
       reads.queries.length = 0;
-      expect(() => bound.assertCurrent()).toThrow();
+      expect(() => bound.read()).toThrow();
       expect(reads.queries).toEqual([]);
     } finally {
       reads.restore();
@@ -214,36 +200,18 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
   it.each(["users.github.status", "tools.github.status"])(
     "%s reports execution authentication instead of a resolved preview credential",
     async (method) => {
-      const sourceConfig: OpenClawConfig = {
-        ...config,
-        gateway: {
-          controlUi: {
-            github: { token: { source: "env", provider: "default", id: "GH_TOKEN" } },
-          },
-        },
+      const sourceConfig = structuredClone(config);
+      readGitHubConfig(sourceConfig).service = {
+        token: { source: "env", provider: "default", id: "GH_TOKEN" },
       };
-      config = {
-        ...config,
-        gateway: { controlUi: { github: { token: "synthetic-preview" } } },
-      };
+      readGitHubConfig(config).service = { token: "synthetic-preview" };
       setRuntimeConfigSnapshot(config, sourceConfig);
       const snapshot = vi
         .spyOn(secretsRuntime, "getActiveSecretsRuntimeConfigSnapshot")
         .mockReturnValue({ config, sourceConfig, configRefsPrepared: true });
       vi.stubEnv("GH_TOKEN", "synthetic-preview");
       vi.stubEnv("GITHUB_TOKEN", "synthetic-native");
-      network.command.mockImplementation(
-        async (argv: string[], options: { env?: NodeJS.ProcessEnv }) => {
-          const env = resolveCommandEnv({ argv, env: options.env });
-          return {
-            code: argv[0] === "git" ? 1 : 0,
-            stdout: Buffer.from(
-              argv[0] === "gh" ? env.GH_TOKEN || env.GITHUB_TOKEN || "synthetic-native" : "",
-            ),
-            stderr: Buffer.alloc(0),
-          };
-        },
-      );
+      useCredentialEnvironment();
       try {
         const response = await rpc(
           alice,
@@ -272,15 +240,15 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const profileId = "ghp_12121212121212121212121212121212";
       config.agents = {
         entries: {
-          alpha: {
-            workspace: state.path("alpha-workspace"),
-            tools: { github: { profileId: "ghp_34343434343434343434343434343434" } },
-          },
+          alpha: { workspace: state.path("alpha-workspace") },
           beta: { workspace: state.path("beta-workspace") },
         },
       };
+      readGitHubConfig(config).agents = {
+        alpha: { profileId: "ghp_34343434343434343434343434343434" },
+      };
       if (systemKind === "managed") {
-        config.tools = { github: { profileId } };
+        readGitHubConfig(config).system = { profileId };
         await writeManagedGitHubProfileFiles(
           resolveManagedGitHubProfileDir({ scope: "system", agentId: "", profileId }),
           { login: "system-bot", token: "synthetic-native" },
@@ -315,7 +283,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       const pending = await start();
       expect(
         await rpc(alice, "users.github.authorize.cancel", { requestId: pending.requestId }),
-      ).toHaveBeenCalledWith(true, { cancelled: true });
+      ).toHaveBeenCalledWith(true, { cancelled: true }, undefined, undefined);
       expect(writes).not.toHaveBeenCalled();
     } finally {
       writes.mockRestore();
@@ -359,16 +327,17 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     await withoutMainThreadSql(async () => {
       await lifecycle.personal.refresh(owner());
       expect(network.refresh).toHaveBeenCalledOnce();
-      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-        disconnected: true,
-      });
+      expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+        true,
+        { disconnected: true },
+        undefined,
+        undefined,
+      );
     });
   });
 
   it("rejects a missing GitHub CLI before creating personal authorization state", async () => {
-    network.assertCli.mockImplementationOnce(() => {
-      throw new GitHubCliUnavailableError();
-    });
+    network.resolveExecutable.mockReturnValueOnce(undefined);
 
     const response = await rpc(alice, "users.github.authorize.start");
 
@@ -490,7 +459,9 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       config = JSON.parse(await fs.readFile(state.configPath, "utf8")) as OpenClawConfig;
       setRuntimeConfigSnapshot(config);
       const identity =
-        scope === "system" ? config.tools?.github : config.agents?.entries?.main?.tools?.github;
+        scope === "system"
+          ? readGitHubConfig(config).system
+          : readGitHubConfig(config).agents?.["main"];
       if (!identity) {
         throw new Error("Expected configured shared GitHub identity");
       }
@@ -526,7 +497,7 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
       system: { source: "system-detected", account: { login: "system-bot" } },
     });
     expect(getUserProfileListItem(owner())).toEqual(before);
-    expect(config.tools?.github).toBeUndefined();
+    expect(readGitHubConfig(config).system).toBeUndefined();
     expect(prepareGitHubToolEnvironment({ config, agentId: "main" }).localIdentityEnv).toEqual({});
     expect(await rpc(alice, "users.self")).toHaveBeenCalledWith(true, { profile: before });
     for (const [method, missingScope] of [
@@ -556,10 +527,15 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect((await readConnection(owner()))?.generation).toBe(connection.generation);
     expect(
       await rpc(alice, "users.github.authorize.cancel", { requestId: restarted.requestId }),
-    ).toHaveBeenCalledWith(true, { cancelled: true });
-    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-      disconnected: true,
-    });
+    ).toHaveBeenCalledWith(true, { cancelled: true }, undefined, undefined);
+    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+      true,
+      {
+        disconnected: true,
+      },
+      undefined,
+      undefined,
+    );
     expect((await readConnection(owner()))?.selection.kind).toBe("disconnected");
     expect((await readConnection(owner()))?.generation).not.toBe(connection.generation);
   });
@@ -584,9 +560,14 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     await expect(lifecycle.personal.refresh(owner())).rejects.toThrow(
       "Personal GitHub state is invalid",
     );
-    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(true, {
-      disconnected: true,
-    });
+    expect(await rpc(alice, "users.github.disconnect")).toHaveBeenCalledWith(
+      true,
+      {
+        disconnected: true,
+      },
+      undefined,
+      undefined,
+    );
     expect((await readConnection(owner()))?.selection).toEqual({
       kind: "disconnected",
     });
@@ -601,10 +582,10 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     await vi.waitFor(() => expect(network.poll).toHaveBeenCalledOnce());
     expect(
       await rpc(bob, "users.github.authorize.poll", { requestId: started.requestId }),
-    ).toHaveBeenCalledWith(true, { status: "expired" });
+    ).toHaveBeenCalledWith(true, { status: "expired" }, undefined, undefined);
     expect(
       await rpc(bob, "users.github.authorize.cancel", { requestId: started.requestId }),
-    ).toHaveBeenCalledWith(true, { cancelled: false });
+    ).toHaveBeenCalledWith(true, { cancelled: false }, undefined, undefined);
     expect((await rpc(bob, "users.github.status")).mock.calls[0]?.[1]).toMatchObject({
       personal: { pending: null, account: null },
     });
@@ -627,6 +608,8 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect(await rpc(alice, "users.github.status")).toHaveBeenCalledWith(
       true,
       expect.objectContaining({ personal: expect.objectContaining({ state: "disconnected" }) }),
+      undefined,
+      undefined,
     );
     const started = await start(alice);
     expect((await readConnection(profile.id))?.pending?.requestId).toBe(started.requestId);
@@ -894,7 +877,25 @@ describe("personal GitHub through authenticated Gateway RPC", () => {
     expect(await listGitHubOAuthRecords()).toEqual([]);
     expect(await listGitHubDeviceAuthorizationRecords()).toEqual([]);
     await purgeExpiredSecretStoreEntries();
-    await cleanupRetiredManagedGitHubProfiles({ config });
+    const orphan = resolveManagedGitHubProfileDir({
+      agentId: "",
+      scope: "system",
+      profileId: "ghp_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    });
+    await writeManagedGitHubProfileFiles(orphan, {
+      login: "retired-fixture",
+      token: "synthetic-retired",
+    });
+    // Startup must remove the orphaned shared profile while retaining this personal profile.
+    await registered.stop();
+    const next = createContext([], () => config);
+    next.getClientConnIds = context.getClientConnIds;
+    next.resolveGatewayContext = () => next;
+    bindLegacyPluginSdkResourceHost(next.resolveGatewayContext, resources);
+    context = next;
+    registered = await installPublicationRpcFixture(context, {});
+    lifecycle = registered.oauth;
+    await expect(fs.stat(orphan)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await fs.readFile(path.join(dir, "hosts.yml"), "utf8")).toContain(tokens.accessToken);
     const database = openOpenClawStateDatabase();
     const manifest = await dumpGitBackupDatabase({

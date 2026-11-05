@@ -19,18 +19,17 @@ import {
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
 import type { ControlUiSessionPullRequestSnapshot } from "./control-ui-contract.js";
-import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { staleReceiptsOnlyCell } from "./control-ui-session-pr-prepared-read.js";
 import {
-  createControlUiSessionPrRead,
-  prepareControlUiSessionPrServiceTarget,
-  type ControlUiSessionPrTarget,
-} from "./control-ui-session-pr-target.js";
+  createFixture,
+  createRpcResponseCapture,
+  sessionKey,
+} from "./control-ui-session-pr-access.test-support.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { prepareTaskPublicationSessions } from "./control-ui-session-task-prs.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
 import { insertRepositoryGitHubPublicationFixture } from "./github-publication-store.test-support.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication.kernel.js";
+import type { PreparedRepositorySessionRead } from "./repository-session-read.types.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
 import * as records from "./session-row-projection-record.js";
@@ -93,8 +92,8 @@ function snapshots(socket = fixture.socket): ControlUiSessionPullRequestSnapshot
 }
 const latest = () => snapshots().at(-1);
 const taskNumbers = () => latest()?.taskPullRequests?.map((pr) => pr.number);
-async function taskSessionKeys(target: ControlUiSessionPrTarget | undefined) {
-  const publications = await target?.read?.readTaskPublications({});
+async function taskSessionKeys(target: PreparedRepositorySessionRead | undefined) {
+  const publications = await target?.readTaskPublications({});
   return publications?.receipts.map((publication) => publication.session.sessionKey).toSorted();
 }
 
@@ -133,10 +132,7 @@ it("reuses unchanged watcher currency and retires it on owner publications", asy
   receipt(sessionKey, 1);
   receipt(child, 2);
   const projection = getSessionRowProjection(f.context)!;
-  const read = createControlUiSessionPrRead(
-    f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
-    f.context.getRuntimeConfig,
-  )!;
+  const read = f.sessionReads.createViewerRead(f.client.connId!, { sessionKey })!;
   const target = (await read())!;
   expect(await taskSessionKeys(target)).toEqual([child, sessionKey]);
   target.assertCurrent!();
@@ -226,10 +222,7 @@ it("prepares creator aliases once per task audience validation", async () => {
   }
   receipt(sessionKey, 5);
   const projection = getSessionRowProjection(fixture.context)!;
-  const read = createControlUiSessionPrRead(
-    fixture.sessionReads.createViewerRead(fixture.client.connId!, { sessionKey }),
-    fixture.context.getRuntimeConfig,
-  )!;
+  const read = fixture.sessionReads.createViewerRead(fixture.client.connId!, { sessionKey })!;
   const target = (await read())!;
   expect(await taskSessionKeys(target)).toHaveLength(5);
   await fixture.seed("agent:main:unrelated", fixture.profile.id);
@@ -475,11 +468,10 @@ it("projects three descendant receipts without mixing the parent's current branc
     taskPullRequestCount: 3,
   });
   expect(taskNumbers()?.toSorted((a, b) => a - b)).toEqual([1, 2, 3]);
-  const sharedTarget = await prepareControlUiSessionPrServiceTarget(
-    fixture.sessionReads,
-    fixture.context.getRuntimeConfig,
-    { sessionKey, agentId: "main" },
-  );
+  const sharedTarget = await fixture.sessionReads.prepareServiceRead({
+    sessionKey,
+    agentId: "main",
+  });
   expect(sharedTarget).toBeDefined();
   const shared = fixture.subscriptions.readPrepared(sharedTarget!, () => false);
   expect(shared).toMatchObject({ status: "ready", pullRequests: [{ number: 40 }] });
@@ -500,7 +492,7 @@ it("projects three descendant receipts without mixing the parent's current branc
 });
 
 async function passive(client = fixture.client) {
-  const respond = vi.fn();
+  const { received, respond } = createRpcResponseCapture();
   await handleGatewayRequest({
     req: {
       type: "req",
@@ -513,7 +505,7 @@ async function passive(client = fixture.client) {
     isWebchatConnect: () => false,
     respond,
   });
-  expect(respond).toHaveBeenCalledWith(true, { subscribed: true }, undefined);
+  expect(received).toHaveBeenCalledWith(true, { subscribed: true }, undefined);
   await fixture.subscriptions.pollNow();
 }
 
@@ -714,34 +706,6 @@ it("gives passive rows the PR state an active viewer already verified, without G
   );
   await fixture.subscriptions.pollNow();
   expect(fetcher).toHaveBeenCalledTimes(verifiedReads);
-});
-
-it("reloads a stale passive cell once per verified state, even when its cache misses", () => {
-  const target = { identity: "session" } as ControlUiSessionPrTarget;
-  const pullRequest = (prState: "open" | "merged") => {
-    const url = "https://github.com/example/repository/pull/1";
-    const facts = { url, owner: "example", repo: "repository", number: 1, branch: "fix" };
-    return {
-      ...facts,
-      sourceSessionKey: sessionKey,
-      sourceAgentId: "main",
-      pullRequest: { ...facts, title: "Fix", state: prState },
-    };
-  };
-  const cell = (taskPullRequests: ControlUiSessionPullRequestSnapshot["taskPullRequests"]) => ({
-    connIds: new Set(["phone"]),
-    target,
-    cacheLifetime: new AbortController(),
-    snapshot: { pullRequests: [], rateLimited: false, status: "ready" as const, taskPullRequests },
-  });
-  const passiveKey = '["session","receipts-only"]';
-  const passiveCell = cell([{ ...pullRequest("open"), pullRequest: undefined }]);
-  passiveCell.target = { ...target, identity: passiveKey, taskReceiptsOnly: true };
-  const keyStates = new Map([[passiveKey, passiveCell]]);
-  const active = cell([pullRequest("merged")]);
-  expect(staleReceiptsOnlyCell(keyStates, active, active.snapshot)).toBe(passiveKey);
-  // The reload missed the cache: the next poll of the same verified state must not reload again.
-  expect(staleReceiptsOnlyCell(keyStates, active, active.snapshot)).toBeUndefined();
 });
 
 it("keeps a known cold URL when GitHub metadata fails, and ignores a replaced session lifecycle", async () => {

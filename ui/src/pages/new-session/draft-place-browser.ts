@@ -4,7 +4,6 @@ import type {
   ProjectRecord,
   ProjectRecent,
   ProjectsRegisterResult,
-  ProjectsSearchRemoteResult,
   WorktreesBranchesResult,
 } from "../../../../packages/gateway-protocol/src/index.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
@@ -12,22 +11,13 @@ import type { ApplicationContext } from "../../app/context.ts";
 import { requestCheckoutSnapshot } from "../../lib/checkout-snapshot.ts";
 import { formatUiError } from "../../lib/format-error.ts";
 import { canCallGatewayMethod } from "../../lib/gateway-methods.ts";
-import { createPageRequest } from "../../lib/page-request.ts";
 import { pathDisplayName } from "../../lib/path-display.ts";
 import { projectsForGateway, type ProjectCatalog } from "../../lib/projects.ts";
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import { isAbsolutePath, isKnownWorkspacePath } from "./path.ts";
 import { PICKER_INPUT_DEBOUNCE_MS, PlaceBrowserState } from "./place-browser-state.ts";
-import { projectCloneInput, type DraftRemoteProject } from "./project-chip.ts";
+import type { DraftRemoteProject } from "./project-chip.ts";
 import { RepositorySourceSearch } from "./repository-source-search.ts";
-
-type ProjectSearchOutcome = { result: ProjectsSearchRemoteResult } | { error: unknown } | null;
-
-type ProjectSearchRead = Readonly<{
-  query: string;
-  completed: Promise<ProjectSearchOutcome>;
-}>;
-
 export type BrowserProjectRegistration = Readonly<{
   retired: Promise<void>;
   isCurrent: () => boolean;
@@ -84,20 +74,6 @@ export class DraftPlaceBrowser {
 
   private projectSearchArgs: readonly unknown[] = [];
   private readonly repositorySearch = new RepositorySourceSearch(() => this.callbacks.changed());
-  private projectSearchReadValue: ProjectSearchRead | null = null;
-  private finishProjectSearch: ((outcome: ProjectSearchOutcome) => void) | undefined;
-  private readonly projectSearchRequest = createPageRequest(() => this.callbacks.changed(), {
-    task: ([client, query]: readonly [GatewayBrowserClient, string], { signal }) =>
-      client.request<ProjectsSearchRemoteResult>("projects.searchRemote", { query }, { signal }),
-    onComplete: (result) => {
-      this.finishProjectSearch?.({ result });
-      this.finishProjectSearch = undefined;
-    },
-    onError: (error) => {
-      this.finishProjectSearch?.({ error });
-      this.finishProjectSearch = undefined;
-    },
-  });
 
   constructor(
     private readonly gateway: DraftGatewayState,
@@ -168,37 +144,17 @@ export class DraftPlaceBrowser {
   private projectSearchInput() {
     return [
       this.read().context && this.gateway.connected ? this.gateway.client : null,
-      canCallGatewayMethod(
-        this.read().context?.gateway.snapshot,
-        "projects.searchRemote",
-        "operator.read",
-      ),
+      JSON.stringify(this.repositorySources),
       this.projectSearchTimer ? this.debouncedProjectQuery : this.projectQueryValue.trim(),
       this.gateway.connectionEpoch,
-      JSON.stringify(this.repositorySources),
     ] as const;
   }
 
   private searchProjects(args = this.projectSearchInput()) {
     this.projectSearchArgs = args;
-    this.projectSearchRequest.cancel();
-    // A cancelled transport may never settle; retire its presentation immediately.
-    this.finishProjectSearch?.(null);
-    this.finishProjectSearch = undefined;
-    this.projectSearchReadValue = null;
-    const [client, advertised, query] = args;
-    this.repositorySearch.search(
-      projectCloneInput(query) ? null : client,
-      this.repositorySources,
-      query,
-    );
-    if (!client || !advertised || query.length < 2 || projectCloneInput(query)) {
-      return;
-    }
-    const completion = Promise.withResolvers<ProjectSearchOutcome>();
-    this.projectSearchReadValue = { query, completed: completion.promise };
-    this.finishProjectSearch = completion.resolve;
-    void this.projectSearchRequest.run([client, query]);
+    const [client, , query] = args;
+    this.debouncedProjectQuery = query;
+    this.repositorySearch.search(client, this.repositorySources, query);
   }
 
   get projects(): readonly ProjectRecord[] {
@@ -227,40 +183,19 @@ export class DraftPlaceBrowser {
 
   get repositorySources() {
     const context = this.read().context;
-    return (context?.plugins?.repositorySources ?? []).filter(
-      (source) =>
-        source.searchMethod !== "projects.searchRemote" &&
-        canCallGatewayMethod(context?.gateway.snapshot, source.searchMethod, "operator.read"),
+    return (context?.plugins?.repositorySources ?? []).filter((source) =>
+      canCallGatewayMethod(context?.gateway.snapshot, source.searchMethod, "operator.read"),
     );
   }
 
-  get repositorySearchGroups() {
-    return this.repositorySearch.groups;
-  }
-
-  projectSubmissionBlocked(checkoutSubmissionBlocked: boolean): boolean | undefined {
-    return this.projectId || this.remoteProject
-      ? !this.remoteProject && (!this.selectedProject() || checkoutSubmissionBlocked)
-      : undefined;
-  }
-
-  get repositorySourceStatus(): "checking" | "unavailable" | undefined {
-    const selected = this.remoteProject?.sourceId;
-    if (!selected) {
-      return undefined;
-    }
-    return this.read().context?.plugins?.registryStatus === "pending"
-      ? "checking"
-      : this.repositorySources.some((source) => source.key === selected)
-        ? undefined
-        : "unavailable";
-  }
-
-  get githubHost(): string | undefined {
-    return this.projectCatalog?.snapshot.result?.githubHost;
+  get repositorySourcesReady() {
+    return this.read().context?.plugins?.registryStatus === "complete";
   }
 
   get defaultRemoteProject(): DraftRemoteProject | null {
+    if (!this.repositorySourcesReady || this.repositorySources.length === 0) {
+      return null;
+    }
     const configured = this.projectCatalog?.snapshot.result?.defaultRepository;
     return configured
       ? {
@@ -283,6 +218,27 @@ export class DraftPlaceBrowser {
     return this.projectSelection?.kind === "remote" ? this.projectSelection.project : null;
   }
 
+  projectSubmissionBlocked(checkoutSubmissionBlocked: boolean): boolean | undefined {
+    return this.projectId || this.remoteProject
+      ? !this.remoteProject && (!this.selectedProject() || checkoutSubmissionBlocked)
+      : undefined;
+  }
+
+  get repositorySourceStatus(): "checking" | "unavailable" | undefined {
+    const project = this.remoteProject;
+    if (!project) {
+      return undefined;
+    }
+    if (!this.repositorySourcesReady) {
+      return "checking";
+    }
+    return this.repositorySources.length === 0 ||
+      (project.sourceId &&
+        !this.repositorySources.some((source) => source.key === project.sourceId))
+      ? "unavailable"
+      : undefined;
+  }
+
   get projectQuery(): string {
     return this.projectQueryValue;
   }
@@ -296,10 +252,10 @@ export class DraftPlaceBrowser {
     this.callbacks.changed();
   }
 
-  get projectSearchRead(): ProjectSearchRead | null {
-    return this.projectSearchReadValue?.query === this.projectQueryValue.trim()
-      ? this.projectSearchReadValue
-      : null;
+  get repositorySearchGroups() {
+    return this.debouncedProjectQuery === this.projectQueryValue.trim()
+      ? this.repositorySearch.groups
+      : [];
   }
 
   get browserOpen(): boolean {
@@ -409,7 +365,9 @@ export class DraftPlaceBrowser {
     const serverRecents = this.projectRecents?.filter((recent) =>
       recent.kind === "project"
         ? this.projects.some((project) => project.id === recent.projectId)
-        : recent.kind === "repository" || (!recent.execNode && allowGatewayFolder(recent.folder)),
+        : recent.kind === "repository"
+          ? this.repositorySources.length > 0
+          : !recent.execNode && allowGatewayFolder(recent.folder),
     );
     if (serverRecents !== undefined) {
       return serverRecents;
@@ -438,23 +396,15 @@ export class DraftPlaceBrowser {
     this.projectQueryValue = query;
     this.clearProjectSearchTimer();
     this.debouncedProjectQuery = "";
-    this.searchProjects([
-      null,
-      false,
-      "",
-      this.gateway.connectionEpoch,
-      JSON.stringify(this.repositorySources),
-    ]);
+    this.searchProjects([null, "", "", this.gateway.connectionEpoch]);
     const normalized = query.trim();
     const context = this.read().context;
     if (
       normalized.length < 2 ||
-      projectCloneInput(normalized) ||
       !this.gateway.connected ||
       !this.gateway.client ||
       !context ||
-      (!canCallGatewayMethod(context.gateway.snapshot, "projects.searchRemote", "operator.read") &&
-        this.repositorySources.length === 0)
+      this.repositorySources.length === 0
     ) {
       this.callbacks.changed();
       return;
@@ -469,10 +419,9 @@ export class DraftPlaceBrowser {
       this.debouncedProjectQuery = normalized;
       this.searchProjects([
         client,
-        canCallGatewayMethod(context.gateway.snapshot, "projects.searchRemote", "operator.read"),
+        JSON.stringify(this.repositorySources),
         normalized,
         connectionEpoch,
-        JSON.stringify(this.repositorySources),
       ]);
       this.callbacks.changed();
     }, PICKER_INPUT_DEBOUNCE_MS);
@@ -481,6 +430,7 @@ export class DraftPlaceBrowser {
 
   resetProjectSearch() {
     this.clearProjectSearchTimer();
+    this.repositorySearch.cancel();
     this.projectQueryValue = "";
     this.debouncedProjectQuery = "";
     this.callbacks.changed();
@@ -606,12 +556,12 @@ export class DraftPlaceBrowser {
     this.retireRegistration();
     this.clearProjectSearchTimer();
     this.projectCatalogCleanup?.();
-    this.projectCatalogCleanup = undefined;
     this.pluginCatalogCleanup?.();
     this.pluginCatalogCleanup = undefined;
+    this.projectCatalogCleanup = undefined;
     this.projectCatalogGateway = undefined;
     this.projectCatalog = undefined;
-    this.searchProjects([null, false, "", -1, "[]"]);
+    this.searchProjects([null, "", "", -1]);
   }
 
   private resetBrowser(closePopover: boolean) {

@@ -30,20 +30,9 @@ import {
   type MobileTaskProgressProps,
 } from "./chat-details-progress.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
-import type { GitHubPublicationMobileProps } from "./chat-github-publication-mobile.tsx";
-import "../../../styles/chat/github-publication-mobile.css";
 import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
 import { ChatMobilePeopleBody, type ChatMobilePeopleBodyProps } from "./chat-mobile-people.tsx";
 import { getChatOutputsCount } from "./chat-outputs-data.ts";
-import {
-  ChatPullRequestMobileCollection,
-  ChatPullRequestMobileDetail,
-  ChatPullRequestMobileChecks,
-  ChatPullRequestMobileMonitoring,
-  type ChatPullRequestMobileCiProps,
-  type ChatPullRequestMobileCollectionProps,
-  type ChatPullRequestMobileDetailProps,
-} from "./chat-pull-request-mobile.tsx";
 import type { ChatSessionSharingMobileAdapter } from "./chat-session-sharing-mobile-adapter.tsx";
 import {
   ChatSessionAccessMobile,
@@ -67,10 +56,6 @@ const ChatOutputsMobile = lazy(() => import("./chat-outputs.tsx"), {
   export: "ChatOutputsMobile",
 });
 
-const GitHubPublicationMobile = lazy(() => import("./chat-github-publication-mobile.tsx"), {
-  export: "GitHubPublicationMobile",
-});
-
 type ChatDetailsMobileRegionProps = {
   details: ChatDetailsProps;
   presented: boolean;
@@ -84,8 +69,6 @@ type ChatDetailsMobileRootContent = {
     | "environment"
     | "outputs"
     | "sharingOptions"
-    | "publication"
-    | "publicationEntry"
     | "context"
     | "processes"
     | "subagents"
@@ -97,8 +80,6 @@ type ChatDetailsMobileRootContent = {
   outputs?: { label: string };
   /** The native Sharing adapter, constructed under the retained session host. */
   sharing?: ChatSessionSharingMobileAdapter;
-  /** The publication owner supplies the review entry, including retained publication/recovery states. */
-  publicationEntry?: ChatDetailsMobileEntry;
   processes: ChatDetailsMobileProcessesProps["data"] | undefined;
   /** Keep every native child; the host routes unlisted children through onSessionSelect. */
   subagents: Omit<NonNullable<ChatDetailsMobileRootProps["subagents"]>, "rows">;
@@ -121,12 +102,6 @@ export type ChatDetailsMobilePage =
   | { kind: "contribution"; content: JSX.Element }
   | { kind: "people"; content: ChatDetailsMobilePeopleContent }
   | { kind: "task-progress"; content: ChatDetailsMobileProgressPreference }
-  | { kind: "pull-requests"; content: ChatPullRequestMobileCollectionProps }
-  | { kind: "pull-request"; content: ChatPullRequestMobileDetailProps }
-  | {
-      kind: "pull-request-checks" | "pull-request-monitoring";
-      content: Omit<ChatPullRequestMobileCiProps, "presented">;
-    }
   | { kind: "versions"; content: ChatSessionVersionsMobileProps }
   | { kind: "outputs" }
   | { kind: "automations"; content: SessionAutomationMobileListProps }
@@ -136,11 +111,6 @@ export type ChatDetailsMobilePage =
       kind: "goal";
       /** Native composer admission/recovery/actions; the goal comes from selectedSession. */
       content: Omit<ChatDetailsGoalProps, "goal" | "presented">;
-    }
-  | {
-      kind: "publication";
-      /** publication is the live Details binding, retained independently of its opener. */
-      content: Omit<GitHubPublicationMobileProps, "presented" | "branch">;
     };
 
 export type ChatDetailsMobileContentProps = ChatDetailsMobileRegionProps & {
@@ -302,9 +272,6 @@ function MobileRoot(
           <ChatSessionSharingOptions {...props.content.sharing.options} />
         ) : undefined
       }
-      publicationEntry={
-        props.details.githubPublication ? props.content.publicationEntry : undefined
-      }
       processes={
         props.content.processes ? (
           <ChatDetailsMobileProcesses
@@ -368,20 +335,6 @@ export function ChatDetailsMobileContent(props: ChatDetailsMobileContentProps) {
           />
         )}
       </Match>
-      <Match when={props.page.kind === "pull-requests" && props.page}>
-        {(page) => <ChatPullRequestMobileCollection {...page().content} />}
-      </Match>
-      <Match when={props.page.kind === "pull-request" && props.page}>
-        {(page) => <ChatPullRequestMobileDetail {...page().content} />}
-      </Match>
-      <Match when={props.page.kind === "pull-request-checks" && props.page}>
-        {(page) => <ChatPullRequestMobileChecks {...page().content} presented={props.presented} />}
-      </Match>
-      <Match when={props.page.kind === "pull-request-monitoring" && props.page}>
-        {(page) => (
-          <ChatPullRequestMobileMonitoring {...page().content} presented={props.presented} />
-        )}
-      </Match>
       <Match when={props.page.kind === "versions" && props.page}>
         {(page) => <ChatSessionVersionsMobile {...page().content} />}
       </Match>
@@ -415,17 +368,6 @@ export function ChatDetailsMobileContent(props: ChatDetailsMobileContentProps) {
       </Match>
       <Match when={props.page.kind === "contribution" && props.page}>
         {(page) => page().content}
-      </Match>
-      <Match when={props.page.kind === "publication" && props.page}>
-        {(page) => (
-          <ChatLazyBoundary>
-            <GitHubPublicationMobile
-              {...page().content}
-              branch={props.details.pullRequestsBranch}
-              presented={props.presented}
-            />
-          </ChatLazyBoundary>
-        )}
       </Match>
     </Switch>,
   ];

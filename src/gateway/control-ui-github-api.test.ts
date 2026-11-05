@@ -1,12 +1,46 @@
 import { once } from "node:events";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
+import { SecretSurfaceUnavailableError } from "../secrets/runtime-degraded-state.js";
 import { loadBundledPluginFacade } from "../test-utils/bundled-plugin-public-surface.js";
-import { gitHubPublicApi as api } from "./github-public-api.js";
+import { gitHubAccountApi } from "./native-github-account-api.js";
 
-const { fetchGitHubJsonPage: fetchReaderPage } = await loadBundledPluginFacade<
-  Pick<typeof api, "fetchGitHubJsonPage">
->({ pluginId: "github", artifactBasename: "api.js" });
+type ReaderApi = Pick<
+  typeof gitHubAccountApi,
+  "ControlUiGitHubError" | "readGitHubJsonResponse"
+> & {
+  fetchGitHubApi: (
+    url: string,
+    fetchImpl: typeof fetch,
+    token?: string,
+    beforeRedirect?: (url: URL) => Promise<void>,
+    identity?: {
+      revalidate: () => Promise<void>;
+      assertSelected: () => void;
+      signal?: AbortSignal;
+    },
+    etag?: string,
+    signal?: AbortSignal,
+    graphql?: { query: string; variables: Record<string, string> },
+    apiBaseUrl?: string,
+  ) => Promise<Response>;
+  readGitHubGraphQLResponse(
+    response: Response,
+    fetchImpl: typeof fetch,
+    token: string,
+  ): Promise<unknown>;
+  fetchGitHubJson(url: string, fetchImpl: typeof fetch): Promise<unknown>;
+  formatControlUiGitHubPreviewError(error: unknown): {
+    message: string;
+    retryable: boolean;
+    retryAfterMs?: number;
+  };
+};
+const { gitHubPublicApi: api, CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE } =
+  await loadBundledPluginFacade<{
+    gitHubPublicApi: ReaderApi;
+    CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE: string;
+  }>({ pluginId: "github-repositories", artifactBasename: "public-api.js" });
 
 const repoUrl = "https://api.github.com/repos/owner/repo";
 const now = 1_800_000_000_000;
@@ -92,7 +126,13 @@ it.each([
       .mockImplementation(async () => new Response("{}"));
     const read = async (path: string, token = "quota-token") => {
       if (resource === "core" && path === sibling) {
-        return (await fetchReaderPage(`https://api.github.com${path}`, fetchMock, token)).value;
+        return (
+          await gitHubAccountApi.fetchGitHubJsonPage(
+            `https://api.github.com${path}`,
+            fetchMock,
+            token,
+          )
+        ).value;
       }
       const response = await request(fetchMock, {
         url: `https://api.github.com${path}`,
@@ -217,7 +257,19 @@ it("dispatches an admitted request before its caller can retire", async () => {
   expect(activeAtDispatch).toBe(true);
 });
 
-it("hides unknown errors", () => {
+it("shows configured credential recovery instructions but hides unknown errors", () => {
+  const unavailable = new SecretSurfaceUnavailableError({
+    ownerKind: "capability",
+    ownerId: "plugins.entries.github-repositories.config.service.token",
+    state: "unavailable",
+    paths: ["plugins.entries.github-repositories.config.service.token"],
+    refKeys: [],
+    reason: "secret-store-diagnostic",
+  });
+  expect(api.formatControlUiGitHubPreviewError(unavailable)).toEqual({
+    message: CONTROL_UI_GITHUB_CREDENTIAL_UNAVAILABLE_MESSAGE,
+    retryable: false,
+  });
   const display = api.formatControlUiGitHubPreviewError(
     new Error("Authorization: Bearer secret-unknown-credential"),
   );

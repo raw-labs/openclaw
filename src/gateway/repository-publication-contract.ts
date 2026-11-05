@@ -2,6 +2,11 @@ import type { ControlUiSessionPullRequest } from "../../packages/gateway-protoco
 import type {
   SessionGitHubPullRequestInspectResult,
   SessionGitHubOptionsResult,
+  SessionGitHubBaseRefreshResult,
+  SessionGitHubPullRequestPrepareResult,
+  SessionGitHubPublishParams,
+  SessionGitHubConfirmParams,
+  SessionGitHubStatusResult,
   SessionGitHubActionParams,
   SessionGitHubActionResult,
   SessionGitHubPublicationPublished,
@@ -9,13 +14,22 @@ import type {
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import type { PersonalGitHubStatus } from "../../packages/gateway-protocol/src/schema/users.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
-import type { PublicationSessionIdentity } from "./github-publication-availability.js";
-import type { GitHubPublicationRequesterV2 } from "./github-publication-requester.js";
+import type {
+  GitHubPublicationRequesterV2,
+  GitHubPublicationRequesterPreparation,
+} from "./github-publication-requester-capability.js";
+import type {
+  PublicationSessionIdentity,
+  PublicationSessionRead,
+  GitHubPublicationSessionRequestV2,
+} from "./github-publication-session.types.js";
 import type { RepositoryPublicationContentHostV1 } from "./repository-publication-content-contract.js";
 import type { RepositoryPublicationFailure } from "./repository-publication-errors.js";
 import type { RepositoryPublicationGitTransfer } from "./repository-publication-git-transfer.js";
 import type { RepositoryPublicationOwnPullRequestReader } from "./repository-session-read.types.js";
 import type { RepositoryWorkerIdentityTransfer } from "./repository-worker-identity-transfer.js";
+import type { GatewayRequestHandlerOptions } from "./server-methods/shared-types.js";
+import type { SessionMutationTarget } from "./session-mutation-authorization-error.js";
 
 export type { RepositoryPublicationOwnPullRequestReader } from "./repository-session-read.types.js";
 
@@ -370,4 +384,93 @@ export type RepositoryPublicationProvider = {
   ): Promise<{ url: string; headCommit: string }>;
   resolveFailure(this: void, error: unknown): RepositoryPublicationFailure;
   isDefinitiveFailure(this: void, error: unknown): boolean;
+};
+
+export type PreparedRepositoryPublicationStatus = { release: () => void };
+export type PullRequestPreparationInput = {
+  params: Extract<SessionGitHubActionParams, { action: "prepare_pr" | "refresh_base" }>;
+  requester: GitHubPublicationRequesterV2;
+  signal?: AbortSignal;
+};
+export type RepositoryPublicationPreparePersonalSessionAction = (
+  options: Pick<GatewayRequestHandlerOptions, "client" | "context" | "signal"> &
+    Parameters<GitHubPublicationRequesterPreparation>[0],
+  target: SessionMutationTarget,
+) => Promise<{ action: RepositoryPublicationPersonalSessionAction; release: () => void }>;
+
+type SharedPublicationRead = () => PublicationSessionRead;
+/** Host operations consumed by the managed vendor service; transaction custody stays native. */
+export type RepositoryPublicationApi = {
+  preparePullRequest: (
+    input: PullRequestPreparationInput,
+  ) => Promise<SessionGitHubBaseRefreshResult | SessionGitHubPullRequestPrepareResult>;
+  refreshBase: (input: {
+    sessionKey: string;
+    agentId: string;
+    requester: GitHubPublicationRequesterV2;
+    signal?: AbortSignal;
+    conflictsResolved?: boolean;
+    baseCommit?: string;
+  }) => Promise<SessionGitHubBaseRefreshResult>;
+  requestForSessionV2: (
+    input: GitHubPublicationSessionRequestV2,
+  ) => Promise<SessionGitHubPublicationResult>;
+  requestPersonalForSessionV2: (
+    input: SessionGitHubPublishParams,
+    action: RepositoryPublicationPersonalSessionAction,
+  ) => Promise<SessionGitHubPublicationResult>;
+  confirmPersonalV2: (
+    input: SessionGitHubConfirmParams,
+    action: RepositoryPublicationPersonalSessionAction,
+  ) => Promise<SessionGitHubPublicationResult>;
+  preparePersonalStatus: (
+    requestId: string,
+  ) => Promise<PreparedRepositoryPublicationStatus | undefined>;
+  personalStatusAsync: (
+    action: RepositoryPublicationPersonalAction,
+    session: PublicationSessionIdentity,
+    requestId: string,
+    prepared: PreparedRepositoryPublicationStatus | undefined,
+  ) => Promise<SessionGitHubStatusResult>;
+  personalPending: (
+    action: RepositoryPublicationPersonalAction,
+    session: PublicationSessionIdentity & { archivedAt?: number | null },
+  ) => Promise<SessionGitHubStatusResult | null>;
+  sharedStatus: (
+    session: PublicationSessionIdentity,
+    requestId: string,
+    preparedRead?: SharedPublicationRead,
+  ) => Promise<SessionGitHubStatusResult | undefined>;
+  latestPublishedShared: (
+    session: PublicationSessionIdentity,
+    preparedRead?: SharedPublicationRead,
+  ) => Promise<SessionGitHubStatusResult | null>;
+  latestShared: (
+    session: PublicationSessionIdentity,
+    idempotencyKey?: string,
+    isSuperseded?: (snapshot: {
+      repository: string | null;
+      branch: string;
+      sourceHeadCommit: string | null;
+      workspaceTree: string | null;
+    }) => Promise<boolean>,
+    preparedRead?: SharedPublicationRead,
+  ) => Promise<SessionGitHubStatusResult | null>;
+} & Pick<
+  RepositoryPublicationProvider,
+  | "supportsOrigin"
+  | "inspectPullRequest"
+  | "performPullRequestAction"
+  | "readOptionsIdentity"
+  | "preparePersonalAccountStatus"
+  | "isPublicationSuperseded"
+>;
+/** The binding retains only operations its consumers use, never the host composition factory. */
+export type RepositoryPublicationHostBinding = {
+  readApi(): RepositoryPublicationApi | undefined;
+  captureProviderAuthority(pluginId: string): (() => void) | undefined;
+  install(
+    next: RepositoryPublicationProvider,
+    ownerSignal: AbortSignal,
+  ): Promise<{ api: RepositoryPublicationApi; uninstall: () => void }>;
 };

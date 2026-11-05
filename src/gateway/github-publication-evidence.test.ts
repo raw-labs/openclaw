@@ -28,7 +28,10 @@ import {
   overrideCommands,
   SESSION_KEY,
 } from "./github-publication.test-support.js";
-import { updateGitHubToolIdentityConfig } from "./github-tool-identity-config.js";
+import {
+  readGitHubConfig,
+  loadActualGitHubIdentityFixture,
+} from "./github-repository-fixture-api.test-support.js";
 import { createContext as createRequestContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { createOperatorWsClient } from "./server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "./server/ws-connection/connect-operator-access.js";
@@ -95,11 +98,19 @@ async function evidenceFixture(imported = false) {
     account: { accountId: 42, login: "roboclaw-bot", avatarUrl: null },
     env: { GH_TOKEN: "synthetic-evidence-token" },
   });
-  const config = { ...f.config, tools: { github: { profileId } } };
+  const config = {
+    ...f.config,
+    tools: {},
+    plugins: {
+      entries: {
+        "github-repositories": {
+          config: { ...readGitHubConfig(f.config), system: { profileId } },
+        },
+      },
+    },
+  };
   setRuntimeConfigSnapshot(config);
-  const actualIdentity = await vi.importActual<typeof import("../agents/github-tool-identity.js")>(
-    "../agents/github-tool-identity.js",
-  );
+  const actualIdentity = await loadActualGitHubIdentityFixture();
   mocks.matchesIdentity.mockImplementation(actualIdentity.matchesPreparedGitHubPublicationIdentity);
   overrideCommands((argv) =>
     argv.includes(`repos/${f.publication.repository}`) && argv.includes(".id")
@@ -204,11 +215,9 @@ async function evidenceFixture(imported = false) {
     upload,
     config,
     async deselectPublisher() {
-      const next = await updateGitHubToolIdentityConfig({
-        scope: "system",
-        agentId: "main",
-        expectedIdentity: config.tools.github,
-      });
+      const next = structuredClone(config);
+      delete readGitHubConfig(next).system;
+      await writeConfigFile(next);
       setRuntimeConfigSnapshot(next);
     },
     onLookup(callback: () => Promise<void>) {

@@ -5,30 +5,20 @@ import type {
   SessionPlacementDiskSpace,
   SessionPlacementMachine,
 } from "../../../packages/gateway-protocol/src/schema/session-placement.js";
-import type { SessionCatalogPullRequestSummary } from "../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type { GatewaySessionRow } from "../api/types.ts";
 import { t } from "../i18n/index.ts";
-import { sessionPullRequestStateIcons } from "../lib/session-pull-request-presentation.ts";
-import type { SessionPullRequestIndicators } from "./app-sidebar-session-pr-indicators.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
 import { sessionMachineParts } from "./session-machine.ts";
 
-export function sidebarSessionBadgeFacts(
-  source: Pick<SessionPullRequestIndicators, "summary" | "count">,
-  row: SidebarRecentSession,
-  initialPullRequest = row.pullRequest,
-) {
+export function sidebarSessionBadgeFacts(row: SidebarRecentSession) {
   const attention = row.attention;
   return (
     row.snapshot ?? {
-      // An approval the leading icon already shows needs no second badge; a question
-      // carrying approval requests leads with the question, so the badge adds the approval.
+      // A leading question may also carry an approval that needs its own badge.
       hasApproval:
         (attention.kind === "question" &&
           attention.requests.some((request) => request.kind === "approval")) ||
         undefined,
-      pullRequest: source.summary(row.key, row.worktreeId ?? "", initialPullRequest),
-      pullRequestCount: source.count(row.key),
     }
   );
 }
@@ -40,8 +30,6 @@ export { isCloudWorkerPlacementState } from "../../../packages/gateway-protocol/
 export type SessionRowBadgesParams = {
   isChild?: boolean;
   incognito?: boolean;
-  pullRequest?: SessionCatalogPullRequestSummary;
-  pullRequestCount?: number;
   hasApproval?: boolean;
   outboxAttentionCount?: number;
   hasComposerDraft?: boolean;
@@ -55,19 +43,10 @@ export type SessionRowBadgesParams = {
 
 export type SessionRowBadge = {
   label: string;
-  icon:
-    | "incognito"
-    | "gitMerge"
-    | "gitPullRequest"
-    | "gitPullRequestDraft"
-    | "gitPullRequestClosed"
-    | "alertTriangle"
-    | "draft"
-    | "globe";
+  icon: "incognito" | "alertTriangle" | "draft" | "globe";
   modifier: string;
   count?: number;
   countLabel?: string;
-  pullRequestState?: SessionCatalogPullRequestSummary["state"];
   placementState?: SessionPlacementState;
   diskSpaceStatus?: SessionPlacementDiskSpace["status"];
   workspaceConflictCount?: number;
@@ -77,10 +56,6 @@ export function resolveSessionRowBadges(
   params: SessionRowBadgesParams,
   translate = t,
 ): SessionRowBadge[] {
-  const pullRequestLabel = params.pullRequest
-    ? `${params.pullRequest.numbers.map((number) => `#${number}`).join(", ")} · ${translate(`chat.pullRequests.${params.pullRequest.state}`)}`
-    : undefined;
-  const pullRequestState = params.pullRequest?.state;
   const placementState = params.isChild ? undefined : params.placementState;
   const cloudPlacementState = isCloudWorkerPlacementState(placementState)
     ? placementState
@@ -148,24 +123,6 @@ export function resolveSessionRowBadges(
       modifier: "incognito",
     });
   }
-  if (params.pullRequest || params.pullRequestCount) {
-    const count = params.pullRequestCount ?? params.pullRequest?.numbers.length ?? 0;
-    badges.push({
-      label: [
-        count > 1 || !pullRequestLabel
-          ? translate("sessionsView.pullRequestCount", { count: String(count) })
-          : "",
-        pullRequestLabel,
-      ]
-        .filter(Boolean)
-        .join(" · "),
-      icon: params.pullRequest
-        ? sessionPullRequestStateIcons[params.pullRequest.state]
-        : "gitPullRequest",
-      modifier: "pull-request",
-      pullRequestState,
-    });
-  }
   if (params.hasApproval) {
     badges.push({
       label: translate("sessionsView.approvalNeeded"),
@@ -202,7 +159,7 @@ export function resolveSessionRowBadges(
 }
 
 // The trailing column holds two context signals at most. Badges asking for action
-// outrank passive context, and a healthy placement yields to the pull request; the
+// outrank passive context, and healthy placement yields to action badges; the
 // survivors keep their reading order.
 const SESSION_ROW_BADGE_LIMIT = 2;
 const SESSION_ROW_BADGE_PRIORITY = [
@@ -210,7 +167,6 @@ const SESSION_ROW_BADGE_PRIORITY = [
   "approval",
   "cloud",
   "draft",
-  "pull-request",
   "placement",
   "incognito",
 ];

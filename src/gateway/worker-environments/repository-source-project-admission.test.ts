@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { withTempHomeCore as withTempHome } from "../../plugin-sdk/test-helpers/temp-home.js";
 import { createRepositorySourceFixture } from "../../plugins/repository-source.test-support.js";
+import { createRepositorySources } from "../repository-sources.js";
 import { prepareRepositoryWorkerProjectSource } from "./repository-project-admission.js";
 
 it("pins generic worker source facts and rechecks the exact plugin on preparation replay", async () => {
@@ -43,7 +44,13 @@ it("pins generic worker source facts and rechecks the exact plugin on preparatio
         },
       },
     });
-    const options = { namespace: "fixture", getConfig: () => config, assertCurrent() {} };
+    const options = {
+      namespace: "fixture",
+      getConfig: () => config,
+      getRepositorySources: () =>
+        createRepositorySources(new AbortController().signal, fixture.registry),
+      assertCurrent() {},
+    };
 
     await fixture.run(async () => {
       const admitted = await prepareRepositoryWorkerProjectSource({
@@ -73,7 +80,7 @@ it("pins generic worker source facts and rechecks the exact plugin on preparatio
       identityKey = "replacement-reader";
       await expect(
         prepareRepositoryWorkerProjectSource({ ...options, expected: admitted.project }),
-      ).rejects.toThrow("source changed");
+      ).rejects.toThrow("identity changed");
       await fixture.instance.dispose();
       await expect(admitted.revalidate()).rejects.toThrow("reloaded or disabled");
     });
@@ -127,6 +134,8 @@ it.each(["revalidation", "pack effect"] as const)(
         const admitted = await prepareRepositoryWorkerProjectSource({
           namespace: "fixture",
           getConfig: () => config,
+          getRepositorySources: () =>
+            createRepositorySources(new AbortController().signal, fixture.registry),
           assertCurrent,
           repository: {
             agentId: "main",

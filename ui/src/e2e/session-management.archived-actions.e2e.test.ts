@@ -5,6 +5,7 @@ import {
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
 } from "../../../src/gateway/control-ui-contract.js";
 import { createControlUiSessionRow as sessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { GITHUB_REPOSITORY_PLUGIN } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -98,6 +99,7 @@ suite.define(() => {
       const session = sessionRow(sessionKey, "Archive actions", baseTime);
       const main = sessionRow("agent:main:main", "Main", baseTime + 1_000);
       const gateway = await ui.installSessionRows(page, [main, session], {
+        nativePlugins: [GITHUB_REPOSITORY_PLUGIN],
         featureMethods: [
           "chat.metadata",
           "chat.startup",

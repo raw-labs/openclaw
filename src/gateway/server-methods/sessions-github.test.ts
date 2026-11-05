@@ -12,12 +12,14 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { getUserProfileDisplay } from "../../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import { installPublicationRpcFixture } from "../github-account-service.test-support.js";
 import {
-  GitHubPublicationRequesterUnavailableError,
-  rejectGitHubPublicationSelection,
-} from "../github-publication-failure.js";
+  RepositoryPublicationFailureError,
+  RepositoryPublicationRequesterUnavailableError,
+} from "../github-publication-errors.js";
 import type { GitHubPublicationCoordinator } from "../github-publication.js";
 import { handleGatewayRequest } from "../server-methods.js";
+import { createContext } from "../server-plugin-in-process-dispatch.test-support.js";
 import { createSyntheticPluginRuntimeClient } from "../server-plugin-runtime-client.js";
 import { createOperatorWsClient } from "../server/ws-connection/authenticated-request-dispatch.test-support.js";
 import { prepareGatewayConnectOperatorAccess } from "../server/ws-connection/connect-operator-access.js";
@@ -93,13 +95,14 @@ async function invoke(
   } = {},
 ) {
   const respond = vi.fn<GatewayRequestHandlerOptions["respond"]>();
+  const context = createContext([], getRuntimeConfig);
+  const account = await installPublicationRpcFixture(context, {
+    requestForSessionV2: mocks.request,
+  });
   const request: GatewayRequestHandlerOptions = {
     params,
     respond,
-    context: {
-      githubPublicationService: { requestForSessionV2: mocks.request },
-      getRuntimeConfig,
-    } as never,
+    context,
     client:
       options.client ??
       createSyntheticPluginRuntimeClient({
@@ -116,8 +119,14 @@ async function invoke(
         sessionsGitHubHandlers["sessions.github.publish"],
         "sessions.github.publish handler",
       );
-  await handler(request);
-  return respond;
+  try {
+    await handler(request);
+    return respond;
+  } finally {
+    // This invocation retains its actual account through all awaited publication work.
+    vi.restoreAllMocks();
+    await account.stop();
+  }
 }
 
 describe("sessions.github.publish", () => {
@@ -169,29 +178,31 @@ describe("sessions.github.publish", () => {
     expectFailure(respond, { code: "INVALID_REQUEST" });
   });
 
-  it.each(["fresh", "wrong-key", "existing", "lookup-failed", "ordinary"])(
+  it.each(["matching", "wrong-key", "absent", "ordinary"])(
     "forwards only the exact owner's %s selection rejection fact",
     async (mode) => {
       const key = "publication-selection";
       mocks.request.mockImplementationOnce(() => {
+        const message = "GitHub publication identity changed.";
         if (mode === "ordinary") {
-          throw new Error("GitHub publication identity changed.");
+          throw new Error(message);
         }
-        rejectGitHubPublicationSelection("GitHub publication identity changed.", {
-          idempotencyKey: mode === "wrong-key" ? "another-invocation" : key,
-          hasRequest: () => {
-            if (mode === "lookup-failed") {
-              throw new Error("Receipt lookup unavailable.");
-            }
-            return mode === "existing";
-          },
-        });
+        throw new RepositoryPublicationFailureError(
+          message,
+          { code: "identity_changed", nextAction: "Reconnect the selected account and retry." },
+          mode === "absent"
+            ? undefined
+            : {
+                code: "GITHUB_PUBLICATION_SELECTION_REJECTED",
+                idempotencyKey: mode === "wrong-key" ? "another-invocation" : key,
+              },
+        );
       });
       const respond = await invoke({ idempotencyKey: key });
       expect(respond).toHaveBeenCalledWith(false, undefined, {
         code: "UNAVAILABLE",
         message: "GitHub publication identity changed.",
-        ...(mode === "fresh"
+        ...(mode === "matching"
           ? { details: { code: "GITHUB_PUBLICATION_SELECTION_REJECTED", idempotencyKey: key } }
           : {}),
       });
@@ -246,7 +257,7 @@ describe("sessions.github.publish", () => {
           expect(mocks.request).not.toHaveBeenCalled();
           expect(respond).toHaveBeenCalledWith(false, undefined, {
             code: "UNAVAILABLE",
-            message: new GitHubPublicationRequesterUnavailableError().message,
+            message: new RepositoryPublicationRequesterUnavailableError().message,
           });
           return;
         }
@@ -340,7 +351,7 @@ describe("sessions.github.publish", () => {
     expect(requester.snapshot).toEqual(expectedSystemRequester.snapshot);
     expect(() => requester.assertCurrent()).not.toThrow();
     authorized = false;
-    expect(() => requester.assertCurrent()).toThrow(GitHubPublicationRequesterUnavailableError);
+    expect(() => requester.assertCurrent()).toThrow(RepositoryPublicationRequesterUnavailableError);
     request.resolve({ ...acceptedPublication, requestId: "publication-revoked" });
 
     await expect(pending).rejects.toBe(changed);

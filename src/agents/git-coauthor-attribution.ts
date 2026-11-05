@@ -6,6 +6,7 @@ import {
 import { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { resolveSessionStorePathForScope } from "../config/sessions/session-store-path.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { resolveConfiguredGitHubHost } from "../gateway/native-github-host-realm.js";
 import type {
   GitCoauthorFormatInputV1,
   FormattedGitCoauthorV1,
@@ -17,8 +18,6 @@ import {
   prepareUserProfileGitHubAttribution,
   resolveUserProfileGitHubAttribution,
 } from "../state/user-profile-github-identity.js";
-import { formatGitHubCoauthor } from "./github-git-attribution.js";
-import { resolveConfiguredGitHubHost } from "./github-host.js";
 
 type GitCoauthorAttribution = { trailers: string[]; logins: string[] };
 
@@ -62,6 +61,9 @@ async function resolveAttribution(
     (params.registry ?? getPluginRegistryForContext())?.executionEnvironments.filter(
       ({ provider }) => provider.formatGitCoauthor,
     ) ?? [];
+  if (!formatters.length) {
+    return empty;
+  }
   if (!params.sessionKey || isIncognitoSessionKey(params.sessionKey)) {
     return empty;
   }
@@ -203,9 +205,7 @@ async function resolveAttribution(
           formatted = result;
         }
       }
-      if (formatted === undefined) {
-        formatted = formatGitHubCoauthor(input);
-      }
+
       return formatted ? [formatted] : [];
     })
     .slice(0, MAX_SESSION_PARTICIPANTS);

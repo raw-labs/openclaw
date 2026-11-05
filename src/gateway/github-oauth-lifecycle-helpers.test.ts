@@ -4,104 +4,25 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement } from "../../test/helpers/promise.js";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
-import { clearGitHubCredentialVerificationCache } from "../agents/github-oauth-client.js";
 import * as githubOAuthRecords from "../agents/github-oauth-records.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type { GitHubToolIdentityConfig } from "../config/types.tools.js";
 import { resolveRequestUrl } from "../plugin-sdk/request-url.js";
 import { createDeferredCore as deferred } from "../shared/deferred.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import * as userGitHubConnections from "../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../state/user-github-connections.test-support.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
-import {
-  configuredOAuthIdentities,
-  captureGitHubOAuthAuthorizationIdentity,
-} from "./github-oauth-lifecycle-helpers.js";
-import { createGitHubOAuthLifecycle } from "./github-oauth-lifecycle.js";
 import {
   ACCOUNT,
+  clearGitHubCredentialVerificationCache,
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
+  startRegisteredGitHubOAuth,
   configForScope,
   identity,
   oauthRecord,
   OLD_PROFILE,
-  NEW_PROFILE,
-  OTHER_PROFILE,
 } from "./github-oauth-lifecycle.test-support.js";
-import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
-
-describe("GitHub OAuth maintenance inventory", () => {
-  it("bounds roster reads while preserving ordered identities and fresh configuration", () => {
-    const count = 128;
-    const entries: Record<string, { tools: { github?: GitHubToolIdentityConfig } }> = {};
-    for (let index = count; index > 0; index -= 1) {
-      entries[`agent-${String(index).padStart(3, "0")}`] = { tools: {} };
-    }
-    let reads = 0;
-    const observed = new Proxy(entries, {
-      get(target, key, receiver) {
-        reads += typeof key === "string" && Object.hasOwn(target, key) ? 1 : 0;
-        return Reflect.get(target, key, receiver);
-      },
-    });
-    const config: OpenClawConfig = { agents: { entries: observed } };
-    expect(configuredOAuthIdentities(config)).toEqual([]);
-    // Idle maintenance should traverse a large roster a bounded number of times.
-    expect(reads).toBeLessThanOrEqual(count * 4);
-
-    const system = identity(OLD_PROFILE, { oauth: true, author: true });
-    const agent = identity(NEW_PROFILE, { oauth: true, author: true });
-    config.tools = { github: system };
-    entries["agent-128"] = { tools: { github: agent } };
-    entries["agent-064"] = { tools: { github: system } };
-    entries["agent-001"] = { tools: { github: identity(OTHER_PROFILE) } };
-    expect(configuredOAuthIdentities(config)).toEqual([
-      { scope: "system", agentId: "system", identity: system },
-      { scope: "agent", agentId: "agent-064", identity: system },
-      { scope: "agent", agentId: "agent-128", identity: agent },
-    ]);
-    entries["agent-001"] = { tools: { github: agent } };
-    delete entries["agent-128"];
-    expect(configuredOAuthIdentities(config)).toEqual([
-      { scope: "system", agentId: "system", identity: system },
-      { scope: "agent", agentId: "agent-001", identity: agent },
-      { scope: "agent", agentId: "agent-064", identity: system },
-    ]);
-  });
-});
-
-it("never captures a GitHub App signing key in OAuth device authorization state", () => {
-  const config = configForScope("system", {
-    kind: "app-installation",
-    profileId: OLD_PROFILE,
-    app: {
-      appId: 1,
-      installationId: 2,
-      accountId: 3,
-      repositories: [{ id: 4, fullName: "example/project" }],
-      permissions: { contents: "read" },
-      privateKey: "synthetic-signing-key",
-      keyVersion: "synthetic-v1",
-    },
-  });
-  expect(() =>
-    captureGitHubOAuthAuthorizationIdentity(config, { scope: "system", agentId: "main" }),
-  ).toThrow("before connecting an OAuth identity");
-  const oauth = identity(OLD_PROFILE, { oauth: true });
-  config.tools = { github: oauth };
-  const captured = captureGitHubOAuthAuthorizationIdentity(config, {
-    scope: "system",
-    agentId: "main",
-  });
-  expect(captured).toEqual(oauth);
-  oauth.profileId = NEW_PROFILE;
-  expect(captured?.profileId).toBe(OLD_PROFILE);
-});
 
 describe("GitHub OAuth real refresh boundary", () => {
   const tempDirs = useAutoCleanupTempDirTracker(afterEach);
@@ -159,22 +80,15 @@ describe("GitHub OAuth real refresh boundary", () => {
       token: "synthetic-old-access",
     });
     const config = configForScope("system", identity(OLD_PROFILE, { oauth: true }));
-    const open = () => {
-      const lifecycle = owner
-        ? createPersonalGitHubOAuthLifecycle()
-        : createGitHubOAuthLifecycle({
-            getConfig: () => config,
-            getPersistedConfig: async () => config,
-            warn: () => {},
-            scheduler: createTestGatewayScheduler(),
-          });
-      lifecycles.push(lifecycle);
+    const open = async () => {
+      const fixture = await startRegisteredGitHubOAuth(() => config);
+      lifecycles.push(fixture);
       return {
         refresh: () =>
-          "refreshEffectiveIdentity" in lifecycle
-            ? lifecycle.refreshEffectiveIdentity("main")
-            : lifecycle.refresh(owner!),
-        stop: () => lifecycle.stop(),
+          owner
+            ? fixture.oauth.personal.refresh(owner)
+            : fixture.oauth.refreshEffectiveIdentity("main"),
+        stop: fixture.stop,
       };
     };
     const read = async () => {
@@ -228,12 +142,12 @@ describe("GitHub OAuth real refresh boundary", () => {
       },
     );
     const { post } = stubTransport();
-    const lifecycle = f.open();
+    const lifecycle = await f.open();
     await lifecycle.refresh();
     expect(post).toHaveBeenCalledTimes(1);
     expect(await f.read()).toMatchObject({ refreshToken: "synthetic-rotated-refresh" });
     await lifecycle.stop();
-    await f.open().refresh();
+    await (await f.open()).refresh();
     expect(post).toHaveBeenCalledTimes(1);
   });
 
@@ -243,7 +157,7 @@ describe("GitHub OAuth real refresh boundary", () => {
       new Error("synthetic pre-dispatch preparation failure"),
     );
     const { transport } = stubTransport();
-    const lifecycle = f.open();
+    const lifecycle = await f.open();
     await lifecycle.refresh();
     expect(transport).not.toHaveBeenCalled();
     const stored = await f.read();
@@ -253,7 +167,7 @@ describe("GitHub OAuth real refresh boundary", () => {
     });
     expect(stored).not.toHaveProperty("refresh");
     await lifecycle.stop();
-    await f.open().refresh();
+    await (await f.open()).refresh();
     expect(await f.read()).toMatchObject({ refreshToken: "synthetic-rotated-refresh" });
     expect(transport).toHaveBeenCalledTimes(2);
   });
@@ -280,7 +194,7 @@ describe("GitHub OAuth real refresh boundary", () => {
           await release.promise;
           return tokenResponse();
         });
-        const lifecycle = f.open();
+        const lifecycle = await f.open();
         const first = lifecycle.refresh();
         const second = lifecycle.refresh();
         try {
@@ -301,7 +215,7 @@ describe("GitHub OAuth real refresh boundary", () => {
             "synthetic-rotated-access",
           );
           await lifecycle.stop();
-          await f.open().refresh();
+          await (await f.open()).refresh();
           expect(post).toHaveBeenCalledTimes(1);
         } finally {
           release.resolve();
@@ -335,11 +249,11 @@ describe("GitHub OAuth real refresh boundary", () => {
               });
             }),
           );
-          const first = f.open();
+          const first = await f.open();
           await first.refresh();
           await first.refresh();
           await first.stop();
-          await f.open().refresh();
+          await (await f.open()).refresh();
           expect(exchanges).toBe(1);
           expect(await f.read()).toMatchObject({ refreshFailure: "failed" });
         },

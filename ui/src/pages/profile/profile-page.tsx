@@ -36,7 +36,6 @@ import {
   SettingsPageHeader,
 } from "../../components/solid/settings-ui.tsx";
 import { SettingsWorkspace } from "../../components/solid/settings-workspace.tsx";
-import { GitHubConnections } from "../../features/github-connections/github-connections.tsx";
 import { registerModelAccountsEnglish } from "../../i18n/locales/en-model-accounts.ts";
 import { registerProfileEnglish } from "../../i18n/locales/en-profile.ts";
 import { registerRouteSubtitlesEnglish } from "../../i18n/locales/en-route-subtitles.ts";
@@ -616,7 +615,6 @@ export function ProfilePage() {
                   : null
               }
             />
-            <GitHubConnections />
             <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />
             <AttributionSection />
           </Show>

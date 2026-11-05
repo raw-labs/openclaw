@@ -6,10 +6,6 @@ openclaw-pending-session-create {
   min-height: 0;
 }
 
-/* Chat pane error alert. The pane strips its own padding, so the alert
-   carries its own inset as a centered card instead of stretching into a
-   full-bleed bar; visual language mirrors the connection pill (status dot
-   on an elevated surface) with a danger accent. */
 .chat-error {
   display: flex;
   align-items: flex-start;
@@ -110,23 +106,16 @@ openclaw-pending-session-create {
 .chat-error__chevron svg,
 .chat-topbar-notices .chat-composer-neighbor-card__icon svg,
 .task-suggestion__instructions-chevron svg,
-.chat-pr__checks-menu-header svg,
-.chat-pr__dismiss svg,
 .chat-annotation-editor__confirm svg {
   width: 14px;
   height: 14px;
 }
 
 .chat-error__content[open] .chat-error__chevron,
-.chat-workspace-conflict-notice:not([open]) .chat-workspace-conflict-notice__chevron,
-.chat-pr__checks[open] .chat-pr__checks-chevron svg,
-.chat-ci__job[open] > summary .chat-ci__chevron,
-.chat-ci__skipped[open] > summary .chat-ci__chevron,
-.chat-pr__publication-status[open] .chat-pr__publication-chevron {
+.chat-workspace-conflict-notice:not([open]) .chat-workspace-conflict-notice__chevron {
   transform: rotate(180deg);
 }
 
-/* Preserve the received diagnostic as text beyond the bounded summary. */
 .chat-error__diagnostic {
   max-height: min(16rem, 35dvh);
   margin: 10px 0;
@@ -199,7 +188,6 @@ openclaw-pending-session-create {
   opacity: 0.1;
 }
 
-/* Center search in its own pane, including narrow split views. */
 .agent-chat__search-bar {
   display: flex;
   align-items: center;
@@ -243,7 +231,6 @@ openclaw-pending-session-create {
   color: var(--muted);
 }
 
-/* Same system colors as browser find, so matches read in every theme. */
 ::highlight(openclaw-chat-search) {
   background-color: Mark;
   color: MarkText;
@@ -320,14 +307,6 @@ openclaw-pending-session-create {
 .chat-workspace-conflict-commands {
   display: grid;
   gap: 5px;
-}
-
-/* Composer neighbors share one quiet card frame. Status color belongs to the
-   item, never to the surface: only the icon, heading and a low-opacity edge
-   carry tone while the card keeps the composer's own surface and geometry. */
-:is(.chat-composer-neighbor-card, .session-suggestion, .chat-pr.chat-pr) {
-  border-radius: calc(16px * var(--openclaw-corner-radius-scale));
-  corner-shape: superellipse(1.5);
 }
 
 :is(.chat-composer-neighbor-card, .session-suggestion) {
@@ -422,9 +401,6 @@ openclaw-pending-session-create {
   animation: none;
 }
 
-/* General pane notices share the header plane, so their appearance never
-   steals height from the transcript. Keep this lane deliberately compact: it
-   may coexist with header controls on narrow panes. */
 .chat-topbar-notices {
   position: absolute;
   z-index: 24;
@@ -609,8 +585,6 @@ openclaw-pending-session-create {
   min-height: 0;
 }
 
-/* Virtual geometry must commit with its rows. A global reduced-motion duration
-   otherwise activates the default "all" transition for offsets and height. */
 .chat-virtual-sizer,
 .chat-virtual-block {
   transition-property: none;
@@ -636,11 +610,6 @@ openclaw-pending-session-create {
   width: 100%;
 }
 
-/* Browser flow preserves adjacency even when smooth scrolling skips a row's
-   measurement. flow-root includes child margins in each measured row.
-   The virtualizer bounds mounted rows, so overscan rows always lay out: a
-   skipped (content-visibility: auto) row kept its estimate until it reached
-   the viewport, then pushed the messages being read as it rendered. */
 .chat-virtual-row {
   position: relative;
   display: flow-root;
@@ -648,7 +617,6 @@ openclaw-pending-session-create {
   contain: content;
 }
 
-/* Small notice rows must enter at their real height, not the virtual estimate. */
 .chat-virtual-row:has(> .chat-notice) {
   content-visibility: visible;
   contain: none;
@@ -660,17 +628,12 @@ openclaw-pending-session-create {
   overflow-clip-margin: 10px;
 }
 
-/* Message jumps need real mounted-row sizes before their target settles. */
 .chat-thread-inner[data-measuring-rows] .chat-virtual-row {
   content-visibility: visible;
   contain: none;
 }
 
 @media (max-width: 768px), (max-width: 932px) and (max-height: 500px) and (orientation: landscape) {
-  /* Revealed 44px footer targets can overhang the compact row by half their
-     height. Widen the paint clip instead of changing containment on hover.
-     Toggling content-visibility here while a context menu opens previously
-     crashed Chromium's renderer (Chrome for Testing 153). */
   .chat-virtual-row:has(.chat-group:hover),
   .chat-virtual-row:has(.chat-group:is(:focus-within, .chat-group--meta-revealed)) {
     overflow-clip-margin: 22px;
@@ -713,8 +676,6 @@ openclaw-pending-session-create {
   text-align: center;
 }
 
-/* Failed refresh with cached history keeps the transcript and shows a compact
-   banner instead; displacing content would hide the stale-but-useful messages. */
 .chat-history-error--inline,
 .chat-pending-inputs {
   flex: 0 0 auto;
@@ -724,7 +685,6 @@ openclaw-pending-session-create {
   padding: 8px 12px;
 }
 
-/* Included in the transcript virtualizer's header margin; keep this height exact. */
 .chat-pending-inputs--history {
   overflow: hidden;
   height: 44px;
@@ -742,9 +702,6 @@ openclaw-pending-session-create {
   border-block-end: 1px solid var(--border);
 }
 
-/* In-flow boundary above the virtualized transcript. The fixed height is a
-   contract with CHAT_HISTORY_BOUNDARY_HEIGHT_PX (chat-history-boundary.ts):
-   it becomes the virtualizer scrollMargin, so drift misaligns row offsets. */
 .chat-history-boundary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -846,8 +803,6 @@ openclaw-pending-session-create {
   --chat-scroll-to-bottom-gap: 12px;
 }
 
-/* The zero-height anchor keeps the affordance out of the flex flow so showing
-   it never shrinks the transcript or moves the composer. */
 .chat-scroll-to-bottom-wrap {
   position: relative;
   align-self: stretch;
@@ -1019,15 +974,18 @@ openclaw-pending-session-create {
   justify-content: space-between;
   gap: 8px;
 }
+
 .context-usage__header {
   min-height: 20px;
 }
+
 .context-usage__context-value {
   color: var(--text);
   font-size: 12px;
   font-weight: 650;
   white-space: nowrap;
 }
+
 .context-usage__open {
   display: flex;
   align-items: center;
@@ -1056,13 +1014,12 @@ openclaw-pending-session-create {
     }
   }
 }
-/* The label's caps sit 1px above its content-box center. Lift only the outline so it
-   centers on the line it shares with View context; both labels keep one baseline. */
+
 .context-usage__actions .chat-context__compact {
   margin-top: -2px;
   padding-top: 2px;
 }
-/* Shared Compact control: the composer popover and the context panel size it. */
+
 .chat-context__compact {
   display: inline-flex;
   flex: none;
@@ -1080,6 +1037,7 @@ openclaw-pending-session-create {
   font-size: 11.5px;
   font-weight: 500;
 }
+
 .chat-context__compact:disabled {
   background: transparent;
   box-shadow: inset 0 0 0 1px var(--border);
@@ -1090,11 +1048,13 @@ openclaw-pending-session-create {
     background: var(--bg-hover);
   }
 }
+
 .context-usage__separator {
   height: 1px;
   margin: 10px 0;
   background: var(--details-separator);
 }
+
 .context-usage__latest {
   flex-wrap: wrap;
   gap: 4px 8px;
@@ -1102,6 +1062,7 @@ openclaw-pending-session-create {
   color: var(--muted);
   font-size: 12px;
 }
+
 .context-usage__stats {
   display: flex;
   flex-wrap: wrap;
@@ -1127,6 +1088,7 @@ openclaw-pending-session-create {
     font-weight: 650;
   }
 }
+
 .context-usage__tray {
   --tray: color-mix(in oklab, var(--text) 3.5%, var(--bg-elevated));
   margin: 10px -14px -14px;
@@ -1135,6 +1097,7 @@ openclaw-pending-session-create {
   border-radius: 0 0 13px 13px;
   background: var(--tray);
 }
+
 .context-usage__identity,
 .context-usage__skeleton-row {
   display: grid;
@@ -1142,6 +1105,7 @@ openclaw-pending-session-create {
   column-gap: 6px;
   align-items: center;
 }
+
 .context-usage__identity {
   height: 28px;
   .provider-brand-icon {
@@ -1150,6 +1114,7 @@ openclaw-pending-session-create {
     justify-self: center;
   }
 }
+
 .context-usage__account {
   min-width: 0;
   overflow: hidden;
@@ -1159,9 +1124,11 @@ openclaw-pending-session-create {
   white-space: nowrap;
   mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
 }
+
 .context-usage__account:dir(rtl) {
   mask-image: linear-gradient(to left, black calc(100% - 24px), transparent);
 }
+
 .context-usage__plan-badge {
   display: inline-flex;
   align-items: center;
@@ -1174,16 +1141,19 @@ openclaw-pending-session-create {
   text-decoration: none;
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--muted) 40%, transparent);
 }
+
 .context-usage__plan-badge:hover {
   background: var(--surface-hover);
   text-decoration: none;
 }
+
 .context-usage__limits {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-top: 6px;
 }
+
 .context-usage__limit {
   position: relative;
   height: 24px;
@@ -1192,9 +1162,11 @@ openclaw-pending-session-create {
   background: var(--bg-elevated);
   box-shadow: inset 0 0 0 1px var(--border);
 }
+
 :root[data-theme-mode="dark"] .context-usage__limit {
   background: color-mix(in oklab, var(--bg) 40%, var(--bg-elevated));
 }
+
 .context-usage__limit-fill {
   position: absolute;
   inset: 0 auto 0 0;
@@ -1204,12 +1176,14 @@ openclaw-pending-session-create {
     var(--tray)
   );
 }
+
 .context-usage__limit-tick {
   position: absolute;
   inset: 6px auto 6px 50%;
   width: 1px;
   background: color-mix(in oklab, var(--text) 28%, transparent);
 }
+
 .context-usage__limit-content {
   position: relative;
   display: flex;
@@ -1218,6 +1192,7 @@ openclaw-pending-session-create {
   height: 100%;
   padding: 0 10px;
 }
+
 .context-usage__limit-label {
   min-width: 0;
   overflow: hidden;
@@ -1227,6 +1202,7 @@ openclaw-pending-session-create {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
 .context-usage__limit-reset {
   display: inline-flex;
   align-items: center;
@@ -1240,6 +1216,7 @@ openclaw-pending-session-create {
     height: 10px;
   }
 }
+
 .context-usage__limit-value {
   margin-inline-start: auto;
   color: var(--text-strong);
@@ -1247,22 +1224,27 @@ openclaw-pending-session-create {
   font-weight: 650;
   white-space: nowrap;
 }
+
 .context-usage__limit-value--warn {
   color: color-mix(in oklab, var(--warn) 80%, var(--text));
 }
+
 .context-usage__limit-value--danger {
   color: var(--danger);
 }
+
 .context-usage__report-skeleton {
   margin-top: 10px;
   height: 141px;
 }
+
 .context-usage__skeleton-bar {
   height: 5px;
   margin-bottom: 6px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--muted) 20%, transparent);
 }
+
 .context-usage__skeleton-row {
   height: 26px;
   :is(i, span, b) {
@@ -1281,11 +1263,8 @@ openclaw-pending-session-create {
     width: 36px;
   }
 }
-.task-suggestion__start svg,
-.chat-pr__checks-chevron svg,
-.chat-ci__chevron svg,
-.chat-ci__job-link svg,
-.chat-pr__publication-chevron svg {
+
+.task-suggestion__start svg {
   width: 12px;
   height: 12px;
 }
@@ -1602,11 +1581,6 @@ openclaw-chat-video-player {
   white-space: nowrap;
 }
 
-/* The conversation's top-right gutter, owned by one column so its members
-   stack instead of overlapping (the positioned ancestor is
-   .chat-main__conversation); content scrolls underneath it. The column is as
-   wide as its widest member — the suggestion tray, which deliberately overhangs
-   the transcript — and narrower members right-align inside it. */
 .chat-gutter-stack {
   position: absolute;
   z-index: 24;
@@ -1624,6 +1598,7 @@ openclaw-chat-video-player {
 .chat-gutter-stack > * {
   pointer-events: auto;
 }
+
 .task-suggestions {
   --task-suggestion-card-bg: color-mix(in srgb, var(--panel-strong) 72%, var(--panel-hover) 28%);
   --task-suggestion-path-bg: color-mix(in srgb, var(--panel-hover) 84%, var(--text) 16%);
@@ -1709,10 +1684,7 @@ openclaw-chat-video-player {
 }
 
 .session-suggestion__action svg,
-.task-suggestion__header-action svg,
-.chat-pr__icon svg,
-.chat-pr__warning svg,
-.chat-ci__status svg {
+.task-suggestion__header-action svg {
   width: 15px;
   height: 15px;
 }
@@ -2057,669 +2029,12 @@ openclaw-chat-video-player {
   }
 }
 
-.chat-ci__status,
-.chat-ci__chevron {
-  display: inline-flex;
-  color: var(--muted);
-}
-
-.chat-prs {
-  display: grid;
-  gap: 6px;
-}
-
-.chat-pr {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  min-height: var(--chat-stack-header-height, 40px);
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  font-size: 13px;
-}
-
-.chat-pr[data-state="merged"] {
-  border-color: color-mix(in srgb, var(--pr-merged) 18%, var(--border));
-  background: color-mix(in srgb, var(--pr-merged) 12%, var(--panel));
-}
-
-.chat-pr__link {
-  display: grid;
-  grid-template-columns: 18px minmax(4ch, auto) minmax(0, 1fr);
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text);
-}
-
-.chat-pr__link--static {
-  grid-template-columns: 18px minmax(0, 1fr);
-  cursor: default;
-}
-
-.chat-pr__link:hover .chat-pr__number {
-  text-decoration: underline;
-}
-
-.chat-pr__icon {
-  display: grid;
-  align-self: center;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  color: var(--ok);
-}
-
-.chat-pr[data-state="draft"] .chat-pr__icon,
-.chat-pr[data-state="branch"] .chat-pr__icon {
-  color: var(--muted);
-}
-
-.chat-pr[data-state="closed"] .chat-pr__icon,
-.chat-pr__deletions,
-.chat-pr__checks[data-checks="failing"],
-.chat-ci__status[data-state="failed"] {
-  color: var(--danger);
-}
-
-.chat-pr[data-state="merged"] .chat-pr__icon,
-.chat-pr[data-state="merged"] .chat-pr__state {
-  color: var(--pr-merged);
-}
-
-.chat-pr__number {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  font-weight: 650;
-}
-
-.chat-pr__identity {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.chat-pr__repo {
-  flex: 0 0 auto;
-  color: var(--text);
-  font-weight: 500;
-}
-
-.chat-pr__branch {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--muted);
-  font: 12px/1.4 var(--mono);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.chat-pr__meta {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 8px;
-}
-
-.chat-pr__meta .chat-icon-btn {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 3px;
-}
-
-.chat-pr__diff {
-  display: inline-flex;
-  gap: 5px;
-  font: 12px/1.4 var(--mono);
-}
-
-button.chat-pr__diff {
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: var(--cursor-action);
-}
-
-.chat-pr__additions,
-.chat-pr__checks[data-checks="passing"],
-.chat-ci__status[data-state="passed"] {
-  color: var(--ok);
-}
-
-.chat-pr__checks {
-  color: var(--muted);
-}
-
-.chat-pr__checks[data-checks="pending"],
-.chat-ci__status[data-state="running"],
-.chat-ci__status[data-state="queued"] {
-  color: var(--warn);
-}
-
-.chat-pr__checks-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 1px 8px;
-  border: 1px solid color-mix(in srgb, currentColor 27%, transparent);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, currentColor 12%, transparent);
-  cursor: var(--cursor-action);
-  font-size: 12px;
-  font-weight: 600;
-  list-style: none;
-  user-select: none;
-}
-
-.chat-pr__checks-pill::-webkit-details-marker {
-  display: none;
-}
-
-.chat-pr__checks-pill:hover,
-.chat-pr__checks[open] .chat-pr__checks-pill {
-  border-color: color-mix(in srgb, currentColor 55%, transparent);
-  background: color-mix(in srgb, currentColor 17%, transparent);
-}
-
-.chat-pr__checks-pill:focus-visible,
-.chat-ci__automation-checkbox:focus-visible,
-.chat-ci__automation-retry:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.chat-pr__checks-chevron {
-  display: flex;
-}
-
-.chat-pr__checks-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.chat-pr__checks-menu {
-  width: 480px;
-  max-width: calc(100vw - 24px);
-  max-height: var(--auto-size-available-height, calc(100dvh - 16px));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--menu-radius);
-  background: var(--panel);
-  box-shadow: var(--shadow-md);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.chat-pr__checks-menu-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.chat-pr__checks-menu-header a {
-  display: grid;
-  place-items: center;
-  color: var(--muted);
-}
-
-.chat-pr__checks-menu-header a:hover {
-  color: var(--text);
-}
-
-.chat-pr__checks-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  margin-bottom: 8px;
-  font-size: 11px;
-}
-
-.chat-pr__checks-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  white-space: nowrap;
-}
-
-.chat-pr__checks-row-label {
-  color: var(--muted);
-}
-
-.chat-pr__checks-row-count {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.chat-ci__automation {
-  padding: 8px 0;
-  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-  white-space: normal;
-}
-
-.chat-ci__automation-options {
-  display: grid;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-
-.chat-ci__automation-option,
-.chat-ci__job-summary,
-.chat-ci__skipped > summary {
-  display: grid;
-  align-items: center;
-  gap: 8px;
-  min-height: 36px;
-  padding: 7px 4px;
-  border-radius: 5px;
-  cursor: var(--cursor-action);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-}
-
-.chat-ci__automation-option {
-  grid-template-columns: 16px minmax(0, 1fr);
-}
-
-.chat-ci__automation-options:not(:disabled) .chat-ci__automation-option:hover {
-  background: var(--bg-hover);
-}
-
-.chat-ci__automation-options:disabled .chat-ci__automation-option {
-  opacity: 0.6;
-}
-
-.chat-ci__automation-checkbox {
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  cursor: var(--cursor-action);
-}
-
-.chat-ci__automation-label,
-.chat-ci__name {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.chat-ci__automation-status {
-  margin: 4px 4px 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.chat-ci__automation-error {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 4px 0;
-  color: var(--danger);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
-.chat-ci__automation-error > span {
-  flex: 1 1 180px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.chat-ci__automation-retry,
-.chat-ci__retry {
-  flex: 0 0 auto;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text);
-  cursor: var(--cursor-action);
-  font: inherit;
-}
-
-.chat-ci__automation-retry:hover:not(:disabled) {
-  background: var(--bg-hover);
-}
-
-.chat-ci__automation-retry:disabled,
-.chat-ci__retry:disabled {
-  opacity: 0.5;
-}
-
-.chat-ci__automation-row {
-  min-width: 0;
-}
-
-.chat-ci__automation-job-error {
-  margin: 0 4px 6px 28px;
-  color: var(--danger);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.chat-ci__automation-warning {
-  margin: 8px 4px 0;
-  color: var(--warn);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.5;
-}
-
 openclaw-chat-ci-automation,
 openclaw-chat-ci-details {
   display: block;
   min-width: 0;
 }
 
-.chat-ci__jobs {
-  max-height: min(420px, 52dvh);
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-
-.chat-ci__job {
-  min-width: 0;
-  border-top: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
-}
-
-.chat-ci__job-summary,
-.chat-ci__skipped > summary {
-  grid-template-columns: 16px minmax(0, 1fr) auto 12px;
-  color: var(--text);
-  list-style: none;
-}
-
-.chat-ci__job-summary::-webkit-details-marker,
-.chat-ci__skipped > summary::-webkit-details-marker {
-  display: none;
-}
-
-.chat-ci__job-summary::before,
-.chat-ci__skipped > summary::before {
-  content: none;
-}
-
-.chat-ci__job-summary:hover,
-.chat-ci__skipped > summary:hover {
-  background: var(--bg-hover);
-}
-
-.chat-ci__job-summary:focus-visible,
-.chat-ci__skipped > summary:focus-visible,
-.chat-ci__retry:focus-visible,
-.chat-ci__job-link:focus-visible,
-.chat-pr__checks-menu-header a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.chat-ci__duration {
-  color: var(--muted);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.chat-ci__job-detail {
-  padding: 0 24px 10px;
-}
-
-.chat-ci__steps {
-  display: grid;
-  gap: 2px;
-  margin: 0 0 8px;
-  padding: 0;
-  list-style: none;
-}
-
-.chat-ci__step {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  min-height: 28px;
-  padding: 4px 0;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.4;
-}
-
-.chat-ci__step[data-state="failed"] {
-  color: var(--text);
-}
-
-.chat-ci__job-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.chat-ci__job-link:hover {
-  color: var(--text);
-}
-
-.chat-ci__empty-steps {
-  margin-bottom: 8px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-
-.chat-ci__skipped > summary {
-  grid-template-columns: 16px minmax(0, 1fr) 12px;
-  color: var(--muted);
-}
-
-.chat-ci__notice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.chat-ci__notice > span {
-  flex: 1;
-  min-width: 0;
-}
-
-@media (max-width: 560px) {
-  .chat-ci__job-detail {
-    padding-right: 4px;
-  }
-}
-
-.chat-pr__state {
-  color: var(--muted);
-  font-weight: 600;
-}
-
-.chat-pr__warning {
-  display: grid;
-  place-items: center;
-  color: var(--warn);
-}
-
-.chat-pr__create {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  padding: 1px 10px;
-  border: 0;
-  border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.chat-pr__create:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
-.chat-pr__create:focus-visible {
-  background: var(--bg-hover);
-  color: var(--text);
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.chat-pr__publication-outcome {
-  display: grid;
-  grid-column: 1 / -1;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 8px;
-  row-gap: 2px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.chat-pr__publication-note {
-  grid-column: 1 / -1;
-}
-
-.chat-pr__publication-status {
-  min-width: 0;
-}
-
-.chat-pr__publication-status > summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  cursor: var(--cursor-action);
-  list-style: none;
-}
-
-.chat-pr__publication-status > summary::-webkit-details-marker {
-  display: none;
-}
-
-.chat-pr__publication-status > summary:hover {
-  color: var(--text);
-}
-
-.chat-pr__publication-status > summary:focus-visible {
-  border-radius: 4px;
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
-
-.chat-pr__publication-status [role="alert"] {
-  color: var(--danger);
-}
-
-.chat-pr__publication-chevron {
-  display: inline-flex;
-}
-
-.chat-pr__publication-more {
-  display: grid;
-  gap: 2px;
-  padding: 2px 0 4px;
-  overflow-wrap: anywhere;
-}
-
-.chat-pr__publication-outcome .chat-pr__publication-refresh {
-  width: 24px;
-  min-width: 24px;
-  height: 24px;
-  min-height: 24px;
-  padding: 4px;
-}
-
-.chat-pr__publication-history {
-  padding: 2px 12px;
-  font-size: 12px;
-}
-
-.chat-pr__publication-history > summary {
-  color: var(--danger);
-  cursor: var(--cursor-action);
-}
-
-.chat-pr__publication-recovery {
-  display: grid;
-  gap: 6px;
-  padding: 6px 0;
-}
-
-.chat-pr__dismiss {
-  display: grid;
-  padding: 2px;
-  place-items: center;
-  border: none;
-  background: none;
-  color: var(--muted);
-  cursor: var(--cursor-action);
-}
-
-.chat-pr__dismiss:hover {
-  color: var(--text);
-}
-
-@media (max-width: 640px) {
-  .chat-pr__identity,
-  .chat-pr__link--static .chat-pr__repo {
-    display: none;
-  }
-
-  .chat-pr__link--static .chat-pr__identity {
-    display: flex;
-  }
-
-  .chat-pr__link--static .chat-pr__branch {
-    flex: 1;
-    text-overflow: clip;
-    mask-image: linear-gradient(to right, black calc(100% - 16px), transparent);
-  }
-}
-
-/* The session companion runs the same composer surface in a side panel, so it
-   keeps the shape, corner, border, focus and insets and changes only what being
-   a panel requires. Compound selectors so these land whatever order the panel's
-   stylesheet and this one resolve in.
-   The floor drops because this is not the page's main writing area: the shared
-   98px exists so a short draft still reads as a writing surface next to a full
-   transcript, and in a 400px rail that same floor would make a one-line prompt
-   the loudest thing in the panel. Two regions either way — a lower floor is
-   still the editor above its action row. */
 .chat-session-rail__composer.agent-chat__input {
   /* No floor at all: the panel's prompt is a single line and its action row
      carries one control, so a floor would only buy dead air between the two and
@@ -2736,8 +2051,6 @@ openclaw-chat-ci-details {
   margin-bottom: 20px;
 }
 
-/* One control in this row, so it keeps only the inset that stops the send from
-   touching the frame. The shared bottom margin is sized for a row of chips. */
 .chat-session-rail__composer.agent-chat__input .agent-chat__composer-footer {
   margin-bottom: 4px;
 }
@@ -2753,8 +2066,6 @@ openclaw-chat-ci-details {
   }
 }
 
-/* Display-contents notice hosts remain DOM ancestors. Their cards must use
-   the composer's inset instead of applying a second one inside the shell. */
 .agent-chat__composer-notices
   :is(
     .chat-composer-neighbor-card,
@@ -2781,9 +2092,6 @@ openclaw-chat-ci-details {
   width: 100%;
 }
 
-/* A replacement banner is the composer surface for a terminal session state,
-   not a blue information callout inside it. Match the Question surface so the
-   frame does not change shape when composition is unavailable. */
 .agent-chat__disabled-banner.agent-chat__disabled-banner--replacement.callout {
   position: relative;
   z-index: 1;
@@ -2854,7 +2162,6 @@ openclaw-chat-ci-details {
   min-width: 0;
 }
 
-/* Keep the desktop Subagents Stop appearance at the notice's button size. */
 .agent-chat__disabled-banner .agent-chat__disabled-banner-stop.btn {
   border-color: transparent;
   border-radius: 999px;
@@ -2919,9 +2226,6 @@ openclaw-chat-ci-details {
   background: transparent;
 }
 
-/* Flex row, not grid: WebKit (Mac/iOS WKWebView) never re-runs shrink-to-fit
-   intrinsic sizing for a grid flex-item while streamed transcript text grows,
-   freezing the turn at first-delta width and wrapping one character per line. */
 .agent-chat__voice-turn {
   display: flex;
   gap: 8px;
@@ -3098,7 +2402,6 @@ openclaw-chat-ci-details {
     height: var(--chat-mobile-row-icon-size);
   }
 
-  /* Stop keeps its smaller target regardless of lazy composer stylesheet order. */
   .agent-chat__input--chat .chat-send-btn.chat-send-btn--stop {
     width: var(--chat-mobile-row-target-size);
     min-width: var(--chat-mobile-row-target-size);
@@ -3240,30 +2543,6 @@ openclaw-chat-ci-details {
   padding: 4px;
 }
 
-.chat-provider-review-dialog__content {
-  overflow-y: auto;
-  max-height: 60dvh;
-}
-
-.chat-provider-review-dialog__text {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.chat-provider-review-dialog h3 {
-  font-size: 13px;
-}
-
-.chat-provider-review-dialog blockquote {
-  margin-inline: 0;
-  padding-inline-start: 16px;
-  border-inline-start: 3px solid var(--border);
-}
-
-.chat-provider-review .chat-composer-neighbor-card__copy :is(strong, span) {
-  white-space: normal;
-}
-
 .chat-pane__chat-toggle,
 .chat-pane__layout-trigger,
 .chat-pane__sharing-trigger,
@@ -3289,7 +2568,6 @@ openclaw-chat-ci-details {
     min-height: 44px;
   }
 
-  /* Keep the complete action list scrollable without covering the conversation. */
   .chat-panel-layout-menu > .oc-menu {
     --oc-overlay-max-height: min(360px, 50dvh);
 
@@ -3308,7 +2586,6 @@ openclaw-chat-ci-details {
     overflow-wrap: anywhere;
   }
 
-  /* The desktop shortcut rail consumes label space but offers no touch action. */
   .chat-panel-layout-menu .side-panel-type-option__shortcut,
   .chat-panel-layout-menu .session-menu__item > .oc-menu-item__details {
     display: none;
@@ -3336,17 +2613,6 @@ openclaw-chat-ci-details {
 .chat-pane__header--stacked-status > .chat-pane__subagents-running {
   flex-basis: 100%;
   padding-bottom: 6px;
-}
-
-.chat-pr__accounts-panel .oc-menu-item__check {
-  display: none;
-}
-
-.chat-pr__checks-overlay {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
 }
 
 .chat-pane__chat-toggle {

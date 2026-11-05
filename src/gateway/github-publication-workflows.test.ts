@@ -12,11 +12,12 @@ import {
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assert, expect, it, onTestFinished, vi } from "vitest";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { callGatewayTool } from "../agents/tools/gateway.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import { withPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 import { setCanonicalUserProfileRole } from "../state/user-profile-writes.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import * as publicationExecutor from "./github-publication-executor.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import {
@@ -28,7 +29,6 @@ import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { createSyntheticPluginRuntimeClient } from "./server-plugin-runtime-client.js";
 
 const mocks = githubPublicationTestMocks();
@@ -188,11 +188,10 @@ it.each([
     if (actor === "system-missing-scopes") {
       delete client.connect.scopes;
     }
-    const context = {
-      ...createContext(),
-      ...source.context,
-      githubPublicationService: f.coordinator,
-    };
+    const context = source.context;
+    if (nativeFullSource) {
+      await installPublicationRpcFixture(context, f.coordinator);
+    }
     let result: unknown;
     if (route !== "rpc") {
       const original = await captureGatewayOperatorRunAuthority({ client, context });
@@ -321,11 +320,7 @@ it.each(["first", "checkpoint", "merge"])(
       operatorRoleActor: { kind: "system" },
       scopes: guestScopes,
     });
-    const context = {
-      ...createContext(),
-      ...f.guestSource.context,
-      githubPublicationService: f.coordinator,
-    };
+    const context = f.guestSource.context;
     const accepted = vi.spyOn(f.coordinator, "requestForSessionV2");
     const result = await invokeTool(
       context,

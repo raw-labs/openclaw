@@ -1,4 +1,3 @@
-import type { SessionCatalogPullRequestSummary } from "../../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import { registerListener } from "../../../../src/shared/listeners.js";
 import type { SessionsListResult } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
@@ -118,8 +117,6 @@ export function createSessionCapability(
     deletionState: (row) => deletions.deletionState(row.key, row.agentId, row.sessionId),
   });
   const swarmActivity = new SwarmActivityTracker();
-  const pullRequestSummaries = new Map<string, SessionCatalogPullRequestSummary>();
-  const pullRequestEpochs = new Map<string, object>();
   const listeners = new Set<(next: SessionState) => void>();
   const createdListeners = new Set<(key: string) => void>();
   const thinkingClaims = createSessionThinkingClaims(gateway, () => roster.requestRevision);
@@ -160,12 +157,6 @@ export function createSessionCapability(
     }
     retainedOperations.observeRows(next.result?.sessions ?? [], next.agentId);
     notifySubscribers();
-  };
-
-  const retirePullRequestSummary = (key: string) => {
-    const normalizedKey = key.trim();
-    pullRequestEpochs.delete(normalizedKey);
-    pullRequestSummaries.delete(normalizedKey);
   };
 
   // Canonical Gateway rows are the source of truth for everything except the
@@ -337,7 +328,6 @@ export function createSessionCapability(
     suspendThink: thinkingClaims.suspend,
     claimPermissionProjection: permissions.claim,
     capturePatchFields: (target) => capturePatchFields(target),
-    retirePullRequestSummary,
   });
 
   const deletions = createSessionDeletions({
@@ -361,12 +351,6 @@ export function createSessionCapability(
     gateway,
     reconcileMutation: roster.reconcileMutation,
   });
-
-  const capturePullRequestEpoch = (key: string): object => {
-    const epoch = {};
-    pullRequestEpochs.set(key.trim(), epoch);
-    return epoch;
-  };
 
   const { reconcile, captureReconcile, capturePatchFields, reconcileChangedEvent, observeRow } =
     createSessionReconciliation({
@@ -449,7 +433,6 @@ export function createSessionCapability(
       if (identityChanged) {
         deletions.retireConnection(retainDeferredIntents);
       }
-      const hadPullRequestSummaries = pullRequestSummaries.size > 0;
       const hadSubscriptionError = sessionEventSubscriptionError !== null;
       thinkingClaims.reset();
       permissions.clear();
@@ -462,8 +445,6 @@ export function createSessionCapability(
       groups.invalidate();
       swarmActivity.clear();
       mutations.retireConnection(retainDeferredIntents);
-      pullRequestSummaries.clear();
-      pullRequestEpochs.clear();
       // Only queued desired-state changes retain presentation across a replacement client.
       if (identityChanged && !retainDeferredIntents) {
         hydratedClient = null;
@@ -472,8 +453,8 @@ export function createSessionCapability(
         retirePresentation();
         publish({ ...createSessionState(), resultCached: false, startupPending: false });
       }
-      // Client replacement needs a publish; disconnect publishes cleared state below.
-      if ((hadPullRequestSummaries || hadSubscriptionError) && connected && next.client) {
+      // Publish a cleared subscription error on replacement; disconnect publishes below.
+      if (hadSubscriptionError && connected && next.client) {
         publish({ ...state });
       }
     }
@@ -689,23 +670,6 @@ export function createSessionCapability(
     settingsPreview: mutations.settingsPreview,
     patchRowLocal: mutations.patchRowLocal,
     isPreparedWorkSession: mutations.isPreparedWorkSession,
-    pullRequestSummary: (key) => pullRequestSummaries.get(key.trim()),
-    capturePullRequestEpoch,
-    setPullRequestSummary(key, summary, epoch) {
-      const normalizedKey = key.trim();
-      if (!normalizedKey || pullRequestSummaries.get(normalizedKey) === summary) {
-        return;
-      }
-      if (epoch !== undefined && pullRequestEpochs.get(normalizedKey) !== epoch) {
-        return;
-      }
-      if (summary) {
-        pullRequestSummaries.set(normalizedKey, summary);
-      } else {
-        pullRequestSummaries.delete(normalizedKey);
-      }
-      publish({ ...state });
-    },
     delete: deletions.delete,
     deleteMany: deletions.deleteMany,
     deletionState: deletions.deletionState,
@@ -733,8 +697,6 @@ export function createSessionCapability(
       permissions.clear();
       deletions.clear();
       swarmActivity.clear();
-      pullRequestSummaries.clear();
-      pullRequestEpochs.clear();
       sessionEventSubscription.dispose();
       stopGateway();
       stopSelection();

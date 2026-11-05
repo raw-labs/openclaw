@@ -1,17 +1,14 @@
 import type { Page } from "playwright";
 import { expect, it } from "vitest";
+import type { SessionGitHubOptionsResult as GitHubPublicationOptions } from "../../../packages/gateway-protocol/src/schema/session-github-publication.ts";
 import type {
   SessionGitHubPublicationResult,
   SessionGitHubStatusResult,
 } from "../../../packages/gateway-protocol/src/schema/session-github-publication.ts";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../src/gateway/control-ui-contract.js";
-import type { GitHubPublicationOptions } from "../lib/sessions/github-publication-owner.ts";
-import {
-  controlUiSessionUrl,
-  installMockGateway,
-  reconnectMockGateway,
-} from "../test-helpers/control-ui-e2e.ts";
+import { controlUiSessionUrl, reconnectMockGateway } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiSessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   openChatDetails,
   openChatPublication,

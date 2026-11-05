@@ -3,7 +3,6 @@ import { observeDiagnosticsTimelinePhases } from "../../infra/diagnostics-timeli
 import type { PreparedSandboxExecutionEnvironment } from "../../plugins/execution-environment-types.js";
 import { resolveGlobalMap } from "../../shared/global-singleton.js";
 import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
-import type { PreparedGitHubToolEnvironment } from "../github-tool-identity.types.js";
 import type { WorkspaceStateGuard } from "../workspace-state-store.worker-contract.js";
 import type { SandboxBackendHandle } from "./backend-handle.types.js";
 import type {
@@ -160,27 +159,21 @@ export function requireSandboxBackendFactory(id: string): SandboxBackendFactory 
 export async function createSandboxBackend(
   params: CreateSandboxBackendParams,
   operatorAuthority?: AdmittedRunOperatorAuthority,
-  githubIdentity?: PreparedGitHubToolEnvironment,
-  guard?: WorkspaceStateGuard,
   executionEnvironment?: PreparedSandboxExecutionEnvironment & { assertCurrent?: () => void },
+  guard?: WorkspaceStateGuard,
 ): Promise<SandboxBackendHandle> {
   params.assertRuntimeCurrent?.();
   let factory = requireSandboxBackendFactory(params.cfg.backend);
   if (
-    (githubIdentity ||
-      (executionEnvironment &&
-        (Object.keys(executionEnvironment.localIdentityEnv).length > 0 ||
-          executionEnvironment.readOnlyResourceMounts.length > 0 ||
-          executionEnvironment.inheritedEnvironmentNames.length > 0 ||
-          executionEnvironment.wrapLocalLaunch))) &&
+    executionEnvironment &&
+    (Object.keys(executionEnvironment.localIdentityEnv).length > 0 ||
+      executionEnvironment.readOnlyResourceMounts.length > 0 ||
+      executionEnvironment.inheritedEnvironmentNames.length > 0 ||
+      executionEnvironment.wrapLocalLaunch) &&
     factory !== createDockerSandboxBackend &&
     factory !== createPodmanSandboxBackend
   ) {
-    throw new Error(
-      githubIdentity
-        ? "Sandbox GitHub identity requires the built-in Docker or Podman backend."
-        : "Plugin execution environments require the built-in Docker or Podman backend.",
-    );
+    throw new Error("Plugin execution environments require the built-in Docker or Podman backend.");
   }
   let preparedParams = params;
   if (
@@ -205,7 +198,6 @@ export async function createSandboxBackend(
     return await createDockerSandboxBackend(
       preparedParams,
       operatorAuthority,
-      githubIdentity,
       executionEnvironment,
     );
   }
@@ -213,7 +205,6 @@ export async function createSandboxBackend(
     return await createPodmanSandboxBackend(
       preparedParams,
       operatorAuthority,
-      githubIdentity,
       executionEnvironment,
     );
   }

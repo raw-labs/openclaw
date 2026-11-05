@@ -33,7 +33,6 @@
 
 .session-hovercard__context-text,
 .session-hovercard__plan-step,
-.session-hovercard__pr-title,
 .session-hovercard__attribution-name {
   --session-hovercard-fade: var(--session-hovercard-fade-inline);
 
@@ -59,7 +58,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The Markdown owner supplies only the retained preview, including its ellipsis. */
 .session-hovercard__commentary {
   overflow: clip;
 }
@@ -202,11 +200,6 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   line-height: 1.4;
 }
 
-.session-hovercard__pr-list > .session-hovercard__more {
-  padding-inline-start: calc(var(--session-hovercard-context-icon-size) + var(--space-2));
-  line-height: 22px;
-}
-
 .session-hovercard__created-age {
   grid-column: 2;
   grid-row: 1;
@@ -219,16 +212,6 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   white-space: nowrap;
 }
 
-.session-hovercard__section--prs {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.session-hovercard__pr-list {
-  display: grid;
-  min-width: 0;
-}
-
 .session-hovercard__section-title {
   display: flex;
   align-items: baseline;
@@ -239,17 +222,7 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   line-height: 16px;
 }
 
-.session-hovercard__pr-list > .session-hovercard__section-title {
-  margin-bottom: var(--space-1);
-}
-
-.session-hovercard__pr-count {
-  font-weight: 400;
-  font-variant-numeric: tabular-nums;
-}
-
-.session-hovercard__context-row,
-.session-hovercard__pr-row {
+.session-hovercard__context-row {
   display: grid;
   grid-template-columns: var(--session-hovercard-context-icon-size) minmax(0, 1fr) auto;
   align-items: center;
@@ -279,30 +252,22 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   white-space: nowrap;
 }
 
-.session-hovercard__context-icon,
-.session-hovercard__pr-state-icon {
+.session-hovercard__context-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: var(--session-hovercard-context-icon-size);
   height: var(--session-hovercard-context-icon-size);
-}
-
-.session-hovercard__context-icon {
   align-self: center;
   color: var(--icon-decorative, var(--muted));
 }
 
-.session-hovercard__context-icon svg,
-.session-hovercard__pr-state-icon svg {
+.session-hovercard__context-icon svg {
   width: var(--session-hovercard-context-icon-size);
   height: var(--session-hovercard-context-icon-size);
   stroke-width: 1.5px;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.session-hovercard__context-icon svg {
   display: block;
   flex: none;
 }
@@ -363,21 +328,6 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   border: 1.5px solid var(--panel-strong);
 }
 
-.session-hovercard__pr-row {
-  /* PR rows are anchors; retain the reset instead of inheriting default link styling. */
-  margin-inline: calc(-1 * var(--space-2));
-  padding-inline: var(--space-2);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  text-decoration: none;
-  transition: background-color 120ms ease;
-}
-
-.session-hovercard__pr-row:hover,
-.session-hovercard__pr-row:focus-visible {
-  background: var(--bg-hover);
-}
-
 .session-hovercard__diff {
   display: inline-flex;
   align-items: baseline;
@@ -387,26 +337,6 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   font-size: var(--control-ui-text-xs);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-}
-
-.session-hovercard__pr-row[data-state="open"] {
-  --session-pr-state-color: var(--ok);
-}
-
-.session-hovercard__pr-row[data-state="draft"] {
-  --session-pr-state-color: var(--muted);
-}
-
-.session-hovercard__pr-row[data-state="merged"] {
-  --session-pr-state-color: var(--pr-merged);
-}
-
-.session-hovercard__pr-row[data-state="closed"] {
-  --session-pr-state-color: var(--danger);
-}
-
-.session-hovercard__pr-state-icon {
-  color: var(--session-pr-state-color, var(--muted));
 }
 
 .session-hovercard__additions {
@@ -437,17 +367,4 @@ button.session-hovercard__attribution-others:is(:hover, :focus-visible) {
   display: block;
   width: var(--session-hovercard-context-icon-size);
   height: var(--session-hovercard-context-icon-size);
-}
-
-.session-hovercard__pr-number {
-  color: var(--muted);
-  font-size: var(--control-ui-text-xs);
-  font-variant-numeric: tabular-nums;
-  opacity: 0.7;
-}
-
-.session-hovercard__pr-checks {
-  color: var(--danger);
-  font-size: var(--control-ui-text-xs);
-  white-space: nowrap;
 }

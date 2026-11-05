@@ -1,3 +1,4 @@
+import { readGitHubConfig } from "@openclaw/github-repositories/config-api.js";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { textResult } from "openclaw/plugin-sdk/tool-results";
 import { parseGitHubSearchParams } from "./src/search-params.js";
@@ -125,6 +126,21 @@ export default definePluginEntry({
       },
       { name: "github_search", workspaceAccess: false },
     );
+    for (const method of ["tools.github.read", "tools.github.search"] as const) {
+      api.registerGatewayMethod(
+        method,
+        async (options) => {
+          const { toolsGitHubReadHandlers } = await import("./src/tools-github.js");
+          await toolsGitHubReadHandlers[method](options);
+        },
+        {
+          scope: "operator.sessions.read",
+          since: "2026.10",
+          advertise: false,
+          profileAccess: "independent",
+        },
+      );
+    }
     const registerReaders = (host: string, sessionScoped = false) => {
       for (const [suffix, pathPattern] of [
         ["", GITHUB_ITEM_PATH_PATTERN],
@@ -156,7 +172,7 @@ export default definePluginEntry({
       }
     };
     registerReaders("github.com");
-    const host = api.config.gateway?.github?.host?.trim().toLowerCase();
+    const host = readGitHubConfig(api.config).host?.trim().toLowerCase();
     if (host && host !== "github.com") {
       registerReaders(host, true);
       for (const [method, kind] of [

@@ -7,12 +7,15 @@ import { applyGatewayToolPolicy } from "../gateway-tool-policy.js";
 import { createSandboxTestContext } from "../sandbox/test-fixtures.js";
 import type { SandboxContext } from "../sandbox/types.js";
 import { makeAssistantMessageFixture } from "../test-helpers/assistant-message-fixtures.js";
+import {
+  createGitHubPublishTool,
+  githubPublishToolDefinition,
+} from "../test-helpers/github-plugin-tools.js";
 import { createHostSandboxFsBridge } from "../test-helpers/host-sandbox-fs-bridge.js";
 import {
   getGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
 } from "./gateway-caller-context.js";
-import { createGitHubPublishTool, githubPublishToolDefinition } from "./github-publish-tool.js";
 import { callInProcessGatewayTool } from "./in-process-gateway.js";
 
 vi.mock("./in-process-gateway.js", async (importOriginal) => ({
@@ -272,7 +275,10 @@ it.each([
     expect(callGateway).toHaveBeenCalledExactlyOnceWith(
       "sessions.github.action",
       { sessionKey: caller.sessionKey, ...input },
-      { timeoutMs: 600_000 },
+      expect.objectContaining({
+        timeoutMs: 600_000,
+        sessionMutationCommitGuard: expect.any(Function),
+      }),
     );
   },
 );
@@ -382,10 +388,14 @@ it.each([undefined, false, true])(
     const request = { action: "publish", ...args };
     expect(Value.Check(tool.parameters, request)).toBe(true);
     await execute(request, "tool-call-1");
-    expect(callGateway).toHaveBeenCalledWith("sessions.github.publish", {
-      sessionKey: caller.sessionKey,
-      idempotencyKey: "tool-call-1",
-      ...args,
-    });
+    expect(callGateway).toHaveBeenCalledWith(
+      "sessions.github.publish",
+      {
+        sessionKey: caller.sessionKey,
+        idempotencyKey: "tool-call-1",
+        ...args,
+      },
+      expect.objectContaining({ sessionMutationCommitGuard: expect.any(Function) }),
+    );
   },
 );

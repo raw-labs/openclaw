@@ -2,29 +2,22 @@ import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionGitHubStatusResult } from "../../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { awaitGateBeforeSettlement, withinTest } from "../../../test/helpers/promise.js";
-import {
-  clearGitHubCredentialVerificationCache,
-  verifyGitHubCredential,
-} from "../../agents/github-oauth-client.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../../agents/github-tool-identity.js";
 import { upsertSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import * as stateWriter from "../../state/openclaw-state-worker-owner.js";
 import type { UserGitHubConnection } from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
+import { loadBundledPluginFacade } from "../../test-utils/bundled-plugin-public-surface.js";
 import type { ControlUiSessionPullRequestSnapshot } from "../control-ui-contract.js";
-import { requestCurrentGitHubOAuthRefresh } from "../github-oauth-lifecycle.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
-import * as publicationIdentity from "../github-publication-identity.js";
-import * as relevance from "../github-publication-relevance.js";
 import {
   expectFailure,
   expectReply,
   mockPublicationIdentity,
+  publicationIdentity,
+  clearNativeGitHubTokenCache,
+  resolveManagedGitHubProfileDir,
+  writeManagedGitHubProfileFiles,
   optionsResult,
   publisher,
   publisherIdentity,
@@ -37,17 +30,28 @@ import {
 } from "./sessions-github-read.test-support.js";
 
 const mocks = vi.hoisted(() => ({ runCommandBuffered: vi.fn() }));
-vi.mock("../../process/exec.js", () => ({ runCommandBuffered: mocks.runCommandBuffered }));
+vi.mock("../../process/exec.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../process/exec.js")>()),
+  runCommandBuffered: mocks.runCommandBuffered,
+}));
 vi.mock("../../agents/tools/gateway-caller-context.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../agents/tools/gateway-caller-context.js")>()),
   getGatewayToolCallerIdentity: () => undefined,
 }));
-vi.mock("../github-oauth-lifecycle.js", () => ({
-  requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
-}));
+vi.mock(
+  "../../../extensions/github-repositories/account-runtime-api.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<Record<string, unknown>>()),
+    requestCurrentGitHubOAuthRefresh: vi.fn(async () => {}),
+  }),
+);
+
+const { requestCurrentGitHubOAuthRefresh } = await loadBundledPluginFacade<{
+  requestCurrentGitHubOAuthRefresh(agentId: string): Promise<void>;
+}>({ pluginId: "github-repositories", artifactBasename: "account-runtime-api.ts" });
 
 beforeEach(() => {
-  clearGitHubCredentialVerificationCache();
+  clearNativeGitHubTokenCache();
   mockPublicationIdentity();
 });
 afterEach(() => {
@@ -179,6 +183,39 @@ it.each([
   },
 );
 
+it("reuses native authentication for consecutive options requests and refreshes after invalidation", async () => {
+  useRealIdentity();
+  mocks.runCommandBuffered
+    .mockReset()
+    .mockImplementation(async () => commandResult("synthetic-options-native"));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => accountResponse());
+  await withReadFixture(async (fixture) => {
+    for (let index = 0; index < 2; index++) {
+      const respond = await fixture.options(undefined, {
+        idempotencyKey: "owned-unknown-attempt",
+      });
+      expectOptions(respond, { shared: detectedPublisher });
+      expect(fixture.latestShared).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionKey, sessionId, agentId: "main" }),
+        "owned-unknown-attempt",
+        expect.any(Function),
+        expect.any(Function),
+      );
+      expect(fixture.personalPending).not.toHaveBeenCalled();
+      expect(fixture.requestForSession).not.toHaveBeenCalled();
+    }
+    expect(mocks.runCommandBuffered).toHaveBeenCalledOnce();
+    expect(mocks.runCommandBuffered).toHaveBeenCalledWith(
+      ["gh", "auth", "token", "--hostname", "github.com"],
+      expect.any(Object),
+    );
+    expect(fetch).toHaveBeenCalledOnce();
+    clearNativeGitHubTokenCache();
+    await fixture.options();
+    expect(mocks.runCommandBuffered).toHaveBeenCalledTimes(2);
+  });
+});
+
 it.for(["token", "native"] as const)(
   "serves stale options while %s authentication refreshes without waiting",
   async (source, { signal }) => {
@@ -275,7 +312,10 @@ it("marks only expired personal account facts stale through options revalidation
     const now = vi.spyOn(Date, "now").mockReturnValue(initialNow);
     vi.spyOn(performance, "now").mockImplementation(() => Date.now());
     try {
-      await verifyGitHubCredential(personalToken);
+      await fixture.personalLifecycle.status({
+        owner,
+        assertCurrent: () => fixture.readScheduler.signal.throwIfAborted(),
+      });
       now.mockReturnValue(initialNow + 30_000);
       await fixture.options();
       now.mockReturnValue(initialNow + 60_001);
@@ -289,7 +329,10 @@ it("marks only expired personal account facts stale through options revalidation
       expect(sharedProbes).toBe(1);
     } finally {
       refresh.resolve(accountResponse(42, "personal-reader"));
-      await verifyGitHubCredential(personalToken);
+      await fixture.personalLifecycle.status({
+        owner,
+        assertCurrent: () => fixture.readScheduler.signal.throwIfAborted(),
+      });
     }
   });
 });
@@ -327,8 +370,8 @@ it.each([false, true])(
       const snapshot = {
         repository: "owner/repo",
         branch: "feature",
-        source_head_commit: "1".repeat(40),
-        workspace_tree: "2".repeat(40),
+        sourceHeadCommit: "1".repeat(40),
+        workspaceTree: "2".repeat(40),
       };
       const source = { owner: "owner", repo: "repo", branch: "feature" };
       const prs: ControlUiSessionPullRequestSnapshot["pullRequests"] = [
@@ -348,7 +391,7 @@ it.each([false, true])(
         return { pullRequests: prs, status: "ready", rateLimited: false };
       });
       const covered = vi
-        .spyOn(relevance, "isGitHubPublicationSuperseded")
+        .spyOn(fixture.provider, "isPublicationSuperseded")
         .mockImplementation(async (_snapshot, readPublished) => Boolean(await readPublished()));
       fixture.latestShared.mockImplementation(async (_session, _key, isSuperseded) =>
         (await isSuperseded(snapshot)) ? null : receipt,
@@ -390,7 +433,7 @@ it.each(["refresh", "personal", "receipt"] as const)(
       } else if (phase === "personal") {
         fixture.personalConnectionStatus.mockImplementationOnce(async (action) => {
           await hold();
-          return personalGitHubStatus(action);
+          return fixture.personalLifecycle.status(action);
         });
       } else {
         fixture.latestShared.mockImplementationOnce(async () => {
@@ -494,10 +537,19 @@ it.each([
     );
     if (hasGitHubConnection) {
       saveConnection(owner, connection);
+      await writeManagedGitHubProfileFiles(
+        resolveManagedGitHubProfileDir({
+          agentId: "",
+          scope: "personal",
+          profileId: connection.selection.profileId,
+        }),
+        { login: "reader", token: "synthetic-held-personal-read" },
+      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(accountResponse(42, "reader"));
     }
     const statusReady = createDeferredCore();
     fixture.personalConnectionStatus.mockImplementationOnce(async (action) => {
-      const status = await personalGitHubStatus(action);
+      const status = await fixture.personalLifecycle.status(action);
       statusReady.resolve();
       return change === "github-unavailable" ? { ...status, state: "unavailable" } : status;
     });

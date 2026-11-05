@@ -23,6 +23,7 @@ import "../test-helpers/app-sidebar-suite.ts";
 import { settleLitElement } from "../test-helpers/lit-settle.ts";
 import { waitForFast } from "../test-helpers/wait-for.ts";
 import { disposeRoster, mountRoster } from "./app-sidebar-freshness.test-support.ts";
+import { getAppSidebarOwner } from "./app-sidebar.tsx";
 import { parseSidebarSnapshot } from "./sidebar-snapshot-model.ts";
 
 it.each(["pin", "group"] as const)(
@@ -240,7 +241,7 @@ it("hides unused sections but retains deliberately empty sections", async () => 
   expect(sidebar.querySelector(".personal-session-groups")).toBeNull();
 });
 
-it("persists the same newer indicator artifact that the live plugin badge presents", async () => {
+it("persists current plugin badge facts while the row artifact remains stale", async () => {
   const key = "agent:main:review";
   const stale: SessionCatalogPullRequestSummary = { numbers: [1], state: "open" };
   const current: SessionCatalogPullRequestSummary = { numbers: [2, 3], state: "merged" };
@@ -306,11 +307,10 @@ it("persists the same newer indicator artifact that the live plugin badge presen
         id: "summary",
         placement: "session-row",
         presentation: "badge",
-        resolve(target) {
-          const artifact = target.artifact;
+        resolve() {
           return {
             status: "ready",
-            badge: { icon: "gitPullRequest", label: JSON.stringify(artifact ?? null) },
+            badge: { icon: "gitPullRequest", label: JSON.stringify(current) },
           };
         },
       });
@@ -335,10 +335,16 @@ it("persists the same newer indicator artifact that the live plugin badge presen
       groupSettings: [],
       sectionOrder: [],
     });
-    vi.spyOn(sidebar.sessionPullRequests, "summary").mockReturnValue(current);
-    sessions.setPullRequestSummary(key, stale);
     sessionHarness.publishList({ result: sessionsResult([row]) });
     await settleLitElement(sidebar);
+    const zone = sidebar.reconciledSidebarZone();
+    const displayRow = zone.sessionRows.get(key);
+    expect(displayRow).toBeDefined();
+    // Catalog artifacts are display hints; the plugin owns the current presentation facts.
+    vi.spyOn(getAppSidebarOwner(sidebar.hostElement)!, "reconciledSidebarZone").mockReturnValue({
+      ...zone,
+      sessionRows: new Map(zone.sessionRows).set(key, { ...displayRow!, pullRequest: stale }),
+    });
     await waitForFast(() =>
       expect(
         [...sidebar.querySelectorAll('[role="img"]')].map((element) =>
@@ -356,7 +362,6 @@ it("persists the same newer indicator artifact that the live plugin badge presen
     expect(persisted?.pinnedSessions[0]?.state?.badges).toEqual([
       { pluginId: "review", id: "summary", icon: "gitPullRequest", label: JSON.stringify(current) },
     ]);
-    expect(persisted?.pinnedSessions[0]?.state?.pullRequest).toEqual(current);
   } finally {
     provider?.remove();
     runtime.dispose();

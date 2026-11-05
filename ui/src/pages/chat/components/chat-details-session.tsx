@@ -32,7 +32,6 @@ import type {
 import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
 import { getChatOutputsCount, hasChatDesktopOutputs } from "./chat-outputs-data.ts";
 import { isProcessesPresentationReady } from "./chat-processes-presentation.ts";
-import { ChatPullRequests, type ChatPullRequestsProps } from "./chat-pull-requests.tsx";
 import { syncSessionPanelInputs, useSessionPanel } from "./chat-session-panel.tsx";
 import { ChatSummaryAutomations } from "./chat-summary-automations.tsx";
 
@@ -101,7 +100,7 @@ function DetailsAutomations(props: Props) {
     <ChatSummaryAutomations
       presentationIdentity={identity()}
       desktop={desktop()}
-      gateway={props.props?.pullRequestsGateway}
+      gateway={props.props?.gateway}
       sessionKey={
         props.props
           ? scopedSessionArtifactKey(
@@ -160,7 +159,27 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
     return (
       <Show when={identity()} keyed>
         {(sessionIdentity) => {
-          const [pullRequestsOpen, setPullRequestsOpen] = createSignal(true);
+          const [contributionPresent, setContributionPresent] = createSignal(false, {
+            ownedWrite: true,
+          });
+          const hasChanges = () => contributionPresent();
+          // Retained plugin content keeps custody, but a newly arriving group starts open.
+          const [pullRequestsOpen, setPullRequestsOpen] = createSignal<boolean>((previous) =>
+            hasChanges() ? (previous ?? true) : true,
+          );
+          const repositoryControls = () => (
+            <PluginContributions
+              kind="session-context"
+              sessionKey={props.props?.sessionKey ?? ""}
+              agentId={props.props?.currentAgentId ?? undefined}
+              presented={active() && requestsExpanded()}
+              onPresenceChange={setContributionPresent}
+              compact={true}
+              dismissed={props.dismissed}
+              facts={props.props?.sessionHeaderFacts}
+              onOpenSessionDiff={props.props?.onOpenSessionDiff}
+            />
+          );
           const [sectionChoices, setSectionChoices] = createStore<
             Partial<Record<ChatDetailsDesktopSectionId, boolean>>
           >({ ...getSessionCacheValue(sectionChoicesBySession, sessionIdentity) });
@@ -306,48 +325,6 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                 : snapshot.dashboard,
             };
           });
-          const pullRequests = createMemo<ChatPullRequestsProps | null>(() => {
-            const snapshot = props.props;
-            if (!snapshot) {
-              return null;
-            }
-            const current = () => host.isConnected && props.presented && props.props === snapshot;
-            return {
-              pullRequests: snapshot.pullRequests ?? [],
-              gateway: snapshot.pullRequestsGateway,
-              sessionId: snapshot.pullRequestsSessionId,
-              sessionKey: scopedSessionArtifactKey(
-                snapshot.sessionKey,
-                snapshot.currentAgentId ?? undefined,
-              ),
-              presented: active() && requestsExpanded(),
-              dismissed: props.dismissed,
-              branch: snapshot.pullRequestsBranch,
-              branchDismissed: snapshot.pullRequestsBranchDismissed,
-              status: snapshot.pullRequestsStatus ?? "ready",
-              onDismiss: (pullRequest) => {
-                if (current()) {
-                  snapshot.onDismissPullRequest?.(pullRequest);
-                }
-              },
-              onDismissBranch: snapshot.onDismissPullRequestsBranch
-                ? (branch) => {
-                    if (current()) {
-                      snapshot.onDismissPullRequestsBranch?.(branch);
-                    }
-                  }
-                : undefined,
-              onOpenSessionDiff: snapshot.onOpenSessionDiff
-                ? () => {
-                    if (current()) {
-                      snapshot.onOpenSessionDiff?.();
-                    }
-                  }
-                : undefined,
-              publication: snapshot.githubPublication,
-              compact: true,
-            };
-          });
           const outputsCount = () => {
             const data = outputs();
             return data ? getChatOutputsCount(data) : null;
@@ -444,7 +421,6 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                         {...props.props?.environment}
                         details={props.props!}
                         presented={active()}
-                        work={pullRequests() ?? undefined}
                       />
                     </>
                   }
@@ -503,7 +479,6 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                       </Show>
                       <ChatDetailsEnvironment
                         {...props.props?.environment}
-                        work={pullRequests() ?? undefined}
                         details={props.props!}
                         presented={active()}
                         expanded={sectionExpanded("environment")}
@@ -515,66 +490,23 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                 <Show when={!props.desktop}>
                   <Background details={props.props!} presented={active()} />
                 </Show>
-                <Show when={pullRequests()}>
-                  {(requests) => (
-                    <Show
-                      when={
-                        requests().pullRequests.length > 0 ||
-                        requests().publication?.result?.status === "published"
-                      }
-                    >
-                      <div class="chat-details__group chat-details__changes">
-                        <Show
-                          when={!props.desktop}
-                          fallback={
-                            <ChatDetailsDesktopSection
-                              section="pull-requests"
-                              title={t("chat.sessionDetails.pullRequests")}
-                              expanded={requestsExpanded()}
-                              presented={active()}
-                              onExpandedChange={(expanded) => {
-                                setPullRequestsOpen(expanded);
-                                props.props?.desktopDisclosures?.onExpandedChange(
-                                  "pull-requests",
-                                  expanded,
-                                );
-                              }}
-                            >
-                              <ChatPullRequests {...requests()} publishedOnly />
-                            </ChatDetailsDesktopSection>
-                          }
-                        >
-                          <details
-                            data-details-group="pull-requests"
-                            open
-                            onToggle={(event) => {
-                              if (event.currentTarget.isConnected) {
-                                setPullRequestsOpen(event.currentTarget.open);
-                              }
-                            }}
-                          >
-                            <summary class="chat-details__caption">
-                              {t("chat.sessionDetails.pullRequests")}
-                              <span>{props.props?.pullRequests?.length || null}</span>
-                              <Icon name="chevronDown" />
-                            </summary>
-                            <ChatPullRequests {...requests()} publishedOnly />
-                          </details>
-                        </Show>
-                      </div>
-                    </Show>
-                  )}
-                </Show>
-                <PluginContributions
-                  kind="session-context"
-                  sessionKey={props.props?.sessionKey ?? ""}
-                  agentId={props.props?.currentAgentId ?? undefined}
-                  facts={props.props?.sessionHeaderFacts}
-                  presented={active()}
-                  compact={true}
-                  dismissed={props.dismissed}
-                  onOpenSessionDiff={props.props?.onOpenSessionDiff}
-                />
+                <div
+                  hidden={!contributionPresent()}
+                  class="chat-details__group chat-details__changes"
+                >
+                  <ChatDetailsDesktopSection
+                    section="pull-requests"
+                    title={t("chat.sessionDetails.pullRequests")}
+                    expanded={requestsExpanded()}
+                    presented={active()}
+                    onExpandedChange={(expanded) => {
+                      setPullRequestsOpen(expanded);
+                      props.props?.desktopDisclosures?.onExpandedChange("pull-requests", expanded);
+                    }}
+                  >
+                    {repositoryControls()}
+                  </ChatDetailsDesktopSection>
+                </div>
                 <Show when={!props.desktop}>
                   <DetailsAutomations props={props.props} presented={active()} />
                 </Show>

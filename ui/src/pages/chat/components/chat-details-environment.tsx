@@ -15,7 +15,6 @@ import type { ChatDetailsEnvironmentDesktopProps } from "./chat-details-types.ts
 import { hasEnvironmentTextChanges } from "./chat-environment-content.tsx";
 import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
 import { createChatMachinePresentation } from "./chat-pane-placement.tsx";
-import { retainedPublication, showWorkRow } from "./chat-pull-requests.ts";
 
 registerEnglishCatalog(registerChatSessionEnglish);
 registerEnglishCatalog(registerChatDetailsEnglish);
@@ -68,29 +67,8 @@ export function ChatDetailsEnvironment(props: ChatDetailsEnvironmentDesktopProps
       : undefined;
   };
   const [accessoryPresent, setAccessoryPresent] = createSignal(false, { ownedWrite: true });
-  const published = () => props.work?.publication?.result?.status === "published";
-  const work = () => {
-    const candidate = props.work;
-    // The Gateway omits branch facts when this checkout has a live PR. Keep
-    // uncertain attempts recoverable; a completed failure is not another publish offer.
-    if (
-      !candidate ||
-      published() ||
-      (!candidate.branch &&
-        !candidate.publication?.locked &&
-        candidate.pullRequests.some((pr) => pr.state === "open" || pr.state === "draft"))
-    ) {
-      return undefined;
-    }
-    const publication = candidate.publication;
-    return showWorkRow(candidate) ||
-      (retainedPublication(publication) &&
-        (publication?.result?.status !== "published" || publication.error))
-      ? candidate
-      : undefined;
-  };
   const live = createMemo(() => ({
-    branch: workspace()?.branch ?? work()?.branch?.branch,
+    branch: workspace()?.branch,
     worktree: Boolean(session()?.worktree),
   }));
   const facts = () =>
@@ -102,7 +80,7 @@ export function ChatDetailsEnvironment(props: ChatDetailsEnvironmentDesktopProps
       : undefined,
   );
   const diff = () => {
-    const result = work()?.branch ?? changes();
+    const result = changes();
     return result && hasEnvironmentTextChanges(result) ? result : undefined;
   };
   const hasContent = createMemo(() =>
@@ -110,7 +88,6 @@ export function ChatDetailsEnvironment(props: ChatDetailsEnvironmentDesktopProps
       machineMenu() ||
       host() ||
       branchName() ||
-      work() ||
       accessoryPresent() ||
       facts().worktree ||
       changes(),
@@ -197,8 +174,6 @@ export function ChatDetailsEnvironment(props: ChatDetailsEnvironmentDesktopProps
                 accessoryPresent={accessoryPresent()}
                 accessoryPresented={props.presented && (expanded() || !hasContent())}
                 onAccessoryPresenceChange={setAccessoryPresent}
-                work={work()}
-                fallbackWork={props.work}
                 diff={diff()}
                 changes={changes()}
                 renderMachineIcon={() => <MachineIcon />}

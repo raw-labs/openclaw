@@ -33,6 +33,7 @@ import {
   selectDraftDeviceFolder,
   selectDraftCloudProfile,
   selectDraftWorktree,
+  selectDraftNewWorkspace,
 } from "./draft-target-actions.ts";
 import { DraftTerminalHostState } from "./draft-terminal-host-state.ts";
 import { DraftRestoredFolderValidation } from "./folder-validation.ts";
@@ -618,30 +619,10 @@ export class DraftPlaceState {
   }
 
   selectNewWorkspace() {
-    const snapshot = this.read();
-    if (snapshot.submitting || snapshot.pendingPlacementSessionKey || !this.remotePlacement) {
-      return;
-    }
-    this.folderValidation.cancel();
-    this.browser.clearProjectSelection();
-    this.browser.resetProjectSearch();
-    this.callbacks.onError(null);
-    this.deviceFolderValue = null;
-    this.folderValue = this.workspacePath();
-    this.selection.folderSelectedByUser = true;
-    markDraftPlaceProjectChoice(this.selection, true);
-    this.selection.freshWorkspace = true;
-    this.repositoryState.selectWorktree(false);
-    this.persistPreference({
-      folder: this.folderValue,
-      projectId: "",
-      remoteProject: null,
-      defaultRepositoryOptOut: true,
-      worktree: true,
-      freshWorkspace: true,
+    selectDraftNewWorkspace(this.targetActions(), () => {
+      this.folderValue = this.workspacePath();
+      return this.folderValue;
     });
-    this.browser.close();
-    this.callbacks.changed();
   }
 
   selectProjectId(projectId: string) {

@@ -124,10 +124,15 @@ try {
     createWorkerSessionPlacementStore({ database, now: () => 1000 }),
   );
   const context = captureOpenClawStateWorkerContext();
-  const { createNativeGitHubPublicationProvider } =
-    await import("../../src/gateway/github-publication-provider.js");
+  const {
+    createGitHubPublicationProvider,
+    requestCurrentGitHubOAuthRefresh,
+    requestCurrentPersonalGitHubRefresh,
+  } = await import("../../extensions/github-repositories/runtime-api.js");
   const signal = new AbortController().signal;
-  const provider = createNativeGitHubPublicationProvider({
+  const provider = createGitHubPublicationProvider({
+    refreshIdentity: requestCurrentGitHubOAuthRefresh,
+    refreshPersonal: requestCurrentPersonalGitHubRefresh,
     signal,
     getConfig: () => ({}),
     assertCurrent: () => context.admission.assertCurrent(),

@@ -6,8 +6,9 @@ import {
   setupCronRegressionFixtures,
 } from "../../../test/helpers/cron/service-regression-fixtures.js";
 import { awaitGateBeforeSettlement } from "../../../test/helpers/promise.js";
+import { createGitHubIdentityStatusTool } from "../../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../../agents/tools/gateway-caller-context.js";
-import { createGitHubIdentityStatusTool } from "../../agents/tools/github-identity-status-tool.js";
+import { createGatewayMethodRegistry } from "../../gateway/methods/registry.js";
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { createScheduledGatewayRunner } from "../../gateway/scheduled-run-gateway-context.js";
 import { cronHandlers } from "../../gateway/server-methods/cron.js";
@@ -20,6 +21,10 @@ import {
   createContext,
   createOperatorClient,
 } from "../../gateway/server-plugin-in-process-dispatch.test-support.js";
+import {
+  createPluginRegistryFixture,
+  registerVirtualTestPlugin,
+} from "../../plugin-sdk/plugin-test-contracts.js";
 import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { createDeferredCore } from "../../shared/deferred.js";
 import { runInDetachedAsyncContext } from "../../shared/detached-async-context.js";
@@ -42,10 +47,33 @@ it.each(["manual", "manual-rpc", "timer"] as const)(
     const readHandler = vi.fn(({ respond }: GatewayRequestHandlerOptions) =>
       respond(true, readResult),
     );
-    const context = createContext([
-      ["tools.github.status", "operator.read", "sessions", readHandler],
-      ["cron.run", "operator.write", "cron", cronHandlers["cron.run"]!],
-    ]);
+    const fixture = createPluginRegistryFixture();
+    registerVirtualTestPlugin({
+      ...fixture,
+      id: "github-repositories",
+      name: "GitHub",
+      contracts: { gatewayMethodDispatch: ["authenticated-request"] },
+      register(api) {
+        api.registerGatewayMethod("tools.github.status", readHandler, {
+          scope: "operator.read",
+          profileAccess: "independent",
+        });
+      },
+    });
+    const context = createContext();
+    const methods = createGatewayMethodRegistry(
+      [
+        ...fixture.registry.registry.gatewayMethodDescriptors,
+        {
+          name: "cron.run",
+          scope: "operator.write",
+          owner: { kind: "core", area: "cron" },
+          handler: cronHandlers["cron.run"]!,
+        },
+      ],
+      fixture.registry.registry,
+    );
+    context.getGatewayMethodRegistry = () => methods;
     context.resolveGatewayContext = () => context;
     const client = createOperatorClient({
       profileName: "cron-lifetime",
@@ -65,7 +93,10 @@ it.each(["manual", "manual-rpc", "timer"] as const)(
     const state = createCronRegressionState({
       storePath: store.storePath,
       nowMs: () => now,
-      runSchedulerOwned: createScheduledGatewayRunner(() => context),
+      runSchedulerOwned: createScheduledGatewayRunner(
+        () => context,
+        () => fixture.registry.registry,
+      ),
       onEvent: (event) => {
         if (event.action === "finished") {
           finished.resolve(event);
@@ -87,7 +118,13 @@ it.each(["manual", "manual-rpc", "timer"] as const)(
     let timerRun: Promise<void> | undefined;
     try {
       await withPluginRuntimeGatewayRequestScope(
-        { client, context, resolveGatewayContext: () => context, isWebchatConnect: () => false },
+        {
+          client,
+          context,
+          pluginRegistry: fixture.registry.registry,
+          resolveGatewayContext: () => context,
+          isWebchatConnect: () => false,
+        },
         async () => {
           if (route === "manual-rpc") {
             const result = await dispatchGatewayMethodInProcessRaw("cron.run", {

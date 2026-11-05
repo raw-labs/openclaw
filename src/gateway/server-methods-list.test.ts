@@ -4,7 +4,6 @@ import {
   STARTUP_UNAVAILABLE_GATEWAY_METHODS,
 } from "./methods/core-method-policy.js";
 import { listGatewayMethods } from "./server-methods-list.js";
-import { LEGACY_ADVERTISED_GATEWAY_METHODS } from "./server-methods-list.test-fixtures.js";
 import { coreGatewayHandlers } from "./server-methods.js";
 
 const descriptors = createCoreGatewayMethodDescriptors(coreGatewayHandlers);
@@ -17,8 +16,7 @@ it.each([
     "operator.admin",
     { controlPlaneWrite: true },
   ],
-  ["sessions.title.prepare projects.add", "operator.write", { controlPlaneWrite: true }],
-  ["projects.searchRemote", "operator.read", {}],
+  ["sessions.title.prepare", "operator.write", { controlPlaneWrite: true }],
   ["node.runnerInventory.update", "node", { advertise: false }],
   ["mcp.events.list", "operator.read", { since: "2026.10" }],
   ["sessions.groups.create", "operator.write", { since: "2026.10" }],
@@ -64,21 +62,10 @@ it("keeps read-only methods outside the control-plane write budget", () => {
   }
 });
 
-it("preserves the legacy advertised prefix and appends the MCP catalog", () => {
-  const methods = listGatewayMethods();
-  expect(methods.slice(0, LEGACY_ADVERTISED_GATEWAY_METHODS.length)).toEqual(
-    LEGACY_ADVERTISED_GATEWAY_METHODS,
-  );
-  expect(methods.indexOf("mcp.events.list")).toBeGreaterThanOrEqual(
-    LEGACY_ADVERTISED_GATEWAY_METHODS.length,
-  );
-});
-
 it.each([
   "users.background.get",
   "users.background.upload",
   "users.background.remove",
-  "controlUi.sessionPullRequests.checks",
   "update.runs.get",
   "update.runs.list",
   "talk.voice.get",

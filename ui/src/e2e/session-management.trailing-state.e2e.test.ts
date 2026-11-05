@@ -1,18 +1,20 @@
 import type { Page } from "playwright";
 import { it, expect } from "vitest";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../src/gateway/control-ui-contract.js";
-import { evaluateControlUiContext } from "../test-helpers/control-ui-e2e-context.ts";
 import { createControlUiSessionRow as sessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { GITHUB_REPOSITORY_PLUGIN } from "../test-helpers/repository-plugin.ts";
 import { createControlUiE2eContextOptions } from "./control-ui-e2e-suite.test-support.ts";
 import * as ui from "./session-management.compact.test-support.ts";
 import {
   actionOpacity,
   createSessionManagementE2eSuite,
+  requireRecord,
 } from "./session-management.test-support.ts";
 
 const suite = createSessionManagementE2eSuite();
 
 const pullRequests = {
+  nativePlugins: [GITHUB_REPOSITORY_PLUGIN],
   featureMethods: ui.sessionMethods("sessions.patch", SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD),
   methodResponses: { [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]: { subscribed: true } },
 };
@@ -26,26 +28,43 @@ async function showPullRequests(
   await page.addInitScript((show) => {
     localStorage.setItem("openclaw:sidebar:sessions:show-preview", String(show));
   }, preview);
-  await ui.installSessionRows(page, rows, { ...pullRequests, sessionKey: "agent:main:main" });
+  const gateway = await ui.installSessionRows(page, rows, {
+    ...pullRequests,
+    sessionKey: "agent:main:main",
+  });
   await page.goto(`${suite.server.baseUrl}chat`);
   const toggle = page.locator('[data-session-section="work"] .sidebar-session-group-toggle');
   await ui.visible(toggle);
   await toggle.click();
-  await seedPullRequestSummary(page, key, state);
-  return toggle;
-}
-
-async function seedPullRequestSummary(page: Page, key: string, state: "open" | "merged") {
-  await evaluateControlUiContext(
-    page,
-    (context, summary) => {
-      context.sessions.setPullRequestSummary(summary.key, {
-        numbers: [1],
-        state: summary.state,
+  await expect
+    .poll(async () => {
+      const requests = await gateway.getRequests(SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD);
+      return requests.some((request) => {
+        const keys = requireRecord(request.params).passiveSessionKeys;
+        return Array.isArray(keys) && keys.includes(key);
       });
+    })
+    .toBe(true);
+  await gateway.emitGatewayEvent("controlUi.sessionPullRequests.changed", {
+    sessions: {
+      [key]: {
+        pullRequests: [
+          {
+            owner: "example",
+            repo: "repository",
+            number: 1,
+            state,
+            branch: "fixture/branch",
+            title: "Synthetic PR",
+            url: "https://github.com/example/repository/pull/1",
+          },
+        ],
+        status: "ready",
+        rateLimited: false,
+      },
     },
-    { key, state },
-  );
+  });
+  return toggle;
 }
 
 const touchOptions = {
@@ -261,7 +280,7 @@ suite.define(() => {
       await plainRow.hover();
       const plainArchive = plainRow.locator("[data-sidebar-session-archive] svg");
       await ui.visible(plainArchive);
-      expect(ui.centerX(await ui.bounds(pullRequestIcon.locator(".session-css-icon")))).toBeCloseTo(
+      expect(ui.centerX(await ui.bounds(pullRequestIcon.locator("svg")))).toBeCloseTo(
         ui.centerX(await ui.bounds(plainArchive)),
         1,
       );
@@ -326,7 +345,7 @@ suite.define(() => {
         .toBe(true);
       await expect.poll(() => state.isVisible()).toBe(true);
       await ui.expectCount(row.locator(".session-glyph__ring"), 0);
-      const prIcon = row.locator("[data-pull-request-state='open'] .session-css-icon");
+      const prIcon = row.locator("[data-pull-request-state='open'] svg");
       expect(
         await prIcon.evaluate((icon) => {
           const { width, height } = icon.getBoundingClientRect();

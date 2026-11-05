@@ -11,8 +11,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { expect, it, vi } from "vitest";
 import { createSandboxTestContext } from "../agents/sandbox/test-fixtures.js";
+import { createGitHubPublishTool } from "../agents/test-helpers/github-plugin-tools.js";
 import { withGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubPublishTool } from "../agents/tools/github-publish-tool.js";
 import type { InProcessGatewayCaller } from "../agents/tools/in-process-gateway.js";
 import { sqliteWorkerOwnerProbe } from "../infra/sqlite-worker-owner-probe.test-support.js";
 import * as stateWorker from "../state/openclaw-state-worker-store.js";
@@ -66,6 +66,15 @@ it("recovers a retargeted guest PR, retains saved data and publishes the resolve
   // A new request uses current credentials for the same shared publisher, not a historical profile.
   const publisher = await mocks.prepareIdentity();
   mocks.prepareIdentity.mockResolvedValue({ ...publisher, profileId: "rotated-publisher-profile" });
+  const preparePublisher = f.coordinator.provider.preparePublisher;
+  vi.spyOn(f.coordinator.provider, "preparePublisher").mockImplementation(async (...args) => {
+    const selectedPublisher = await preparePublisher(...args);
+    selectedPublisher.author = {
+      name: "Selected Publisher",
+      email: "selected-publisher@example.test",
+    };
+    return selectedPublisher;
+  });
   const originalBase = await git("rev-parse", "main");
   const destination = "review/current-destination";
   const created = mocks.runCommand.mock.calls.findLast(
@@ -299,7 +308,6 @@ it("recovers a retargeted guest PR, retains saved data and publishes the resolve
         {
           client: f.guestSource.client,
           context: Object.assign(createRequestContext(), f.guestSource.context, {
-            githubPublicationService: f.coordinator,
             workerSessionPlacementService: f.placements,
           }),
           signal,

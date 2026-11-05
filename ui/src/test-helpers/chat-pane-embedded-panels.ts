@@ -139,7 +139,6 @@ export function sidebarPanelFixtureParams(
     dashboard: null,
     digest: null,
     activeRunId: null,
-    pullRequests: [],
     companion: { turns: [], loading: false, draft: "" },
     companionPresented: false,
     companionFocusRequest: undefined,

@@ -13,7 +13,7 @@ sidebarTitle: "Tools and custom providers"
 ## What each page covers
 
 - [Configuration — tool policy](/gateway/config-tools/tool-policy) — tool profiles, tool groups, the sandbox tool gate, `tools.codeMode`, and the `allow`/`deny`, `byProvider`, `toolsBySender`, and `elevated` layers.
-- [Configuration — GitHub identity for agent tools](/gateway/config-tools/github-identity) — `tools.github`: the shared managed `gh` identity, token refresh, and the execution boundaries that receive it.
+- [Configuration — GitHub identity for agent tools](/gateway/config-tools/github-identity) — `plugins.entries.github-repositories.config.system`: the shared managed `gh` identity, token refresh, and the execution boundaries that receive it.
 - [Configuration — built-in tool settings](/gateway/config-tools/built-in-tools) — `tools.exec`, `tools.loopDetection`, `tools.web`, `tools.media`, and `tools.updatePlan`.
 - [Configuration — cross-agent, session, and subagent tools](/gateway/config-tools/sessions-and-subagents) — `tools.agentToAgent`, `tools.sessions` visibility, `tools.sessions_spawn` attachments, and `agents.defaults.subagents`.
 - [Configuration — custom providers and base URLs](/gateway/config-tools/custom-providers) — `models.providers` registration, base-URL trust, and the provider field reference.
@@ -34,7 +34,7 @@ entry points at the page that now holds the content.
 - <a id="tools.byprovider" /><a id="tools-byprovider" />[`tools.byProvider`](/gateway/config-tools/tool-policy#tools.byprovider)
 - <a id="tools.toolsbysender" /><a id="tools-toolsbysender" />[`tools.toolsBySender`](/gateway/config-tools/tool-policy#tools.toolsbysender)
 - <a id="tools.elevated" /><a id="tools-elevated" />[`tools.elevated`](/gateway/config-tools/tool-policy#tools.elevated)
-- <a id="tools.github" /><a id="tools-github" />[`tools.github`](/gateway/config-tools/github-identity#tools.github)
+- <a id="tools.github" /><a id="tools-github" />[`plugins.entries.github-repositories.config.system`](/gateway/config-tools/github-identity#tools.github)
 - <a id="tools.exec" /><a id="tools-exec" />[`tools.exec`](/gateway/config-tools/built-in-tools#tools.exec)
 - <a id="tools.loopdetection" /><a id="tools-loopdetection" />[`tools.loopDetection`](/gateway/config-tools/built-in-tools#tools.loopdetection)
 - <a id="tools.web" /><a id="tools-web" />[`tools.web`](/gateway/config-tools/built-in-tools#tools.web)

@@ -33,5 +33,4 @@ export type SessionMutationsHost = Omit<PendingRowHost & SessionRowLocalPatchHos
     agentId?: string | null,
     expectedSessionId?: string,
   ) => SessionPermissionClaim;
-  retirePullRequestSummary: (key: string) => void;
 };

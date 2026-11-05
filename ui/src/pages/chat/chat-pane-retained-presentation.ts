@@ -5,7 +5,6 @@ import type { SessionProgressCardRefreshAction } from "../../components/session-
 import { t } from "../../i18n/index.ts";
 import { boardProviderCacheKey } from "../../lib/board/provider.ts";
 import { formatUiError } from "../../lib/format-error.ts";
-import { sessionPullRequestsForGateway } from "../../lib/session-pull-requests.ts";
 import { parseCatalogSessionKey } from "../../lib/sessions/catalog-key.ts";
 import { runSessionNavigationIntent } from "../../lib/sessions/navigation-handoff.ts";
 import { sessionNavigationTarget } from "../../lib/sessions/route-navigation.ts";
@@ -36,7 +35,6 @@ import { ChatPaneBoard } from "./chat-pane-board.ts";
 import type { PaneSessionHandoff } from "./chat-pane-handoff-lifecycle.ts";
 import { captureProgressActions } from "./chat-pane-progress-actions.ts";
 import { consumePaneSessionHandoff } from "./chat-pane-shared.ts";
-import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import { stopChatRealtimeTalk } from "./chat-realtime.ts";
 import { resumeStoredChatOutboxes } from "./chat-send-actions.ts";
 import { cancelChatModelRecovery, refreshCurrentChatSessionList } from "./chat-session.ts";
@@ -557,8 +555,6 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
 
   protected override presentedChanged(presented: boolean): void {
     if (!presented) {
-      // The hidden frame is parked; retire feedback without releasing its admitted publication.
-      this.publication.binding?.sync(null);
       this.retireDetailsOutputs();
       this.retireHeaderSessionMutations();
       this.dashboardPresentationActivation = undefined;
@@ -607,19 +603,14 @@ export abstract class ChatPaneRetainedPresentation extends ChatPaneBoard {
         }
       }
       this.refreshSwarmRoster();
-      void this.refreshSessionPullRequests();
       return;
     }
     if (this.state) {
       retireChatBranchRequests(this.state);
-      // Unwatch can cancel an admitted refresh before sync; a later presentation
-      // must not inherit a receipt for work its watch no longer owns.
-      retirePullRequestRefreshes(this.state);
     }
     this.swarm.hydrator?.dispose();
     this.swarm.hydrator = null;
     this.retireTranscriptReads(true);
-    sessionPullRequestsForGateway(this.context.gateway).unwatch(this);
     this.syncActiveBindings();
     this.clearComposerPrefillAttention();
     this.settleResetConfirmation(false);

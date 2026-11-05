@@ -15,10 +15,6 @@ import {
   sessionProgressCardsForGateway,
   type SessionProgressCardStore,
 } from "../lib/session-progress-cards.ts";
-import {
-  sessionPullRequestsForGateway,
-  type SessionPullRequestSnapshotStore,
-} from "../lib/session-pull-requests.ts";
 import { parseAgentSessionKey, scopedSessionArtifactKey } from "../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../lib/solid-bridge.ts";
 import type { AppSidebarElement, AppSidebarMethods } from "./app-sidebar.tsx";
@@ -89,7 +85,6 @@ function createSessionProgressHovercard(
   const watchOwner = {};
 
   let progressCards: SessionProgressCardStore | null = null;
-  let pullRequestStore: SessionPullRequestSnapshotStore | null = null;
   let activeTarget: HTMLElement | null = null;
   let activeTrigger: HTMLElement | null = null;
   let activeSession: ProgressCardGetParams | null = null;
@@ -250,12 +245,6 @@ function createSessionProgressHovercard(
     open = true;
     delayed = false;
     skipDelay.cancel();
-    const gateway = applicationGateway();
-    if (gateway) {
-      pullRequestStore = sessionPullRequestsForGateway(gateway);
-      projection.replaceSource(readSources());
-      pullRequestStore.watch(watchOwner, [artifactKey], { foreground: true });
-    }
     showCurrent();
     // The projection receives both successful loads and failures; keep the last useful card.
     void progressCards?.load(session).catch(() => {});
@@ -272,7 +261,6 @@ function createSessionProgressHovercard(
       return current;
     }
     const sidebarRow = host.lookupSidebarRow?.(sessionKey);
-    const pullRequests = pullRequestStore?.get(artifactKey);
     const currentProgressCard = progressCards?.get(session);
     if (currentProgressCard !== undefined) {
       lastProgressCard = currentProgressCard;
@@ -281,16 +269,6 @@ function createSessionProgressHovercard(
     const revision = JSON.stringify({
       gateway: gatewaySnapshotRevision,
       progress: lastProgressCard?.revision ?? null,
-      pullRequests: pullRequests
-        ? {
-            branch: pullRequests.branch,
-            pullRequests: pullRequests.pullRequests,
-            taskPullRequests: pullRequests.taskPullRequests,
-            taskPullRequestCount: pullRequests.taskPullRequestCount,
-            pullRequestCount: pullRequests.pullRequestCount,
-            status: pullRequests.status,
-          }
-        : null,
       row: sidebarRow
         ? {
             label: sidebarRow.label,
@@ -350,7 +328,6 @@ function createSessionProgressHovercard(
       personActivity: currentContext
         ? personActivityRouting(currentContext, () => close())
         : undefined,
-      pullRequests,
       session: { sessionKey, agentId: session.agentId },
       onContentChange: (phase) => {
         if (phase === "before") {
@@ -494,8 +471,6 @@ function createSessionProgressHovercard(
     current = undefined;
     activeTargetObserver.disconnect();
     progressCards?.unwatch(watchOwner);
-    pullRequestStore?.unwatch(watchOwner);
-    pullRequestStore = null;
     projection.replaceSource(readSources());
     activeTarget = null;
     activeTrigger = null;
@@ -509,10 +484,9 @@ function createSessionProgressHovercard(
     context: applicationContext(),
     gateway: applicationGateway(),
     progressCards,
-    pullRequestStore,
   });
   const projection = projectSource<ReturnType<typeof readSources>, HovercardFrame | undefined>(
-    { context: null, gateway: null, progressCards: null, pullRequestStore: null },
+    { context: null, gateway: null, progressCards: null },
     {
       read: () => readCurrent(),
       subscribe: (sources, notify) => {
@@ -524,7 +498,6 @@ function createSessionProgressHovercard(
           }),
           sources.context?.sessions.subscribe(notify),
           sources.progressCards?.subscribe(notify),
-          sources.pullRequestStore?.subscribe(notify),
         ];
         return () => stops.forEach((stop) => stop?.());
       },

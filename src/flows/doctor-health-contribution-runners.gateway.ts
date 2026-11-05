@@ -133,16 +133,6 @@ export async function runBundleLspEnvHealth(ctx: DoctorHealthFlowContext): Promi
   });
 }
 
-export async function runGitHubProjectHealth(ctx: DoctorHealthFlowContext): Promise<void> {
-  const { hasConfiguredGitHubApiCredential } = await import("../gateway/github-public-api.js");
-  if (!hasConfiguredGitHubApiCredential(ctx.env ?? process.env, ctx.cfg)) {
-    note(
-      "Set gateway.controlUi.github.token with gateway.controlUi.github.host matching gateway.github.host for private project access. Public github.com can also use GH_TOKEN/GITHUB_TOKEN; otherwise search is public-only.",
-      "GitHub projects",
-    );
-  }
-}
-
 export async function runBrowserHealth(ctx: DoctorHealthFlowContext): Promise<void> {
   const { collectBrowserReadinessFindings } = await import("../commands/doctor-browser.js");
   const findings = await collectBrowserReadinessFindings(ctx.cfg);

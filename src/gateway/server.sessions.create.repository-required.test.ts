@@ -2,15 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, test, vi } from "vitest";
-import { clearGitHubCredentialVerificationCache } from "../agents/github-oauth-client.js";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
 import { loadSessionEntry, upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { NodeWorkerWorkspaceRuntime } from "../node-host/node-worker-workspace.js";
 import { createPluginRecord } from "../plugins/loader-records.js";
 import { createTestPluginRegistry } from "../plugins/registry-runtime.test-helpers.js";
+import { createRepositorySourceFixture } from "../plugins/repository-source.test-support.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { captureSessionTarget } from "../sessions/session-controller.lifecycle.js";
 import { captureSessionControllerStop, stopSession } from "../sessions/session-controller.stop.js";
@@ -19,7 +15,11 @@ import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../state/user-profiles.js";
-import * as oauth from "./github-oauth-lifecycle.js";
+import {
+  loadGitHubRepositoryRuntimeFixture,
+  loadGitHubProfileFixture,
+} from "./github-repository-fixture-api.test-support.js";
+import { createRepositorySources } from "./repository-sources.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { initializeSessionReadContext } from "./server-methods/sessions-read-cache.test-support.js";
@@ -39,6 +39,11 @@ import { createRepositoryPolicySource } from "./worker-environments/repository-p
 import { deriveEnvironmentIntent } from "./worker-environments/service-contract.js";
 import { captureWorkspaceManifest } from "./worker-environments/workspace-manifest-worker.js";
 import { serializeWorkerWorkspaceManifest } from "./worker-environments/workspace-manifest.js";
+
+const { clearGitHubCredentialVerificationCache, createGitHubRepositorySource } =
+  await loadGitHubRepositoryRuntimeFixture();
+const { resolveManagedGitHubProfileDir, writeManagedGitHubProfileFiles } =
+  await loadGitHubProfileFixture();
 
 const { createSessionStoreDir } = setupGatewaySessionsHandlerTestHarness();
 afterEach(() => {
@@ -63,7 +68,9 @@ test.each(["allowed", "policy", "source", "stop", "caller"] as const)(
         profiles: { development: { provider: "fake", settings: {} } },
       },
       gateway: { repositoryIntegration: "repository-policy" },
-      tools: { github: { profileId } },
+      plugins: {
+        entries: { "github-repositories": { enabled: true, config: { system: { profileId } } } },
+      },
     });
     const profileDir = resolveManagedGitHubProfileDir({
       agentId: "main",
@@ -111,9 +118,13 @@ test.each(["allowed", "policy", "source", "stop", "caller"] as const)(
       },
     });
     setActivePluginRegistry(builder.registry);
+    const sourceFixture = createRepositorySourceFixture(
+      createGitHubRepositorySource(config.getRuntimeConfig, async () => {}),
+      builder,
+    );
+    const sources = createRepositorySources(new AbortController().signal, sourceFixture.registry);
     const verify = vi.fn(async () => Response.json({ id: 202, login: "fixture" }));
     vi.stubGlobal("fetch", verify);
-    vi.spyOn(oauth, "requestCurrentGitHubOAuthRefresh").mockResolvedValue(undefined);
     const origin = path.join(dir, "origin");
     const { baseCommit, base } = await createRepositoryPolicySource(origin);
     const database = openOpenClawStateDatabase();
@@ -122,6 +133,7 @@ test.each(["allowed", "policy", "source", "stop", "caller"] as const)(
     const entry = () => loadSessionEntry({ agentId: "main", sessionKey: key, storePath });
     const harness = await createHarness(database, placements, {
       requiresNodeEnrollment: true,
+      getRepositorySources: () => sources,
       resolveWorkspace: async () => {
         const workspaceId = entry()?.repositoryWorkspaceId;
         if (!workspaceId) {
@@ -268,6 +280,7 @@ test.each(["allowed", "policy", "source", "stop", "caller"] as const)(
       getRuntimeConfig: config.getRuntimeConfig,
       getClientConnIds: () => new Set([client.connId]),
     });
+    context.repositorySources = sources;
     context.workerPlacementDispatchService = { ...coordinated, withRequiredSession: prepare };
     context.workerSessionPlacementService = placements;
     await initializeSessionReadContext(context);

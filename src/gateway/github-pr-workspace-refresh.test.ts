@@ -7,7 +7,6 @@ import { describe, expect, it, vi } from "vitest";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
-import * as publicationPublisher from "./github-publication-publisher.js";
 import {
   commandResult,
   installGitHubPublicationTestHarness,
@@ -21,17 +20,17 @@ describe("imported PR source refresh", () => {
   });
 
   it("uses the publisher-provided author for local source-integration commits", async () => {
-    const preparePublisher = publicationPublisher.prepareGitHubPublisher;
+    const f = await fixture();
+    const preparePublisher = f.coordinator.provider.preparePublisher;
     const selectedAuthor = { name: "Verified Publisher", email: "publisher@example.test" };
     const override = vi
-      .spyOn(publicationPublisher, "prepareGitHubPublisher")
+      .spyOn(f.coordinator.provider, "preparePublisher")
       .mockImplementation(async (...args) => {
         const publisher = await preparePublisher(...args);
         publisher.author = selectedAuthor;
         return publisher;
       });
     try {
-      const f = await fixture();
       // Import fixture history first so new objects below are host-generated commits,
       // not the existing PR author's commits brought in by the source fetch.
       await f.git("fetch", "--no-write-fetch-head", f.upstream, "main", "topic/existing");

@@ -24,7 +24,7 @@ import {
   loadFileWrapPreference,
   saveFileWrapPreference,
 } from "./chat-sidebar-file-view.tsx";
-import type { ChatDetailPanelProps, ChatDetailPanel } from "./chat-sidebar-view-types.ts";
+import type { ChatDetailPanel, ChatDetailPanelProps } from "./chat-sidebar-view-types.ts";
 import type { FileEditorViewHandle } from "./file-editor-view.ts";
 
 type FilePresentationState = {
@@ -43,6 +43,7 @@ type FilePresentationState = {
   searchToggle?: HTMLButtonElement | (() => HTMLButtonElement | undefined);
 };
 
+/** The file viewer borrows the same admitted providers as the transcript. */
 export function createFileTextReferences(props: ChatDetailPanelProps, host: ChatDetailPanel) {
   const application = useOptionalApplication();
   return createTextReferenceProjection(() => ({
@@ -370,6 +371,10 @@ export function createFilePresentationActions(context: {
   }
   return {
     interact,
+    toggleHtmlSource: () => {
+      presentation.fileSearchOpen = false;
+      context.htmlPreview.toggle();
+    },
     syncFileEditor,
     restoreFileReadingPresentation,
     showRequestedReadingMode,

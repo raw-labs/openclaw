@@ -457,8 +457,8 @@ describe("AppSidebar session indicators", () => {
     await waitForFast(() =>
       expect(sidebar.querySelectorAll(".sidebar-recent-session--child")).toHaveLength(5),
     );
-    sessions.sessions.setPullRequestSummary(openPullRequestKey, { numbers: [1], state: "open" });
-    sessions.sessions.setPullRequestSummary(mergedPullRequestKey, {
+    sessions.publishPullRequests(openPullRequestKey, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(mergedPullRequestKey, {
       numbers: [2],
       state: "merged",
     });
@@ -567,19 +567,19 @@ describe("AppSidebar session indicators", () => {
     const { sidebar } = await mountSidebar(gatewayHarness.gateway, sessions.sessions);
     sidebar.connected = true;
     await sidebar.updateComplete;
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, { numbers: [1], state: "open" });
-    sessions.sessions.setPullRequestSummary(keys.mergedPullRequest, {
+    sessions.publishPullRequests(keys.openPullRequest, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(keys.mergedPullRequest, {
       numbers: [1],
       state: "merged",
     });
 
     await waitForFast(() => {
-      expect(sidebar.querySelector('[data-pull-request-state="open"]')).not.toBeNull();
-      expect(sidebar.querySelector('[data-pull-request-state="merged"]')).not.toBeNull();
+      expect(sidebar.querySelector('[data-pull-request-state="open"] svg')).not.toBeNull();
+      expect(sidebar.querySelector('[data-pull-request-state="merged"] svg')).not.toBeNull();
     });
     // Opening chat hydrates its detailed summary from the same last-known snapshot.
     // It must not add a second PR icon beside the sidebar's existing indicator.
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, { numbers: [1], state: "open" });
+    sessions.publishPullRequests(keys.openPullRequest, { numbers: [1], state: "open" });
     await sidebar.updateComplete;
     expect(
       sidebar.querySelectorAll(
@@ -626,10 +626,10 @@ describe("AppSidebar session indicators", () => {
     expect(runningUnread?.querySelector(".sr-only")?.textContent).toBe("Unread");
 
     const openPullRequestIcon = sidebar.querySelector(
-      `[data-session-key="${keys.openPullRequest}"] [data-pull-request-state="open"] .session-css-icon`,
+      `[data-session-key="${keys.openPullRequest}"] [data-pull-request-state="open"] svg`,
     );
     const mergedPullRequestIcon = sidebar.querySelector(
-      `[data-session-key="${keys.mergedPullRequest}"] [data-pull-request-state="merged"] .session-css-icon`,
+      `[data-session-key="${keys.mergedPullRequest}"] [data-pull-request-state="merged"] svg`,
     );
     expect(openPullRequestIcon).not.toBeNull();
     expect(mergedPullRequestIcon).not.toBeNull();
@@ -638,9 +638,11 @@ describe("AppSidebar session indicators", () => {
     for (const key of [keys.openPullRequest, keys.mergedPullRequest]) {
       const row = sidebar.querySelector(`[data-session-key="${key}"]`);
       expectEmptyLead(row);
-      expect(row?.querySelector(".session-row-badges [data-pull-request-state]")).not.toBeNull();
+      expect(
+        row?.querySelector(".sidebar-recent-session__details-endcap [data-pull-request-state]"),
+      ).not.toBeNull();
       expect(row?.querySelector("a")?.hasAttribute("title")).toBe(false);
-      expect(row?.querySelector("[data-pull-request-state]")?.getAttribute("title")).toContain(
+      expect(row?.querySelector("[data-pull-request-state]")?.getAttribute("aria-label")).toContain(
         "#1",
       );
     }
@@ -649,7 +651,7 @@ describe("AppSidebar session indicators", () => {
     if (!openPullRequestRow) {
       throw new Error("expected open PR session");
     }
-    sessions.sessions.setPullRequestSummary(keys.openPullRequest, undefined);
+    sessions.publishPullRequests(keys.openPullRequest, undefined);
     openPullRequestRow.worktree = undefined;
     sessions.publishList({ result });
     await waitForFast(() => {

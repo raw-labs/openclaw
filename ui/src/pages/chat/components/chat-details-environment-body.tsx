@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { lazy, Show } from "solid-js";
+import { Show } from "solid-js";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
 import { SessionGitDiff } from "../../../components/session-git-diff.tsx";
 import { Icon } from "../../../components/solid/icon.tsx";
@@ -8,12 +8,7 @@ import { t } from "../../../lib/reactive/i18n.ts";
 import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type { ChatDetailsEnvironmentDesktopProps } from "./chat-details-types.ts";
 import { EnvironmentAction, EnvironmentChangeCounts } from "./chat-environment-content.tsx";
-import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
 import { ChatPanePlacement, type ChatPanePlacementProps } from "./chat-pane-placement.tsx";
-
-const ChatBranchActions = lazy(() => import("./chat-branch-actions.tsx"), {
-  export: "ChatBranchActions",
-});
 
 type Props = ChatDetailsEnvironmentDesktopProps & {
   placement: ChatPanePlacementProps;
@@ -22,9 +17,8 @@ type Props = ChatDetailsEnvironmentDesktopProps & {
   host: string | undefined;
   branchName: string | undefined;
   worktree: boolean;
-  diff: SessionsDiffResult | NonNullable<ChatDetailsEnvironmentDesktopProps["work"]>["branch"];
+  diff: SessionsDiffResult | undefined;
   changes: SessionsDiffResult | undefined;
-  fallbackWork: ChatDetailsEnvironmentDesktopProps["work"];
   accessoryPresent: boolean;
   accessoryPresented: boolean;
   onAccessoryPresenceChange: (present: boolean) => void;
@@ -85,7 +79,7 @@ export function ChatDetailsEnvironmentBody(props: Props) {
         onPresenceChange={props.onAccessoryPresenceChange}
         onOpenSessionDiff={props.details.onOpenSessionDiff}
       />
-      <Show when={(props.branchName || props.work) && !props.accessoryPresent}>
+      <Show when={props.branchName && !props.accessoryPresent}>
         <div class="chat-environment__branch">
           <div class="chat-details__row chat-environment__row" title={props.branchName}>
             <Icon name={props.branchName ? "gitBranch" : "gitPullRequest"} />
@@ -93,37 +87,21 @@ export function ChatDetailsEnvironmentBody(props: Props) {
               ref={createTextOverflow(() => props.branchName)}
               class="chat-environment__branch-name"
             >
-              {props.branchName ?? t("chat.pullRequests.publishPr")}
+              {props.branchName}
             </span>
             <Show when={props.worktree}>
               <small class="chat-details__badge">{t("chat.sessionDetails.worktree")}</small>
             </Show>
           </div>
-          <Show when={props.diff || props.work}>
+          <Show when={props.diff}>
             <div class="chat-environment__branch-controls">
               <Show when={props.diff}>
                 {(value) => (
                   <SessionGitDiff
                     classPrefix="chat-pr"
                     item={value()}
-                    onOpen={
-                      props.work?.branch ? props.work?.onOpenSessionDiff : props.onOpenUncommitted
-                    }
+                    onOpen={props.onOpenUncommitted}
                   />
-                )}
-              </Show>
-              <Show when={props.work}>
-                {(value) => (
-                  <ChatLazyBoundary>
-                    <ChatBranchActions
-                      branch={value().branch}
-                      branchName={props.branchName ?? t("chat.pullRequests.publishPr")}
-                      status={value().status}
-                      publication={value().publication}
-                      presented={props.presented && props.expanded}
-                      onDismiss={value().onDismissBranch}
-                    />
-                  </ChatLazyBoundary>
                 )}
               </Show>
             </div>
@@ -136,11 +114,11 @@ export function ChatDetailsEnvironmentBody(props: Props) {
           <span>{t("chat.sessionDetails.worktree")}</span>
         </div>
       </Show>
-      <Show when={!props.branchName && !props.work && !props.accessoryPresent && props.changes}>
+      <Show when={!props.branchName && !props.accessoryPresent && props.changes}>
         <div class="chat-details__row chat-environment__row">
           <EnvironmentAction
             presented={props.presented}
-            onOpen={props.onOpenUncommitted ?? props.fallbackWork?.onOpenSessionDiff}
+            onOpen={props.onOpenUncommitted ?? props.details.onOpenSessionDiff}
           >
             {() => (
               <>

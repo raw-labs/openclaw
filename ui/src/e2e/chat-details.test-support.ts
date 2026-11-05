@@ -98,10 +98,12 @@ export async function openDetailsPullRequests(page: Page | Locator): Promise<Loc
   const pullRequests = details.locator(
     '.chat-details-session [data-details-group="pull-requests"]',
   );
-  if ((await pullRequests.getAttribute("open")) === null) {
-    await pullRequests.locator(":scope > summary").click();
+  const summary = pullRequests.locator(":scope > summary");
+  // A closing native disclosure stays physically open until its animation settles.
+  if ((await summary.getAttribute("aria-expanded")) !== "true") {
+    await summary.click();
   }
-  await expect.poll(() => pullRequests.getAttribute("open")).not.toBeNull();
+  await expect.poll(() => summary.getAttribute("aria-expanded")).toBe("true");
   return pullRequests;
 }
 
@@ -133,7 +135,9 @@ export async function openChatPublication(page: Page | Locator): Promise<Locator
   if (await details.locator(".chat-mobile-host__details").count()) {
     const group = await openDetailsPullRequests(page);
     await group.locator('[data-details-destination="publication"]').click();
-    const review = details.locator('.chat-mobile-details-page[data-details-page="publication"]');
+    const review = visibleDetails(nativePane(page)).locator(
+      '[data-repository-page="publication"]:not([hidden])',
+    );
     await review.waitFor();
     return review;
   }

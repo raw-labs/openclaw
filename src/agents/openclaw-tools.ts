@@ -60,8 +60,6 @@ import { createCronTool } from "./tools/cron-tool.js";
 import { createDashboardTool } from "./tools/dashboard-tool.js";
 import { createDecisionTool } from "./tools/decision-tool.js";
 import { createEmbeddedCallGateway } from "./tools/embedded-gateway-stub.js";
-import { createGitHubIdentityStatusTool } from "./tools/github-identity-status-tool.js";
-import { createGitHubPublishTool } from "./tools/github-publish-tool.js";
 import {
   createCreateGoalTool,
   createGetGoalTool,
@@ -473,7 +471,6 @@ function* createOpenClawToolsSteps(
       })
     : null;
   const transcriptsTool = resolveTranscriptsTool(resolvedConfig, sessionAgentId, options);
-  const githubSettingsOffered = options?.listingClientCaps?.includes("ui-agent-github-settings");
   const tools: AnyAgentTool[] = [
     ...createInstalledSkillTools(options?.installedSkills ?? []),
     createDashboardTool({
@@ -522,7 +519,9 @@ function* createOpenClawToolsSteps(
           createScreenTool({
             agentSessionKey: options?.runSessionKey ?? options?.agentSessionKey,
             agentId: sessionAgentId,
-            githubIdentitySettingsAvailable: githubSettingsOffered,
+            githubIdentitySettingsAvailable: options?.listingClientCaps?.includes(
+              "ui-agent-github-settings",
+            ),
           }),
           createThemeTool(),
           ...(options?.sandboxed
@@ -560,16 +559,6 @@ function* createOpenClawToolsSteps(
         }),
     createDecisionTool(sessionAgentId, options),
     createTtsTool({ ...options, agentId: sessionAgentId }),
-    options?.githubPublicationAvailable !== undefined
-      ? createGitHubIdentityStatusTool(options)
-      : null,
-    options?.githubPublicationAvailable !== undefined
-      ? createGitHubPublishTool({
-          ...options,
-          publicationAvailable: options.githubPublicationAvailable,
-          preview: options.githubPublicationPreview,
-        })
-      : null,
     transcriptsTool,
     imageGenerateTool,
     musicGenerateTool,

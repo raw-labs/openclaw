@@ -6,6 +6,7 @@ import { withInstallationTarget } from "../../infra/installation-target-context.
 import * as gatewayCliShim from "../../infra/openclaw-cli-shim.js";
 import { createExecutionEnvironmentFixture } from "../../plugins/execution-environment.test-support.js";
 import { createAdmittedRunOperatorAuthority } from "../admitted-run-context.js";
+import { createGitHubExecutionFixture } from "../execution-environment.test-support.js";
 import { createAdmittedHostCapabilityTestFixture } from "./host-capability.test-support.js";
 
 afterEach(() => {
@@ -37,7 +38,7 @@ describe("prepared harness tool environment", () => {
       expect(host.hostCapabilities.preparedEnvironment?.()).toMatchObject({
         credentialScrubEnv: { EXAMPLE_CREDENTIAL: "" },
         localIdentityEnv: { EXAMPLE_IDENTITY: "agent" },
-        managedLocalIdentity: false,
+        managedLocalIdentity: true,
         hostExecutionRequired: true,
       });
       await fixture.instance.dispose();
@@ -50,23 +51,37 @@ describe("prepared harness tool environment", () => {
   it("keeps host context reads current and closure-bound", async () => {
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");
-    const config = { tools: { github: { profileId: "ghp_11111111111111111111111111111111" } } };
+    const config = {
+      tools: {},
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              system: { profileId: "ghp_11111111111111111111111111111111" },
+            },
+          },
+        },
+      },
+    };
     const target = { stateDir: "/state", configPath: "/config", defaultWorkspaceDir: "/workspace" };
-    const host = await withInstallationTarget(target, () =>
-      createAdmittedHostCapabilityTestFixture(
-        {
-          runId: "run-local-env",
-          agentId: "main",
-          sessionKey: "agent:main:session-1",
-          config,
-        },
-        {
-          operatorAuthority: createAdmittedRunOperatorAuthority({
-            profileId: "requester",
-            scopes: ["operator.read"],
-            assertCurrent: () => {},
-          }),
-        },
+    const execution = createGitHubExecutionFixture(config);
+    const host = await execution.run(() =>
+      withInstallationTarget(target, () =>
+        createAdmittedHostCapabilityTestFixture(
+          {
+            runId: "run-local-env",
+            agentId: "main",
+            sessionKey: "agent:main:session-1",
+            config,
+          },
+          {
+            operatorAuthority: createAdmittedRunOperatorAuthority({
+              profileId: "requester",
+              scopes: ["operator.read"],
+              assertCurrent: () => {},
+            }),
+          },
+        ),
       ),
     );
     try {

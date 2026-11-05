@@ -159,7 +159,7 @@ function PaneHeaderContent(props: {
   sessionKey: string;
   agentId: string;
   presentation: PresentationValue;
-  facts?: import("../../../../src/plugin-sdk/control-ui.js").ControlUiSessionHeaderFacts;
+  facts?: ChatProps["sessionHeaderFacts"];
 }) {
   const presented = usePanePresentation(() => props.presentation);
   return (
@@ -168,9 +168,9 @@ function PaneHeaderContent(props: {
       {props.notice ? renderChatTopbarNotices(props.notice) : undefined}
       <PluginContributions
         kind="session-header"
-        facts={props.facts}
         sessionKey={props.sessionKey}
         agentId={props.agentId}
+        facts={props.facts}
         presented={presented()}
       />
     </>

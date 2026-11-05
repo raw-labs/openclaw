@@ -44,6 +44,7 @@ function selectSessionSharingEntry(entry: InternalSessionEntry) {
     pluginOwnerId: entry.pluginOwnerId,
     skillLibrarySelections: entry.skillLibrarySelections,
     pendingProjectGitUrl: entry.pendingProjectGitUrl,
+    repositorySourceId: entry.repositorySourceId,
     pendingWorktree: entry.pendingWorktree,
     lifecycleRevision: entry.lifecycleRevision,
     lifecycleRunId: entry.lifecycleRunId,

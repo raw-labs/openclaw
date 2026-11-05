@@ -1,26 +1,20 @@
+import { asRecord } from "@openclaw/normalization-core/record-coerce";
 import { expect, it } from "vitest";
-import { evaluateControlUiContext } from "../test-helpers/control-ui-e2e-context.ts";
+import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../src/gateway/control-ui-contract.js";
+import { parseSidebarSnapshot } from "../components/sidebar-snapshot-model.ts";
 import {
   controlUiBundledSettingsStorageKey,
   controlUiSessionUrl,
-  installMockGateway,
+  defaultControlUiFeatureMethods,
   pauseVirtualClock,
 } from "../test-helpers/control-ui-e2e.ts";
 import { createControlUiSessionRow } from "../test-helpers/control-ui-session-fixtures.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 
 const suite = createControlUiE2eSuite({ name: "Cross-tab sidebar deletion invalidation" });
 type DeletionProbe = Record<"sent" | "received" | "wipes" | "writes", number> & {
   exchanged: Promise<void>;
-  measuring: boolean;
-  operations: Array<{
-    operation: string;
-    measuring: boolean;
-    at: number;
-    invalidations: { sent: number; received: number };
-    stack?: string;
-    value: unknown;
-  }>;
 };
 declare global {
   interface Window {
@@ -74,8 +68,6 @@ suite.define(() => {
               received: 0,
               wipes: 0,
               writes: 0,
-              measuring: false,
-              operations: [],
               exchanged: new Promise<void>((resolve) => {
                 settle = resolve;
               }),
@@ -115,14 +107,6 @@ suite.define(() => {
                 const source = this instanceof IDBCursor ? this.source : this;
                 if (source instanceof IDBObjectStore && source.name === "sidebarSnapshots") {
                   probe[counter] += 1;
-                  probe.operations.push({
-                    operation: operation.name,
-                    measuring: probe.measuring,
-                    at: Date.now(),
-                    invalidations: { sent: probe.sent, received: probe.received },
-                    stack: new Error("Sidebar snapshot operation").stack,
-                    value: args[0],
-                  });
                 }
                 return operation.apply(this, args);
               };
@@ -144,6 +128,30 @@ suite.define(() => {
         const row = (target: typeof page, key: string) =>
           target.locator(`aside.sidebar [data-session-key="${key}"]`);
         const gateways: Array<Awaited<ReturnType<typeof installMockGateway>>> = [];
+        const publishPullRequest = (
+          gateway: Awaited<ReturnType<typeof installMockGateway>>,
+          number: number,
+        ) =>
+          gateway.emitGatewayEvent("controlUi.sessionPullRequests.changed", {
+            sessions: {
+              [retained.key]: {
+                status: "ready",
+                rateLimited: false,
+                discardPrevious: true,
+                pullRequests: [
+                  {
+                    owner: "synthetic",
+                    repo: "sidebar-fixture",
+                    number,
+                    branch: "feature/sidebar",
+                    title: "Synthetic sidebar pull request",
+                    url: `https://github.com/synthetic/sidebar-fixture/pull/${number}`,
+                    state: "open",
+                  },
+                ],
+              },
+            },
+          });
         for (const target of pages) {
           const gateway = await installMockGateway(target, {
             authMethod: "trusted-proxy",
@@ -151,9 +159,14 @@ suite.define(() => {
             awaitInitialRoster: false,
             sessionKey: retained.key,
             sessions: [retained, deleted],
+            featureMethods: [
+              ...defaultControlUiFeatureMethods,
+              SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
+            ],
             heldMethods: ["connect"],
             historyMessages: [{ role: "assistant", content: "Retained synthetic transcript." }],
             methodResponses: {
+              [SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD]: { subscribed: true },
               "sessions.list": {
                 ts: 1,
                 path: "",
@@ -192,13 +205,13 @@ suite.define(() => {
           await target
             .locator('aside.sidebar[data-snapshot-state="live"][data-snapshot-saved="true"]')
             .waitFor();
+          await gateway.waitForRequest(SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD);
         }
         for (const target of pages) {
           await target.evaluate(() => {
             Object.assign(window.openclawDeletionSnapshotProbe, {
               wipes: 0,
               writes: 0,
-              measuring: true,
             });
           });
         }
@@ -215,18 +228,18 @@ suite.define(() => {
         }
         for (let step = 0; step < 24; step += 1) {
           for (const [index, target] of pages.entries()) {
-            await evaluateControlUiContext(
-              target,
-              (app, tick) => {
-                for (let repeat = 0; repeat < (tick === 0 ? 20 : 1); repeat += 1) {
-                  app.sessions.setPullRequestSummary("agent:main:main", {
-                    state: "open",
-                    numbers: [tick * 20 + repeat + 1],
-                  });
-                }
-              },
-              step,
-            );
+            for (let repeat = 0; repeat < (step === 0 ? 20 : 1); repeat += 1) {
+              const number = step * 20 + repeat + 1;
+              await publishPullRequest(gateways[index]!, number);
+            }
+            await row(target, retained.key)
+              .first()
+              .locator(
+                '.session-row-badge--pull-request[aria-label^="#' +
+                  (step === 0 ? 20 : step * 20 + 1) +
+                  ' "]',
+              )
+              .waitFor();
             await gateways[index]!.emitGatewayEvent("tick", {});
           }
           await page.clock.runFor(5_000);
@@ -244,18 +257,72 @@ suite.define(() => {
         const snapshots = await Promise.all(
           pages.map((target) =>
             target.evaluate(() => {
-              const { writes, operations } = window.openclawDeletionSnapshotProbe;
-              return { writes, operations };
+              const { writes } = window.openclawDeletionSnapshotProbe;
+              return { writes };
             }),
           ),
         );
         const writes = snapshots.map((snapshot) => snapshot.writes);
         // A subagent deletion also settles its retained parent's child-load targets.
+        // Each tab may also persist its first passive badge facts, newly needed for reload parity.
         expect(
           writes.reduce((total, count) => total + count, 0),
           JSON.stringify({ tail, snapshots }, null, 2),
-        ).toBeLessThanOrEqual(subagent ? 2 : 1);
+        ).toBeLessThanOrEqual((subagent ? 2 : 1) + pages.length);
         console.info("deletion-cache-writes-per-two-virtual-minutes", { tail, writes });
+        const stored = await page.evaluate(
+          () =>
+            new Promise<unknown[]>((resolve, reject) => {
+              const request = indexedDB.open("openclaw-chat-snapshots");
+              request.addEventListener(
+                "error",
+                () =>
+                  reject(new Error("Cannot open sidebar snapshot cache", { cause: request.error })),
+                { once: true },
+              );
+              request.addEventListener(
+                "success",
+                () => {
+                  const database = request.result;
+                  const read = database
+                    .transaction("sidebarSnapshots")
+                    .objectStore("sidebarSnapshots")
+                    .getAll();
+                  read.addEventListener(
+                    "error",
+                    () => {
+                      database.close();
+                      reject(
+                        new Error("Cannot read sidebar snapshot cache", { cause: read.error }),
+                      );
+                    },
+                    { once: true },
+                  );
+                  read.addEventListener(
+                    "success",
+                    () => {
+                      database.close();
+                      resolve(read.result);
+                    },
+                    { once: true },
+                  );
+                },
+                { once: true },
+              );
+            }),
+        );
+        expect(
+          stored.some((record) =>
+            parseSidebarSnapshot(asRecord(record)?.model)?.pinnedSessions.some(
+              (session) =>
+                session.key === retained.key &&
+                session.state?.badges?.some(
+                  (badge) =>
+                    badge.pluginId === "github-repositories" && badge.id === "pull-request",
+                ),
+            ),
+          ),
+        ).toBe(true);
         await page.locator("aside.sidebar").screenshot({
           path: `${suite.artifactDir}/${subagent ? "subagent" : "normal"}-live.png`,
         });

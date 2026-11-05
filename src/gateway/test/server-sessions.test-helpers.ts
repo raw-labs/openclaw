@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, expect, vi } from "vitest";
+import { afterEach, beforeEach, expect, onTestFinished, vi } from "vitest";
 import { registerAcpSessionResetControls } from "../../acp/control-plane/manager.reset-controls.js";
 import type { AgentHarness } from "../../agents/harness/types.js";
 import { setRuntimeConfigSnapshot } from "../../config/runtime-snapshot.js";
@@ -8,6 +8,11 @@ import type { InternalSessionEntry as SessionEntry } from "../../config/sessions
 import type { InternalHookEvent } from "../../hooks/internal-hooks.js";
 import { resetSystemEventsForTest } from "../../infra/system-events.js";
 import type { HookRunner } from "../../plugins/hooks.js";
+import {
+  bindLegacyPluginSdkResourceHost,
+  LegacyPluginSdkResourceHost,
+} from "../../plugins/legacy-sdk-resource-host.js";
+import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { createLazyRuntimeModule } from "../../shared/lazy-runtime.js";
 import { createDirectChatContext } from "../server-chat.agent-events.test-helpers.js";
 import { flushPendingSessionsChangedEvents } from "../server-methods/session-change-event.js";
@@ -19,6 +24,7 @@ import type { GatewayRequestContext } from "../server-methods/types.js";
 import { loadGatewayTestConfig } from "../test-helpers.config-runtime.js";
 import { embeddedRunMock, testState } from "../test-helpers.runtime-state.js";
 import * as gatewayTestHelpers from "../test-helpers.server.js";
+import { createRepositorySourcesFixture } from "../worker-environments/repository-source.test-support.js";
 import {
   installGatewaySessionsTestResources,
   type GatewaySessionsSuiteSetup,
@@ -531,6 +537,13 @@ export async function directSessionReq<TPayload = unknown>(
     ...opts?.context,
   });
   Object.assign(context, contextFields);
+  context.repositorySources ??= createRepositorySourcesFixture(getRuntimeConfig);
+  if (!context.resolveGatewayContext) {
+    context.resolveGatewayContext = () => context;
+    const resources = new LegacyPluginSdkResourceHost();
+    bindLegacyPluginSdkResourceHost(context.resolveGatewayContext, resources);
+    onTestFinished(() => resources.close());
+  }
   directContexts.set(contextKey, context);
   if (
     [
@@ -551,28 +564,37 @@ export async function directSessionReq<TPayload = unknown>(
   ) {
     await initializeSessionReadContext(context);
   }
-  await handler({
-    req: {} as never,
-    params,
-    respond: (ok, payload, error) => {
-      result = {
-        ok,
-        payload:
-          payload === undefined
-            ? undefined
-            : opts?.coercePayload
-              ? opts.coercePayload(payload)
-              : (payload as TPayload),
-        error,
-      };
-      opts?.onResponse?.(result);
+  await withPluginRuntimeGatewayRequestScope(
+    {
+      context,
+      resolveGatewayContext: context.resolveGatewayContext,
+      client: opts?.client ?? null,
+      isWebchatConnect: opts?.isWebchatConnect ?? (() => false),
     },
-    context,
-    client: opts?.client ?? null,
-    isWebchatConnect: opts?.isWebchatConnect ?? (() => false),
-    sessionMutationAuthorization: opts?.sessionMutationAuthorization,
-    hasCurrentClientAuthority: opts?.hasCurrentClientAuthority,
-  });
+    () =>
+      handler({
+        req: {} as never,
+        params,
+        respond: (ok, payload, error) => {
+          result = {
+            ok,
+            payload:
+              payload === undefined
+                ? undefined
+                : opts?.coercePayload
+                  ? opts.coercePayload(payload)
+                  : (payload as TPayload),
+            error,
+          };
+          opts?.onResponse?.(result);
+        },
+        context,
+        client: opts?.client ?? null,
+        isWebchatConnect: opts?.isWebchatConnect ?? (() => false),
+        sessionMutationAuthorization: opts?.sessionMutationAuthorization,
+        hasCurrentClientAuthority: opts?.hasCurrentClientAuthority,
+      }),
+  );
   await flushPendingSessionsChangedEvents(context);
   if (!result) {
     throw new Error(`${method} did not respond`);

@@ -38,8 +38,7 @@ it.each(["tailscale", "onetimepin"])("gates %s privileged dispatch", async (prov
     using _ = { [Symbol.dispose]: (await prepareUserProfileCatalog()).release };
     const cfg: OpenClawConfig = {
       gateway: {
-        github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-        controlUi: { github: { host: "ghe.example.test", token: "synthetic-enterprise-token" } },
+        controlUi: {},
         auth:
           provider === "onetimepin"
             ? {
@@ -57,6 +56,17 @@ it.each(["tailscale", "onetimepin"])("gates %s privileged dispatch", async (prov
           definitions: {
             guest: { sessions: { others: "none" }, agents: [], scopes: [] },
             maintainer: { sessions: { others: "view" }, agents: "*", scopes: ["operator.admin"] },
+          },
+        },
+      },
+      plugins: {
+        entries: {
+          "github-repositories": {
+            config: {
+              host: "ghe.example.test",
+              apiBaseUrl: "https://ghe.example.test/api/v3",
+              service: { host: "ghe.example.test", token: "synthetic-enterprise-token" },
+            },
           },
         },
       },

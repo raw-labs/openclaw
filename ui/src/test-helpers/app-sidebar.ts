@@ -1,7 +1,6 @@
 import { flush } from "solid-js";
 import { onTestFinished, vi } from "vitest";
 import type {
-  SessionCatalogPullRequestSummary,
   SessionsCatalogListResult,
   SessionsPatchManyParams,
   SessionsPatchManyResult,
@@ -23,7 +22,6 @@ import type { ApplicationOverlays } from "../app/overlays-types.ts";
 import type { AppSidebarElement, AppSidebarOwner } from "../components/app-sidebar.tsx";
 import type { AgentIdentityCapability } from "../lib/agents/identity.ts";
 import { createInitialConfigState } from "../lib/config/config-state-model.ts";
-import { isSessionRunStateActive } from "../lib/session-run-state.ts";
 import {
   createSessionCapability,
   type SessionCapability,
@@ -34,7 +32,15 @@ import { createSessionArchiveState } from "../lib/sessions/session-archive-state
 import { createSessionState as emptySessionState } from "../lib/sessions/session-capability.ts";
 import type { SessionRequestClient } from "../lib/sessions/session-capability.ts";
 import { createSessionRowProvenance } from "../lib/sessions/session-row-provenance.ts";
-import { createSidebarContextLifecycle } from "./app-sidebar-context-lifecycle.ts";
+import {
+  createSidebarContextLifecycle,
+  sidebarSessionHostServices,
+} from "./app-sidebar-context-lifecycle.ts";
+import {
+  createSidebarPullRequestPublisher,
+  installSidebarRepository,
+  installSidebarRepositoryGateway,
+} from "./app-sidebar-repository.ts";
 import { seedSidebarEveryonePreference } from "./app-sidebar-setup.ts";
 import { createApplicationGatewaySnapshot } from "./application-context-fixtures.ts";
 import {
@@ -67,8 +73,7 @@ export function createGatewayHarness(client: GatewayBrowserClient) {
     typeof client.request === "function"
       ? (client.request.bind(client) as GatewayBrowserClient["request"])
       : undefined;
-  // Custom-element registrations survive non-isolated test files, so real
-  // attention health requests must not consume sidebar feature response mocks.
+  // Keep attention health outside sidebar feature RPC fixtures.
   client.request = <T = unknown>(
     ...args: Parameters<GatewayBrowserClient["request"]>
   ): Promise<T> => {
@@ -127,6 +132,12 @@ export function createGatewayHarness(client: GatewayBrowserClient) {
       publish({ selfUser: { ...snapshot.selfUser, ...patch } });
     },
   } as unknown as ApplicationGateway;
+  const publishEvent = (event: string, payload: unknown) => {
+    for (const listener of eventListeners) {
+      listener({ event, payload });
+    }
+  };
+  installSidebarRepositoryGateway(gateway, publishEvent);
   return {
     gateway,
     publish,
@@ -192,7 +203,6 @@ export function createSessionsHarness(agentId: string, keys: string[]) {
       listener(state);
     }
   };
-  const pullRequestSummaries = new Map<string, SessionCatalogPullRequestSummary>();
   const archiveProvenance = createSessionRowProvenance();
   const archiveState = createSessionArchiveState(
     (key) => state.result?.sessions.find((row) => row.key === key),
@@ -291,24 +301,13 @@ export function createSessionsHarness(agentId: string, keys: string[]) {
       return canonicalListRevision;
     },
     canonicalListReady: true,
-    captureConnectionScope: () => scopedSessions?.captureConnectionScope() ?? null,
-    isConnectionScopeCurrent: (
-      scope: Parameters<SessionCapability["isConnectionScopeCurrent"]>[0],
-    ) => scopedSessions?.isConnectionScopeCurrent(scope) ?? false,
+    ...sidebarSessionHostServices(() => scopedSessions),
+    get retainedOperations() {
+      return scopedSessions?.retainedOperations;
+    },
     subscribe: (listener: (next: SessionState) => void) => registerListener(listeners, listener),
     subscribeCreated: () => () => undefined,
     isPreparedWorkSession: () => false,
-    isRunVisuallyActive: (row: GatewaySessionRow) =>
-      scopedSessions?.isRunVisuallyActive(row) ?? isSessionRunStateActive(row),
-    pullRequestSummary: (key: string) => pullRequestSummaries.get(key),
-    setPullRequestSummary(key: string, summary: SessionCatalogPullRequestSummary | undefined) {
-      if (summary) {
-        pullRequestSummaries.set(key, summary);
-      } else {
-        pullRequestSummaries.delete(key);
-      }
-      notify();
-    },
     groupsLoad: () => Promise.resolve(),
     groupsStatus: () => "ready",
     groupsInvalidate: () => undefined,
@@ -439,6 +438,7 @@ export function createSessionsHarness(agentId: string, keys: string[]) {
   };
   return {
     sessions,
+    publishPullRequests: createSidebarPullRequestPublisher(() => boundGateway),
     groupsPut,
     groupsRename,
     groupsDelete,
@@ -502,7 +502,7 @@ export function createContext(
   };
   const lifecycle = createSidebarContextLifecycle(gateway, agents, selectedAgentId);
   sidebarSessionGatewayBindings.get(sessions)?.(gateway, lifecycle.agentSelection);
-  return {
+  const context = {
     config: createApplicationConfigCapability({ resourceBasePath: "" }),
     gateway,
     ...lifecycle,
@@ -531,6 +531,8 @@ export function createContext(
       subscribe: vi.fn<ApplicationOverlays["subscribe"]>(() => () => undefined),
     } as unknown as ApplicationOverlays,
   } as unknown as ApplicationContext;
+  installSidebarRepository(context);
+  return context;
 }
 
 export async function mountSidebar(

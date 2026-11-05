@@ -148,16 +148,6 @@ test.each([
   expectSchemaIssue({ gateway: { roles } }, ["gateway", "roles", field]);
 });
 
-test.each([
-  ["tenant.ghe.com", "https://api.tenant.ghe.com", true],
-  ["ghe.example.test", "https://api.other.example.test", false],
-  ["ghe.example.test", "http://ghe.example.test/api/v3", false],
-  ["ghe.example.test", "https://ghe.example.test/other", false],
-  ["ghe.example.test", undefined, false],
-])("validates GitHub credential endpoint %s %s", (host, apiBaseUrl, expected) => {
-  expect(accepts({ gateway: { github: { host, apiBaseUrl } } })).toBe(expected);
-});
-
 test("accepts a provider neutral repository default", () => {
   const defaultRepository = { url: "https://ghe.example.test/acme/private-repo.git", ref: "main" };
   const projectProfiles = { "ghe.example.test/acme/private-repo": "example-worker" };

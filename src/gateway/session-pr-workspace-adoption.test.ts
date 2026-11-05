@@ -1,6 +1,6 @@
-import "../config/sessions/session-entry-patch-delivery.test-support.js";
 import fs from "node:fs/promises";
 import path from "node:path";
+import "../config/sessions/session-entry-patch-delivery.test-support.js";
 import { afterEach, assert, expect, it, onTestFinished, vi } from "vitest";
 import { acknowledgeInternalToolResult } from "../../packages/agent-core/src/internal-hooks.js";
 import { makeTextToolResult } from "../../test/helpers/text-tool-result.js";
@@ -45,14 +45,14 @@ import {
   syncCanonicalGitHubIdentity,
 } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import * as baseRefresh from "./github-publication-base-refresh.js";
-import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import { createGitHubPublicationCoordinator } from "./github-publication.js";
+import { loadGitHubRepositoryRuntimeFixture } from "./github-repository-fixture-api.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { SESSION_READ_SCOPE, SESSION_WRITE_SCOPE } from "./operator-scopes.js";
 import { createDirectChatContext } from "./server-chat.agent-events.test-helpers.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import type { RespondFn } from "./server-methods/response-types.js";
 import { sessionsFilesHandlers } from "./server-methods/sessions-files.js";
 import type { GatewayClient } from "./server-methods/types.js";
 import { createContext as createGatewayContext } from "./server-plugin-in-process-dispatch.test-support.js";
@@ -65,6 +65,8 @@ import { createWorkerSessionPlacementStore } from "./worker-environments/placeme
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+const { createGitHubPublicationProvider } = await loadGitHubRepositoryRuntimeFixture();
 
 const { getSessionEntryPatchDelivery } =
   await import("../config/sessions/session-entry-patch-delivery.test-support.js");
@@ -601,11 +603,11 @@ function stubPullRequestPreparation(sessionKey: string, cfg: OpenClawConfig) {
   return { provider, resolveSandbox, integrate };
 }
 
-function createPreparationContext(
+async function createPreparationContext(
   cfg: OpenClawConfig,
   provider: ReturnType<typeof createGitHubPublicationProvider>,
 ) {
-  return Object.assign(
+  const context = Object.assign(
     createGatewayContext([], () => cfg),
     createDirectChatContext({ getRuntimeConfig: () => cfg }),
     {
@@ -625,11 +627,16 @@ function createPreparationContext(
       },
     },
   );
+  await installPublicationRpcFixture(context, {
+    ...context.githubPublicationService,
+    inspectPullRequest: provider.inspectPullRequest,
+  });
+  return context;
 }
 
 /** The conversation's own sandboxed agent asks for its PR through the registered handler. */
 async function preparePullRequest(params: {
-  context: ReturnType<typeof createPreparationContext>;
+  context: Awaited<ReturnType<typeof createPreparationContext>>;
   sessionKey: string;
   sessionId: string;
   workspaceDir: string;
@@ -643,7 +650,7 @@ async function preparePullRequest(params: {
       backend: { id: "docker" } as never,
     },
   });
-  const respond = vi.fn<RespondFn>();
+  const respond = vi.fn();
   await withGatewayToolCallerIdentity(
     {
       agentId: "main",
@@ -669,11 +676,6 @@ async function preparePullRequest(params: {
         respond,
       }),
   );
-  expect(respond).toHaveBeenCalledOnce();
-  const [ok, , error] = respond.mock.calls[0]!;
-  if (!ok) {
-    throw new Error(error?.message);
-  }
   return respond;
 }
 
@@ -734,7 +736,7 @@ it("prepares an own PR in an ordinary sandboxed chat through the registered hand
       assert(earlier, "The earlier message must be persisted");
       await fs.writeFile(path.join(state.workspaceDir, "notes.md"), "original notes\n");
       const { provider } = stubPullRequestPreparation(target.sessionKey, cfg);
-      const context = createPreparationContext(cfg, provider);
+      const context = await createPreparationContext(cfg, provider);
       const client = createOperatorWsClient({ scopes: ["operator.admin"] });
       client.authenticatedUserProfile = {
         profileId: profile.id,
@@ -852,7 +854,7 @@ it("refuses another guest and lost access before binding, PR import and earlier 
         target.sessionKey,
         cfg,
       );
-      const context = createPreparationContext(cfg, provider);
+      const context = await createPreparationContext(cfg, provider);
       const prepare = (client: GatewayClient) =>
         preparePullRequest({
           context,
@@ -861,6 +863,13 @@ it("refuses another guest and lost access before binding, PR import and earlier 
           workspaceDir: state.workspaceDir,
           client,
         });
+      const expectRefused = async (client: GatewayClient, message: string) => {
+        expect(await prepare(client)).toHaveBeenCalledExactlyOnceWith(
+          false,
+          undefined,
+          expect.objectContaining({ message: expect.stringContaining(message) }),
+        );
+      };
       const unbound = () => {
         const entry = loadSessionEntryReadOnly(target);
         expect(entry?.worktree).toBeUndefined();
@@ -869,11 +878,18 @@ it("refuses another guest and lost access before binding, PR import and earlier 
       const allocateWorkspace = allocation.prepareSessionWorktree;
       const allocate = vi.spyOn(allocation, "prepareSessionWorktree");
       try {
-        // The Gateway audience rejects a viewing guest; an admin reaches the owner check.
-        await expect(prepare(otherClient)).rejects.toThrow("session is shared for this connection");
-        await expect(prepare(adminClient)).rejects.toThrow(
-          "Only the person who started this conversation",
-        );
+        // Shared-session participation rejects another guest before publication preparation.
+        expect(await prepare(otherClient)).toHaveBeenCalledExactlyOnceWith(false, undefined, {
+          code: "INVALID_REQUEST",
+          message: "session is shared for this connection",
+          details: {
+            code: "SESSION_PARTICIPATION_REQUIRED",
+            sessionKey: target.sessionKey,
+            visibility: "shared",
+          },
+        });
+        // An admin passes participation but still cannot adopt another person's originals.
+        await expectRefused(adminClient, "Only the person who started this conversation");
         expect(allocate).not.toHaveBeenCalled();
         unbound();
 
@@ -883,7 +899,7 @@ it("refuses another guest and lost access before binding, PR import and earlier 
           await setGuestRole("revoked");
           return allocated;
         });
-        await expect(prepare(guestClient)).rejects.toThrow("no longer authorized");
+        await expectRefused(guestClient, "no longer authorized");
         expect(allocate).toHaveBeenCalledOnce();
         unbound();
         expect(
@@ -905,7 +921,7 @@ it("refuses another guest and lost access before binding, PR import and earlier 
             [Symbol.dispose]() {},
           } as never;
         });
-        await expect(prepare(guestClient)).rejects.toThrow("no longer authorized");
+        await expectRefused(guestClient, "no longer authorized");
         expect(integrate).not.toHaveBeenCalled();
         expect(loadSessionEntryReadOnly(target)?.worktree?.githubPullRequest).toBeUndefined();
         await setGuestRole("guest");

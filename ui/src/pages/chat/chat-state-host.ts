@@ -16,7 +16,6 @@ import type {
 import type { DraftPreferenceState } from "../new-session/draft-preference-state.ts";
 import type { PendingChatAbort } from "./chat-abort-request.ts";
 import type { ChatErrorState } from "./chat-error-state.ts";
-import type { PullRequestRefreshHost } from "./chat-pull-request-refresh.ts";
 import type { ChatRealtimeState } from "./chat-realtime.ts";
 import type { ChatHost, ChatSendSubmitOptions } from "./chat-send-contract.ts";
 import type { ChatProps } from "./chat-view.tsx";
@@ -40,7 +39,6 @@ export type { ChatComposerMemoryFallback } from "../../lib/chat/chat-types.ts";
 export type ChatPageHost = ChatHost &
   ChatErrorState &
   ChatRealtimeState &
-  PullRequestRefreshHost &
   Omit<SessionWorkspaceHost, "handleOpenSidebar"> & {
     handleOpenSidebar: (content: SidebarSelection | null) => SidebarOpenResult;
     reviewQueuedMessageEdit?: () => void;

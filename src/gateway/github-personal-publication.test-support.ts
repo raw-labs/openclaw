@@ -1,9 +1,14 @@
+// Register synthetic I/O before the actual plugin identity and publication graph loads.
+// oxfmt-ignore
+import {
+  SESSION_ID,
+  SESSION_KEY,
+  createTestGitHubPublicationCoordinator,
+  githubPublicationTestMocks,
+  overrideCommands,
+} from "./github-publication.test-support.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, onTestFinished, vi } from "vitest";
-import {
-  resolveManagedGitHubProfileDir,
-  writeManagedGitHubProfileFiles,
-} from "../agents/github-tool-identity.js";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resetGatewayWorkAdmission } from "../process/gateway-work-admission.js";
@@ -12,22 +17,31 @@ import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { updateUserGitHubConnection } from "../state/user-github-connections.test-support.js";
 import { prepareUserProfileCatalog } from "../state/user-profile-list.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { createPersonalGitHubOAuthLifecycle } from "./github-personal-oauth.js";
+import { loadBundledPluginFacade } from "../test-utils/bundled-plugin-public-surface.js";
+import { installPublicationRpcFixture } from "./github-account-service.test-support.js";
 import type { PersonalGitHubSessionActionV2 } from "./github-personal-publication.js";
-import { personalGitHubStatusAsync as personalGitHubStatus } from "./github-personal-status.js";
-import {
-  SESSION_ID,
-  SESSION_KEY,
-  createTestGitHubPublicationCoordinator,
-  githubPublicationTestMocks,
-  overrideCommands,
-} from "./github-publication.test-support.js";
 import { resolveGatewayOperatorAccessAuthority } from "./operator-access-policy.js";
 import { handleGatewayRequest } from "./server-methods.js";
 import { preparePersonalGitHubSessionActionV2 } from "./server-methods/github-personal-authorization.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/types.js";
+import { createContext } from "./server-plugin-in-process-dispatch.test-support.js";
 import { gatewayConnect, gatewayProfile } from "./server/client-fixtures.test-support.js";
 import { createWorkerSessionPlacementStore } from "./worker-environments/placement-store.js";
+
+const { resolveManagedGitHubProfileDir, writeManagedGitHubProfileFiles } =
+  await loadBundledPluginFacade<{
+    resolveManagedGitHubProfileDir(params: {
+      agentId: string;
+      scope: "system" | "agent" | "personal";
+      profileId: string;
+      env?: NodeJS.ProcessEnv;
+    }): string;
+    writeManagedGitHubProfileFiles(
+      dir: string,
+      identity: { login: string; token: string },
+      options?: { assertCurrent: () => void },
+    ): Promise<void>;
+  }>({ pluginId: "github-repositories", artifactBasename: "tool-identity-api.ts" });
 
 const mocks = githubPublicationTestMocks();
 export const personalPublicationAccount = { accountId: 101, login: "personal-alice" };
@@ -195,11 +209,9 @@ export async function createPersonalPublicationFixture() {
   };
   const runtime = { live: true, verifiedAccount: account, client };
   const config: OpenClawConfig = {};
-  const context = {
-    getRuntimeConfig: () => config,
-    getClientConnIds: (filter?: (candidate: GatewayClient) => boolean) =>
-      new Set(runtime.live && (!filter || filter(runtime.client)) ? [runtime.client.connId!] : []),
-  } as unknown as GatewayRequestContext;
+  const context = createContext([], () => config);
+  context.getClientConnIds = (filter) =>
+    new Set(runtime.live && (!filter || filter(runtime.client)) ? [runtime.client.connId!] : []);
   const action = await preparePersonalPublicationFixtureAction({ client, context });
   const placements = createWorkerSessionPlacementStore({ database: openOpenClawStateDatabase() });
   const coordinator = createTestGitHubPublicationCoordinator({ placements });
@@ -224,24 +236,20 @@ export async function callPersonalPublicationRpc(
   params: Record<string, unknown> = { sessionKey: SESSION_KEY },
 ) {
   const respond = vi.fn();
-  const personal = createPersonalGitHubOAuthLifecycle();
+  const rpcContext = { ...context };
+  rpcContext.resolveGatewayContext = () => rpcContext;
+  const installedAccount = await installPublicationRpcFixture(rpcContext, coordinator);
   try {
     await handleGatewayRequest({
       req: { type: "req", id: randomUUID(), method, params },
       client,
-      context: {
-        ...context,
-        githubPublicationService: coordinator,
-        githubOAuthService: {
-          personal: { ...personal, status: personalGitHubStatus },
-        } as GatewayRequestContext["githubOAuthService"],
-      },
+      context: rpcContext,
       respond,
       isWebchatConnect: () => false,
     });
     return respond.mock.calls[0]!;
   } finally {
-    await personal.stop();
+    await installedAccount.stop();
   }
 }
 
@@ -275,4 +283,17 @@ export async function createForeignPublicationSession(otherOwner: string, incogn
     ...original(key),
     entry: { ...original(key).entry, ...entry },
   }));
+}
+
+export function createPersonalPublicationRequests(generation: () => string) {
+  return {
+    request: () => personalPublicationRequest({ generation: generation() }, "personal-publish"),
+    confirmation: (requestId: string, requestDigest: string) => ({
+      sessionKey: SESSION_KEY,
+      requestId,
+      requestDigest,
+      generation: generation(),
+      account,
+    }),
+  };
 }

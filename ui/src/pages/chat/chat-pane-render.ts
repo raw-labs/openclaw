@@ -22,7 +22,6 @@ import { chatHistoryOlderSelector } from "./chat-history-request.ts";
 import { isInitialChatHistoryUnavailable } from "./chat-history-state.ts";
 import { resolveChatModelSetup } from "./chat-model-setup.ts";
 import { ChatPaneLayoutRender } from "./chat-pane-layout-render.ts";
-import { synchronizeChatPanePublication } from "./chat-pane-publication.ts";
 import { createChatPaneRails } from "./chat-pane-rails.ts";
 import { createChatPaneResourceProps } from "./chat-pane-resource-presentation.ts";
 import {
@@ -240,38 +239,25 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
           onModelAccounts: () => this.context.navigate("profile"),
         });
     const messages = catalog ? this.history.catalogMessages : state.chatMessages;
-    const publicationScope = this.captureConnectionScope();
-    const readPublicationRow = () => {
+    const operationScope = this.captureConnectionScope();
+    const readOperationRow = () => {
       const row = selectedChatSessionRow(state);
-      return (
-        row && {
-          ...row,
-          agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
-          archived: this.isCurrentSessionArchived(state),
-        }
-      );
+      return row
+        ? {
+            ...row,
+            agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
+            archived: this.isCurrentSessionArchived(state),
+          }
+        : undefined;
     };
     const sessionHeaderFacts = this.captureSessionHeaderFacts(
       state,
       selectedSession,
-      readPublicationRow,
-      publicationScope,
+      readOperationRow,
+      operationScope,
       sessionParticipationBlocked,
       Boolean(workspaceConflict),
     );
-    synchronizeChatPanePublication({
-      holder: this.publication,
-      publications: this.context.sessions.retainedOperations,
-      gatewaySnapshot,
-      readRow: readPublicationRow,
-      isScopeCurrent: publicationScope
-        ? () => this.isConnectionScopeCurrent(publicationScope)
-        : undefined,
-      isPresented: () => this.presented,
-      participationBlocked: sessionParticipationBlocked,
-      runActive: hasAbortableSessionRun(state),
-      workspaceConflict: Boolean(workspaceConflict),
-    });
     const sessionDisabledBanner = this.sessionDisabledBanner({
       catalogDisabledReason,
       modelSetupRequired,
@@ -367,7 +353,6 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         participationBlocked: sessionParticipationBlocked,
       }),
       applicationContext: this.context,
-      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       // Ends with cachedSessionStatePending(); live overflow keeps its entrance fade.
@@ -558,17 +543,9 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
       ...this.suggestionChatProps(state.connected, selectedSessionArchived, multiIdentity),
       messageReactions: this.collaboration.reactions,
       onReact: this.canReactToCurrentSession() ? this.handleMessageReaction : undefined,
-      pullRequests: this.visibleSessionPullRequests,
-      pullRequestsGateway: this.context.gateway,
-      pullRequestsSessionId: selectedSession?.sessionId,
-      pullRequestsBranch: this.sessionPullRequestsBranch,
-      pullRequestsBranchDismissed: this.sessionPullRequestsBranchDismissed,
-      pullRequestsStatus: this.sessionPullRequestsStatus,
-      onDismissPullRequest: this.dismissSessionPullRequest,
-      onDismissPullRequestsBranch: this.dismissSessionPullRequestsBranch,
-
+      gateway: this.context.gateway,
       onOpenSessionDiff: sessionWorkspace.onOpenDiff,
-      githubPublication: this.publication.binding?.view(),
+      sessionHeaderFacts,
       onOpenWorkspaceFile: (target) => void openSessionWorkspaceFile(state, target),
       onFindWorkspaceFile: state.connected && !catalog ? onFindWorkspaceFile : undefined,
       onOpenManagedArtifact: (href) => openSessionWorkspaceManagedArtifact(state, href),

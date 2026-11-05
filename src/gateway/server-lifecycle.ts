@@ -24,7 +24,6 @@ import {
   removeRemoteNodeInfo,
   removeRemoteNodeInfoForConnection,
 } from "../skills/runtime/remote.js";
-import { startGitHubSessionPresentation } from "./control-ui-session-pr-presentation.js";
 import { createRepositorySessionReadHost } from "./control-ui-session-pr-runtime.js";
 import { retireDeviceTokenClients } from "./device-token-client-lifecycle.js";
 import { publishHooksTokenEnvKey } from "./hooks.js";
@@ -355,13 +354,7 @@ export async function prepareGatewayLifecycle(params: {
     resolveGatewayContext: runtime.resolvePluginGatewayContext,
     broadcastToConnIds,
   });
-  startGitHubSessionPresentation({
-    scheduler: runtime.scheduler,
-    getConfig: getRuntimeConfig,
-    reads: runtimeState.repositorySessions.bindService(runtime.scheduler.signal, () =>
-      runtime.scheduler.signal.throwIfAborted(),
-    ),
-  });
+
   runtimeState.sessionViewerPresence = createSessionViewerPresenceDeclarations({
     clients,
     publishPresence: runtime.publishPresence,

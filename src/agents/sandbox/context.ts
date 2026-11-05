@@ -11,7 +11,7 @@ import {
   DEFAULT_BROWSER_EVALUATE_ENABLED,
   resolveBrowserConfig,
 } from "../../plugin-sdk/browser-profiles.js";
-import { getPluginRegistryForContext } from "../../plugins/runtime/gateway-request-scope.js";
+import { getPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { captureChannelReadAuthority } from "../../shared/channel-read-authority.js";
@@ -23,7 +23,6 @@ import {
   type AdmittedRunContext,
   type AdmittedRunOperatorAuthority,
 } from "../admitted-run-context.js";
-import { resolveAgentConfig } from "../agent-scope-config.js";
 import type { ExecPolicyOverrides } from "../exec-defaults.js";
 import { prepareSandboxExecutionEnvironment } from "../execution-environment.js";
 import {
@@ -39,7 +38,6 @@ import {
 import { createSandboxBackend, getSandboxBackendWorkdirResolver } from "./backend.js";
 import { ensureSandboxBrowser } from "./browser.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
-import { SANDBOX_GITHUB_CONFIG_DIR } from "./constants.js";
 import { retainSandboxContainerUsage } from "./container-usage.js";
 import { resolveSandboxDockerUser } from "./docker-user.js";
 import { createSandboxFsBridge } from "./fs-bridge.js";
@@ -371,35 +369,12 @@ async function resolveSandboxContextWithAuthority(
           ownedParams.assertCurrent?.();
           const { rawSessionKey, runtime, cfg, localWorkspace } = selected;
           const config = ownedParams.config;
-          const allowGitHub =
-            config &&
-            resolveAgentConfig(config, runtime.agentId)?.tools?.github?.allowInSandbox === true;
-          if (allowGitHub && cfg.scope === "shared") {
-            const message = `GitHub identity for agent "${runtime.agentId}" cannot enter a shared sandbox; use agent or session scope.`;
-            sandboxLog.warn(message);
-            throw new Error(message);
-          }
-          const githubIdentity = allowGitHub
-            ? (await import("../github-tool-identity.js")).prepareGitHubToolEnvironment({
-                config,
-                agentId: runtime.agentId,
-              })
-            : undefined;
-          const githubMount = githubIdentity
-            ? await (async () => {
-                const hostPath = githubIdentity.localIdentityEnv.GH_CONFIG_DIR;
-                const stat = hostPath ? await fs.lstat(hostPath).catch(() => undefined) : undefined;
-                if (!hostPath || !stat?.isDirectory() || stat.isSymbolicLink()) {
-                  throw new Error(
-                    "Sandbox GitHub identity profile is unavailable; reconnect GitHub Identity.",
-                  );
-                }
-                return {
-                  hostPath: await fs.realpath(hostPath),
-                  containerPath: SANDBOX_GITHUB_CONFIG_DIR,
-                };
-              })()
-            : undefined;
+          const assertExecutionCurrent = () => {
+            ownedParams.assertCurrent?.();
+            localWorkspace?.assertCurrent();
+            guard.assertHost?.();
+            operatorAuthority?.assertCurrent();
+          };
           const secrets = getActiveSecretsRuntimeConfigSnapshot();
           const executionEnvironment = await prepareSandboxExecutionEnvironment(
             {
@@ -408,21 +383,25 @@ async function resolveSandboxContextWithAuthority(
               agentId: runtime.agentId,
               backend: cfg.backend,
               scope: cfg.scope,
-              assertCurrent,
+              assertCurrent: assertExecutionCurrent,
             },
-            getPluginRegistryForContext(),
-            githubIdentity && githubMount
-              ? {
-                  ...githubIdentity,
-                  localIdentityEnv: {
-                    ...githubIdentity.localIdentityEnv,
-                    GH_CONFIG_DIR: SANDBOX_GITHUB_CONFIG_DIR,
-                  },
-                  readOnlyResourceMounts: [githubMount],
-                  inheritedEnvironmentNames: [],
-                }
-              : undefined,
+            getPluginRuntimeGatewayRequestScope()?.pluginRegistry,
             secrets?.executionEnvironmentExclusions,
+          );
+          const executionMounts = await Promise.all(
+            (executionEnvironment?.readOnlyResourceMounts ?? []).map(async (mount) => {
+              const stat = await fs.lstat(mount.hostPath).catch(() => undefined);
+              if (!stat?.isDirectory() || stat.isSymbolicLink()) {
+                throw new Error(
+                  "Sandbox execution identity profile is unavailable; reconnect its plugin identity.",
+                );
+              }
+              assertExecutionCurrent();
+              return {
+                hostPath: await fs.realpath(mount.hostPath),
+                containerPath: mount.containerPath,
+              };
+            }),
           );
           phases.mark("attempt.setup.sandbox.layout");
           const {
@@ -454,8 +433,8 @@ async function resolveSandboxContextWithAuthority(
                   ...docker,
                   env: {
                     ...docker.env,
-                    ...executionEnvironment.credentialScrubEnv,
                     ...executionEnvironment.localIdentityEnv,
+                    ...executionEnvironment.credentialScrubEnv,
                   },
                 },
               }
@@ -482,8 +461,8 @@ async function resolveSandboxContextWithAuthority(
                     return undefined;
                   }
                 })();
-          if (executionEnvironment?.readOnlyResourceMounts.length) {
-            (readOnlyResourceMounts ??= []).push(...executionEnvironment.readOnlyResourceMounts);
+          if (executionMounts.length) {
+            (readOnlyResourceMounts ??= []).push(...executionMounts);
           }
 
           const provisionBackend = () => {
@@ -511,9 +490,8 @@ async function resolveSandboxContextWithAuthority(
                   : {}),
               },
               operatorAuthority,
-              githubIdentity,
-              guard,
               executionEnvironment,
+              guard,
             );
           };
 

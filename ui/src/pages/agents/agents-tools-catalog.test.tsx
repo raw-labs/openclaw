@@ -3,7 +3,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import type { ToolsCatalogResult } from "../../api/types.ts";
-import { githubIdentityViewFixture } from "../../features/github-connections/github-identity.test-support.ts";
 import type { AgentsPanel } from "../../lib/agents/panels.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { cleanupSolid, mountSolid } from "../../test-helpers/mount-solid.ts";
@@ -57,12 +56,11 @@ async function mountCatalog(
     panel: nextPanel,
   });
   const page = createAgentsPage(context, route(panel));
-  const identity = githubIdentityViewFixture();
+  const base = createBaseParams();
   const mounted = mountSolid(() => (
     <AgentTools
-      {...createBaseParams()}
+      {...base}
       {...page.read().tools}
-      githubIdentity={identity}
       readData={page.read().readData}
       agentId={page.read().selectedAgentId ?? "main"}
     />
@@ -109,7 +107,7 @@ describe("Agents tools catalog read", () => {
       view.container.querySelector('.settings-loading-skeleton[aria-busy="true"]'),
     ).not.toBeNull();
     expect(profileButton()?.disabled).toBe(true);
-    const identityHost = view.container.querySelector("openclaw-github-identity");
+    const identityHost = view.container.querySelector("fixture-agent-settings");
     expect(identityHost).not.toBeNull();
 
     first.reject(new Error("gateway unavailable"));
@@ -120,7 +118,7 @@ describe("Agents tools catalog read", () => {
     );
     expect(profileButton()?.disabled).toBe(false);
     expect(view.container.querySelector(".agent-tools-group")).not.toBeNull();
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(identityHost);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(identityHost);
 
     view.page.read().agentSkills.onFilterChange("unrelated filter");
     await waitForSolid(() => expect(view.page.read().agentSkills.filter).toBe("unrelated filter"));
@@ -147,13 +145,13 @@ describe("Agents tools catalog read", () => {
       ).not.toBeNull();
       expect(profileButton()?.disabled).toBe(true);
     });
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(identityHost);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(identityHost);
     second.resolve(createReadToolCatalog("main", "read"));
     await waitForSolid(() => {
       expect(view.container.textContent).not.toContain("Showing built-in fallback list instead.");
       expect(view.preview()).toBe("read");
     });
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(identityHost);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(identityHost);
     const previewLink = view.container.querySelector<HTMLAnchorElement>(
       '.agent-tools-runtime-chip[href="#agent-tool-read"]',
     );

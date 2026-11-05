@@ -7,7 +7,6 @@ import { buildToolsEffectiveRequestKey, type AgentsState } from "../../lib/agent
 import { setDefaultAgent } from "../../lib/agents/mutations.ts";
 import { DEFAULT_AGENT_PANEL, type AgentsPanel } from "../../lib/agents/panels.ts";
 import { createChannelCapability } from "../../lib/channels/index.ts";
-import { currentConfigObject } from "../../lib/config/config-state-model.ts";
 import { createInitialCronState } from "../../lib/cron/index.ts";
 import {
   hasCronInventoryEvents,
@@ -20,7 +19,6 @@ import {
   type GatewayMethodOperatorScope,
 } from "../../lib/gateway-methods.ts";
 import { GatewayPageBinding } from "../../lib/gateway-page-binding.ts";
-import { createGitHubIdentityView } from "../../lib/reactive/domain-github-identity.ts";
 import { listen } from "../../lib/reactive/listener.ts";
 import { observeState } from "../../lib/reactive/observe-state.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
@@ -189,10 +187,6 @@ export function createAgentsPageState(
     getReport: () => state.agentSkillsReport,
     onPrimaryChanged: () => effectiveTools.ensure(true),
   });
-  const githubIdentity = createGitHubIdentityView({
-    runExternalMutation: (task, options) =>
-      context.runtimeConfig.runExternalMutation(task, options),
-  });
   const gateway = new GatewayPageBinding(() => publish(), {
     getGateway: () => context.gateway,
     // A new source or client owns a new set of drafts. A same-client reconnect
@@ -218,7 +212,6 @@ export function createAgentsPageState(
       if (becameConnected && Object.values(state.identityDraft).some((value) => value !== null)) {
         identity.schedule();
       }
-      syncGitHubIdentity(state.agentsSelectedId);
       if (becameAvailable && !becameConnected) {
         modelCatalog.onAvailable();
       }
@@ -280,7 +273,6 @@ export function createAgentsPageState(
     if (restoredIdentity) {
       identity.schedule(0);
     }
-    syncGitHubIdentity(state.agentsSelectedId);
   }
 
   function resetForSourceChange() {
@@ -410,10 +402,8 @@ export function createAgentsPageState(
       return;
     }
     if (state.agentsPanel === "tools") {
-      syncGitHubIdentity(agentId);
       toolsCatalog.ensure(agentId);
       effectiveTools.ensure();
-      githubIdentity.ensureVerified();
       return;
     }
     if (state.agentsPanel === "channels" && !channelCapability.state.channelsSnapshot) {
@@ -433,35 +423,6 @@ export function createAgentsPageState(
         cron.onRefresh();
       }
     }
-  }
-
-  function syncGitHubIdentity(agentId: string | null) {
-    const snapshot = context.gateway.snapshot;
-    const profileId = snapshot.selfUser?.id ?? null;
-    const hasScope = (method: string, scope: GatewayMethodOperatorScope) =>
-      canCallGatewayMethod(snapshot, method, scope, { requireAdvertisement: false });
-    githubIdentity.sync({
-      client: state.client,
-      connected: state.connected,
-      permissionsReady: snapshot.phase === "connected" && Boolean(snapshot.hello),
-      target: agentId
-        ? {
-            kind: "shared",
-            scope: "agent",
-            profileId,
-            agentId,
-            config: currentConfigObject(context.runtimeConfig.state),
-          }
-        : null,
-      statusReadable: hasScope("tools.github.status", "operator.read"),
-      configurable: hasScope("tools.github.configure", "operator.admin"),
-      authorizable: [
-        "tools.github.authorize.start",
-        "tools.github.authorize.poll",
-        "tools.github.authorize.cancel",
-      ].every((method) => hasScope(method, "operator.admin")),
-      clientRevision: state.requestGeneration,
-    });
   }
 
   function resetSelectionState() {
@@ -595,9 +556,6 @@ export function createAgentsPageState(
             toolsCatalog.ensure(state.agentsSelectedId);
           }
         },
-        githubIdentity,
-        onOpenGitHubConnections: () =>
-          context.navigate("profile", { hash: "#settings-profile-github-connections" }),
         runtimeSessionKey: state.sessionKey,
         runtimeSessionMatchesSelectedAgent: selectedAgentId === chatAgentId(),
         ...configActions.tools,
@@ -681,7 +639,6 @@ export function createAgentsPageState(
       }),
       // Config receipts retire obsolete GitHub authorization before the next tool action.
       context.runtimeConfig.subscribe(() => {
-        syncGitHubIdentity(state.agentsSelectedId);
         publish();
       }),
       // Local model receipts change the request key; unrelated roster publications reuse it.

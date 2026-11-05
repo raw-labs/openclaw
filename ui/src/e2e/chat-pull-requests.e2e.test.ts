@@ -4,17 +4,18 @@ import { expect, it } from "vitest";
 import {
   CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
   type ControlUiSessionPullRequest,
+  type ControlUiSessionPullRequestSnapshot,
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD,
 } from "../../../src/gateway/control-ui-contract.js";
 import { finishElementAnimations } from "../test-helpers/animations.ts";
 import {
   controlUiBundledSettingsStorageKey,
   controlUiSessionUrl,
-  installMockGateway,
   navigateToControlUiSession,
   type ControlUiMockGatewayScenario,
   type MockGatewayControls,
 } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import {
   closeChatDetails,
   openChatDetails,
@@ -76,12 +77,12 @@ function pullRequest(
 function publicationState(
   branch: string,
   details: { additions?: number; deletions?: number; createUrl?: string } = {},
-) {
+): ControlUiSessionPullRequestSnapshot {
   return {
     pullRequests: [],
     branch: { owner: "openclaw", repo: "openclaw", branch, additions: 2, deletions: 1, ...details },
     rateLimited: false,
-    status: "ok",
+    status: "ready",
   };
 }
 
@@ -273,9 +274,7 @@ suite.define(() => {
     const pullRequestPill = page.locator('.activity-pill[data-family="pull-request"]');
     await pollCount(pills).toBe(1);
     await pullRequestPill.click();
-    const page4500 = page.locator(
-      '.chat-mobile-details-page[data-details-page="pull-request"]:visible',
-    );
+    const page4500 = page.locator('[data-repository-page="pull-request"]:not([hidden])');
     await page4500.locator(".chat-pr-mobile__hide").click();
     await closeChatDetails(page);
     await pollCount(pills).toBe(0);
@@ -471,9 +470,7 @@ suite.define(() => {
         const expectedUrl = `https://github.com/openclaw/openclaw/pull/${index + 1}`;
         if (mobile) {
           await chip.click();
-          const detail = page.locator(
-            '.chat-mobile-details-page[data-details-page="pull-request"]:visible',
-          );
+          const detail = page.locator('[data-repository-page="pull-request"]:not([hidden])');
           const link = detail.getByRole("link", { name: "Open on GitHub", exact: true });
           await pollAttr(link, "href").toBe(expectedUrl);
           await link.click({ trial: true });
@@ -497,9 +494,7 @@ suite.define(() => {
       if (mobile) {
         await closeChatDetails(page);
         await page.locator('.activity-pill[data-family="pull-request"]').first().click();
-        await page
-          .locator('.chat-mobile-details-page[data-details-page="pull-request"]:visible')
-          .waitFor();
+        await page.locator('[data-repository-page="pull-request"]:not([hidden])').waitFor();
         expect(
           await page
             .locator(".chat-mobile-host__header")
@@ -712,7 +707,7 @@ suite.define(() => {
         createUrl: "https://github.com/openclaw/openclaw/pull/new/openclaw/reconciled-publication",
       },
       rateLimited: false,
-      status: "ok",
+      status: "ready",
     });
     await openDetailsPullRequests(page);
     await pollCount(
@@ -743,7 +738,7 @@ suite.define(() => {
         createUrl: "https://github.com/openclaw/openclaw/pull/new/openclaw/reconciled-publication",
       },
       rateLimited: false,
-      status: "ok",
+      status: "ready",
     });
     await openChatPublication(page);
     await pollCount(environment.getByRole("button", { name: "Create PR", exact: true })).toBe(1);

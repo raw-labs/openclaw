@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
 import { getRuntimeConfigSnapshotMetadata } from "../config/runtime-snapshot.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
@@ -18,6 +17,7 @@ import {
 import type { createRepositoryTaskPublicationReader } from "./control-ui-session-task-prs.js";
 import { withRepositoryTaskAudience } from "./control-ui-session-task-prs.js";
 import { captureOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
+import { resolveConfiguredGitHubHost } from "./native-github-host-realm.js";
 import { hasCurrentGatewayOperatorAccess } from "./operator-access-policy.js";
 import {
   authorizeCurrentOperatorRoleScopes,

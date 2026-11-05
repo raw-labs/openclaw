@@ -132,7 +132,6 @@ openclaw-session-owner-chip {
   opacity: 0.45;
 }
 
-/* Center capitals and counts by the font's cap box, excluding its descender space. */
 .session-owner-chip__initials,
 .session-owner-stack__count,
 openclaw-session-owner-chip .viewer-avatar__initials {
@@ -160,7 +159,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   height: 18px;
 }
 
-/* An emoji agent owner sits on the same disc as a photo avatar. */
 .sidebar .identity-avatar--agent.is-fallback {
   width: 100%;
   height: 100%;
@@ -229,8 +227,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   background-clip: padding-box;
 }
 
-/* Compose the row's translucent fill over its surface, outside the front face's
-   away filter/opacity. The mask leaves only the 1px cutout. */
 .sidebar-recent-session .session-owner-stack::before,
 .sidebar-recent-session .session-owner-stack::after {
   content: "";
@@ -273,8 +269,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   background-clip: border-box;
 }
 
-/* Leading slot shared by every sidebar row: the row's own artwork plus a run
-   ring and corner badge, so run state always reads at the row's left edge. */
 .session-glyph {
   position: relative;
   display: inline-flex;
@@ -340,8 +334,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   color: var(--muted);
 }
 
-/* Keep artwork at its resting size inside a consistent 24px circular ring.
-   Owner pairs retain their fitted trace below rather than shrinking their faces. */
 .session-glyph__ring {
   position: absolute;
   inset: -2px;
@@ -352,16 +344,11 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   pointer-events: none;
 }
 
-/* With no artwork to wrap, the ring collapses to the 12px spinner the trailing
-   slot used to draw; a full-size empty circle reads as a missing icon. */
 .session-glyph--bare .session-glyph__ring {
   inset: 4px;
   mask: var(--spinner-mask);
 }
 
-/* Two identities share one run: the arc traces the union outline of the owner
-   stack's pair instead of a circle. Sized to .session-owner-stack (18px faces
-   at ±5px around the glyph center) plus the ring's 2px gap. */
 .session-glyph__trace {
   position: absolute;
   top: -1px;
@@ -382,8 +369,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   opacity: 0.2;
 }
 
-/* The arc covers the same share of its outline as the ring's arc and moves at the
-   ring's linear speed (~45px/s). */
 .session-glyph__trace-run {
   stroke: var(--accent);
   stroke-linecap: round;
@@ -417,7 +402,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   }
 }
 
-/* Shared by the login gate and the Sessions and Cron routes. */
 .session-link {
   color: var(--accent);
   font-weight: 500;
@@ -523,8 +507,6 @@ openclaw-session-owner-chip .viewer-avatar__initials {
   opacity: 0.5;
 }
 
-/* A disabled button reads as "unavailable"; the spinner says "working" so a
-   multi-minute update does not look like a dead control. */
 .btn__spinner {
   width: 12px;
   height: 12px;
@@ -659,9 +641,6 @@ openclaw-toast-host[popover] {
   pointer-events: none;
 }
 
-/* Passive notifications stay in the trailing top corner, away from the chat
- * composer and other bottom-docked controls. The host shows one toast at a time
- * (`show()` replaces the active one), so there is no stack to offset against. */
 .app-toast {
   pointer-events: auto;
   position: fixed;
@@ -691,8 +670,6 @@ openclaw-toast-host[data-toast-placement="shell"]
   top: var(--app-toast-shell-top, calc(20px + var(--safe-area-top)));
 }
 
-/* Settings outcomes can use the lower corner without covering chat controls.
- * Keep this opt-in so anchored notices and the shell's top placement stay intact. */
 .app-toast--bottom {
   top: auto;
   bottom: calc(100% - var(--shell-canvas-height) + 20px + var(--shell-safe-area-bottom));
@@ -759,8 +736,6 @@ openclaw-toast-host[data-toast-placement="shell"]
   color: var(--info);
 }
 
-/* Recovery copy and rich links remain readable at narrow widths and enlarged
- * text sizes. Do not clamp away the instruction the operator needs next. */
 .app-toast__message {
   flex: 1 1 auto;
   min-width: 0;
@@ -955,7 +930,6 @@ select.input {
   border-color: var(--field-focus-border);
 }
 
-/* Carapace Sensitive Input adapted to the Control UI token contract. */
 .oc-sensitive-input {
   position: relative;
   display: flex;
@@ -1281,9 +1255,6 @@ select.settings-select:not([multiple]) {
   color: var(--text);
 }
 
-/* Ghost stays chromeless in light mode too: without the border-color reset,
-   the higher-specificity light .btn--icon override above re-adds a 1px border
-   that dark mode never shows. Chrome appears on hover only. */
 :root[data-theme-mode="light"] .btn--ghost {
   background: transparent;
   border-color: transparent;
@@ -1317,7 +1288,6 @@ select.settings-select:not([multiple]) {
   animation: btn-spinner-spin 0.9s linear infinite;
 }
 
-/* At the end of a row, the glyph's ink lines up with the edge of the card below. */
 openclaw-tooltip:last-child > .btn.refresh-button {
   margin-inline-end: -10px;
 }
@@ -1337,14 +1307,11 @@ openclaw-tooltip:last-child > .btn.refresh-button {
     min-height: 36px;
   }
 
-  /* Touch paints no hover box, so the glyph moves inside it and nothing overflows the gutter. */
   openclaw-tooltip:last-child > .btn.refresh-button {
     justify-content: flex-end;
     margin-inline-end: 0;
   }
 
-  /* Beside a neighbor the box starts at that neighbor and reaches into the gutter, so the large
-     touch box keeps the glyph at its desktop distance. */
   * + openclaw-tooltip:last-child > .btn.refresh-button {
     justify-content: flex-start;
     margin-inline: -8px -4px;
@@ -1453,7 +1420,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   --callout-tone: var(--ok);
 }
 
-/* Pending routes reserve the content layout without exposing transient panel text. */
 .lazy-view-state--loading {
   display: flex;
   flex: 1 1 auto;
@@ -1511,7 +1477,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   text-align: center;
 }
 
-/* Lazy route load failure — a centered panel state, not a stretched callout. */
 .lazy-view-error {
   margin: auto;
   display: grid;
@@ -1535,7 +1500,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   margin-bottom: 4px;
 }
 
-/* A stale-chunk reload prompt is routine after an update, not a failure. */
 .lazy-view-error--stale .lazy-view-error__icon {
   color: var(--muted);
 }
@@ -1701,8 +1665,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   font: inherit;
 }
 
-/* Code block wrapper chrome (generated by markdown renderer) */
-
 .code-block-wrapper {
   position: relative;
   width: 100%;
@@ -1757,8 +1719,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   min-height: 32px;
 }
 
-/* Keep the existing controls in place as streaming crosses the source-line
-   threshold. Only icons span the code rows; language and JSON modes scroll away. */
 .code-block-wrapper--long {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto;
@@ -1943,7 +1903,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   color: var(--hljs-number);
 }
 
-/* Raw keeps the shared seven-line preview, reveal, wrap, and original copy payload. */
 .code-block-wrapper--json:not(.is-json-raw) > :is(.code-block-viewport, .code-block-expand),
 .code-block-wrapper--json:not(.is-json-raw) .code-block-wrap,
 .code-block-wrapper--json.is-json-raw > .code-block-json-tree {
@@ -2131,7 +2090,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
   color: var(--text);
 }
 
-/* Row detail buttons stay chromeless and share the same focus ring. */
 .channels-item__detail,
 .plugins-item__detail-button,
 .session-bar-selection {
@@ -2161,7 +2119,6 @@ openclaw-tooltip:last-child > .btn.refresh-button {
 }
 
 @media (forced-colors: active) {
-  /* Forced colors suppresses shadows; outrank the lazy page outline resets. */
   button.channels-item__detail:focus-visible,
   button.plugins-item__detail-button:focus-visible,
   button.session-bar-selection:focus-visible {
@@ -2324,7 +2281,6 @@ td.data-table-key-col {
   cursor: not-allowed;
 }
 
-/* The dense footer keeps the select level with its 30px buttons. */
 select.data-table-pagination__size {
   --settings-control-height: 30px;
 
@@ -2335,7 +2291,6 @@ select.data-table-pagination__size {
   flex: 1;
 }
 
-/* Reading indicator bubble sizing; dot styles live in chat/tool-cards.css. */
 .chat-bubble.chat-reading-indicator {
   width: fit-content;
   padding: 10px 16px;
@@ -2419,10 +2374,6 @@ select.data-table-pagination__size {
 .confirm-dialog .oc-dialog__body > .exec-approval-skip {
   margin-top: 0;
 }
-
-/* The confirm opt-out is a control, not a continuation of the message copy, so it
-   takes the same 12px separation the details block uses and keeps the 16px action
-   gap below it. Without the margin it reads as a third line of the paragraph. */
 
 .exec-approval-skip {
   margin-top: 12px;
@@ -2748,7 +2699,6 @@ select.data-table-pagination__size {
   }
 }
 
-/* Fades cover only text, never the native far-right scrollbar or actions. */
 .cmd-palette__input-scroll::before,
 .cmd-palette__input-scroll::after {
   content: "";
@@ -2857,7 +2807,6 @@ select.data-table-pagination__size {
   display: inline;
 }
 
-/* Session rows reserve hover-action space while keeping activity in the leading slot. */
 .session-row-host {
   --session-row-actions-reserve: 52px;
   position: relative;
@@ -2894,8 +2843,6 @@ select.data-table-pagination__size {
   color: var(--muted);
 }
 
-/* Unread indicator shared by the sidebar recents list, the chat session
-   picker, and the sessions page key cell. */
 .session-unread-dot {
   display: inline-block;
   width: 7px;
@@ -2949,8 +2896,6 @@ select.data-table-pagination__size {
   stroke-width: 2px;
 }
 
-/* Attribute badges (approval, cloud placement):
-   muted metadata grouped in the row's second-line endcap. */
 .session-row-badges {
   display: inline-flex;
   align-items: center;
@@ -2958,8 +2903,6 @@ select.data-table-pagination__size {
   flex: 0 0 auto;
 }
 
-/* Counts (outbox) sit beside the 12px glyph as compact metadata,
-   not at the row's title size. */
 .session-row-badge {
   display: inline-flex;
   align-items: center;
@@ -2969,7 +2912,6 @@ select.data-table-pagination__size {
   font-variant-numeric: tabular-nums;
 }
 
-/* Trailing signals stay quieter than secondary text unless their state adds color. */
 .session-row-trail,
 .session-row-badges,
 .sidebar-child-session-toggle {
@@ -2981,20 +2923,10 @@ select.data-table-pagination__size {
   color: var(--warn);
 }
 
-/* Later rules win: a placement's failure or warning overrides its healthy color. */
-[data-pull-request-state="open"] {
-  color: var(--ok);
-}
-
-[data-pull-request-state="merged"] {
-  color: var(--pr-merged);
-}
-
 [data-placement-state] {
   color: var(--accent);
 }
 
-[data-pull-request-state="closed"],
 [data-placement-state="failed"],
 [data-disk-space-status="critical"] {
   color: var(--danger);
@@ -3011,7 +2943,6 @@ select.data-table-pagination__size {
   gap: 0;
 }
 
-/* Shared icon-button box; each surface retains positioning, paint, and state. */
 .session-action,
 .settings-secret__toggle,
 .chat-queue__remove,
@@ -3049,7 +2980,6 @@ select.data-table-pagination__size {
   display: none;
 }
 
-/* Hover brightens the glyph instead of filling a chip inside the row. */
 .session-action:hover:not(:disabled) {
   color: var(--text-strong);
 }
@@ -3064,8 +2994,6 @@ select.data-table-pagination__size {
   pointer-events: auto;
 }
 
-/* Disabled actions still surface on hover (dimmed) so the tooltip can
-   explain why archiving is unavailable instead of the button vanishing. */
 .session-row-host:hover .session-action:disabled,
 .session-row-host:focus-within .session-action:disabled {
   opacity: 0.35;
@@ -3196,8 +3124,6 @@ select.data-table-pagination__size {
   }
 }
 
-/* Only the title viewport is masked; badges and row controls stay outside it.
-   Extra travel equal to the fade width leaves the complete tail opaque. */
 .hover-marquee {
   --hover-marquee-fade-width: 12px;
   --hover-marquee-fade-direction: to right;
@@ -3219,7 +3145,6 @@ select.data-table-pagination__size {
   transition: transform 180ms ease-out;
 }
 
-/* Automation titles keep their final fade before overflow observation. */
 .chat-summary__automation-title,
 .hover-marquee--overflowing {
   mask-image: linear-gradient(
@@ -3427,8 +3352,6 @@ select.data-table-pagination__size {
   }
 }
 
-/* Identity links (a name or avatar opening that person's Activity feed) stay neutral
-   until hover so identity chrome keeps its weight in dense surfaces. */
 .person-activity-link {
   color: inherit;
 }
@@ -3447,7 +3370,6 @@ select.data-table-pagination__size {
   gap: 4px;
 }
 
-/* Sidebar numbers stay tabular so counts and elapsed times hold their column. */
 :is(
   .session-row-badge,
   .session-row-trail,
@@ -3472,17 +3394,14 @@ select.data-table-pagination__size {
   --hover-marquee-fade-width: 24px;
 }
 
-/* Text on a tag fill keeps its readable tone; only icons take the quieter one. */
 .sidebar-recent-session--colored .session-row-trail {
   color: var(--session-row-muted, var(--muted));
 }
 
-/* A tighter pair leaves room between its run outline and the title. */
 .sidebar-recent-session .session-owner-stack {
   width: 26px;
 }
 
-/* One hover, disabled and corner treatment for every field and field-like trigger. */
 :where(
   .field :is(input, textarea, select),
   .settings-input,

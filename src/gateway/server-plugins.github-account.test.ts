@@ -10,6 +10,7 @@ import { createPluginRecord } from "../plugins/status.test-helpers.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture } from "./control-ui-session-pr-access.test-support.js";
+import { readGitHubConfig } from "./github-repository-fixture-api.test-support.js";
 import { createRequestGatewayMethodRegistry } from "./server-methods.js";
 import { loadGatewayPlugins } from "./server-plugins.js";
 
@@ -29,7 +30,17 @@ it.each(["in-process", "bound"] as const)(
           ...fixture.cfg,
           gateway: {
             ...fixture.cfg.gateway,
-            controlUi: { github: { token: "synthetic-github-lookup-token" } },
+            controlUi: {},
+          },
+          plugins: {
+            entries: {
+              "github-repositories": {
+                config: {
+                  ...readGitHubConfig(fixture.cfg),
+                  service: { token: "synthetic-github-lookup-token" },
+                },
+              },
+            },
           },
         };
         setRuntimeConfigSnapshot(cfg);

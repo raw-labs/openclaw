@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createDeferred as deferred } from "../../../../test/helpers/promise.js";
 import type { ToolsEffectiveResult } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
-import { githubIdentityViewFixture } from "../../features/github-connections/github-identity.test-support.ts";
 import type { AgentsPanel } from "../../lib/agents/panels.ts";
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
@@ -96,12 +95,11 @@ async function mountEffective(
     panel: next,
   });
   const page = createAgentsPage(context, route(panel));
-  const identity = githubIdentityViewFixture();
+  const base = createBaseParams();
   const mounted = mountSolid(() => (
     <AgentTools
-      {...createBaseParams()}
+      {...base}
       {...page.read().tools}
-      githubIdentity={identity}
       readData={page.read().readData}
       agentId={page.read().selectedAgentId ?? "main"}
     />
@@ -187,13 +185,13 @@ describe("Agents effective-tools read", () => {
     expect(
       view.container.querySelector<HTMLButtonElement>(".agent-tools-buttons button")?.disabled,
     ).toBe(false);
-    const github = view.container.querySelector("openclaw-github-identity");
+    const github = view.container.querySelector("fixture-agent-settings");
     pending.resolve(effective("Accepted preview"));
     await waitForSolid(() => expect(preview(view.container)).toContain("Accepted preview"));
     view.setPanel("files");
     view.setPanel("tools");
     await waitForSolid(() => expect(view.calls()).toHaveLength(1));
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(github);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(github);
   });
 
   it("keeps catalog disclosures and focus through refresh, failure, and recovery", async () => {
@@ -206,7 +204,7 @@ describe("Agents effective-tools read", () => {
       .mockReturnValue(recovered.promise);
     const view = await mountEffective(read);
     await waitForSolid(() => expect(preview(view.container)).toContain("Accepted preview"));
-    const github = view.container.querySelector("openclaw-github-identity");
+    const github = view.container.querySelector("fixture-agent-settings");
     const preset = view.container.querySelector<HTMLButtonElement>(".agent-tools-buttons button")!;
     openToolGroups(view.container);
     const card = view.container.querySelector<HTMLDetailsElement>("#agent-tool-read")!;
@@ -226,7 +224,7 @@ describe("Agents effective-tools read", () => {
     expect(card.open).toBe(true);
     expect(group.open).toBe(true);
     expect(document.activeElement).toBe(toggle);
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(github);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(github);
     expect(view.container.querySelector(".agent-tools-buttons button")).toBe(preset);
     expect(preset.disabled).toBe(false);
     next.reject(new Error("gateway unavailable"));
@@ -240,7 +238,7 @@ describe("Agents effective-tools read", () => {
     expect(card.open).toBe(true);
     expect(group.open).toBe(true);
     expect(document.activeElement).toBe(toggle);
-    expect(view.container.querySelector("openclaw-github-identity")).toBe(github);
+    expect(view.container.querySelector("fixture-agent-settings")).toBe(github);
     expect(view.container.querySelector(".agent-tools-buttons button")).toBe(preset);
     expect(preset.disabled).toBe(false);
     expect(view.container.querySelector(".agent-tools-runtime-chip")).toBeNull();

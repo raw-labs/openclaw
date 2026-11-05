@@ -19,6 +19,7 @@ import { resolveExecSafeBinRuntimePolicy } from "../infra/exec-safe-bin-runtime-
 import { logInfo } from "../logger.js";
 import { parseAgentSessionKey, resolveAgentIdFromSessionKey } from "../routing/session-key.js";
 import { isSecretEgressProxyActive } from "../secrets/egress-proxy/registry.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import type { SecretStoreExecEnvironment } from "../secrets/store/secret-store.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { captureOpenClawStateReadWorkerContext } from "../state/openclaw-state-worker-context.js";
@@ -88,12 +89,10 @@ export function createExecTool(defaults?: ExecToolDefaults) {
   const secretEgressEnabled = isSecretEgressProxyActive();
   const cleanupMs = defaults?.cleanupMs;
   const requestOwners =
-    (defaults && readExecRequestOwners(defaults)) ??
-    captureExecRequestOwners({
-      runId: defaults?.runId,
-      sessionId: defaults?.sessionId,
-    });
-  const preparedRunEnvironment = resolveExecPreparedRunEnvironment(defaults);
+    (defaults && readExecRequestOwners(defaults)) ?? captureExecRequestOwners(defaults ?? {});
+  let runEnvironment = defaults?.preparedRunEnvironment;
+  let storeProjectionAdmitted: boolean | undefined;
+  const getRunEnvironment = () => (runEnvironment ??= resolveExecPreparedRunEnvironment(defaults));
   let subagentExecutionPromise: Promise<boolean> | undefined;
   const resolveSubagentExecution = () =>
     defaults?.preparedSubagentExecution ??
@@ -109,18 +108,18 @@ export function createExecTool(defaults?: ExecToolDefaults) {
     defaults?.preparedStoreEnvironment === undefined
       ? undefined
       : Promise.resolve(defaults.preparedStoreEnvironment);
-  const resolveStoreEnv = () => {
-    if (storeEnvPromise === undefined) {
+  const resolveStoreEnv = (): Promise<Readonly<SecretStoreExecEnvironment>> => {
+    if (storeEnvPromise === undefined && storeProjectionAdmitted) {
       const context = captureOpenClawStateReadWorkerContext();
       storeEnvPromise = import("../secrets/store/secret-store.js").then((store) =>
         store.readSecretStoreExecEnvironment({
           includeSecretSentinels: secretEgressEnabled,
-          excludeNames: preparedRunEnvironment.excludedStoreNames,
+          excludeNames: getRunEnvironment().excludedStoreNames,
           context,
         }),
       );
     }
-    return storeEnvPromise;
+    return storeEnvPromise ?? Promise.resolve({});
   };
   const defaultBackgroundMs = clampWithDefault(
     defaults?.backgroundMs ?? readEnvInt("OPENCLAW_BASH_YIELD_MS", "PI_BASH_YIELD_MS"),
@@ -207,6 +206,8 @@ export function createExecTool(defaults?: ExecToolDefaults) {
       signal?.throwIfAborted();
       const approvalTransport = defaults?.createApprovalTransport?.(toolCallId, signal);
       const assertSourceActive = captureAgentToolSourceExecutionGuard(signal);
+      const preparedRunEnvironment = getRunEnvironment();
+      storeProjectionAdmitted ??= getActiveSecretsRuntimeConfigSnapshot() !== null;
       assertSupportedExecParams(args);
       // Capture settings and cancellation per execution; unused reviewers must not load model runtime.
       let autoReviewer: ExecAutoReviewer | undefined = defaults?.autoReviewer;

@@ -257,10 +257,7 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       detailsEnabled: !catalog && !this.compact,
       detailsWorkspace: {
         ...workspace,
-        branch:
-          selectedSession?.repository?.branch ??
-          selectedSession?.worktree?.branch ??
-          chatProps.pullRequestsBranch?.branch,
+        branch: selectedSession?.repository?.branch ?? selectedSession?.worktree?.branch,
       },
       onOpenSidebar: chatProps.onOpenSidebar
         ? (content) => {
@@ -496,7 +493,6 @@ export abstract class ChatPaneLayoutRender extends ChatPaneHeaderLayout {
       },
       digest: observerDigest,
       activeRunId: observerRunId,
-      pullRequests: this.sessionPullRequests,
       companion: companionThread,
       onCompanionModelSelect: (patch) =>
         this.sessionCompanionThreads.setModelSelection(currentAgentId, patch),

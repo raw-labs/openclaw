@@ -1,77 +1,79 @@
 import { expectDefined } from "@openclaw/normalization-core";
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
-import * as githubIdentity from "../../agents/github-tool-identity.js";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
 } from "../../config/runtime-snapshot.js";
 import { replaceSessionEntry } from "../../config/sessions/session-accessor.js";
 import type { OpenClawConfig } from "../../config/types.js";
-import { setActiveDegradedSecretOwners } from "../../secrets/runtime-degraded-state.js";
+import { withPluginRuntimeGatewayRequestScope } from "../../plugins/runtime/gateway-request-scope.js";
+import {
+  SecretSurfaceUnavailableError,
+  setActiveDegradedSecretOwners,
+} from "../../secrets/runtime-degraded-state.js";
+import { loadBundledPluginFacade } from "../../test-utils/bundled-plugin-public-surface.js";
 import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
-import * as checkDetails from "../control-ui-session-pr-check-details.js";
-import { startGitHubSessionPresentation } from "../control-ui-session-pr-presentation.js";
 import {
-  createRepositorySessionReadHost,
-  type RepositorySessionPresentation,
-} from "../control-ui-session-pr-runtime.js";
+  startTestRepositorySessionPresentation,
+  createTestRepositorySessionPresentation,
+} from "../github-account-service.test-support.js";
 import {
-  createTestControlUiSessionPrSubscriptions,
-  createTestSessionPrReadSource,
-} from "../control-ui-session-pr-subscriptions.test-support.js";
-import { gitHubPublicApi, githubApiToken } from "../github-public-api.js";
-import { createContext } from "../server-plugin-in-process-dispatch.test-support.js";
-import { getSessionRowProjection } from "../session-row-projection-access.js";
-import { createControlUiRequestOptions } from "./control-ui-request.test-support.js";
-import { controlUiHandlers } from "./control-ui.js";
+  readGitHubConfig,
+  loadGitHubRepositoryRuntimeFixture,
+} from "../github-repository-fixture-api.test-support.js";
+import { gitHubAccountApi } from "../native-github-account-api.js";
+import { githubApiToken } from "../native-github-service-credential.js";
+import type { RepositorySessionPresentation } from "../repository-session-read.types.js";
+import {
+  createControlUiRequestOptions,
+  controlUiIssueFields as issueFields,
+  controlUiJson as json,
+  mockControlUiGitHubFetch as mockGitHubFetch,
+  type PreparedPreviewIdentity,
+  type PreviewIdentityPreparation,
+  controlUiGitHubConfig as configuredGitHub,
+  expectControlUiReply as expectReply,
+  expectControlUiError as expectError,
+  expectControlUiUnavailable as expectUnavailable,
+} from "./control-ui-request.test-support.js";
+import { controlUiHandlers as coreControlUiHandlers } from "./control-ui.js";
 import { identifiedClient, soloClient } from "./sessions-sharing.test-support.js";
-import type {
-  GatewayClient,
-  GatewayRequestContext,
-  GatewayRequestHandlerOptions,
-  RespondFn,
-} from "./types.js";
+import type { GatewayClient, GatewayRequestHandlerOptions, RespondFn } from "./types.js";
 
-const requestOptions = createControlUiRequestOptions(() => ({
-  agents: { entries: { main: {} } },
-  gateway: { controlUi: { github: { token: "preview-service-token" } } },
-}));
+const { controlUiGitHubHandlers } = await loadGitHubRepositoryRuntimeFixture();
+const { gitHubPublicApi } = await loadBundledPluginFacade<{
+  gitHubPublicApi: Pick<typeof gitHubAccountApi, "ControlUiGitHubError"> & {
+    loadControlUiGitHubPreview(
+      target: { kind: "issue" | "pull"; owner: string; repo: string; number: number },
+      identity?: Pick<PreparedPreviewIdentity, "cacheScope" | "revalidate" | "assertSelected"> & {
+        token?: string;
+        signal?: AbortSignal;
+        optionalAuth?: true;
+      },
+      fetchImpl?: typeof fetch,
+      refresh?: boolean,
+      request?: { signal: AbortSignal; assertActive: () => void },
+    ): Promise<unknown>;
+  };
+}>({ pluginId: "github-repositories", artifactBasename: "public-api.js" });
+const githubIdentity = await loadBundledPluginFacade<{
+  prepareGitHubReadIdentity(input: PreviewIdentityPreparation): Promise<PreparedPreviewIdentity>;
+  GitHubIdentityError: new (
+    reason: "unavailable" | "changed" | "rate_limited" | "unverified",
+  ) => Error;
+}>({ pluginId: "github-repositories", artifactBasename: "tool-identity-api.js" });
+
+const controlUiHandlers = { ...coreControlUiHandlers, ...controlUiGitHubHandlers };
+
+const requestOptions = createControlUiRequestOptions(() =>
+  configuredGitHub("preview-service-token"),
+);
 
 type RequestExtras = Parameters<typeof requestOptions>[2] &
   Pick<Partial<GatewayRequestHandlerOptions>, "signal" | "hasCurrentClientAuthority">;
-function sessionContext(
-  scheduler: ReturnType<typeof createTestGatewayScheduler>,
-  client: GatewayClient | null,
-  context: GatewayRequestContext = createContext(),
-  replace?: RepositorySessionPresentation["replace"],
-) {
-  context.getClientConnIds = (filter) =>
-    new Set(
-      client?.connId && !client.invalidated && (!filter || filter(client)) ? [client.connId] : [],
-    );
-  const host = createRepositorySessionReadHost({
-    signal: scheduler.signal,
-    getRuntimeConfig: context.getRuntimeConfig,
-    getSessionRowProjection: () => getSessionRowProjection(context),
-    getClient: (connId) => (client?.connId === connId && !client.invalidated ? client : undefined),
-    resolveGatewayContext: () => context,
-    broadcastToConnIds: vi.fn(),
-  });
-  context.repositorySessions = host;
-  const service = startGitHubSessionPresentation({
-    scheduler,
-    getConfig: context.getRuntimeConfig,
-    reads: host.bindService(scheduler.signal, () => scheduler.signal.throwIfAborted()),
-  });
-  if (replace) {
-    service.presentation.replace = replace;
-  }
-  return { context, stop: service.stop };
-}
-
-function fixture(method: string) {
+function fixture(method: string, checks?: RepositorySessionPresentation["checks"]) {
   const handler = expectDefined(controlUiHandlers[`controlUi.${method}`], method);
   const respond = vi.fn<RespondFn>();
   return {
@@ -82,15 +84,40 @@ function fixture(method: string) {
         signal: extra?.signal,
         hasCurrentClientAuthority: extra?.hasCurrentClientAuthority,
       };
+      const invoke = () =>
+        withPluginRuntimeGatewayRequestScope(
+          {
+            context: options.context,
+            client: options.client,
+            signal: options.signal,
+            hasCurrentClientAuthority:
+              options.hasCurrentClientAuthority ?? (() => !options.client?.invalidated),
+            isWebchatConnect: options.isWebchatConnect,
+          },
+          () => handler(options),
+        );
       if (method !== "sessionPullRequests.checks" || options.context.repositorySessions) {
-        return await handler(options);
+        return await invoke();
       }
       const scheduler = createTestGatewayScheduler();
-      const service = sessionContext(scheduler, options.client, options.context);
+      const services = await startTestRepositorySessionPresentation(
+        options.context,
+        scheduler,
+        options.client ?? undefined,
+        { cleanupOnFinish: false },
+      );
       try {
-        return await handler(options);
+        if (checks) {
+          const presentation = expectDefined(
+            options.context.resolveGatewayContext?.()?.repositorySessions?.presentation,
+            "registered repository presentation",
+          );
+          vi.spyOn(presentation, "checks").mockImplementation(checks);
+        }
+        return await invoke();
       } finally {
-        await service.stop();
+        vi.restoreAllMocks();
+        await services.stop({ strict: true });
         await scheduler.stop();
       }
     },
@@ -105,56 +132,8 @@ function githubTarget(number: number, repo = "openclaw", owner = "openclaw") {
   return { kind: "issue", number, owner, repo };
 }
 
-function configuredGitHub(token: string): OpenClawConfig {
-  return { agents: { entries: { main: {} } }, gateway: { controlUi: { github: { token } } } };
-}
-
-const json = (value: unknown) => new Response(JSON.stringify(value));
 const previewUnavailable =
-  "The configured Control UI GitHub credential is unavailable. Check gateway.controlUi.github.token and its host binding, then retry.";
-const degradedPreview = {
-  ownerKind: "capability" as const,
-  ownerId: "control-ui-github",
-  state: "unavailable" as const,
-  paths: ["gateway.controlUi.github.token"],
-  refKeys: [],
-  reason: "secret reference was not found",
-};
-
-function expectReply(respond: RespondFn, payload: unknown) {
-  expect(respond).toHaveBeenCalledWith(true, payload, undefined);
-}
-
-function expectError(respond: RespondFn, error: unknown) {
-  expect(respond).toHaveBeenCalledWith(false, undefined, error);
-}
-
-function expectUnavailable(respond: RespondFn) {
-  expectError(respond, expect.objectContaining({ code: "UNAVAILABLE" }));
-}
-
-function issueFields(title: string, extra: Record<string, unknown> = {}) {
-  return {
-    created_at: "2026-09-01T08:00:00Z",
-    updated_at: "2026-09-01T09:00:00Z",
-    state: "open",
-    title,
-    user: { login: "octocat" },
-    ...extra,
-  };
-}
-
-function mockGitHubFetch(issue: Record<string, unknown>, repository: Record<string, unknown>) {
-  const fetchMock = vi.fn<typeof fetch>(async (input) =>
-    json(
-      (input instanceof Request ? input.url : input.toString()).includes("/issues/")
-        ? issue
-        : repository,
-    ),
-  );
-  vi.stubGlobal("fetch", fetchMock);
-  return fetchMock;
-}
+  "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -305,12 +284,9 @@ describe("controlUi.githubPreview", () => {
             mode === "managed" ? "old-preview-service-token" : "configured-reader-token",
           );
     if (mode === "managed") {
-      cfg.agents = {
-        entries: {
-          main: {},
-          alternate: { tools: { github: { profileId: identity.selection.profileId } } },
-        },
-      };
+      cfg.agents = { entries: { main: {}, alternate: {} } };
+      const plugin = cfg.plugins!.entries!["github-repositories"]!.config!;
+      plugin.agents = { alternate: { profileId: identity.selection.profileId } };
     }
     if (mode !== "anonymous") {
       setRuntimeConfigSnapshot(cfg);
@@ -380,9 +356,17 @@ describe("controlUi.githubPreview", () => {
       const cfg: OpenClawConfig = {
         agents: { entries: { main: {} } },
         gateway: {
-          github: { host: "ghe.example.test", apiBaseUrl: "https://ghe.example.test/api/v3" },
-          controlUi: {
-            github: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+          controlUi: {},
+        },
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config: {
+                host: "ghe.example.test",
+                apiBaseUrl: "https://ghe.example.test/api/v3",
+                service: { host: "ghe.example.test", token: "synthetic-enterprise-service" },
+              },
+            },
           },
         },
       };
@@ -427,8 +411,12 @@ describe("controlUi.githubPreview", () => {
     expectReply(respond, expect.objectContaining({ title: "Cached preview" }));
     setActiveDegradedSecretOwners([
       {
-        ...degradedPreview,
+        ownerKind: "capability",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
+        state: "unavailable",
         degradationState: "cold",
+        reason: "secret reference was not found",
+        paths: ["plugins.entries.github-repositories.config.service.token"],
         refKeys: ["store:default:PREVIEW_TOKEN"],
       },
     ]);
@@ -440,7 +428,8 @@ describe("controlUi.githubPreview", () => {
     );
     expectError(respond, {
       code: "UNAVAILABLE",
-      message: previewUnavailable,
+      message:
+        "The configured Control UI GitHub credential is unavailable. Check plugins.entries.github-repositories.config.service.token and its host binding, then retry.",
       retryable: false,
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -463,12 +452,18 @@ describe("controlUi.githubPreview", () => {
         runtime(() => cfg),
       );
       await started.promise;
-      const tools = { github: { profileId: `ghp_${"c".repeat(32)}` } };
-      if (selection === "agent") {
-        cfg = { agents: { entries: { main: { tools } } } };
-      } else if (selection === "system") {
-        cfg = { ...cfg, tools };
-      }
+      const replacement = { profileId: `ghp_${"c".repeat(32)}` };
+      cfg = {
+        ...cfg,
+        plugins: {
+          entries: {
+            "github-repositories": {
+              config:
+                selection === "agent" ? { agents: { main: replacement } } : { system: replacement },
+            },
+          },
+        },
+      };
       pending.resolve(preview);
       await request;
 
@@ -493,13 +488,7 @@ describe("controlUi.githubPreview", () => {
     const { respond, send } = fixture("githubPreview");
     await send({ ...target, ...(refresh !== undefined ? { refresh } : {}) });
     if (valid) {
-      expect(loadPreview).toHaveBeenCalledExactlyOnceWith(
-        target,
-        undefined,
-        undefined,
-        true,
-        undefined,
-      );
+      expect(loadPreview).toHaveBeenCalledExactlyOnceWith(target, undefined, undefined, true);
       expectReply(respond, preview);
     } else {
       expect(loadPreview).not.toHaveBeenCalled();
@@ -511,6 +500,20 @@ describe("controlUi.githubPreview", () => {
   });
 
   it.each([
+    {
+      failure: "configured-unavailable preview credential",
+      managed: false,
+      error: new SecretSurfaceUnavailableError({
+        ownerKind: "capability",
+        ownerId: "plugins.entries.github-repositories.config.service.token",
+        state: "unavailable",
+        paths: ["plugins.entries.github-repositories.config.service.token"],
+        refKeys: [],
+        reason: "secret reference was not found",
+      }),
+      message: previewUnavailable,
+      retryable: false,
+    },
     ...(["unavailable", "unverified", "rate_limited"] as const).map((reason) => ({
       failure: `managed identity ${reason}`,
       managed: true,
@@ -545,7 +548,16 @@ describe("controlUi.githubPreview", () => {
       managed
         ? runtime(() => ({
             ...configuredGitHub("existing-preview-service-token"),
-            tools: { github: { profileId: `ghp_${"b".repeat(32)}` } },
+            plugins: {
+              entries: {
+                "github-repositories": {
+                  config: {
+                    ...readGitHubConfig(configuredGitHub("existing-preview-service-token")),
+                    system: { profileId: `ghp_${"b".repeat(32)}` },
+                  },
+                },
+              },
+            },
           }))
         : {},
     );
@@ -557,88 +569,59 @@ describe("controlUi.githubPreview", () => {
 });
 
 describe("controlUi.sessionPullRequests.subscribe", () => {
-  it("acknowledges pending preparation and preserves refresh through a sidebar replacement", async () => {
+  it("acknowledges pending replacement and forwards later sidebar membership independently", async () => {
     const held = createDeferred();
     const preparing = createDeferred();
     const scheduler = createTestGatewayScheduler();
-    const broadcastToConnIds = vi.fn();
-    const readSource = createTestSessionPrReadSource();
-    const load = vi.fn(async ({ refresh }: { refresh?: boolean }) => ({
-      pullRequests: [],
-      rateLimited: refresh === true,
-    }));
-    const subscriptions = createTestControlUiSessionPrSubscriptions({
-      scheduler,
-      broadcastToConnIds,
-      prepareRead: async (_connId, session) => {
+    const replace = vi.fn<Parameters<typeof createTestRepositorySessionPresentation>[2]>(
+      async (_connId, _sessions, _refresh, admitted) => {
         preparing.resolve();
+        admitted?.();
         await held.promise;
-        return async () => ({
-          identity: session.sessionKey,
-          params: { sessionKey: session.sessionKey, agentId: "main" },
-          readSource,
-          source: null,
-        });
       },
-      load,
-    });
+    );
     const client = { ...soloClient(), connId: "conn-control-ui" };
-    const service = sessionContext(scheduler, client, undefined, subscriptions.replace);
-    onTestFinished(service.stop);
+    const service = await createTestRepositorySessionPresentation(scheduler, client, replace);
     const { respond, send } = fixture("sessionPullRequests.subscribe");
     const request = send(
       { sessionKeys: ["agent:main:main"], refreshSessionKeys: ["agent:main:main"] },
-      {
-        client,
-        context: service.context,
-      },
+      { client, context: service.context },
     );
     try {
       await awaitGateBeforeSettlement(
         preparing.promise,
         request,
-        "Subscription preparation did not start",
+        "Subscription replacement did not start",
       );
-      await Promise.resolve();
+      await request;
       expectReply(respond, { subscribed: true });
-      expect(broadcastToConnIds).not.toHaveBeenCalled();
-      // After the acknowledgement, the UI sends membership changes without repeating refresh.
       await send(
         { sessionKeys: ["agent:main:main"], passiveSessionKeys: ["agent:main:sidebar"] },
-        {
-          client,
-          context: service.context,
-        },
+        { client, context: service.context },
       );
       expect(respond).toHaveBeenCalledTimes(2);
-      held.resolve();
-      await request;
-      await subscriptions.pollNow();
-      expect(load).toHaveBeenCalledTimes(2);
-      expect(broadcastToConnIds).toHaveBeenCalledWith(
-        "controlUi.sessionPullRequests.changed",
-        {
-          sessions: {
-            "agent:main:main": { pullRequests: [], rateLimited: true, status: "rate-limited" },
-          },
-        },
-        new Set(["conn-control-ui"]),
-        { sessionKeys: ["agent:main:main"], agentId: "main" },
+      expect(replace).toHaveBeenNthCalledWith(
+        1,
+        client.connId,
+        ["agent:main:main"],
+        new Set(["agent:main:main"]),
+        expect.any(Function),
+        undefined,
       );
-      expect(broadcastToConnIds).toHaveBeenCalledWith(
-        "controlUi.sessionPullRequests.changed",
-        {
-          sessions: {
-            "agent:main:sidebar": { pullRequests: [], rateLimited: false, status: "ready" },
-          },
-        },
-        new Set(["conn-control-ui"]),
-        { sessionKeys: ["agent:main:sidebar"], agentId: "main" },
+      expect(replace).toHaveBeenNthCalledWith(
+        2,
+        client.connId,
+        ["agent:main:main"],
+        undefined,
+        expect.any(Function),
+        new Set(["agent:main:sidebar"]),
       );
     } finally {
       held.resolve();
       await request;
-      await subscriptions.stop();
+      await Promise.all(replace.mock.results.map((result) => result.value));
+      vi.restoreAllMocks();
+      await service.stop();
       await scheduler.stop();
     }
   });
@@ -646,29 +629,22 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
   it("reports subscription preparation failures without rejecting the request", async () => {
     const warn = vi.fn();
     const scheduler = createTestGatewayScheduler();
-    const subscriptions = createTestControlUiSessionPrSubscriptions({
-      scheduler,
-      broadcastToConnIds: vi.fn(),
-      prepareRead: async () => {
+    const replace = vi.fn<Parameters<typeof createTestRepositorySessionPresentation>[2]>(
+      async (_connId, _sessions, _refresh, admitted) => {
+        admitted?.();
         throw new Error("session reader unavailable");
       },
-    });
+    );
     const client = { ...soloClient(), connId: "conn-control-ui" };
-    const service = sessionContext(scheduler, client, undefined, subscriptions.replace);
+    const service = await createTestRepositorySessionPresentation(scheduler, client, replace);
     service.context.logGateway.warn = warn;
-    onTestFinished(service.stop);
     try {
       const { respond, send } = fixture("sessionPullRequests.subscribe");
-      await send(
-        { sessionKeys: ["agent:main:main"] },
-        {
-          client,
-          context: service.context,
-        },
-      );
+      await send({ sessionKeys: ["agent:main:main"] }, { client, context: service.context });
       expectReply(respond, { subscribed: true });
     } finally {
-      await subscriptions.stop();
+      vi.restoreAllMocks();
+      await service.stop();
       await scheduler.stop();
     }
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("session reader unavailable"));
@@ -687,20 +663,17 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
     "validates subscriptions: $sessionKeys",
     async ({ sessionKeys, expected, subscribed, valid }) => {
       const { promise: hydration, resolve: finishHydration } = createDeferred();
-      const replace = vi.fn<RepositorySessionPresentation["replace"]>(
-        async (_connId, _keys, _refresh, admitted) => {
-          admitted?.();
+      const admitted = createDeferred();
+      const replace = vi.fn<Parameters<typeof createTestRepositorySessionPresentation>[2]>(
+        async (_connId, _keys, _refresh, onAdmitted) => {
+          onAdmitted?.();
+          admitted.resolve();
           await hydration;
         },
       );
       const scheduler = createTestGatewayScheduler();
       const client = { ...soloClient(), connId: "conn-control-ui" };
-      const service = sessionContext(scheduler, client, undefined, replace);
-      onTestFinished(async () => {
-        finishHydration();
-        await service.stop();
-        await scheduler.stop();
-      });
+      const service = await createTestRepositorySessionPresentation(scheduler, client, replace);
       const { respond, send } = fixture("sessionPullRequests.subscribe");
       const request = send(
         { sessionKeys },
@@ -709,26 +682,37 @@ describe("controlUi.sessionPullRequests.subscribe", () => {
           context: service.context,
         },
       );
-      if (!valid) {
+      try {
+        if (!valid) {
+          await request;
+          expect(replace).not.toHaveBeenCalled();
+          expectError(respond, {
+            code: "INVALID_REQUEST",
+            message: "invalid controlUi.sessionPullRequests.subscribe params",
+          });
+          return;
+        }
+        await awaitGateBeforeSettlement(
+          admitted.promise,
+          request,
+          "Subscription request completed without admission",
+        );
+        expect(replace).toHaveBeenCalledWith(
+          "conn-control-ui",
+          expected,
+          undefined,
+          expect.any(Function),
+          undefined,
+        );
+        expectReply(respond, { subscribed });
+      } finally {
+        finishHydration();
         await request;
-        expect(replace).not.toHaveBeenCalled();
-        expectError(respond, {
-          code: "INVALID_REQUEST",
-          message: "invalid controlUi.sessionPullRequests.subscribe params",
-        });
-        return;
+        await Promise.all(replace.mock.results.map((result) => result.value));
+        vi.restoreAllMocks();
+        await service.stop();
+        await scheduler.stop();
       }
-      await request;
-      expect(replace).toHaveBeenCalledWith(
-        "conn-control-ui",
-        expected,
-        undefined,
-        expect.any(Function),
-        undefined,
-      );
-      expectReply(respond, { subscribed });
-      finishHydration();
-      await request;
     },
   );
 });
@@ -758,10 +742,8 @@ describe("controlUi.sessionPullRequests.checks", () => {
     { ...params, url: "https://github.com/other/repo" },
     { ...params, sessionKey: "" },
   ])("rejects malformed check params: %j", async (input) => {
-    const load = vi
-      .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
-      .mockResolvedValue(result);
-    const { respond, send } = fixture("sessionPullRequests.checks");
+    const load = vi.fn<RepositorySessionPresentation["checks"]>().mockResolvedValue(result);
+    const { respond, send } = fixture("sessionPullRequests.checks", load);
     await send(input);
     expect(load).not.toHaveBeenCalled();
     expectError(respond, expect.objectContaining({ code: "INVALID_REQUEST" }));
@@ -792,10 +774,8 @@ describe("controlUi.sessionPullRequests.checks", () => {
             },
           );
         }
-        const load = vi
-          .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
-          .mockResolvedValue(result);
-        const { respond, send } = fixture("sessionPullRequests.checks");
+        const load = vi.fn<RepositorySessionPresentation["checks"]>().mockResolvedValue(result);
+        const { respond, send } = fixture("sessionPullRequests.checks", load);
         await send(
           params,
           mode !== "missing session"
@@ -823,21 +803,23 @@ describe("controlUi.sessionPullRequests.checks", () => {
       });
       const deferred = createDeferred<typeof result>();
       const started = createDeferred();
-      const load = vi
-        .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
-        .mockImplementation(async () => {
-          started.resolve();
-          return deferred.promise;
-        });
-      const { respond, send } = fixture("sessionPullRequests.checks");
+      const load = vi.fn<RepositorySessionPresentation["checks"]>().mockImplementation(async () => {
+        started.resolve();
+        return deferred.promise;
+      });
+      const { respond, send } = fixture("sessionPullRequests.checks", load);
       const request = send(params);
       await started.promise;
       expect(load).toHaveBeenCalledWith(
-        expect.objectContaining({ ...params, agentId: "main" }),
         expect.objectContaining({
-          assertCurrent: expect.any(Function),
-          sessionScope: expect.stringContaining("ci-generation-one"),
+          session: expect.objectContaining({
+            agentId: "main",
+            sessionKey: params.sessionKey,
+            sessionId: "ci-generation-one",
+          }),
         }),
+        params,
+        expect.any(Function),
       );
       await replaceSessionEntry(session, {
         sessionId: "ci-generation-two",
@@ -871,13 +853,11 @@ describe("controlUi.sessionPullRequests.checks", () => {
       if (when === "before") {
         enableRoles();
       }
-      const load = vi
-        .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
-        .mockImplementation(async () => {
-          enableRoles();
-          return result;
-        });
-      const { respond, send } = fixture("sessionPullRequests.checks");
+      const load = vi.fn<RepositorySessionPresentation["checks"]>().mockImplementation(async () => {
+        enableRoles();
+        return result;
+      });
+      const { respond, send } = fixture("sessionPullRequests.checks", load);
       await send(
         params,
         runtime(() => cfg),
@@ -898,17 +878,23 @@ describe("controlUi.sessionPullRequests.checks", () => {
         { agentId: "research", sessionKey: "global" },
         { sessionId: "research-ci", updatedAt: 1 },
       );
-      const load = vi
-        .spyOn(checkDetails, "loadControlUiSessionPullRequestChecks")
-        .mockResolvedValue(result);
-      const { respond, send } = fixture("sessionPullRequests.checks");
+      const load = vi.fn<RepositorySessionPresentation["checks"]>().mockResolvedValue(result);
+      const { respond, send } = fixture("sessionPullRequests.checks", load);
       await send(
         { ...params, sessionKey: "agent:research:main" },
         runtime(() => cfg),
       );
       expect(load).toHaveBeenCalledWith(
-        expect.objectContaining({ agentId: "research" }),
-        expect.objectContaining({ sessionScope: expect.stringContaining("research-ci") }),
+        expect.objectContaining({
+          session: expect.objectContaining({ agentId: "research", sessionId: "research-ci" }),
+        }),
+        expect.objectContaining({
+          owner: params.owner,
+          repo: params.repo,
+          number: params.number,
+          headSha: params.headSha,
+        }),
+        expect.any(Function),
       );
       expectReply(respond, result);
     });

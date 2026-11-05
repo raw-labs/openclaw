@@ -1,4 +1,3 @@
-import type { SessionCatalogPullRequestSummary } from "../../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import type { BootRecord } from "../../app/boot-record.ts";
 import type { ConnectionBootstrapCoordinator } from "../../app/connection-bootstrap.ts";
@@ -119,13 +118,6 @@ export type SessionCapability = Pick<
     reconcileMutation: (agentId?: string | null) => Promise<SessionRefreshOutcome>;
     capturePermissionObservation: ReturnType<typeof createSessionPermissionProjection>["capture"];
     think: ReturnType<typeof createSessionThinkingClaims>["get"];
-    pullRequestSummary: (key: string) => SessionCatalogPullRequestSummary | undefined;
-    capturePullRequestEpoch: (key: string) => object;
-    setPullRequestSummary: (
-      key: string,
-      summary: SessionCatalogPullRequestSummary | undefined,
-      epoch?: object,
-    ) => void;
     subscribeCreated: (listener: (key: string) => void) => () => void;
     subscribe: (listener: (state: SessionState) => void) => () => void;
     dispose: () => void;

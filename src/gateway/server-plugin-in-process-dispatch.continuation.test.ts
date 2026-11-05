@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createOperationalRunInstanceRef } from "../agents/admitted-run-context.js";
+import { createGitHubIdentityStatusTool } from "../agents/test-helpers/github-plugin-tools.js";
 import {
   withGatewayPersonalToolUser,
   withGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
-import { createGitHubIdentityStatusTool } from "../agents/tools/github-identity-status-tool.js";
 import {
   callAgentToolGatewayRequest,
   runWithGatewayToolContinuationContext,
@@ -23,6 +23,7 @@ import {
   invalidateGatewayDeviceRevocation,
   readGatewayDeviceSourceAuthority,
 } from "./device-revocation.js";
+import { installGitHubAccountRpcFixture } from "./github-account-service.test-support.js";
 import * as operatorCapture from "./operator-run-authority.js";
 import { retainGatewayOperatorRun } from "./operator-run-cancellation.js";
 import { createOperatorRecoveryFixture } from "./operator-run-recovery.test-support.js";
@@ -518,6 +519,7 @@ describe("typed in-process agent continuation authorization", () => {
   it.each(["sessions_send", "subagent_announce"] as const)(
     "preserves GitHub identity access after %s admits a write-only continuation",
     async (sourceTool) => {
+      installGitHubAccountRpcFixture({});
       const owner = createOperatorClient({
         profileName: "continuation-owner",
         scopes: ["operator.read", "operator.write"],

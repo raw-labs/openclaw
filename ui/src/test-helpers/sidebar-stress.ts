@@ -226,10 +226,6 @@ export async function mount(width: number) {
             : {},
     ),
   } as unknown as GatewayBrowserClient);
-  for (const state of ["open", "draft", "merged", "closed"] as const) {
-    harness.sessions.setPullRequestSummary(key("pr-" + state), { numbers: [123, 456], state });
-  }
-  harness.sessions.setPullRequestSummary(key("crowded"), { numbers: [123], state: "open" });
   const approvals = ["approval"].map((id) => ({
     id: "stress-approval-" + id,
     kind: "exec" as const,
@@ -239,6 +235,10 @@ export async function mount(width: number) {
   }));
   const mounted = await mountSidebar(gateway.gateway, harness.sessions, "panel", null, approvals);
   const { sidebar } = mounted;
+  for (const state of ["open", "draft", "merged", "closed"] as const) {
+    harness.publishPullRequests(key("pr-" + state), { numbers: [123, 456], state });
+  }
+  harness.publishPullRequests(key("crowded"), { numbers: [123], state: "open" });
   sidebar.style.cssText = `display:block;width:${width}px;height:1000px`;
   sidebar.connected = true;
   sidebar.storedOutboxes = {

@@ -10,10 +10,7 @@ import {
   resolveConfiguredTalkSpeechProviderId,
 } from "../config/talk.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
-import type {
-  GitHubToolIdentityConfig,
-  MediaUnderstandingModelConfig,
-} from "../config/types.tools.js";
+import type { MediaUnderstandingModelConfig } from "../config/types.tools.js";
 import { resolveDatabaseFamilyEngines } from "../infra/database-engine/registry.js";
 import {
   resolveConfiguredMediaEntryCapabilities,
@@ -55,32 +52,6 @@ type ConfigCollectorParams = {
   defaults: SecretDefaults | undefined;
   context: ResolverContext;
 };
-
-function collectGitHubAppAssignments(params: ConfigCollectorParams): void {
-  const collect = createConfigSecretInputCollector(params);
-  const collectIdentity = (identity: GitHubToolIdentityConfig | undefined, prefix: string) => {
-    if (identity?.kind !== "app-installation") {
-      return;
-    }
-    collect(identity.app, "privateKey", `${prefix}.app.privateKey`, {
-      owner: {
-        ownerKind: "capability",
-        ownerId: prefix,
-        requiredForGateway: false,
-        disposition: "isolate",
-        contract: identity,
-      },
-    });
-  };
-  collectIdentity(params.config.tools?.github, "tools.github");
-  for (const { entry, source } of listAgentEntriesWithSource(params.config)) {
-    const prefix =
-      source.kind === "entries"
-        ? `${appendConfigPathSegment("agents.entries", source.key)}.tools.github`
-        : `agents.list[${source.index}].tools.github`;
-    collectIdentity(entry.tools?.github, prefix);
-  }
-}
 
 function collectModelOrSkillAssignments(params: {
   entries: Record<string, ProviderLike>;
@@ -279,7 +250,6 @@ function collectGatewayAssignments(params: ConfigCollectorParams): void {
     return;
   }
   const collect = createConfigSecretInputCollector(params);
-  const controlUi = isRecord(gateway.controlUi) ? gateway.controlUi : undefined;
   const gatewaySurfaceStates = evaluateGatewayAuthSurfaceStates({
     config: params.config,
     env: params.context.env,
@@ -308,18 +278,6 @@ function collectGatewayAssignments(params: ConfigCollectorParams): void {
         owner,
       });
     }
-  }
-  const controlUiGitHub = controlUi && isRecord(controlUi.github) ? controlUi.github : undefined;
-  if (controlUiGitHub) {
-    collect(controlUiGitHub, "token", "gateway.controlUi.github.token", {
-      owner: {
-        ownerKind: "capability",
-        ownerId: "control-ui-github",
-        requiredForGateway: false,
-        disposition: "isolate",
-        contract: controlUiGitHub,
-      },
-    });
   }
 }
 
@@ -522,7 +480,6 @@ export function collectCoreConfigAssignments(params: {
   }
 
   collectAgentMemorySearchAssignments(params);
-  collectGitHubAppAssignments(params);
   collectTalkAssignments(params);
   collectGatewayAssignments(params);
   collectAgentSandboxAssignments(params);

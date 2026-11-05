@@ -185,7 +185,7 @@ suite.define(() => {
             OPENCLAW_SKIP_CRON: "1",
             OPENCLAW_SKIP_GMAIL_WATCHER: "1",
             OPENCLAW_SKIP_PROVIDERS: "1",
-            OPENCLAW_TEST_MINIMAL_GATEWAY: "1",
+            OPENCLAW_TEST_MINIMAL_GATEWAY: "0",
             VITEST: "1",
           },
         });
@@ -197,7 +197,8 @@ suite.define(() => {
           setUserProfileRole(profile.id, "reader");
         }
         const port = await getFreePort();
-        const origin = new URL(suite.server.baseUrl).origin;
+        const proxyPort = await getFreePort();
+        const origin = `http://127.0.0.1:${proxyPort}`;
         const trustedProxy = {
           allowLoopback: true,
           allowUsers: [viewerEmail, retiringEmail],
@@ -206,6 +207,14 @@ suite.define(() => {
           userHeader: "x-forwarded-user",
         };
         await state.writeConfig({
+          plugins: {
+            allow: ["github-repositories"],
+            // Explicit source selection keeps plugin SDK and native source Gateway owners together.
+            load: {
+              paths: [path.resolve(import.meta.dirname, "../../../extensions/github-repositories")],
+            },
+            entries: { "github-repositories": { enabled: true } },
+          },
           agents: {
             defaults: {
               workspace: state.workspaceDir,
@@ -217,7 +226,11 @@ suite.define(() => {
             port,
             auth: { mode: "trusted-proxy", trustedProxy },
             trustedProxies: ["127.0.0.1", "::1"],
-            controlUi: { enabled: false, allowedOrigins: [origin] },
+            controlUi: {
+              enabled: true,
+              root: path.resolve(import.meta.dirname, "../../../dist/control-ui"),
+              allowedOrigins: [origin],
+            },
             roles: {
               default: "reader",
               definitions: {
@@ -302,26 +315,26 @@ suite.define(() => {
           throw new Error(`Unexpected synthetic GitHub request: ${url.pathname}`);
         });
         restoreFetch = () => transport.mockRestore();
-        const subscriptions =
-          await import("../../../src/gateway/control-ui-session-pr-subscriptions.js");
-        const createSubscriptions = subscriptions.createControlUiSessionPullRequestSubscriptions;
-        // Only PR refresh pacing uses controlled time; Gateway I/O and browser clocks stay real.
-        const subscriptionFactory = vi
-          .spyOn(subscriptions, "createControlUiSessionPullRequestSubscriptions")
-          .mockImplementation((deps) =>
-            createSubscriptions({ ...deps, scheduler: refreshScheduler }),
+        const serviceScheduling = await import("../../../src/plugins/service-scheduler.ts");
+        const createScheduling = serviceScheduling.createPluginServiceScheduler;
+        // Plugin maintenance uses controlled time; Gateway I/O and browser clocks stay real.
+        const serviceSchedulerFactory = vi
+          .spyOn(serviceScheduling, "createPluginServiceScheduler")
+          .mockImplementation((_gatewayScheduler, runOwned) =>
+            createScheduling(refreshScheduler, runOwned),
           );
         try {
           const { startGatewayServer } = await import("../../../src/gateway/server.js");
           gateway = await startGatewayServer(port, {
             auth: { mode: "trusted-proxy", trustedProxy },
             bind: "loopback",
-            controlUiEnabled: false,
+            controlUiEnabled: true,
             sidecarStartup: "defer",
           });
-          expect(subscriptionFactory).toHaveBeenCalledOnce();
+          await gateway.startupSettled;
+          expect(serviceSchedulerFactory).toHaveBeenCalled();
         } finally {
-          subscriptionFactory.mockRestore();
+          serviceSchedulerFactory.mockRestore();
         }
         // Chromium does not consistently apply extraHTTPHeaders to WebSocket upgrades.
         proxy = await createGatewayProxy(state.workspaceDir, {
@@ -331,7 +344,7 @@ suite.define(() => {
           },
           "/": gatewayProxyRoute(port, viewerEmail),
         });
-        await proxy.listen();
+        await proxy.listen(proxyPort);
         const proxyUrl = proxy.resolvedUrls?.local[0];
         if (!proxyUrl) {
           throw new Error("PR reader fixture proxy did not expose a loopback URL");
@@ -433,13 +446,8 @@ suite.define(() => {
                 }
               });
             });
-            const url = new URL(controlUiSessionUrl(suite.server.baseUrl, sessionKey));
-            url.hash = new URLSearchParams({ gatewayUrl: browserGatewayUrl.href }).toString();
-            await page.goto(url.href);
-            await page
-              .locator("openclaw-gateway-url-confirmation")
-              .getByRole("button", { name: `Switch to ${browserGatewayUrl.host}`, exact: true })
-              .click();
+            // Native browser plugins use the actual Gateway-served same-origin UI and assets.
+            await page.goto(controlUiSessionUrl(proxyUrl, sessionKey));
             // Finish this browser's initial subscription load before timing the rendered PR state.
             expect(await waitFor(initialDelivery)).toEqual(expectedDelivery(original));
             const pane = page.locator("openclaw-chat-pane.chat-pane-cache__pane--active");

@@ -1,5 +1,4 @@
 import { isDeepStrictEqual } from "node:util";
-import type { SessionGitHubActionParams } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
 import { canPrepareRepositoryWorkspace } from "../agents/sandbox/github-publication.js";
 import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
@@ -16,22 +15,16 @@ import {
 import { integrateManagedWorkspaceSource } from "./github-publication-base-refresh.js";
 import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
 import { prepareOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
-import {
-  captureGitHubPublicationActionAuthority,
-  type GitHubPublicationRequesterV2,
-} from "./github-publication-requester.js";
+import { captureGitHubPublicationActionAuthority } from "./github-publication-requester.js";
 import { prepareManagedWorkspaceReviewBase } from "./github-publication-workspace-review.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
-import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
+import type {
+  PullRequestPreparationInput,
+  RepositoryPublicationProvider,
+} from "./repository-publication-contract.js";
 import type { GatewayRequestContext } from "./server-methods/types.js";
 import { isSessionOwnRequester } from "./session-sharing-policy.js";
 import { resolveLocalWorkspaceOwner } from "./worker-environments/local-workspace-projection.js";
-
-export type PullRequestPreparationInput = {
-  params: Extract<SessionGitHubActionParams, { action: "prepare_pr" | "refresh_base" }>;
-  requester: GitHubPublicationRequesterV2;
-  signal?: AbortSignal;
-};
 
 /** The conversation as preparation and adoption compare it, including its skills snapshot. */
 export function preparePullRequestSession(

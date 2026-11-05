@@ -1,4 +1,6 @@
 import { vi } from "vitest";
+import { repositoryUi } from "../../test-helpers/repository-module.ts";
+const settingsViews = repositoryUi.settingsViews ?? [];
 import type {
   UserProfile,
   UsersSelfResult,
@@ -31,7 +33,18 @@ export function createConnectedContext(
   const routeListeners = new Set<() => void>();
   const subscribe = () => () => undefined;
   const baseContext = {
-    plugins: { settingsContributions: [], subscribe },
+    plugins: {
+      settingsContributions: settingsViews.map((view) => ({
+        pluginId: "github-repositories",
+        revision: "test",
+        placement: view.placement,
+      })),
+      subscribe,
+      reportError: vi.fn(),
+      async loadSettingsView(_placement: unknown, signal: AbortSignal) {
+        return { view: settingsViews[0], signal, dispose() {} };
+      },
+    },
     router: {
       subscribe(listener: () => void) {
         routeListeners.add(listener);

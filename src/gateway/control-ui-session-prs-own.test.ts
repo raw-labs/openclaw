@@ -3,19 +3,27 @@ import { awaitGateBeforeSettlement, withinTest } from "../../test/helpers/promis
 import { createDeferredCore } from "../shared/deferred.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-target.js";
+import {
+  createFixture,
+  createRpcResponseCapture,
+  sessionKey,
+} from "./control-ui-session-pr-access.test-support.js";
 import { githubJson, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
 
 const io = vi.hoisted(() => ({ command: vi.fn(), identity: vi.fn(), currentIdentity: vi.fn() }));
-vi.mock("../agents/github-tool-identity.js", async (original) => ({
-  ...(await original<typeof import("../agents/github-tool-identity.js")>()),
+vi.mock("../../extensions/github-repositories/tool-identity-api.js", async (original) => ({
+  ...(await original<Record<string, unknown>>()),
   prepareGitHubPublicationIdentity: io.identity,
   matchesPreparedGitHubPublicationIdentity: io.currentIdentity,
 }));
 vi.mock("../process/exec.js", async (original) => ({
   ...(await original<typeof import("../process/exec.js")>()),
+  runCommandBuffered: io.command,
+}));
+
+vi.mock("openclaw/plugin-sdk/process-runtime", async (original) => ({
+  ...(await original<typeof import("openclaw/plugin-sdk/process-runtime")>()),
   runCommandBuffered: io.command,
 }));
 
@@ -91,6 +99,7 @@ function invalidateOn(f: Pick<Fixture, "socket">, events: string[], reason?: str
   return received.promise;
 }
 async function readChecks(f: Fixture, respond = vi.fn()) {
+  const capture = createRpcResponseCapture(respond);
   await handleGatewayRequest({
     req: {
       type: "req",
@@ -107,7 +116,7 @@ async function readChecks(f: Fixture, respond = vi.fn()) {
     client: f.client,
     context: f.context,
     isWebchatConnect: () => false,
-    respond,
+    respond: capture.respond,
   });
   return respond;
 }
@@ -260,11 +269,7 @@ it("does not hydrate public or service cards from an authenticated imported snap
     await f.seed(sessionKey, f.profile.id, { worktree });
     await poll(f);
     expect(lastSnapshot(f)?.pullRequests).toHaveLength(1);
-    const service = await prepareControlUiSessionPrServiceTarget(
-      f.sessionReads,
-      f.context.getRuntimeConfig,
-      { sessionKey, agentId: "main" },
-    );
+    const service = await f.sessionReads.prepareServiceRead({ sessionKey, agentId: "main" });
     expect(service).toBeDefined();
     if (!service) {
       throw new Error("Missing service fixture target");

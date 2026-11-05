@@ -20,7 +20,6 @@ import {
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { formatGitHubPublicationTranscript } from "./github-publication-report.js";
 import { reportRepositoryPublicationTranscript } from "./github-publication-transcript.js";
 
 const reportFault = useSqliteWorkerFault([
@@ -62,6 +61,11 @@ const publishedResult = {
   headCommit: "a".repeat(40),
 } satisfies SessionGitHubPublicationResult;
 
+// The native transcript owner stores opaque content supplied by a publisher.
+function reportContent(result: SessionGitHubPublicationResult) {
+  return { text: JSON.stringify(result), responseId: `github-publication:${result.requestId}` };
+}
+
 function report(
   identity: Awaited<ReturnType<typeof createSession>>,
   result: SessionGitHubPublicationResult,
@@ -70,7 +74,7 @@ function report(
   return reportRepositoryPublicationTranscript(
     () => import("./session-utils.js"),
     markReportedAsync,
-    { ...identity, requestId: result.requestId, ...formatGitHubPublicationTranscript(result) },
+    { ...identity, requestId: result.requestId, ...reportContent(result) },
   );
 }
 
@@ -160,7 +164,7 @@ describe("GitHub publication transcript reporting", () => {
             ...session,
             lifecycleRevision: null,
             requestId: result.requestId,
-            ...formatGitHubPublicationTranscript(result),
+            ...reportContent(result),
           });
         }
         const events = await loadTranscriptEvents({
@@ -322,7 +326,7 @@ describe("GitHub publication transcript reporting", () => {
         "GitHub publication failed.",
         "Check repository write access and retry.",
       ),
-      visibleText: '"text":"GitHub publication failed. Check repository write access and retry.',
+      visibleText: "GitHub publication failed.",
     },
   ])(
     "appends one projected assistant message for a $label result",

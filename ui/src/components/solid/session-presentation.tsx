@@ -215,7 +215,6 @@ export function SessionRowBadges(props: SessionRowBadgesParams) {
       element.setAttribute("role", "img");
       element.setAttribute("aria-label", badge.label);
       for (const [key, value] of Object.entries({
-        "pull-request-state": badge.pullRequestState,
         "placement-state": badge.placementState,
         "disk-space-status": badge.diskSpaceStatus,
         "workspace-conflicts": badge.workspaceConflictCount || undefined,

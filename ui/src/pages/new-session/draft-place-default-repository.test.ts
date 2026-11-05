@@ -28,7 +28,7 @@ function delayedCatalog(
 
 describe("DraftPlaceState configured repository defaults", () => {
   it.each(["saved", "active"] as const)(
-    "validates %s clone selections using the accepted Git URL forms",
+    "retains %s clone selections for source-owned URL validation",
     (source) => {
       for (const host of ["ghe.example.test", "old.ghe.example.test"]) {
         for (const cloneUrl of [
@@ -42,15 +42,12 @@ describe("DraftPlaceState configured repository defaults", () => {
             source === "saved" ? { remoteProject: project } : {},
           );
           vi.spyOn(configured.browser, "projectsReady", "get").mockReturnValue(true);
-          vi.spyOn(configured.browser, "githubHost", "get").mockReturnValue("ghe.example.test");
           configured.state.adoptAgentDefaults();
           if (source === "active") {
             configured.state.selectRemoteProject(project);
           }
           configured.state.restorePreferenceSelections();
-          expect(configured.browser.remoteProject, cloneUrl).toEqual(
-            host === "ghe.example.test" ? project : null,
-          );
+          expect(configured.browser.remoteProject, cloneUrl).toEqual(project);
         }
       }
     },

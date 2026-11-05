@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -37,11 +36,15 @@ import type { ProcessSupervisor } from "../process/supervisor/types.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { expectNoCalls } from "../test-utils/mock-call-assertions.js";
 import { resetProcessRegistryForTests } from "./bash-process-registry.test-support.js";
-import { captureProcessUnhandledRejections } from "./bash-tools.exec-runtime.test-support.js";
+import {
+  captureProcessUnhandledRejections,
+  exactCommandMarker,
+} from "./bash-tools.exec-runtime.test-support.js";
 import type {
   ExecApprovalFollowupFactory,
   ExecApprovalFollowupOutcome,
 } from "./bash-tools.exec-types.js";
+import { prepareManagedGitHubExecutionFixture } from "./execution-environment.test-support.js";
 import { captureSecurityEvents } from "./test-helpers/security-events.js";
 
 type SendExecApprovalFollowupResult =
@@ -74,10 +77,6 @@ const INLINE_EVAL_HIT = {
   flag: "-c",
   argv: ["python3", "-c", "print(1)"],
 };
-
-function exactCommandMarker(command: string): string {
-  return `=command:${crypto.createHash("sha256").update(command.trim()).digest("hex").slice(0, 16)}`;
-}
 
 const pendingResultMock = vi.hoisted(() => vi.fn());
 const allowlistMock = vi.hoisted(() => vi.fn<() => MockAllowlistResult>());
@@ -1317,7 +1316,7 @@ describe("processGatewayAllowlist", () => {
         "./bash-tools.exec-runtime.js",
       );
       runExecProcessMock.mockImplementation(runtime.runExecProcess);
-      const profileDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "delayed-github-")));
+      const { environment: prepared, profileDir, cleanup } = prepareManagedGitHubExecutionFixture();
       const hostsPath = path.join(profileDir, "hosts.yml");
       fs.writeFileSync(hostsPath, "github.com:\n  oauth_token: synthetic-before-approval\n", {
         mode: 0o600,
@@ -1351,7 +1350,7 @@ describe("processGatewayAllowlist", () => {
           command,
           env,
           requestedEnv: env,
-          githubProfileDir: profileDir,
+          wrapLocalLaunch: prepared.wrapLocalLaunch,
         });
         await vi.waitFor(() => expect(approvalDecisionMock).toHaveBeenCalledOnce());
         expect(startupCancellationMocks.spawn).not.toHaveBeenCalled();
@@ -1373,7 +1372,7 @@ describe("processGatewayAllowlist", () => {
         releaseApproval();
         await vi.waitFor(() => expect(getActiveGatewayRootWorkCount()).toBe(0));
         await supervisor.shutdown();
-        fs.rmSync(profileDir, { recursive: true, force: true });
+        cleanup();
       }
     },
   );

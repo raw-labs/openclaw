@@ -1587,17 +1587,11 @@ textarea.settings-input {
   color: var(--danger);
 }
 
-.github-device-code {
-  color: var(--text-strong);
-  font-size: var(--control-ui-text-lg);
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  user-select: all;
-}
-
-/* Who a connection acts as is what the row is read for; the rest of the line explains it. */
-.github-connection__login {
-  color: var(--text-strong);
+.settings-account__avatar {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-full);
+  flex: none;
 }
 
 .shell--embed-settings {

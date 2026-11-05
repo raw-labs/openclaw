@@ -25,6 +25,7 @@ import {
   seedAttachedPlacementEnvironment,
   writePlacementEnvironmentFixture,
 } from "./placement-test-fixtures.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import type { WorkerEnvironmentService } from "./service.js";
 import {
   WorkerTunnelOwnerDisconnectedError,
@@ -57,6 +58,7 @@ export async function createHarness(
     runReclaimBarrier?: DispatchOptions["runReclaimBarrier"];
     runFailedReclaimBarrier?: DispatchOptions["runFailedReclaimBarrier"];
     prepareGatewayMove?: DispatchOptions["prepareGatewayMove"];
+    getRepositorySources?: DispatchOptions["getRepositorySources"];
     failAt?: DispatchStage;
     destroyFails?: boolean;
     destroyFailureCount?: number;
@@ -451,6 +453,7 @@ export async function createHarness(
     Object.assign(environments, options.environmentService);
   }
   const service = createWorkerPlacementDispatchService({
+    getRepositorySources: options.getRepositorySources ?? (() => createRepositorySourcesFixture()),
     initialPlacements: await placementStore.listAsync(),
     placements,
     environments,
@@ -652,6 +655,7 @@ export const createRecoveryService = async (
   isShuttingDown: () => boolean = () => false,
 ) =>
   createWorkerPlacementDispatchService({
+    getRepositorySources: () => createRepositorySourcesFixture(),
     initialPlacements: await placements.listAsync(),
     placements,
     environments,

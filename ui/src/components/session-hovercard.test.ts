@@ -1,16 +1,16 @@
 /* @vitest-environment jsdom */
 
 import type { ProgressCard } from "@openclaw/gateway-protocol";
-import { createComponent, createSignal } from "solid-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../src/gateway/control-ui-contract.js";
-import { mountSolid } from "../test-helpers/mount-solid.ts";
-import { flush } from "../test-helpers/solid-settle.ts";
 import type { SidebarRecentSession } from "./app-sidebar-session-types.ts";
-import { SessionHovercard, type SessionHovercardInput } from "./session-hovercard-solid.tsx";
+import {
+  renderRepositoryHovercard as renderCard,
+  type RepositoryHovercardInput as SessionHovercardInput,
+} from "./session-hovercard.test-support.tsx";
 import { writeHovercardExcerpt } from "./session-hovercard.ts";
 
 function row(overrides: Partial<SidebarRecentSession> = {}): SidebarRecentSession {
@@ -49,48 +49,6 @@ function progressCard(): ProgressCard {
     markdown: "**Release** is ready.",
     steps: [{ step: "Verify", status: "in_progress" }],
   };
-}
-
-const updateCards = new WeakMap<HTMLElement, (input: SessionHovercardInput) => void>();
-
-function renderCard(input: SessionHovercardInput, container = document.createElement("div")) {
-  const update = updateCards.get(container);
-  if (update) {
-    update(input);
-  } else {
-    mountSolid(
-      () => {
-        const [current, setCurrent] = createSignal(input);
-        updateCards.set(container, (next) => setCurrent(next));
-        return createComponent(SessionHovercard, {
-          get connected() {
-            return current().connected;
-          },
-          get row() {
-            return current().row;
-          },
-          get selfUserId() {
-            return current().selfUserId;
-          },
-          get avatarAuth() {
-            return current().avatarAuth;
-          },
-          get personActivity() {
-            return current().personActivity;
-          },
-          get pullRequests() {
-            return current().pullRequests;
-          },
-          get progressCard() {
-            return current().progressCard;
-          },
-        });
-      },
-      { container },
-    );
-  }
-  flush();
-  return container;
 }
 
 function attributionSummary(container: ParentNode): string {
@@ -296,7 +254,7 @@ describe("session hovercard", () => {
     },
   );
 
-  it("shows task publications without claiming unknown GitHub state", () => {
+  it("shows task publications without claiming unknown GitHub state", async () => {
     const branch = {
       owner: "example",
       repo: "project",
@@ -316,6 +274,9 @@ describe("session hovercard", () => {
     const container = renderCard({
       pullRequests: snapshot({ branch, taskPullRequests: [task], taskPullRequestCount: 1 }),
     });
+    await vi.waitFor(() =>
+      expect(container.querySelector(".session-hovercard__pr-row")).not.toBeNull(),
+    );
     const link = container.querySelector<HTMLAnchorElement>(".session-hovercard__pr-row");
     expect(link?.href).toBe(task.url);
     expect(link?.dataset.state).toBeUndefined();
@@ -379,7 +340,7 @@ describe("session hovercard", () => {
     );
   });
 
-  it("shows all supplied PRs with active work first, identities, and checks", () => {
+  it("shows all supplied PRs with active work first, identities, and checks", async () => {
     const container = renderCard({
       pullRequests: snapshot({
         pullRequests: (
@@ -420,6 +381,9 @@ describe("session hovercard", () => {
       }),
     });
 
+    await vi.waitFor(() =>
+      expect(container.querySelector(".session-hovercard__pr-row")).not.toBeNull(),
+    );
     const links = [...container.querySelectorAll<HTMLAnchorElement>(".session-hovercard__pr-row")];
     expect(links).toHaveLength(3);
     expect(links[0]?.href).toBe("https://github.com/openclaw/openclaw/pull/101");
@@ -449,7 +413,7 @@ describe("session hovercard", () => {
     expect(container.querySelector(".session-hovercard__section--header")).toBeNull();
   });
 
-  it("swaps the PR number for failing and pending check signals, up to ten rows", () => {
+  it("swaps the PR number for failing and pending check signals, up to ten rows", async () => {
     const request = (number: number, checks?: ControlUiSessionPullRequest["checks"]) =>
       ({
         number,
@@ -467,6 +431,9 @@ describe("session hovercard", () => {
       ...Array.from({ length: 10 }, (_, index) => request(index + 3)),
     ];
     const container = renderCard({ pullRequests: snapshot({ pullRequests }) });
+    await vi.waitFor(() =>
+      expect(container.querySelector(".session-hovercard__pr-row")).not.toBeNull(),
+    );
     const links = [...container.querySelectorAll(".session-hovercard__pr-row")];
     expect(links).toHaveLength(10);
     expect(links[0]?.querySelector(".session-hovercard__pr-checks")?.textContent).toBe("5 failing");
@@ -484,7 +451,7 @@ describe("session hovercard", () => {
 
   it.each(["rate-limited", "unavailable"] as const)(
     "explains %s GitHub lookups with or without retained work and clears the warning after recovery",
-    (status) => {
+    async (status) => {
       const container = document.createElement("div");
       const branch = { owner: "openclaw", repo: "openclaw", branch: "feature" };
       const pullRequest = {
@@ -494,13 +461,16 @@ describe("session hovercard", () => {
         url: "https://github.com/openclaw/openclaw/pull/101",
         state: "open" as const,
       };
-      for (const work of [{}, { branch }, { pullRequests: [pullRequest] }]) {
+      for (const [index, work] of [{}, { branch }, { pullRequests: [pullRequest] }].entries()) {
         renderCard(
           {
             pullRequests: snapshot({ ...work, status, rateLimited: status === "rate-limited" }),
           },
           container,
         );
+        if (index === 0) {
+          await vi.waitFor(() => expect(container.querySelector('[role="status"]')).not.toBeNull());
+        }
         const notice = container.querySelector('[role="status"]');
         expect(notice?.textContent).toContain(
           status === "rate-limited" ? "GitHub API rate limit reached" : "could not be refreshed",
@@ -564,25 +534,31 @@ describe("session hovercard", () => {
       createUrl: "https://github.com/openclaw/openclaw/pull/new/feature",
     },
     { branch: "local-only", changedFiles: 2, additions: 18, deletions: 1, createUrl: undefined },
-  ])("keeps branch changes on the location row without a create action: $branch", (branch) => {
-    const container = renderCard({
-      row: branch.createUrl
-        ? row({ workSession: true, subtitle: "openclaw/openclaw · feature" })
-        : undefined,
-      pullRequests: snapshot({ branch: { owner: "openclaw", repo: "openclaw", ...branch } }),
-    });
-    expect(container.querySelector(".session-hovercard__additions")?.textContent).toBe(
-      `+${branch.additions}`,
-    );
-    expect(container.querySelector(".session-hovercard__deletions")?.textContent).toBe(
-      `−${branch.deletions}`,
-    );
-    expect(container.querySelector(".session-hovercard__section--prs")).toBeNull();
-    expect(container.textContent).not.toContain("Create PR");
-    expect(
-      container.querySelector(".session-hovercard__context-row .session-hovercard__diff"),
-    ).not.toBeNull();
-  });
+  ])(
+    "keeps branch changes on the location row without a create action: $branch",
+    async (branch) => {
+      const container = renderCard({
+        row: branch.createUrl
+          ? row({ workSession: true, subtitle: "openclaw/openclaw · feature" })
+          : undefined,
+        pullRequests: snapshot({ branch: { owner: "openclaw", repo: "openclaw", ...branch } }),
+      });
+      await vi.waitFor(() =>
+        expect(container.querySelector(".session-hovercard__diff")).not.toBeNull(),
+      );
+      expect(container.querySelector(".session-hovercard__additions")?.textContent).toBe(
+        `+${branch.additions}`,
+      );
+      expect(container.querySelector(".session-hovercard__deletions")?.textContent).toBe(
+        `−${branch.deletions}`,
+      );
+      expect(container.querySelector(".session-hovercard__section--prs")).toBeNull();
+      expect(container.textContent).not.toContain("Create PR");
+      expect(
+        container.querySelector(".session-hovercard__context-row .session-hovercard__diff"),
+      ).not.toBeNull();
+    },
+  );
 
   it("renders the latest turn as plain text when progress is absent", () => {
     const container = document.body.appendChild(document.createElement("div"));

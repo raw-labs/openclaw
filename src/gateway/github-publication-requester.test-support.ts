@@ -1,3 +1,13 @@
+// Register synthetic I/O before the actual plugin identity and publication graph loads.
+// oxfmt-ignore
+import {
+  currentGitHubPublicationConfig,
+  createRealPublicationWorkspace,
+  createTestGitHubPublicationCoordinator,
+  overrideCommands,
+  persistPublicationTestSession,
+  root,
+} from "./github-publication.test-support.js";
 import { fileURLToPath } from "node:url";
 import { expect, onTestFinished, vi, type Mock } from "vitest";
 import { setRuntimeConfigSnapshot } from "../config/config.js";
@@ -25,22 +35,21 @@ import {
   setCanonicalUserProfileRole,
 } from "../state/user-profile-writes.js";
 import { createVisitorAccessPluginConfig } from "../test-utils/visitor-access-config.test-support.js";
-import { currentGitHubPublicationConfig } from "./github-publication-availability.js";
+import { createRepositorySessionReadHost } from "./control-ui-session-pr-runtime.js";
+import {
+  installGitHubAccountFixture,
+  installPublicationRpcFixture,
+} from "./github-account-service.test-support.js";
 import { prepareGitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import { readRepositoryGitHubPublicationFixture as readRepositoryGitHubPublication } from "./github-publication-store.test-support.js";
 import { readGitHubPublicationRequest } from "./github-publication-store.worker.js";
-import {
-  createRealPublicationWorkspace,
-  createTestGitHubPublicationCoordinator,
-  overrideCommands,
-  persistPublicationTestSession,
-  root,
-} from "./github-publication.test-support.js";
 import { repositoryGitHubPublicationDigest } from "./github-repository-publication-store.js";
 import { createRepositoryPublicationFixture } from "./github-repository-publication.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
 import { SESSION_READ_SCOPE, SESSION_WRITE_SCOPE } from "./operator-scopes.js";
-import { createContext as createGatewayContext } from "./server-plugin-in-process-dispatch.test-support.js";
+import { createRequestGatewayMethodRegistry } from "./server-methods.js";
+import { createGatewayRequestContext } from "./server-request-context.js";
+import { makeContextParams } from "./server-request-context.test-support.js";
 import {
   REQUEST,
   seedActivePlacement,
@@ -157,9 +166,24 @@ export async function createGitHubPublicationRequesterFixture(params: {
     updatedAt: 1,
   };
   prepareGatewayConnectOperatorAccess(client);
-  const context = Object.assign(createGatewayContext([], currentGitHubPublicationConfig), {
-    getCommittedRuntimeConfig: params.getCommittedRuntimeConfig ?? currentGitHubPublicationConfig,
+  const contextParams = makeContextParams();
+  contextParams.runtime.clients.add(client);
+  const context = createGatewayRequestContext(contextParams);
+  const methods = createRequestGatewayMethodRegistry();
+  context.getGatewayMethodRegistry = () => methods;
+  context.getRuntimeConfig = currentGitHubPublicationConfig;
+  context.getCommittedRuntimeConfig =
+    params.getCommittedRuntimeConfig ?? currentGitHubPublicationConfig;
+  context.resolveGatewayContext = () => context;
+  contextParams.runtime.runtimeState.repositorySessions = createRepositorySessionReadHost({
+    signal: contextParams.runtime.scheduler.signal,
+    getRuntimeConfig: context.getRuntimeConfig,
+    getSessionRowProjection: () => undefined,
+    getClient: (connId) => (connId === client.connId ? client : undefined),
+    resolveGatewayContext: context.resolveGatewayContext,
+    broadcastToConnIds() {},
   });
+  onTestFinished(() => contextParams.runtime.scheduler.stop());
   const session = { sessionKey: params.sessionKey, agentId: params.agentId };
   const captured = await prepareGitHubPublicationRequesterV2({ client, context }, session);
   onTestFinished(captured.release);
@@ -271,6 +295,9 @@ export async function createRequesterPublicationFixture(
   const placements =
     repository?.placements ?? createWorkerSessionPlacementStore({ database: policy.database });
   const coordinator = createTestGitHubPublicationCoordinator({ placements });
+  // Actor contexts borrow one live registered account and the same transaction coordinator.
+  const account = await installPublicationRpcFixture(policy.guestSource.context, coordinator);
+  await installGitHubAccountFixture(policy.maintainerSource.context, account.oauth, coordinator);
   const request = (idempotencyKey: string, requester: Requester, title = idempotencyKey) => ({
     sessionKey: session.sessionKey,
     agentId: "main",
@@ -285,6 +312,7 @@ export async function createRequesterPublicationFixture(
     repository,
     placements,
     coordinator,
+    account,
     request,
     restart() {
       return createTestGitHubPublicationCoordinator({

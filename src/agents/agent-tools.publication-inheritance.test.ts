@@ -1,6 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { Value } from "typebox/value";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearRuntimeConfigSnapshot,
   setRuntimeConfigSnapshot,
@@ -9,6 +9,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createAdmittedRunOperatorAuthority } from "./admitted-run-context.js";
 import { createOpenClawCodingToolsInternal } from "./agent-tools.js";
 import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
+import { resolveGitHubPluginToolsFixture } from "./github-plugin-tools.test-support.js";
 import { resolveSandboxToolPolicyForAgent } from "./sandbox/tool-policy.js";
 import type { SandboxContext } from "./sandbox/types.js";
 import { createAgentToolsSandboxContext } from "./test-helpers/agent-tools-sandbox-context.js";
@@ -16,9 +17,16 @@ import { createOpenClawOnlyToolConstructionPlan } from "./test-helpers/tool-cons
 import { withGatewayToolCallerIdentity } from "./tools/gateway-caller-context.js";
 
 const parentKey = "agent:main:dashboard:parent";
+// The policy fixture owns discovery; plugin factory registration and policy metadata remain real.
+vi.mock("./openclaw-plugin-tools.js", async (original) => ({
+  ...(await original<typeof import("./openclaw-plugin-tools.js")>()),
+  resolveOpenClawPluginToolsForOptions: (
+    params: Parameters<typeof resolveGitHubPluginToolsFixture>[0],
+  ) => resolveGitHubPluginToolsFixture(params),
+}));
 const childKey = "agent:main:dashboard:child";
 const allowed = ["sessions_spawn", "github_publish", "github_identity_status"];
-const plan = createOpenClawOnlyToolConstructionPlan();
+const plan = { ...createOpenClawOnlyToolConstructionPlan(), includePluginTools: true };
 type ToolOptions = Parameters<typeof createOpenClawCodingToolsInternal>[0];
 type CapabilityStore = Parameters<
   typeof resolveConversationCapabilityProfile

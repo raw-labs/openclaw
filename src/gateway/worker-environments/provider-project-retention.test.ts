@@ -1,25 +1,30 @@
 import { describe, expect, it, vi } from "vitest";
 import { createRepositorySourceFixture } from "../../plugins/repository-source.test-support.js";
+import { createRepositorySources } from "../repository-sources.js";
 import { createWorkerPreparationIdentity } from "./preparation-identity.js";
 import { readWorkerPreparation } from "./preparation-identity.schema.js";
-import { PRESENCE_REPOSITORY, usePreparedPoolFixture } from "./prepared-pool.test-support.js";
+import { PROJECT_KEY, usePreparedPoolFixture } from "./prepared-pool.test-support.js";
 import { createWorkerProviderIntent } from "./provider-intent.js";
 import { prepareWorkerProviderProject } from "./provider-project-preparation.js";
 import type { RepositoryWorkerProjectSnapshot } from "./repository-project-source.schema.js";
+import { createRepositorySourcesFixture } from "./repository-source.test-support.js";
 import { workerProjectSeedKey } from "./workspace-git-base.js";
 
 const sourceAdmission = vi.hoisted(() =>
   vi.fn<typeof import("./repository-project-admission.js").prepareRepositoryWorkerProjectSource>(),
 );
-vi.mock("./repository-project-admission.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./repository-project-admission.js")>()),
+vi.mock("./repository-project-admission.js", () => ({
   prepareRepositoryWorkerProjectSource: sourceAdmission,
 }));
 
 describe("prepared project retention compatibility", () => {
   const fixture = usePreparedPoolFixture();
 
-  async function setup(source?: RepositoryWorkerProjectSnapshot["source"]) {
+  async function setup(
+    native = false,
+    source?: RepositoryWorkerProjectSnapshot["source"],
+    repositorySources?: ReturnType<typeof createRepositorySources>,
+  ) {
     sourceAdmission
       .mockReset()
       .mockRejectedValue(new Error("Retention must not access the repository"));
@@ -27,9 +32,26 @@ describe("prepared project retention compatibility", () => {
     const options = fixture.intentOwnerOptions("gateway");
     const { target, artifacts } = readWorkerPreparation(fixture.profile())!;
     fixture.provider.resolvePreparationTarget = () => target;
-    const project = structuredClone(PRESENCE_REPOSITORY);
+    const project: RepositoryWorkerProjectSnapshot = {
+      key: PROJECT_KEY,
+      baseCommit: "d".repeat(40),
+      source: {
+        kind: "repository",
+        url: "https://github.com/openclaw/prepared-fixture.git",
+        repositoryId: "R_prepared_fixture",
+        repositorySourceId: "github-repositories/repositories",
+        owner: {
+          agent: { agentId: "main", provenance: null },
+          identity: { source: "plugin", key: JSON.stringify({ source: "anonymous" }) },
+        },
+      },
+    };
     if (source) {
       project.source = source;
+    }
+    if (native) {
+      delete project.source.repositorySourceId;
+      project.source.owner.identity = { source: "anonymous" };
     }
     const profileSnapshot = { settings: {}, install: "bundle", executionMode: "worker-turn" };
     const preparation = createWorkerPreparationIdentity({
@@ -53,8 +75,10 @@ describe("prepared project retention compatibility", () => {
     });
     const prepareNodeArtifacts = vi.fn(async () => ({ artifacts, assertCurrent() {} }));
     const providerFor = vi.fn(() => fixture.provider);
+    const sources = repositorySources ?? createRepositorySourcesFixture(() => fixture.config);
     const owner = createWorkerProviderIntent({
       ...options,
+      getRepositorySources: () => sources,
       providerFor,
       prepareNodeArtifacts,
       resumeProvision: async (environment) => environment,
@@ -156,20 +180,23 @@ describe("prepared project retention compatibility", () => {
     }
   });
 
-  it("checks canonical retained contents without source admission or an allocation authority", async () => {
-    const { record, preparation, preparedProfile, owner } = await setup();
-    const retained = await owner.prepareRetention(record, preparation, fixture.abort.signal);
-    expect(retained).toBeDefined();
-    expect(retained!.isCurrent()).toBe(true);
-    expect(sourceAdmission).not.toHaveBeenCalled();
-    expect(fixture.store.get(record.environmentId)).toEqual(record);
-    expect(() =>
-      owner.assertPreparedIntentCurrent(record.profileId, {
-        providerId: record.providerId,
-        profileSnapshot: preparedProfile,
-      }),
-    ).toThrow("not owned by this lifecycle");
-  });
+  it.each([false, true])(
+    "checks retained contents (native=%s) without source admission or allocation authority",
+    async (native) => {
+      const { record, preparation, preparedProfile, owner } = await setup(native);
+      const retained = await owner.prepareRetention(record, preparation, fixture.abort.signal);
+      expect(retained).toBeDefined();
+      expect(retained!.isCurrent()).toBe(true);
+      expect(sourceAdmission).not.toHaveBeenCalled();
+      expect(fixture.store.get(record.environmentId)).toEqual(record);
+      expect(() =>
+        owner.assertPreparedIntentCurrent(record.profileId, {
+          providerId: record.providerId,
+          profileSnapshot: preparedProfile,
+        }),
+      ).toThrow("not owned by this lifecycle");
+    },
+  );
 
   it.each(["identity selection", "plugin retirement"])(
     "retains plugin preparations independently of native GitHub selection until %s",
@@ -192,17 +219,27 @@ describe("prepared project retention compatibility", () => {
           },
         },
       });
-      const { record, preparation, owner, prepareNodeArtifacts } = await setup({
-        kind: "repository",
-        url: "https://git.example/team/subgroup/project",
-        repositorySourceId: source.id,
-        repositoryId: "repository_fixture",
-        owner: {
-          agent: { agentId: "main", provenance: null },
-          identity: { source: "plugin", key: identityKey },
+      const { record, preparation, owner, prepareNodeArtifacts } = await setup(
+        false,
+        {
+          kind: "repository",
+          url: "https://git.example/team/subgroup/project",
+          repositorySourceId: source.id,
+          repositoryId: "repository_fixture",
+          owner: {
+            agent: { agentId: "main", provenance: null },
+            identity: { source: "plugin", key: identityKey },
+          },
         },
-      });
-      fixture.config.tools = { github: { kind: "oauth", profileId: `ghp_${"a".repeat(32)}` } };
+        createRepositorySources(fixture.abort.signal, source.registry),
+      );
+      fixture.config.plugins = {
+        entries: {
+          "github-repositories": {
+            config: { system: { kind: "oauth", profileId: `ghp_${"a".repeat(32)}` } },
+          },
+        },
+      };
       await source.run(async () => {
         const retained = await owner.prepareRetention(record, preparation, fixture.abort.signal);
         expect(retained).toBeDefined();
@@ -223,10 +260,14 @@ describe("prepared project retention compatibility", () => {
     },
   );
 
-  it.each(["provider", "target", "owner selection", "agent deletion"])(
-    "rejects %s drift on the next retention pass without external source authority",
-    async (mutation) => {
-      const { record, preparation, owner, providerFor } = await setup();
+  it.each(
+    ["provider", "target", "owner selection", "agent deletion"].flatMap((mutation) =>
+      [false, true].map((native) => ({ mutation, native })),
+    ),
+  )(
+    "rejects $mutation drift (native=$native) without external source authority",
+    async ({ mutation, native }) => {
+      const { record, preparation, owner, providerFor } = await setup(native);
       const retained = await owner.prepareRetention(record, preparation, fixture.abort.signal);
       expect(retained).toBeDefined();
       const unavailable = mutation === "owner selection" || mutation === "agent deletion";
@@ -245,7 +286,13 @@ describe("prepared project retention compatibility", () => {
           arch: "x64",
         });
       } else if (mutation === "owner selection") {
-        fixture.config.tools = { github: { kind: "oauth", profileId: `ghp_${"a".repeat(32)}` } };
+        fixture.config.plugins = {
+          entries: {
+            "github-repositories": {
+              config: { system: { kind: "oauth", profileId: `ghp_${"a".repeat(32)}` } },
+            },
+          },
+        };
       } else {
         fixture.config.agents = { entries: { other: {} } };
       }

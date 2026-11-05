@@ -4,10 +4,17 @@ import { asConfig, setupSecretsRuntimeSnapshotTestHooks } from "./runtime.test-s
 
 const { prepareSecretsRuntimeSnapshot } = setupSecretsRuntimeSnapshotTestHooks();
 const envRef = (id: string) => ({ source: "env", provider: "default", id });
-function prepare(config: unknown, env: NodeJS.ProcessEnv = {}) {
+function prepare(
+  config: unknown,
+  env: NodeJS.ProcessEnv = {},
+  loadablePluginOrigins?: Parameters<
+    typeof prepareSecretsRuntimeSnapshot
+  >[0]["loadablePluginOrigins"],
+) {
   return prepareSecretsRuntimeSnapshot({
     config: asConfig(config),
     env,
+    loadablePluginOrigins,
     agentDirs: ["/tmp/openclaw-agent-main"],
     loadAuthStore: () => ({ version: 1, profiles: {} }),
   });
@@ -25,21 +32,28 @@ it("resolves system and agent App signing keys without rewriting source refs", a
   };
   const github = { profileId: "ghp_" + "a".repeat(32), kind: "app-installation", app };
   const snapshot = await prepare(
-    { tools: { github }, agents: { entries: { main: { tools: { github } } } } },
+    {
+      plugins: {
+        entries: {
+          "github-repositories": {
+            enabled: true,
+            config: { system: github, agents: { main: github } },
+          },
+        },
+      },
+    },
     { GITHUB_APP_KEY: "synthetic-app-key" },
+    new Map([["github-repositories", "bundled"]]),
   );
   const resolved = { kind: "app-installation", app: { privateKey: "synthetic-app-key" } };
-  expect(snapshot.config.tools?.github).toMatchObject(resolved);
-  expect(snapshot.config.agents?.entries?.main?.tools?.github).toMatchObject(resolved);
+  expect(snapshot.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
+    system: resolved,
+    agents: { main: resolved },
+  });
   expect(app.privateKey).toEqual(envRef("GITHUB_APP_KEY"));
 });
 
 it.each([
-  [
-    "preview credential",
-    {},
-    [["controlUi.github.token", "CONTROL_UI_GITHUB_TOKEN", "resolved-preview-token"]],
-  ],
   [
     "local credentials",
     { mode: "local", auth: { mode: "password", token: "local-token", password: "local-password" } },
@@ -95,4 +109,27 @@ it.each([
       value === undefined,
     );
   }
+});
+
+it("resolves the plugin-owned GitHub service credential independently", async () => {
+  const snapshot = await prepare(
+    {
+      plugins: {
+        entries: {
+          "github-repositories": {
+            enabled: true,
+            config: { service: { token: envRef("CONTROL_UI_GITHUB_TOKEN") } },
+          },
+        },
+      },
+    },
+    { CONTROL_UI_GITHUB_TOKEN: "resolved-preview-token" },
+    new Map([["github-repositories", "bundled"]]),
+  );
+  expect(snapshot.config.plugins?.entries?.["github-repositories"]?.config).toMatchObject({
+    service: { token: "resolved-preview-token" },
+  });
+  expect(snapshot.warnings.map((warning) => warning.path)).not.toContain(
+    "plugins.entries.github-repositories.config.service.token",
+  );
 });

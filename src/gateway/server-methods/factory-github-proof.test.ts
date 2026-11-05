@@ -6,8 +6,8 @@ import { gatewayConnect } from "../server/client-fixtures.test-support.js";
 import { coreGatewayHandlers } from "./core-handlers.js";
 import type { GatewayClient, GatewayRequestHandlerOptions } from "./types.js";
 
-vi.mock("../../agents/github-host-runtime.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../agents/github-host-runtime.js")>()),
+vi.mock("../../../extensions/github-repositories/host-runtime-api.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   resolveGitHubHost: () => "example.ghe.com",
 }));
 

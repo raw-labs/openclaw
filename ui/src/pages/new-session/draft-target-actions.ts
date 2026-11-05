@@ -16,6 +16,7 @@ import { resolveNewSessionWhere } from "./preferences.ts";
 type DraftTargetContext = {
   place: {
     requiredPlacement: boolean;
+    remotePlacement: boolean;
     hostedEnvironment: unknown;
     devices: () => DevicePlacementOption[];
     worktree: boolean;
@@ -148,4 +149,38 @@ export function selectDraftWorktree(context: DraftTargetContext, value: boolean)
     context.selection.freshWorkspace = false;
     context.persistPreference({ freshWorkspace: false });
   }
+}
+
+export function selectDraftNewWorkspace(
+  context: DraftTargetContext,
+  resetFolderToWorkspace: () => string,
+) {
+  const snapshot = context.read();
+  if (
+    snapshot.submitting ||
+    snapshot.pendingPlacementSessionKey ||
+    !context.place.remotePlacement
+  ) {
+    return;
+  }
+  context.folderValidation.cancel();
+  context.browser.clearProjectSelection();
+  context.browser.resetProjectSearch();
+  context.callbacks.onError(null);
+  context.clearDeviceFolder();
+  const folder = resetFolderToWorkspace();
+  context.selection.folderSelectedByUser = true;
+  markDraftPlaceProjectChoice(context.selection, true);
+  context.selection.freshWorkspace = true;
+  context.repositoryState.selectWorktree(false);
+  context.persistPreference({
+    folder,
+    projectId: "",
+    remoteProject: null,
+    defaultRepositoryOptOut: true,
+    worktree: true,
+    freshWorkspace: true,
+  });
+  context.browser.close();
+  context.callbacks.changed();
 }

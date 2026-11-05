@@ -2,7 +2,7 @@ import type { CDPSession, Locator, Page } from "playwright";
 import { expect, it } from "vitest";
 import { waitForLayoutSettled } from "../pages/chat/chat-layout.browser.test-support.ts";
 import { CHAT_TRANSCRIPT_END_THRESHOLD_PX } from "../pages/chat/scroll.ts";
-import { installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import { closeChatDetails, openChatTaskProgress } from "./chat-details.test-support.ts";
 import {
   chatMessage,

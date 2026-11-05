@@ -39,7 +39,7 @@ export function createVisitorGatewayConfig(workspaceDir: string): OpenClawConfig
   return {
     agents: { defaults: { workspace: workspaceDir }, entries: { main: {} } },
     gateway: {
-      controlUi: { github: { token: "synthetic-visitor-github-token" } },
+      controlUi: {},
       roles: {
         default: "guest",
         definitions: {
@@ -57,7 +57,13 @@ export function createVisitorGatewayConfig(workspaceDir: string): OpenClawConfig
       },
     },
     tools: { allow: ["visitor_invite"] },
-    plugins: createVisitorAccessPluginConfig("test-account", "test-app", "test-token"),
+    plugins: {
+      ...createVisitorAccessPluginConfig("test-account", "test-app", "test-token"),
+      entries: {
+        ...createVisitorAccessPluginConfig("test-account", "test-app", "test-token").entries,
+        "github-repositories": { config: { service: { token: "synthetic-visitor-github-token" } } },
+      },
+    },
   };
 }
 

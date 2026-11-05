@@ -21,7 +21,7 @@ import {
   modelAccountProfile,
   mountProfilePage,
 } from "./profile-page.test-support.tsx";
-import { mockRpc } from "./profile-rpc.test-support.ts";
+import { disconnectedGitHub, mockRpc } from "./profile-rpc.test-support.ts";
 
 const refreshButton = (page: ParentNode) =>
   page.querySelector<HTMLButtonElement>(".profile-refresh");
@@ -129,6 +129,7 @@ it("refreshes translated copy when the locale changes while mounted", async () =
 it("renders identity before Usage statistics and opens the usage page", async () => {
   const profile = modelAccountProfile;
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.self": () => ({ profile }),
     "users.listModelAccounts": () => ({ profileId: profile.id, accounts: [], links: [] }),
@@ -138,6 +139,12 @@ it("renders identity before Usage statistics and opens the usage page", async ()
     email: profile.emails[0],
     name: profile.displayName ?? undefined,
   });
+  harness.emitHello(
+    gatewayHelloForMethods(
+      ["tools.github.status", "users.github.status", "users.listModelAccounts"],
+      ["operator.read", "operator.write"],
+    ),
+  );
   const page = mountProfilePage(harness.context);
   await waitForFast(() => expect(page.querySelector("#settings-profile-identity")).not.toBeNull());
   await waitForFast(() =>
@@ -152,6 +159,7 @@ it("renders identity before Usage statistics and opens the usage page", async ()
         "users.prefs.get",
         "users.channelIdentity",
         "users.channelIdentity",
+        "users.github.status",
       ].toSorted(),
     ),
   );
@@ -225,6 +233,7 @@ it("falls back to initials when no profile avatar route can be built", async () 
     hasAvatar: false,
   };
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.self": () => ({ profile }),
     "users.listModelAccounts": () => ({ profileId: profile.id, accounts: [], links: [] }),
@@ -340,6 +349,7 @@ it("keeps identity refresh single-flight and allows retry after settlement", asy
   const profile = modelAccountProfile;
   const firstIdentity = createDeferred<never>();
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.self": () => (request.mock.calls.length === 1 ? firstIdentity.promise : { profile }),
   });
@@ -383,6 +393,7 @@ it("replaces an in-flight identity request after a same-client reconnect", async
   const staleRequest = createDeferred<{ profile: UserProfile }>();
   const freshRequest = createDeferred<{ profile: UserProfile }>();
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.listModelAccounts": () => ({ profileId: "profile-1", accounts: [], links: [] }),
     "users.self": () =>
@@ -430,6 +441,7 @@ it.each([
   stubProfileAvatarProcessing(decode);
   let avatarRequests = 0;
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.self": () => ({ profile }),
     "users.listModelAccounts": () => ({ profileId: profile.id, accounts: [], links: [] }),
@@ -680,6 +692,7 @@ it("keeps model-account actions usable when identity refresh overlaps ChatGPT co
   let links: Array<{ provider: string; authProfileId: string; updatedAt: number }> = [];
   const completion = createDeferred();
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": async () => ({ status: "ok", entries: {} }),
     "users.self": async () => ({ profile }),
     "users.listModelAccounts": async () => {
@@ -756,6 +769,7 @@ it("keeps model-account actions usable when identity refresh overlaps ChatGPT co
 it("rechecks avatar upload policy after processing and rerenders on config updates", async () => {
   let profile = { ...modelAccountProfile };
   const request = mockRpc({
+    "users.github.status": () => disconnectedGitHub,
     "users.prefs.get": () => ({ status: "ok", entries: {} }),
     "users.self": () => ({ profile }),
     "users.setDisplayName": () => {

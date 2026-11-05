@@ -25,7 +25,7 @@ type AgentHarnessPreparedEnvironment = Readonly<{
   localToolEnv?: Readonly<Record<string, string>>;
   /** Prefix intent for runtimes with an explicitly authored native shell PATH. */
   localToolPathPrepend?: readonly string[];
-  /** Non-secret fact used to select the local GitHub identity overlay. */
+  /** Legacy harness fact: an admitted plugin supplies a nonempty local identity overlay. */
   managedLocalIdentity: boolean;
   /** Use this host's tool surface when the runtime cannot bind credentials at process launch. */
   hostExecutionRequired?: true;

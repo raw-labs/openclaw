@@ -1,18 +1,11 @@
 import type { JSX } from "@solidjs/web";
 import { For, Show, children } from "solid-js";
-import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { CronCompactJob } from "../../../api/types.ts";
 import { Icon, type IconName } from "../../../components/solid/icon.tsx";
 import { createTextOverflow } from "../../../components/solid/text-overflow.ts";
 import type { ChatSubagentActivity } from "../chat-subagent-wait.ts";
 import { ChatDetailsSubagents, type ChatDetailsSubagentsProps } from "./chat-details-subagents.tsx";
 import { ChatLazyBoundary } from "./chat-lazy-boundary.tsx";
-import {
-  ChatPullRequestMobileRow,
-  ChatPullRequestMobileRecovery,
-  type ChatPullRequestMobileCollectionProps,
-} from "./chat-pull-request-mobile.tsx";
-import { chatPullRequestId } from "./chat-pull-requests.ts";
 import "../../../styles/chat/details-mobile-root.css";
 
 /** Presentation supplied by the domain owner; marks/metadata are noninteractive. */
@@ -46,9 +39,6 @@ type ChatDetailsMobileRootDestination =
   | { kind: "task-progress" }
   | { kind: "subagents" }
   | { kind: "subagent"; sessionKey: ChatSubagentActivity["key"] }
-  | { kind: "pull-requests" }
-  | { kind: "pull-request"; pullRequest: ControlUiSessionPullRequest }
-  | { kind: "publication" }
   | { kind: "automations" }
   | { kind: "automation"; jobId: CronCompactJob["id"] }
   | { kind: "outputs" }
@@ -63,7 +53,6 @@ export type ChatDetailsMobileRootProps = {
     | "subagents"
     | "environment"
     | "context"
-    | "pullRequests"
     | "automations"
     | "generatedFiles"
     | "session",
@@ -80,12 +69,9 @@ export type ChatDetailsMobileRootProps = {
   processes?: JSX.Element;
   /** The complete mobile Environment section, including its own heading and group. */
   environment?: JSX.Element;
-  pullRequests?: ChatPullRequestMobileCollectionProps & { summary: ChatDetailsMobileEntry };
-  /** Native publication/recovery can exist without any attached PR. */
-  publication?: JSX.Element;
+  context?: JSX.Element;
+  /** Domain-owned contributions in the native root order. */
   contributions?: JSX.Element;
-  /** The publication entry presentation; opening review is navigation, never publication. */
-  publicationEntry?: ChatDetailsMobileEntry;
   automations?: ChatDetailsMobileCollection<CronCompactJob["id"]>;
   outputs?: ChatDetailsMobileEntry;
   /** Supply even for one version; omission is not a greater-than-one policy. */
@@ -181,7 +167,6 @@ function RootEntry(props: {
 
 /** Mobile root only. Domain owners supply facts; the mobile host records every transition. */
 export function ChatDetailsMobileRoot(props: ChatDetailsMobileRootProps) {
-  const pullRequestsTotal = () => props.pullRequests?.pullRequests.length ?? 0;
   const automationsTotal = () => props.automations?.total ?? props.automations?.items.length ?? 0;
   const automationNotice = children(() => props.automations?.notice);
 
@@ -225,52 +210,9 @@ export function ChatDetailsMobileRoot(props: ChatDetailsMobileRootProps) {
         )}
       </Show>
       {props.environment}
-      <Show
-        when={
-          pullRequestsTotal() > 0 ||
-          (props.pullRequests && props.pullRequests.status !== "ready") ||
-          props.publication ||
-          props.publicationEntry
-        }
-      >
-        <RootGroup name="pull-requests" label={props.labels.pullRequests}>
-          <Show when={props.pullRequests}>
-            {(collection) => (
-              <>
-                <For
-                  each={collection().pullRequests.slice(0, pullRequestsTotal() > 3 ? 2 : 3)}
-                  keyed={chatPullRequestId}
-                >
-                  {(pullRequest) => (
-                    <ChatPullRequestMobileRow
-                      pullRequest={pullRequest()}
-                      onOpen={collection().onOpen}
-                    />
-                  )}
-                </For>
-                <Show when={pullRequestsTotal() > 3}>
-                  <RootEntry
-                    entry={collection().summary}
-                    icon="gitPullRequest"
-                    destination={{ kind: "pull-requests" }}
-                    root={props}
-                  />
-                </Show>
-                <ChatPullRequestMobileRecovery {...collection()} collection />
-              </>
-            )}
-          </Show>
-          {props.publication}
-          <Show when={props.publicationEntry}>
-            {(entry) => (
-              <RootEntry
-                entry={entry()}
-                icon="gitPullRequest"
-                destination={{ kind: "publication" }}
-                root={props}
-              />
-            )}
-          </Show>
+      <Show when={props.context}>
+        <RootGroup name="context" label={props.labels.context}>
+          {props.context}
         </RootGroup>
       </Show>
       {props.contributions}

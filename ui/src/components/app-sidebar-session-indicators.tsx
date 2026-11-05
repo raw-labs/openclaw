@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { createMemo } from "solid-js";
+import { createMemo, deep } from "solid-js";
 import { resolveControlUiAvatarAuth } from "../app/control-ui-auth.ts";
 import { gatewayPresentationScope } from "../app/gateway-presentation-scope.ts";
 import { formatDurationCompact } from "../lib/format-duration.ts";
@@ -62,14 +62,12 @@ export function renderSidebarSessionIndicators(
 ) {
   const team = createMemo(() => host().sidebarAgentsMode === "roster");
   const childrenExpanded = createMemo(() => host().isSessionChildrenExpanded(readSession()));
-  const badges = createMemo(() =>
-    sidebarSessionBadgeFacts(
-      host().sessionPullRequests,
-      readSession(),
-      readSession().pullRequest ?? readDisplay?.()?.pullRequest,
-    ),
-  );
-  const pullRequest = () => badges().pullRequest;
+  const badges = createMemo(() => sidebarSessionBadgeFacts(readSession()));
+  // SDK artifacts are plain snapshots; the row projection itself remains reactive and host-owned.
+  const artifact = createMemo(() => {
+    const summary = readSession().pullRequest ?? readDisplay?.()?.pullRequest;
+    return summary ? deep(summary) : undefined;
+  });
   const ownerAttribution = createMemo(() => {
     const readSessionValue = readSession();
     return host().sessionsStatusFilter === "archived"
@@ -251,7 +249,7 @@ export function renderSidebarSessionIndicators(
     running,
     stateId,
     metaId,
-    pullRequest,
+    artifact,
     persistentIndicator,
     originIndicators,
     childrenExpanded,
@@ -272,16 +270,15 @@ export function renderSidebarSessionIndicators(
           <SessionRowBadges
             {...readSession()}
             hasComposerDraft={readSession().hasComposerDraft === true}
-            pullRequest={pullRequest()}
-            pullRequestCount={badges().pullRequestCount}
             hasApproval={badges().hasApproval}
           />
+          {/* Native badges retain their two-slot priority budget; plugin accessories own a separate slot. */}
           <SessionAccessoryBadges
             plugins={host().sessionDataContext?.plugins}
             sessionKey={readSession().key}
             agentId={readSession().agentId}
             worktreeId={readSession().worktreeId}
-            artifact={pullRequest()}
+            artifact={artifact()}
             cached={readSession().snapshot ? (readSession().snapshot?.badges ?? []) : undefined}
             onChange={() => host().sessionData.requestSessionDataUpdate()}
           />
@@ -290,7 +287,7 @@ export function renderSidebarSessionIndicators(
             sessionKey={readSession().key}
             agentId={readSession().agentId}
             worktreeId={readSession().worktreeId}
-            artifact={pullRequest()}
+            artifact={artifact()}
             presented={true}
           />
           {stateDescription() ? (

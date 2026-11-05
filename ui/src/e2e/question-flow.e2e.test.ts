@@ -11,6 +11,7 @@ import {
   type MockGatewayControls,
 } from "../test-helpers/control-ui-e2e.ts";
 import { navigationDrawerToggle } from "../test-helpers/control-ui-navigation.ts";
+import { GITHUB_REPOSITORY_PLUGIN } from "../test-helpers/repository-plugin.ts";
 import { chatThreadDistanceFromBottom, waitForChatScrollIdle } from "./chat-flow.test-support.ts";
 import { createControlUiE2eSuite } from "./control-ui-e2e-suite.test-support.ts";
 import { defineQuestionFooterTests } from "./question-footer.test-support.ts";
@@ -116,6 +117,7 @@ async function openQuestionPage(
 ) {
   const page = await newPage(viewport, hasTouch);
   const gateway = await installMockGateway(page, {
+    nativePlugins: [GITHUB_REPOSITORY_PLUGIN],
     featureMethods: [
       "chat.abort",
       "chat.metadata",

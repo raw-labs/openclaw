@@ -20,7 +20,6 @@ import {
   isChatLiveEvent,
   retirePendingChatLiveEvents,
 } from "./chat-live-events.ts";
-import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import { clearPendingQueueItemsForRun } from "./chat-queue.ts";
 import { chatRunPresentation } from "./chat-run-presentation.ts";
 import { flushChatQueueForEvent, resumeStoredChatOutboxes } from "./chat-send-actions.ts";
@@ -221,7 +220,6 @@ function handleSessionsChangedEvent(
     matchesChat && typeof source?.reason === "string" && BRANCH_TOPOLOGY_REASONS.has(source.reason);
   if (resetsSelectedSession || changesBranchTopology) {
     retirePendingChatLiveEvents(state);
-    retirePullRequestRefreshes(state);
   }
   if (matchesChat && source?.reason === "project") {
     retireSessionWorkspaceCheckout(state);

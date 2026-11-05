@@ -80,8 +80,15 @@ try {
   const { createGatewayWorkerPlacementRuntime } = (await import(
     ownerUrl.href
   )) as typeof import("../../src/gateway/server-worker-placement-startup.js");
-  const { createNativeGitHubPublicationRuntime } =
-    await import("../../src/gateway/github-publication-runtime.js");
+  const { createWorkspacePublicationHost } =
+    await import("../../src/gateway/workspace-publication-provider.js");
+  const {
+    createGitHubPublicationProvider,
+    requestCurrentGitHubOAuthRefresh,
+    requestCurrentPersonalGitHubRefresh,
+  } = await import("../../extensions/github-repositories/runtime-api.js");
+  const { captureOpenClawStateWorkerContext } =
+    await import("../../src/state/openclaw-state-worker-context.js");
   const { loadWorkerPlacementSessionRuntimeModule } =
     await import("../../src/gateway/server-worker-placement-session-target.js");
   const { createWorkerEnvironmentService } =
@@ -251,13 +258,28 @@ try {
   });
   const warnings: string[] = [];
   const warn = (message: string) => warnings.push(message);
-  const publications = createNativeGitHubPublicationRuntime({
+  const publications = createWorkspacePublicationHost({
+    managedByPlacement: true,
     scheduler,
     loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
     placements,
     getCommittedRuntimeConfig: () => config,
     warn,
   });
+  const context = captureOpenClawStateWorkerContext();
+  await publications.install(
+    createGitHubPublicationProvider({
+      signal: scheduler.signal,
+      assertCurrent: () => {
+        scheduler.signal.throwIfAborted();
+        context.admission.assertCurrent();
+      },
+      getConfig: () => config,
+      refreshIdentity: requestCurrentGitHubOAuthRefresh,
+      refreshPersonal: requestCurrentPersonalGitHubRefresh,
+    }),
+    scheduler.signal,
+  );
   let publicationSettled = Promise.withResolvers<void>();
   const reconcilePublications = publications.reconcilePublications;
   publications.reconcilePublications = async (...args) => {
@@ -270,7 +292,7 @@ try {
     initialPlacements: [],
     environments: environmentService,
     getCommittedRuntimeConfig: () => config,
-    githubPublicationRuntime: publications,
+    workspacePublicationHost: publications,
     gatewayNamespace: "synthetic-recovery-benchmark",
     cancelSessionWork: async () => {},
     revokeSessionAuthority: () => {},

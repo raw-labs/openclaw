@@ -13,7 +13,6 @@ import type {
   ObservedChatHistoryResult,
 } from "./chat-history-snapshot.ts";
 import { clearChatPendingInputs } from "./chat-pending-inputs.ts";
-import { retirePullRequestRefreshes } from "./chat-pull-request-refresh.ts";
 import type { ChatHistorySessions, ChatState } from "./chat-state-contract.ts";
 import { readChatSessionProjectionScope, reduceChatSessionProjection } from "./history-merge.ts";
 import type { ChatHistoryRunObservation } from "./run-lifecycle.ts";
@@ -373,7 +372,6 @@ export function resetChatHistoryProjection(
 ): void {
   retireChatHistoryRead(state);
   retireInitialChatSnapshot(state);
-  retirePullRequestRefreshes(state);
   clearChatPendingInputs(state);
   const requests = chatHistoryRequests(state);
   // A destructive reset keeps the session key, so invalidate both the old

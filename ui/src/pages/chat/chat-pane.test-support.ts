@@ -1,9 +1,5 @@
 import { createComponent, createSignal, flush, merge, Show } from "solid-js";
 import { onTestFinished, vi } from "vitest";
-import type {
-  ControlUiSessionBranch,
-  ControlUiSessionPullRequest,
-} from "../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient, GatewayEventFrame } from "../../api/gateway.ts";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
@@ -123,9 +119,6 @@ export type TestChatPane = HTMLElement &
     handleDocumentKeydown: (event: KeyboardEvent) => void;
     handleTaskSuggestionEvent: ChatPaneRuntime["handleTaskSuggestionEvent"];
     refreshTaskSuggestions: () => Promise<void>;
-    refreshSessionPullRequests: (options?: { refresh?: boolean; automatic?: boolean }) => boolean;
-    sessionPullRequests: ControlUiSessionPullRequest[];
-    sessionPullRequestsBranch: ControlUiSessionBranch | undefined;
     suggestionChatProps: ChatPaneRuntime["suggestionChatProps"];
     addCurrentSessionSuggestion: () => Promise<void>;
     resetSessionSuggestions: () => void;
@@ -355,10 +348,6 @@ class RenderTestChatPane extends ChatPaneRuntime {
 
   override applySessionsState(state: ApplicationContext["sessions"]["state"]) {
     super.applySessionsState(state);
-  }
-
-  override refreshSessionPullRequests(options: { refresh?: boolean; automatic?: boolean } = {}) {
-    return super.refreshSessionPullRequests(options);
   }
 }
 

@@ -1,18 +1,16 @@
 import path from "node:path";
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import { controlUiPluginAssetPrefix } from "../../../src/gateway/control-ui-plugin-assets-contract.js";
 import { readPluginControlUiAssets } from "../../../src/plugins/control-ui-assets.js";
 import type { PluginManifestControlUi } from "../../../src/plugins/manifest-types.js";
+import { loadPluginManifest } from "../../../src/plugins/manifest.js";
+import type { NativeControlUiPluginFixture } from "./control-ui-e2e-contract.ts";
+import { defaultControlUiFeatureMethods } from "./control-ui-e2e-defaults.ts";
 import {
   getSharedControlUiE2ePreview,
   type PreparedNativeControlUiPluginBuild,
 } from "./control-ui-e2e-shared-preview.ts";
-
-export type NativeControlUiPluginFixture = {
-  pluginId: string;
-  rootDir: string;
-  source: string;
-  inlineViews?: readonly { id: string; label: string; version: number }[];
-};
+import type { ControlUiMockGatewayScenario } from "./control-ui-mock-scenario.ts";
 
 const builds = new Map<string, Promise<PluginManifestControlUi>>();
 
@@ -21,6 +19,7 @@ export async function prepareNativeControlUiPluginFixtures(
   fixtures: readonly NativeControlUiPluginFixture[],
 ) {
   const plugins = [];
+  const repositorySources = [];
   const preparedBuilds: PreparedNativeControlUiPluginBuild[] = [];
   const assets = new Map<string, { body: Buffer; contentType: string }>();
   for (const fixture of fixtures) {
@@ -38,6 +37,15 @@ export async function prepareNativeControlUiPluginFixtures(
       builds.set(key, build);
     }
     const declaration = await build;
+    const manifest = loadPluginManifest(fixture.rootDir);
+    if (!manifest.ok) {
+      throw new Error(manifest.error);
+    }
+    repositorySources.push(
+      ...(manifest.manifest.repositorySources ?? []).map((source) =>
+        Object.assign({ pluginId: fixture.pluginId }, source),
+      ),
+    );
     preparedBuilds.push({ rootDir: fixture.rootDir, source: fixture.source, declaration });
     const revision = path.basename(path.dirname(declaration.entry));
     const prefix = `${controlUiPluginAssetPrefix(fixture.pluginId)}${revision}/`;
@@ -50,6 +58,7 @@ export async function prepareNativeControlUiPluginFixtures(
       name: fixture.pluginId,
       revision,
       entryUrl: `${prefix}${path.basename(declaration.entry)}`,
+      ...(declaration.settingsViews ? { settingsViews: declaration.settingsViews } : {}),
       styles: (declaration.styles ?? []).map((file) => `${prefix}${path.basename(file)}`),
       ...(generation.panelIcon ? { panelIcon: generation.panelIcon.dataUrl } : {}),
     });
@@ -60,6 +69,7 @@ export async function prepareNativeControlUiPluginFixtures(
     catalog: {
       revision: plugins.map((entry) => entry.revision).join("-"),
       plugins,
+      repositorySources,
       diagnostics: [],
       inlineViews: fixtures.flatMap((fixture) =>
         (fixture.inlineViews ?? []).map((view) => ({
@@ -71,4 +81,47 @@ export async function prepareNativeControlUiPluginFixtures(
       ),
     },
   };
+}
+
+export async function prepareControlUiMockGatewayScenario(
+  scenario: ControlUiMockGatewayScenario = {},
+) {
+  const { catalog, assets } = await prepareNativeControlUiPluginFixtures(
+    scenario.nativePlugins ?? [],
+  );
+  const suppliedCatalog = asNullableRecord(scenario.methodResponses?.["plugins.controlUi.list"]);
+  const combinedCatalog = suppliedCatalog
+    ? {
+        ...catalog,
+        ...suppliedCatalog,
+        plugins: [
+          ...catalog.plugins,
+          ...(Array.isArray(suppliedCatalog.plugins) ? suppliedCatalog.plugins : []),
+        ],
+        repositorySources: [
+          ...catalog.repositorySources,
+          ...(Array.isArray(suppliedCatalog.repositorySources)
+            ? suppliedCatalog.repositorySources
+            : []),
+        ],
+      }
+    : catalog;
+  const preparedScenario = catalog.plugins.length
+    ? {
+        ...scenario,
+        featureMethods: [
+          ...new Set([
+            ...(scenario.featureMethods ?? defaultControlUiFeatureMethods),
+            "plugins.controlUi.list",
+            "plugins.controlUi.report",
+          ]),
+        ],
+        methodResponses: {
+          ...scenario.methodResponses,
+          "plugins.controlUi.list": combinedCatalog,
+          "plugins.controlUi.report": { ok: true },
+        },
+      }
+    : scenario;
+  return { scenario: preparedScenario, assets };
 }

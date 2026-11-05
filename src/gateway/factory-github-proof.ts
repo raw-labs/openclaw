@@ -1,12 +1,12 @@
 import { randomBytes } from "node:crypto";
-import type { GitHubCredentialReader } from "../agents/github-credential-reader.js";
-import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "../agents/github-host-runtime.js";
 import { parseEnterpriseGitHubPrincipal } from "../shared/enterprise-github-principal.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
 import {
   readFactoryRepositoryAdmission,
   type FactoryGitHubProofClaim,
 } from "./factory-github-repository-admission.js";
+import { resolveGitHubHost, resolveGitHubApiBaseUrl } from "./native-github-host-realm.js";
+import type { RepositoryIdentityPreparation } from "./repository-session-read.types.js";
 import type { GatewayClient } from "./server-methods/client-types.js";
 
 const AUDIENCE = "lobster.github.system-token" as const;
@@ -209,12 +209,6 @@ async function withFactoryGitHubProof<T>(
   }
 }
 
-export type FactoryGitHubIdentityPreparation<T> = (
-  env?: NodeJS.ProcessEnv,
-  readNativeCredential?: GitHubCredentialReader,
-  assertCurrent?: () => void,
-) => Promise<T>;
-
 /** Both admitted session reads retain proof redemption and issued-token cleanup at this owner. */
 export async function prepareFactoryGitHubIdentity<
   T extends { revoke?: () => Promise<void> } | undefined,
@@ -224,7 +218,7 @@ export async function prepareFactoryGitHubIdentity<
     claim: FactoryGitHubProofClaim;
     assertCurrent: () => void;
   },
-  prepare: FactoryGitHubIdentityPreparation<T>,
+  prepare: RepositoryIdentityPreparation<T>,
 ): Promise<T> {
   if (process.env.FACTORY_AUTH_MODE !== "github") {
     return await prepare();

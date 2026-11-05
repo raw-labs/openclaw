@@ -10,8 +10,6 @@ const provider = (fields: Record<string, unknown>) => ({
 const validateProvider = (fields: Record<string, unknown>) =>
   validateConfigObjectRaw({ models: { providers: { openai: provider(fields) } } });
 const validateOpenAiApiKeyRef = (apiKey: unknown) => validateProvider({ apiKey });
-const validateGithub = (github: Record<string, unknown>) =>
-  validateConfigObjectRaw({ tools: { github } });
 const secretRef = (source: string, id: string, providerId = "default") => ({
   source,
   provider: providerId,
@@ -89,26 +87,6 @@ describe("config secret refs schema", () => {
 
   it("rejects store refs outside the env-name grammar", () => {
     expect(validateOpenAiApiKeyRef(secretRef("store", "lowercase")).ok).toBe(false);
-  });
-
-  it("accepts a preview SecretRef while keeping GitHub tool identity secret-free", () => {
-    expect(
-      validateConfigObjectRaw({
-        gateway: {
-          controlUi: { github: { token: secretRef("store", "CONTROL_UI_GITHUB") } },
-        },
-        tools: { github: { profileId: "ghp_77777777777777777777777777777777" } },
-      }).ok,
-    ).toBe(true);
-
-    expect(
-      validateGithub({
-        profileId: "ghp_88888888888888888888888888888888",
-        token: secretRef("store", "AGENT_GITHUB"),
-      }).ok,
-    ).toBe(false);
-    expect(validateGithub({ profileId: "../../native" }).ok).toBe(false);
-    expect(validateGithub({}).ok).toBe(false);
   });
 
   it("rejects model provider request proxy url secret refs", () => {

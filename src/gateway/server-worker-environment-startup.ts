@@ -130,6 +130,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
   getPluginRegistry: () => PluginRegistry;
   getPortalRuntime: () => Pick<GatewayRequestContext, "portalService" | "broadcast"> | undefined;
   resolveGatewayContext: GatewayContextResolver;
+  getRepositorySources?: () => import("./repository-sources.js").RepositorySources;
   desktopSessionRegistry: DesktopSessionRegistry;
   nodeDesktopStreamBroker?: NodeDesktopStreamBroker;
   startup: GatewayWorkerEnvironmentStartupState;
@@ -420,6 +421,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     gatewayNamespace: nodeWorkerGatewayNamespace,
   });
   const workerEnvironmentService = createWorkerEnvironmentService({
+    getRepositorySources: params.getRepositorySources,
     resolveGatewayContext: params.resolveGatewayContext,
     waitForRetainedNode: async (nodeId, options) => {
       const context = params.resolveGatewayContext();
@@ -441,7 +443,7 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     getConfig: getRuntimeConfig,
     resolveHumanPresenceDemand: () => {
       const config = getRuntimeConfig();
-      const repository = configuredDefaultRepository(config);
+      const repository = configuredDefaultRepository(config, params.getRepositorySources?.());
       if (!repository?.profileId) {
         return undefined;
       }
@@ -462,7 +464,8 @@ export async function createGatewayWorkerEnvironmentRuntime(params: {
     },
     presenceDemandStore: {
       read: readPreparedPoolPresenceDemand,
-      write: writePreparedPoolPresenceDemand,
+      write: (value, assertCurrent) =>
+        writePreparedPoolPresenceDemand(value, assertCurrent, params.getRepositorySources?.()),
     },
     maintainProviders: (signal) =>
       maintainConfiguredWorkerProviders({

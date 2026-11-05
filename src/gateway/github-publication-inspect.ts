@@ -5,18 +5,19 @@ import { prepareGitHubPublicationSession } from "./github-publication-availabili
 import { prepareOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
 import { prepareGitHubPublicationRequesterV2 } from "./github-publication-requester.js";
 import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
+import { readWorkspacePublicationHost } from "./workspace-publication-binding.js";
 export async function performSessionGitHubInspection(
   options: Omit<GatewayRequestHandlerOptions, "params"> & {
     params: Extract<SessionGitHubActionParams, { action: "inspect_pr" }>;
   },
 ): Promise<void> {
   const { params } = options;
-  const service = options.context.githubPublicationService;
+  const service = readWorkspacePublicationHost(options.context)?.readApi();
   if (!service) {
     throw new Error("Repository publication service is unavailable.");
   }
   const assertService = () => {
-    if (options.context.githubPublicationService !== service) {
+    if (readWorkspacePublicationHost(options.context)?.readApi() !== service) {
       throw new Error("Repository publication service is unavailable.");
     }
   };

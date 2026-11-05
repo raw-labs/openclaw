@@ -1,4 +1,3 @@
-/* @vitest-environment jsdom */
 import { createComponent, createSignal } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
 import type { SessionsDiffResult } from "../../../../../packages/gateway-protocol/src/index.js";
@@ -25,7 +24,6 @@ import { ChatDetailsEnvironmentMobile } from "./chat-details-environment-mobile.
 import { ChatDetailsEnvironment } from "./chat-details-environment.tsx";
 import { ChatDetailsSession } from "./chat-details-session.tsx";
 import type { ChatDetailsProps } from "./chat-details-types.ts";
-import { publication, sessionBranch, pullRequest } from "./chat-pull-requests.test-support.ts";
 import type { SubagentActivityProps } from "./chat-subagent-activity.tsx";
 
 type ChatSubagentActivityLive = SolidBridgeElement<SubagentActivityProps>;
@@ -46,10 +44,12 @@ async function mount(overrides: Partial<ChatDetailsProps> = {}, context?: Applic
   await element.updateComplete;
   return element;
 }
+
 async function updateDetails(element: ChatDetailsSession, patch: Partial<ChatDetailsProps> = {}) {
   element.props = { ...element.props!, ...patch };
   await element.updateComplete;
 }
+
 it("hides only the authenticated viewer's complete self-only desktop People section", async () => {
   const self = { identity: { type: "profile", id: "alex" }, label: "Alex" } as const;
   const actor = { type: "human", id: "native-alex", ...self } as const;
@@ -132,42 +132,7 @@ it("hides only the authenticated viewer's complete self-only desktop People sect
   publish({ ...gateway.snapshot, selfUser: undefined });
   await waitForSolid(() => expect(section()).not.toBeNull());
 });
-it("omits empty linked-work disclosures and opens arriving pull requests", async () => {
-  const element = await mount();
-  const linkedWork = () =>
-    element.querySelector(
-      '[data-details-group="pull-requests"], [data-details-group="automations"], [data-details-group="subagents"], [data-details-group="processes"]',
-    );
-  expect(linkedWork()).toBeNull();
-  await updateDetails(element, {
-    pullRequests: [pullRequest()],
-  });
-  const group = element.querySelector<HTMLDetailsElement>('[data-details-group="pull-requests"]')!;
-  expect(group.open).toBe(true);
-  expect(group.querySelector("summary")?.textContent).toContain("Pull requests");
-  group.open = false;
-  group.dispatchEvent(new Event("toggle"));
-  flush();
-  await updateDetails(element);
-  expect(group.open).toBe(false);
-  const pullRequests = element.props!.pullRequests;
-  await updateDetails(element, { pullRequests: [] });
-  expect(linkedWork()).toBeNull();
-  expect(element.querySelector(".chat-details-session > summary")).toBeNull();
-  const openChanges = vi.fn();
-  await updateDetails(element, { onOpenSessionDiff: openChanges });
-  expect(element.querySelector('[data-details-group="pull-requests"]')).toBeNull();
-  expect(element.querySelector<HTMLElement>(".chat-details-desktop-environment")?.hidden).toBe(
-    true,
-  );
-  expect(openChanges).not.toHaveBeenCalled();
-  await updateDetails(element, { onOpenSessionDiff: undefined });
-  expect(linkedWork()).toBeNull();
-  await updateDetails(element, { pullRequests });
-  expect(
-    element.querySelector<HTMLDetailsElement>('[data-details-group="pull-requests"]')?.open,
-  ).toBe(true);
-});
+
 it("keeps compaction busy until the owning request settles and uses the current callback", async () => {
   const pending = createDeferred();
   const compact = vi.fn(() => pending.promise);
@@ -198,7 +163,7 @@ it("keeps compaction busy until the owning request settles and uses the current 
       presented: true,
       details: {
         currentAgentId: "main",
-        pullRequestsGateway: gateway,
+        gateway,
         selectedSession: {
           key: "agent:main:details",
           kind: "direct",
@@ -237,6 +202,7 @@ it("keeps compaction busy until the owning request settles and uses the current 
   await waitForSolid(() => expect(replacement).toHaveBeenCalledOnce());
   expect(compact).toHaveBeenCalledOnce();
 });
+
 it("keeps immutable creator, mutable owner and participants distinct without claiming live presence", async () => {
   const element = await mount({
     selectedSession: {
@@ -295,6 +261,7 @@ it("keeps immutable creator, mutable owner and participants distinct without cla
   );
   expect(element.querySelector(".chat-details__person")).toBeNull();
 });
+
 it("shows participant controls only while the session has participants", async () => {
   const element = await mount();
   expect(element.querySelector(".chat-details__meta-actions")).toBeNull();
@@ -312,54 +279,7 @@ it("shows participant controls only while the session has participants", async (
   });
   expect(element.querySelector(".chat-details__meta-actions")).toBeNull();
 });
-it("uses the current PR renderer and preserves CI session identity and branch dismissal", async () => {
-  const element = await mount({
-    pullRequestsSessionId: "incarnation-7",
-    pullRequests: [
-      pullRequest({
-        title: "A compact PR title",
-        additions: 84,
-        deletions: 41,
-        checks: undefined,
-        checksUrl: undefined,
-      }),
-    ],
-  });
-  await waitForSolid(() =>
-    expect(element.querySelector(".chat-pr__title")?.textContent).toBe("A compact PR title"),
-  );
-  const link = element.querySelector(".chat-pr__link")!;
-  expect(link.getAttribute("href")).toBe("https://github.com/openclaw/openclaw/pull/103469");
-  expect(element.querySelector("openclaw-chat-ci-automation")).toBeNull();
-  element.querySelector<HTMLButtonElement>(".chat-pr__actions button")!.click();
-  flush();
-  const menu = element.querySelector(".chat-pr__actions")!;
-  for (const fact of ["openclaw/openclaw", "#103469", "Open", "+84", "−41"]) {
-    expect(menu.textContent).toContain(fact);
-  }
-  await waitForSolid(() =>
-    expect(menu.querySelector("button")?.getAttribute("aria-expanded")).toBe("true"),
-  );
-  menu.querySelector<HTMLButtonElement>('[data-value="monitoring"]')!.click();
-  await vi.dynamicImportSettled();
-  await waitForSolid(() =>
-    expect(
-      element.querySelector('openclaw-chat-ci-automation input[type="checkbox"]'),
-    ).not.toBeNull(),
-  );
-  const automation = element.querySelector("openclaw-chat-ci-automation");
-  expect(automation).toHaveProperty("sessionId", "incarnation-7");
-  expect(automation).toHaveProperty("presented", true);
-  menu.querySelector<HTMLButtonElement>("button")!.click();
-  await waitForSolid(() => expect(automation).toHaveProperty("presented", false));
-  expect(element.querySelector("openclaw-chat-ci-automation")).toBe(automation);
-  await updateDetails(element, {
-    pullRequests: [],
-    pullRequestsBranch: sessionBranch(),
-    pullRequestsBranchDismissed: true,
-  });
-  expect(element.querySelector(".chat-pr")).toBeNull();
-});
+
 it("groups every direct subagent with counts, live activity first, and a bounded preview", async () => {
   const parent = "agent:main:details";
   const child = (slug: string, state: Partial<GatewaySessionRow>): GatewaySessionRow => ({
@@ -594,63 +514,10 @@ it("demands mobile changes only while presented and retires native navigation ca
   expect(request).toHaveBeenCalledTimes(2);
 });
 
-it.each([false, true])(
-  "keeps branch publication on the existing Environment row (desktop=%s)",
-  async (desktop) => {
-    const branch = sessionBranch({
-      branch: "feature/environment-publication",
-      additions: 7,
-      deletions: 2,
-    });
-    const onPublish = vi.fn();
-    const onOpenSessionDiff = vi.fn();
-    const element = await mount({
-      detailsWorkspace: { root: "/synthetic/project", label: "project", branch: branch.branch },
-      pullRequestsBranch: branch,
-      githubPublication: publication({ onPublish }),
-      onOpenSessionDiff,
-    });
-    element.desktop = desktop;
-    await element.updateComplete;
-    const environment = element.querySelector('[data-details-group="environment"]')!;
-    await waitForSolid(() =>
-      expect(environment.querySelector("button.chat-pr__create")?.textContent).toBe("Create PR"),
-    );
-    const create = environment.querySelector<HTMLButtonElement>("button.chat-pr__create");
-    expect(environment.textContent).toContain("+7");
-    expect(environment.textContent).toContain("−2");
-    expect(
-      element.querySelector('[data-details-group="pull-requests"] .chat-pr--unpublished'),
-    ).toBeNull();
-    create!.click();
-    expect(onPublish).toHaveBeenCalledOnce();
-    environment.querySelector<HTMLButtonElement>(".chat-pr__diff")!.click();
-    expect(onOpenSessionDiff).toHaveBeenCalledOnce();
-    await updateDetails(element, {
-      pullRequestsBranch: { ...branch, additions: undefined, deletions: undefined },
-    });
-    expect(environment.querySelector(".chat-pr__diff")).toBeNull();
-    expect(environment.querySelector("button.chat-pr__create")?.textContent).toBe("Create PR");
-    expect(onOpenSessionDiff).toHaveBeenCalledOnce();
-    await updateDetails(element, {
-      pullRequestsBranch: undefined,
-      githubPublication: undefined,
-      pullRequests: [pullRequest()],
-    });
-    await waitForSolid(() =>
-      expect(
-        element.querySelector('[data-details-group="pull-requests"] .chat-pr__link'),
-      ).not.toBeNull(),
-    );
-    expect(environment.querySelector(".chat-pr__publication-actions")).toBeNull();
-  },
-);
-
-it("keeps local Changes after publication and accepts a confirmed clean working tree", async () => {
-  const branch = sessionBranch({ branch: "feature/published", additions: 7, deletions: 2 });
+it("keeps local Changes with branch facts and accepts a confirmed clean working tree", async () => {
+  const branch = { branch: "feature/published" };
   const element = await mount({
     detailsWorkspace: { root: "/synthetic/project", label: "project", branch: branch.branch },
-    pullRequestsBranch: branch,
     onOpenSessionDiff: vi.fn(),
     environment: {
       uncommitted: {
@@ -660,17 +527,6 @@ it("keeps local Changes after publication and accepts a confirmed clean working 
         deletions: 2,
       },
     },
-    githubPublication: publication({
-      result: {
-        requestId: "published",
-        status: "published",
-        publisher: { source: "system-configured", accountId: 1, login: "system-bot" },
-        repository: "openclaw/openclaw",
-        branch: branch.branch,
-        headCommit: "a".repeat(40),
-        url: "https://github.com/openclaw/openclaw/pull/44",
-      },
-    }),
   });
   const environment = element.querySelector('[data-details-group="environment"]')!;
   await waitForSolid(() =>
@@ -687,46 +543,6 @@ it("keeps local Changes after publication and accepts a confirmed clean working 
   });
   expect(environment.querySelector(".chat-pr__diff")).toBeNull();
   expect(environment.textContent).toContain(branch.branch);
-  await waitForSolid(() =>
-    expect(
-      element.querySelector('[data-details-group="pull-requests"] a[href$="/pull/44"]'),
-    ).not.toBeNull(),
-  );
-});
-
-it("keeps unresolved publication recovery and a different unpublished branch available", async () => {
-  const failed = publication({
-    result: {
-      requestId: "failed",
-      status: "failed",
-      code: "unavailable",
-      message: "Publication failed.",
-      nextAction: "Check publication.",
-    },
-  });
-  const element = await mount({
-    detailsWorkspace: { root: "/synthetic/project", label: "project", branch: "feature/current" },
-    pullRequests: [pullRequest({ branch: "feature/current" })],
-    githubPublication: failed,
-  });
-  const environment = element.querySelector('[data-details-group="environment"]')!;
-  expect(environment.querySelector(".chat-pr__publication-actions")).toBeNull();
-  await updateDetails(element, {
-    githubPublication: publication({
-      locked: true,
-    }),
-  });
-  await waitForSolid(() =>
-    expect(environment.querySelector(".chat-pr__create")?.textContent).toBe("Check publication"),
-  );
-  await updateDetails(element, {
-    githubPublication: failed,
-    pullRequestsBranch: sessionBranch({ branch: "feature/next", additions: 3 }),
-  });
-  await waitForSolid(() =>
-    expect(environment.querySelector(".chat-pr__create")?.textContent).toBe("Retry"),
-  );
-  expect(environment.querySelector(".chat-pr__diff")?.textContent).toContain("+3");
 });
 
 it.each([false, true])(

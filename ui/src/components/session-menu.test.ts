@@ -577,27 +577,12 @@ describe("session menu", () => {
 
   it.each([
     ["absent", null],
-    [
-      "PR",
-      {
-        pullRequestUrl: "https://github.com/openclaw/openclaw/pull/12345",
-        worktreePath: null,
-      },
-    ],
-    ["editor", { pullRequestUrl: null, worktreePath: "/work/trees/demo" }],
+    ["unresolved", { worktreePath: null }],
+    ["editor", { worktreePath: "/work/trees/demo" }],
   ] as const)("opens resolved workspace destinations: %s", async (_name, work) => {
     const { menu, onAction } = await actionMenu({ work });
     const openIn = menuItem(menu, "Open in");
     expect(menuItemLabels(openIn)).toContain(work?.worktreePath ? "VS Code" : "New tab");
-    if (work?.pullRequestUrl) {
-      const openPr = menuItem(menu, "Open PR");
-      openPr.focus();
-      press(openPr, "g");
-      await settleSessionMenu(menu);
-      expect(onAction.mock.calls).toEqual([[{ kind: "open-pr", url: work.pullRequestUrl }]]);
-    } else {
-      expect(menuItemLabels(menu)).not.toContain("Open PR");
-    }
     if (work?.worktreePath) {
       await openAdvanced(menu, "Open in");
       await selectMenuValue(menu, "open-in:vscode");

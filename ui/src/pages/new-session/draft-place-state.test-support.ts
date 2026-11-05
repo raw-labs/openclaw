@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type { ModelCatalogEntry } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
+import type { ControlUiRepositorySourceContribution } from "../../plugins/control-ui-metadata.ts";
 import type { DraftGatewayState } from "./draft-gateway-state.ts";
 import { DraftPlaceBrowser } from "./draft-place-browser.ts";
 import { DraftPlaceState } from "./draft-place-state.ts";
@@ -17,6 +18,16 @@ export function createRepositoryFixture(
   } = {},
 ) {
   const changed = vi.fn();
+  let repositorySources: ControlUiRepositorySourceContribution[] = [
+    {
+      pluginId: "fixture",
+      key: "fixture/repos",
+      id: "repos",
+      label: "Repositories",
+      searchMethod: "fixture.repositories.search",
+    },
+  ];
+  const pluginListeners = new Set<() => void>();
   const persistPreference = vi.fn();
   const readPreference = vi.fn<() => NewSessionPreference>(() => ({ worktree: true }));
   const request = vi.fn<(method: string, params?: Record<string, unknown>) => Promise<unknown>>(
@@ -40,7 +51,18 @@ export function createRepositoryFixture(
               ? Promise.resolve({ models: options.models ?? [] })
               : request(method, params),
         },
-        hello: { auth: { role: "operator", scopes: ["operator.admin"] } },
+        hello: {
+          auth: { role: "operator", scopes: ["operator.admin"] },
+          features: {
+            methods: [
+              "fixture.repositories.search",
+              "sessions.create",
+              "projects.checkoutOptions",
+              "projects.list",
+              "fs.listDir",
+            ],
+          },
+        },
       },
     },
     agents: {
@@ -56,6 +78,17 @@ export function createRepositoryFixture(
     },
     sessions: { subscribe: () => () => undefined, state: { result: null } },
     config: { subscribe: () => () => undefined, current: {} },
+    plugins: {
+      registryStatus: "complete",
+      get repositorySources() {
+        return repositorySources;
+      },
+      settingsContributions: [],
+      subscribe(listener: () => void) {
+        pluginListeners.add(listener);
+        return () => pluginListeners.delete(listener);
+      },
+    },
   } as unknown as ApplicationContext;
   const gateway = {
     cloudProfiles: options.cloudProfiles ?? [{ id: "aws", providerId: "crabbox" }],
@@ -95,5 +128,11 @@ export function createRepositoryFixture(
     readPreference,
     request,
     changed,
+    setRepositorySources(sources: ControlUiRepositorySourceContribution[]) {
+      repositorySources = sources;
+      for (const listener of pluginListeners) {
+        listener();
+      }
+    },
   };
 }

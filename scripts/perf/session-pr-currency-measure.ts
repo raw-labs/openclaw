@@ -1,7 +1,8 @@
 // Owner microbenchmark, not a whole-Gateway load test. Run separate CPU and allocation passes:
 // node --expose-gc --import ./scripts/tsx.mjs scripts/perf/session-pr-currency-measure.ts
 //   --output .local/currency.json [--allocations] [--base-owner-suffix base]
-// --base-owner-suffix compares control-ui-session-pr-{read,source,runtime,presentation,subscriptions}.<suffix>.ts.
+// --base-owner-suffix compares host read/source/runtime and plugin presentation/subscriptions snapshots.
+// Plugin runtime-api.<suffix>.ts must reexport the matching presentation snapshot.
 // Snapshots must expose the current admitted read/presentation API and redirect their owner imports.
 // --base-projection-suffix compares session-row-projection.<suffix>.ts (redirect its
 // materialize import to the matching baseline snapshot). --captures isolates row capture.
@@ -30,10 +31,10 @@ import path from "node:path";
 import { PerformanceObserver } from "node:perf_hooks";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { parseArgs } from "node:util";
+import type { ControlUiSessionPrRead } from "../../extensions/github-repositories/runtime-api.js";
+import { createControlUiSessionPrRead } from "../../extensions/github-repositories/runtime-api.js";
 import type { SessionEntry } from "../../src/config/sessions/types.js";
 import type { OpenClawConfig } from "../../src/config/types.openclaw.js";
-import type { ControlUiSessionPrRead } from "../../src/gateway/control-ui-session-pr-target.js";
-import { createControlUiSessionPrRead } from "../../src/gateway/control-ui-session-pr-target.js";
 import type { PreparedRepositorySessionRead } from "../../src/gateway/repository-session-read.types.js";
 import type { GatewayClient } from "../../src/gateway/server-methods/client-types.js";
 import { createControlUiRequestOptions } from "../../src/gateway/server-methods/control-ui-request.test-support.js";
@@ -106,7 +107,7 @@ const sources = [
     import.meta.url,
   );
   const presentationUrl = new URL(
-    `../../src/gateway/control-ui-session-pr-presentation${ownerSuffix}.ts`,
+    `../../extensions/github-repositories/session-presentation-service-api${ownerSuffix}.ts`,
     import.meta.url,
   );
   const sourceUrl = new URL(
@@ -114,7 +115,7 @@ const sources = [
     import.meta.url,
   );
   const subscriptionsUrl = new URL(
-    `../../src/gateway/control-ui-session-pr-subscriptions${ownerSuffix}.ts`,
+    `../../extensions/github-repositories/control-ui-session-pr-subscriptions-api${ownerSuffix}.ts`,
     import.meta.url,
   );
   const handlerUrl = new URL(
@@ -129,6 +130,10 @@ const sources = [
     name,
     runtimeUrl,
     runtimeSha256: createHash("sha256").update(readFileSync(runtimeUrl)).digest("hex"),
+    presentationModuleUrl: new URL(
+      `../../extensions/github-repositories/runtime-api${ownerSuffix}.ts`,
+      import.meta.url,
+    ),
     presentationUrl,
     presentationSha256: createHash("sha256").update(readFileSync(presentationUrl)).digest("hex"),
     taskUrl,
@@ -227,17 +232,14 @@ const owners = await Promise.all(
     );
     const {
       startGitHubSessionPresentation,
-    }: typeof import("../../src/gateway/control-ui-session-pr-presentation.js") = await import(
-      source.presentationUrl.href
+    }: typeof import("../../extensions/github-repositories/runtime-api.js") = await import(
+      source.presentationModuleUrl.href
     );
     const {
       createRepositoryTaskPublicationReader,
     }: typeof import("../../src/gateway/control-ui-session-task-prs.js") = await import(
       source.taskUrl.href
     );
-    const subscriptions:
-      | typeof import("../../src/gateway/control-ui-session-pr-subscriptions.js")
-      | undefined = watchSubscriptions ? await import(source.subscriptionsUrl.href) : undefined;
     const handlers: typeof import("../../src/gateway/server-methods/control-ui.js") | undefined =
       values.subscribe ? await import(source.handlerUrl.href) : undefined;
     return {
@@ -247,7 +249,7 @@ const owners = await Promise.all(
       createRepositorySessionReadHost,
       startGitHubSessionPresentation,
       createRepositoryTaskPublicationReader,
-      subscriptions,
+      watchSubscriptions,
       handler: handlers?.controlUiHandlers["controlUi.sessionPullRequests.subscribe"],
     };
   }),
@@ -475,7 +477,7 @@ try {
         },
       };
     };
-    if (values.notifications && owner.subscriptions) {
+    if (values.notifications && owner.watchSubscriptions) {
       prepare = async () => {
         assert(!stopNotificationArm, "Only one notification arm may subscribe");
         const scheduler = new GatewayScheduler();
@@ -513,7 +515,7 @@ try {
           await nextTurn();
         }
       };
-    } else if (owner.subscriptions) {
+    } else if (owner.watchSubscriptions) {
       const scheduler = new GatewayScheduler();
       schedulers.push(scheduler);
       publications = 0;

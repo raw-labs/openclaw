@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { setActivePluginRegistry } from "../plugins/runtime.js";
 import { resolveSessionMethodScope } from "../shared/session-method-scopes-base.js";
+import { installGitHubAccountRpcFixture } from "./github-account-service.test-support.js";
 import {
   authorizeOperatorScopesForMethod,
   authorizeOperatorScopesForRequiredScope,
@@ -336,6 +337,9 @@ describe("session-scoped method admission", () => {
   ] as const)(
     "restricts the narrow read alternative to session and bootstrap methods: %s",
     (method, params, narrow, deniedScope: string = READ) => {
+      if (method.startsWith("controlUi.")) {
+        installGitHubAccountRpcFixture({});
+      }
       for (const scopes of [[OWN_READ], [OWN_WRITE], [OWN_READ, OWN_WRITE]]) {
         admission(method, scopes, params).toEqual(
           narrow

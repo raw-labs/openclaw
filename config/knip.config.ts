@@ -1057,6 +1057,9 @@ const config = {
     "src/infra/sqlite-source-fence-admission.ts",
     "src/shared/text/assistant-visible-text.ts",
     bundledPluginFile("telegram", "src/draft-chunking.ts"),
+    // Host integration fixtures consume these public browser barrels; the full-tree scan audits every export.
+    bundledPluginFile("github-repositories", "browser/api.ts"),
+    bundledPluginFile("github-repositories", "browser/text-reference-api.ts"),
   ],
   // Knip's `ignoreFiles` only suppresses unused-file findings. Test helpers
   // belong in `ignore` so they do not inflate unused-export/type findings.
@@ -1098,6 +1101,9 @@ const config = {
     "src/gateway/control-ui-session-task-prs.ts": ["exports"],
     // factory-github-proof tests issue the actual owner claim before exercising redemption.
     "src/gateway/factory-github-proof.ts": ["exports"],
+    // Native admission, chat dispatch, and worker fixtures share the existing App selection type.
+    // The full-tree companion independently audits these test-only consumers.
+    "src/agents/github-credential-reader.ts": ["types"],
     // OAuth inventory tests independently verify read sharing and write-during-scan invalidation.
     "src/gateway/github-oauth-lifecycle-helpers.ts": ["exports"],
     "src/gateway/github-oauth-lifecycle-host.ts": ["exports"],
@@ -1110,7 +1116,7 @@ const config = {
     // users-github RPC tests observe the actual durable profile retirement callback.
     "src/state/user-github-connections.ts": ["exports"],
     // Publication readiness tests retain the real owner while the UI uses its local constructor.
-    "ui/src/lib/sessions/github-publication-owner.ts": ["exports"],
+    "extensions/github-repositories/browser/github-publication-owner.ts": ["exports"],
     // control-ui-runtime tests exercise synchronous menu notifications and observer retirement.
     "ui/src/plugins/control-ui-action-observation.solid.ts": ["exports"],
     // Diagnostic fixtures reset owner-private state; the full-tree audit checks these consumers.

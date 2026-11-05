@@ -1099,7 +1099,6 @@ export async function processGatewayAllowlist(
               secretEgressBindings: params.secretEgressBindings,
               durable: params.durable,
               sessionId: params.sessionId,
-              githubProfileDir: params.githubProfileDir,
               wrapLocalLaunch: params.wrapLocalLaunch,
               assertExecutionEnvironmentCurrent: params.assertExecutionEnvironmentCurrent,
               transportCredentialScrubEnv: params.transportCredentialScrubEnv,

@@ -80,3 +80,6 @@ currentness. It invokes the callback through the existing managed registration;
 retained attribution becomes stale when its plugin retires. CLI and Codex prompt
 preparation use their already selected runtime registry, without requiring a
 running Gateway service. Existing prompt placement and bytes are retained.
+With no enabled formatting provider, optional Git credit is omitted; there is no
+native GitHub fallback. Disabling the plugin does not rewrite prior prompts or
+transcript messages.

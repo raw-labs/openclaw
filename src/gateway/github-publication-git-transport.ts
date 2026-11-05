@@ -666,10 +666,6 @@ export async function requireGitHubPublicationCommit(params: {
 }
 
 export {
-  githubPublicationApiArgs,
-  readGitHubPublicationBaseSha,
-} from "./github-publication-remote.js";
-export {
   appendGitHubPublicationMessage,
   hasGitHubPublicationMessageFooter,
 } from "./repository-publication-message.js";

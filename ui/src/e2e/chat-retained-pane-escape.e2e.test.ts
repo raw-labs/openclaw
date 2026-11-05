@@ -3,7 +3,8 @@ import {
   CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT,
   SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD as subscribe,
 } from "../../../src/gateway/control-ui-contract.js";
-import { controlUiSessionPath, installMockGateway } from "../test-helpers/control-ui-e2e.ts";
+import { controlUiSessionPath } from "../test-helpers/control-ui-e2e.ts";
+import { installRepositoryGateway as installMockGateway } from "../test-helpers/repository-plugin.ts";
 import { chatSessionListResponse } from "./chat-flow.test-support.ts";
 import { waitForWatchedSessionKey } from "./chat-github-publication.test-support.ts";
 import { polledAttribute, polledCount, polledVisible } from "./chat-presentation.test-support.ts";

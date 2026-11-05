@@ -56,12 +56,33 @@ export {
 
 export { UserGitHubConnectionAuthorityChangedError } from "../state/user-github-connections.js";
 
+/** Deprecated shipped lookup; load instance machinery only for an admitted managed service start. */
+export async function installNativeGitHubLegacyOAuthLookup(
+  ...args: Parameters<
+    typeof import("../gateway/native-github-account-install.js").installRepositoryLegacyOAuthLookup
+  >
+): Promise<
+  ReturnType<
+    typeof import("../gateway/native-github-account-install.js").installRepositoryLegacyOAuthLookup
+  >
+> {
+  const runtime = await import("../gateway/native-github-account-install.js");
+  return runtime.installRepositoryLegacyOAuthLookup(...args);
+}
+export type {
+  LegacyGitHubOAuthService,
+  LegacyPersonalGitHubService,
+} from "../gateway/github-oauth-lifecycle-host.types.js";
+
 // Native identity and receipt realms are independent of optional repository services.
 export {
   GITHUB_PUBLIC_HOST,
   resolveConfiguredGitHubHost,
   resolveConfiguredGitHubApiBaseUrl,
-} from "../agents/github-host.js";
+} from "../gateway/native-github-host-realm.js";
 
 /** Native sign-in and repository readers share the canonical service credential selector. */
-export { githubApiToken, hasConfiguredGitHubApiCredential } from "../gateway/github-public-api.js";
+export {
+  githubApiToken,
+  hasConfiguredGitHubApiCredential,
+} from "../gateway/native-github-service-credential.js";
