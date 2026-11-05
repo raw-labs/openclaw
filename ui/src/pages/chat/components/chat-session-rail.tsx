@@ -1,6 +1,6 @@
+import { createMemo, For, lazy, onSettled, Show } from "solid-js";
 import "../../../styles/chat/session-rail.css";
 import "../../../styles/chat/working-indicator.css";
-import { createMemo, For, lazy, onSettled, Show } from "solid-js";
 import type { SessionObserverDigest } from "../../../../../packages/gateway-protocol/src/schema/sessions.js";
 import type { ControlUiSessionPullRequest } from "../../../../../src/gateway/control-ui-contract.js";
 import type { GatewayBrowserClient } from "../../../api/gateway.ts";
@@ -18,6 +18,7 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createParkedProjection } from "../../../lib/reactive/parked-projection.ts";
 import { projectOwner } from "../../../lib/reactive/projection.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import type { SidebarPanelDefinitionParams } from "../chat-pane-embedded-types.ts";
 import { usePanePresentation } from "../chat-pane-presentation.ts";
 import { createSideChatModelControlProps } from "../chat-session-companion-model-controls.ts";
@@ -281,6 +282,11 @@ function ChatSessionRailContent(props: ChatSessionRailProps, host: ChatSessionRa
       onDragOver={(event) => drop().onDragover(event)}
       onDrop={(event) => drop().onDrop(event)}
     >
+      <PluginContributions
+        kind="session-summary"
+        sessionKey={props.sessionKey}
+        presented={props.presented}
+      />
       {showPullRequests() && props.pullRequests.length > 0 && (
         <div class="chat-session-rail__prs" aria-label={t("chat.rail.pullRequests")}>
           <For each={props.pullRequests.slice(0, 2)} keyed={(pr) => pr.url}>

@@ -9,11 +9,11 @@ import {
   createTestGatewayScheduler,
 } from "../test-utils/gateway-scheduler-clock.js";
 import type { ControlUiSessionPullRequests as Snapshot } from "./control-ui-contract.js";
-import type { ControlUiSessionPrTarget } from "./control-ui-session-pr-read.js";
-import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "./control-ui-session-pr-subscriptions.js";
+import { parseControlUiSessionPullRequestsSubscribeParams as parse } from "./control-ui-session-pr-subscription-params.js";
 import {
   createTestControlUiSessionPrSubscriptions,
   createTestSessionPrReadSource,
+  type TestSessionPrTarget as ControlUiSessionPrTarget,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
 
 const CHANGED_EVENT = "controlUi.sessionPullRequests.changed";
@@ -88,7 +88,6 @@ describe("control UI session PR subscriptions", () => {
         identity: `session-${captured}`,
         readSource,
         source: null,
-        taskReceipts: { sessions: [] },
         assertCurrent: () => {
           if (!visible || captured !== revision) {
             throw new Error("Watcher grant changed");
@@ -137,7 +136,7 @@ describe("control UI session PR subscriptions", () => {
     };
     const active = start({ prepareRead: async () => async () => target });
     for (let index = 0; index < 64; index++) {
-      await active.replace(`reader-${index}`, [], new Set(), new Set(["session"]));
+      await active.replace(`reader-${index}`, [], new Set(), undefined, new Set(["session"]));
     }
     assertCurrent.mockClear();
     const pending = active.pollNow();
@@ -160,18 +159,29 @@ describe("control UI session PR subscriptions", () => {
     "refreshes=$refresh for facts=$facts, invalidated=$invalidated",
     async ({ facts, invalidated, refresh }) => {
       const readSource = createTestSessionPrReadSource();
-      const readCurrent = vi.fn(async () => ({
-        sessionId: "session-id",
-        params: { sessionKey: "session", agentId: "main" },
-        identity: "session",
-        readSource,
-        source: null,
-        taskReceipts: { sessions: [] },
-      }));
+      let revision = 0;
+      const readCurrent = vi.fn(async () => {
+        const captured = revision;
+        return {
+          sessionId: "session-id",
+          params: { sessionKey: "session", agentId: "main" },
+          identity: "session",
+          readSource,
+          source: null,
+          assertCurrent() {
+            if (captured !== revision) {
+              throw new Error("Watcher grant changed");
+            }
+          },
+        };
+      });
       const active = start({ prepareRead: async () => readCurrent });
       await active.replace("reader", ["session"]);
       readCurrent.mockClear();
       broadcastToConnIds.mockClear();
+      if (invalidated === true) {
+        revision++;
+      }
       sessionChanges.emit({
         sessionKey: "session",
         facts:
@@ -295,8 +305,8 @@ describe("control UI session PR subscriptions", () => {
     const signals = new Map<string, AbortSignal | undefined>();
     load.mockImplementation(async (_params, signal, read) => {
       read.assertCurrent();
-      signals.set(read.target.identity, signal);
-      return { ...READY, rateLimited: read.target.identity === "private" };
+      signals.set(read.target.observation.identity, signal);
+      return { ...READY, rateLimited: read.target.observation.identity === "private" };
     });
     const active = start({
       prepareRead: async (connId) => async () => ({

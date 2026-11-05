@@ -20,7 +20,6 @@ import {
   setDisplayName,
   setUserProfileRole,
 } from "../state/user-profile-writes.worker.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
 import {
   prepareGitHubPublicationRequesterV2,
   restoreGitHubPublicationRequester,
@@ -37,6 +36,7 @@ import {
   startVisitorPublicationFixture as startVisitors,
 } from "./github-publication-requester.test-support.js";
 import { invalidateOperatorRolePolicy } from "./operator-role-policy.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./repository-publication-errors.js";
 
 const mocks = githubPublicationTestMocks();
 const checkpoint = vi.hoisted(() => vi.fn());
@@ -90,7 +90,7 @@ it.each(["alias interruption", "role revocation"] as const)(
     const restored = await restoreGitHubPublicationRequester(
       JSON.stringify(original.requester.snapshot),
       original.session,
-      original.context.getCommittedRuntimeConfig,
+      original.context.getCommittedRuntimeConfig ?? original.context.getRuntimeConfig,
     );
     onTestFinished(restored.release);
     original.release();
@@ -142,7 +142,7 @@ it.each(["alias interruption", "role revocation"] as const)(
       }
       return authority;
     });
-    expect(restored.assertCurrent).toThrow(GitHubPublicationRequesterUnavailableError);
+    expect(restored.assertCurrent).toThrow(RepositoryPublicationRequesterUnavailableError);
   },
 );
 
@@ -168,9 +168,13 @@ it.each(forBackends(["captured alias", "later alias"] as const))(
     if (change === "captured alias") {
       await linkCanonicalUserProfileEmail(email, other.id);
       expect(original.requester.signal.aborted).toBe(true);
-      expect(original.requester.assertCurrent).toThrow(GitHubPublicationRequesterUnavailableError);
+      expect(original.requester.assertCurrent).toThrow(
+        RepositoryPublicationRequesterUnavailableError,
+      );
       await linkCanonicalUserProfileEmail(email, f.guestProfile);
-      expect(original.requester.assertCurrent).toThrow(GitHubPublicationRequesterUnavailableError);
+      expect(original.requester.assertCurrent).toThrow(
+        RepositoryPublicationRequesterUnavailableError,
+      );
     } else {
       setDisplayName(f.guestProfile, "Updated publication guest");
       await linkCanonicalUserProfileEmail(later, f.guestProfile);

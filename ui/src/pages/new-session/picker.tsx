@@ -1,5 +1,5 @@
 import type { JSX } from "@solidjs/web";
-import { Errored, Loading, onSettled } from "solid-js";
+import { createMemo, Errored, Loading, onSettled } from "solid-js";
 import {
   isStaleChunkImportError,
   retryStaleChunkReloadWhenReachable,
@@ -31,6 +31,10 @@ export function SessionPicker(props: {
   let trigger!: HTMLButtonElement;
   let popover!: PopoverHandle;
   let cleanup: (() => void) | undefined;
+  const onOpenChange = createMemo(() => {
+    const callbacks = props.params.place.browser.popoverCallbacks(props.kind);
+    return (open: boolean) => callbacks[open ? "onPopoverShow" : "onPopoverHide"]();
+  });
   onSettled(() => () => cleanup?.());
   return (
     <>
@@ -96,10 +100,7 @@ export function SessionPicker(props: {
         ]}
         open={props.params.place.browser.popoverOpen(props.kind)}
         placement="bottom-start"
-        onOpenChange={(open) => {
-          const callbacks = props.params.place.browser.popoverCallbacks(props.kind);
-          callbacks[open ? "onPopoverShow" : "onPopoverHide"]();
-        }}
+        onOpenChange={onOpenChange()}
         ref={(handle) => {
           popover = handle;
           const surface = handle.overlay.surface;

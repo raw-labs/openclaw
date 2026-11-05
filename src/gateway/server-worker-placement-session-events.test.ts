@@ -21,10 +21,9 @@ import {
 } from "../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { runPublicationCommand } from "./github-publication-git-transport.js";
-import {
-  createGatewayGitHubPublicationRuntime,
-  createGatewayWorkerPlacementRuntime,
-} from "./server-worker-placement-startup.js";
+import { createNativeGitHubPublicationRuntime } from "./github-publication-runtime.js";
+import { loadWorkerPlacementSessionRuntimeModule } from "./server-worker-placement-session-target.js";
+import { createGatewayWorkerPlacementRuntime } from "./server-worker-placement-startup.js";
 import {
   createIdleDiskSpace,
   createRuntimeFactory,
@@ -74,7 +73,9 @@ function startRuntime(
     version: () => 0,
   });
   setDispatchMock(runtimeFactoryMocks.createDispatch, { reconcileActive });
-  const githubPublicationRuntime = createGatewayGitHubPublicationRuntime({
+  const githubPublicationRuntime = createNativeGitHubPublicationRuntime({
+    scheduler,
+    loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
     placements,
     getCommittedRuntimeConfig: getRuntimeConfig,
     warn,

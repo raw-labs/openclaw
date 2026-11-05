@@ -4,8 +4,11 @@ import {
   isSettingsNavigationRouteVisible,
   type SettingsSearchBlock,
 } from "../../app-navigation.ts";
-import { pathForMemoryTab } from "../../app-route-paths.ts";
-import type { NativeDeviceSettingsCapability } from "../../app/native-device-settings.ts";
+import { pathForMemoryTab, pathForAgentPanel } from "../../app-route-paths.ts";
+import type {
+  NativeDeviceSettingsCapability,
+  NativeDeviceSettingsSnapshot,
+} from "../../app/native-device-settings.ts";
 import { currentThemeBranding } from "../../app/theme-branding.ts";
 import { SECTION_META } from "../../components/config-form.meta.ts";
 import {
@@ -18,6 +21,7 @@ import { registerProfileEnglish } from "../../i18n/locales/en-profile.ts";
 import { registerSettingsEnglish } from "../../i18n/locales/en-settings.ts";
 import { schemaType, type JsonSchema } from "../../lib/config-form-utils.ts";
 import { settingsSearchTextMatches } from "../../lib/settings-navigation.ts";
+import type { ControlUiSettingsContribution } from "../../plugins/control-ui-metadata.ts";
 import { PLUGIN_SETTINGS_VISIBLE_KEYS } from "../plugins/settings-model.ts";
 import {
   configPageForSection,
@@ -32,6 +36,66 @@ registerProfileEnglish();
 
 const STATIC_SETTINGS_BLOCKS: readonly SettingsSearchTarget[] =
   Object.values(SETTINGS_SEARCH_TARGETS);
+function contributedSettingsBlocks(params: {
+  settingsContributions?: readonly ControlUiSettingsContribution[];
+  settingsAgentId?: string | null;
+  basePath?: string;
+}): SettingsSearchTarget[] {
+  return (params.settingsContributions ?? []).flatMap(({ placement: view }) => {
+    if (
+      !view.search ||
+      (view.section !== "profile" && view.section !== "agents") ||
+      (view.section === "agents" && !params.settingsAgentId)
+    ) {
+      return [];
+    }
+    return [
+      {
+        routeId: view.section === "profile" ? ("profile" as const) : ("agents" as const),
+        labelKey: "",
+        label: view.search.label,
+        ...(view.section === "agents" && params.settingsAgentId
+          ? {
+              pathname: pathForAgentPanel(params.settingsAgentId, "tools", params.basePath ?? ""),
+            }
+          : {}),
+        hash: view.search.hash,
+        aliases: view.search.aliases,
+        searchKeys: [],
+        requiresMethods: view.requiredMethods,
+      },
+    ];
+  });
+}
+
+function resolveStaticSettingsBlock(
+  block: SettingsSearchTarget,
+  snapshot: NativeDeviceSettingsSnapshot | null,
+): SettingsSearchBlock & { searchText: string } {
+  const label = block.label ?? t(block.labelKey);
+  const nativeKeys = snapshot
+    ? Object.entries(block.nativeSearchKeys ?? {})
+        .filter(([, available]) => available(snapshot))
+        .map(([key]) => key)
+    : [];
+  return {
+    routeId: block.routeId,
+    ...(block.pathname ? { pathname: block.pathname } : {}),
+    ...(block.search === undefined ? {} : { search: block.search }),
+    hash: block.hash,
+    label,
+    searchText: [
+      label,
+      ...[...block.searchKeys, ...nativeKeys]
+        .filter(
+          (key) =>
+            currentThemeBranding().lobsterdex || key !== "configView.appearance.tabIcon.lobsterdex",
+        )
+        .map((key) => t(key)),
+      block.aliases ?? "",
+    ].join(" "),
+  };
+}
 
 // Curated pages render only a subset of their section's schema; search must
 // promise exactly what the destination page can edit, or the result is a
@@ -73,11 +137,14 @@ export function findSettingsSearchBlocks(params: {
   schema: unknown;
   value: Record<string, unknown> | null;
   uiHints: ConfigUiHints;
+  advertisedMethods?: readonly string[];
   identityAvailable?: boolean;
   multipleProfiles?: boolean;
   basePath?: string;
   canAdmin?: boolean;
   nativeDeviceSettings?: NativeDeviceSettingsCapability | null;
+  settingsContributions?: readonly ControlUiSettingsContribution[];
+  settingsAgentId?: string | null;
 }): SettingsSearchBlock[] {
   if (!params.query.trim()) {
     return [];
@@ -85,45 +152,25 @@ export function findSettingsSearchBlocks(params: {
   const criteria = parseConfigSearchQuery(params.query);
   const matches: SettingsSearchBlock[] =
     criteria.tags.length === 0 && criteria.text
-      ? STATIC_SETTINGS_BLOCKS.filter(
-          (block) =>
-            (params.identityAvailable || !block.requiresIdentity) &&
-            (params.multipleProfiles || !block.requiresMultipleProfiles) &&
-            (params.nativeDeviceSettings || !block.requiresNativeDeviceSettings) &&
-            isSettingsNavigationRouteVisible(
-              block.routeId,
-              params.canAdmin !== false,
-              params.nativeDeviceSettings,
-            ),
-        )
-          .map((block): SettingsSearchBlock & { searchText: string } => {
-            const snapshot = params.nativeDeviceSettings?.snapshot ?? null;
-            const label = t(block.labelKey);
-            const nativeKeys = snapshot
-              ? Object.entries(block.nativeSearchKeys ?? {})
-                  .filter(([, available]) => available(snapshot))
-                  .map(([key]) => key)
-              : [];
-            return Object.assign(
-              { routeId: block.routeId },
-              block.search === undefined ? {} : { search: block.search },
-              {
-                hash: block.hash,
-                label,
-                searchText: [
-                  label,
-                  ...[...block.searchKeys, ...nativeKeys]
-                    .filter(
-                      (key) =>
-                        currentThemeBranding().lobsterdex ||
-                        key !== "configView.appearance.tabIcon.lobsterdex",
-                    )
-                    .map((key) => t(key)),
-                  block.aliases ?? "",
-                ].join(" "),
-              },
-            );
-          })
+      ? [...STATIC_SETTINGS_BLOCKS, ...contributedSettingsBlocks(params)]
+          .filter(
+            (block) =>
+              (!block.requiresMethods ||
+                block.requiresMethods.every((method) =>
+                  params.advertisedMethods?.includes(method),
+                )) &&
+              (params.identityAvailable || !block.requiresIdentity) &&
+              (params.multipleProfiles || !block.requiresMultipleProfiles) &&
+              (params.nativeDeviceSettings || !block.requiresNativeDeviceSettings) &&
+              isSettingsNavigationRouteVisible(
+                block.routeId,
+                params.canAdmin !== false,
+                params.nativeDeviceSettings,
+              ),
+          )
+          .map((block) =>
+            resolveStaticSettingsBlock(block, params.nativeDeviceSettings?.snapshot ?? null),
+          )
           .filter((block) => settingsSearchTextMatches(block.searchText, criteria.text))
       : [];
   const schema = isRecord(params.schema) ? (params.schema as JsonSchema) : null;

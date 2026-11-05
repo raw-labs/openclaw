@@ -132,6 +132,7 @@ export type CreateGatewaySessionParams = {
   /** Registry identity for a new session or a successfully recovered pending worktree. */
   projectId?: string;
   pendingProjectGitUrl?: string;
+  repositorySourceId?: string;
   pendingWorktree?: InternalSessionEntry["pendingWorktree"];
   incognito?: boolean;
   visibility?: SessionVisibility;

@@ -1,25 +1,19 @@
-import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
+import { resolveConfiguredGitHubHost } from "../agents/github-host.js";
+import { readRuntimeConfig } from "../config/runtime-snapshot.js";
 import { captureResidentUserProfileAccess } from "../state/user-profile-list.js";
-
-type RecordedPublication = {
-  url: string;
-  publisher: Pick<
-    GitHubPublicationExecutionRow,
-    | "agent_id"
-    | "identity_source"
-    | "identity_profile_id"
-    | "identity_account_id"
-    | "identity_login"
-  >;
-};
+import { captureGitHubPublicationActionAuthority } from "./github-publication-requester.js";
+import type { GitHubPublicationRequesterPolicyV2 } from "./github-publication-requester.js";
+import type { PublicationSessionIdentity } from "./github-publication-session.types.js";
+import { readSharedGitHubPublication } from "./github-publication-shared-read.js";
+import type { RepositoryPublicationOwnPullRequestReader } from "./repository-session-read.types.js";
 
 /** Full-write assistance retains live action authority; ordinary readers require linked identity. */
 export function captureOwnGitHubPullRequestReader(
   profileId: string | undefined,
   getHost: () => string,
-  publication?: RecordedPublication,
+  publication?: NonNullable<RepositoryPublicationOwnPullRequestReader["publication"]>,
   assertOperatorWrite?: () => void,
-) {
+): RepositoryPublicationOwnPullRequestReader {
   const host = getHost();
   if (assertOperatorWrite) {
     const assertCurrent = () => {
@@ -76,6 +70,50 @@ export function captureOwnGitHubPullRequestReader(
           "Your linked GitHub identity changed; retry inspection with your current account.",
         );
       }
+    },
+  };
+}
+
+/** Native requester admission selects this one linked-account reader before vendor code runs. */
+export async function prepareOwnGitHubPullRequestReader(
+  requester: GitHubPublicationRequesterPolicyV2,
+  session?: PublicationSessionIdentity,
+) {
+  const authority = captureGitHubPublicationActionAuthority(requester);
+  const actor = requester.snapshot.actor;
+  if (!authority.operatorWrite && actor.kind !== "operator") {
+    throw new Error("Inspecting your PR requires your verified linked GitHub account.");
+  }
+  const published = session
+    ? await readSharedGitHubPublication(session, {
+        status: "published",
+        authorEligibilityOnly: true,
+      })
+    : undefined;
+  authority.assertCurrent();
+  const reader = captureOwnGitHubPullRequestReader(
+    actor.kind === "operator" ? actor.profileId : undefined,
+    () => resolveConfiguredGitHubHost(readRuntimeConfig()),
+    published?.pull_request_url && published.identity_account_id !== null
+      ? {
+          url: published.pull_request_url,
+          ...(published.head_commit ? { headCommit: published.head_commit } : {}),
+          publisher: {
+            agentId: published.agent_id,
+            source: published.identity_source,
+            profileId: published.identity_profile_id,
+            accountId: published.identity_account_id,
+            login: published.identity_login,
+          },
+        }
+      : undefined,
+    authority.operatorWrite ? authority.assertOperatorWrite : undefined,
+  );
+  return {
+    ...reader,
+    assertCurrent() {
+      authority.assertCurrent();
+      reader.assertCurrent();
     },
   };
 }

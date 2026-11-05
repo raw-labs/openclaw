@@ -72,6 +72,25 @@ describe("applyEmbeddedAttemptToolsAllow", () => {
     expect(filteredNames(tools, toolsAllow)).toEqual(["web_search", "message"]);
   });
 
+  it.each(["group:sessions", "group:openclaw"])(
+    "constructs and filters plugin members of %s",
+    (group) => {
+      const tools = namedTools("repository_publish", "session_status", "read");
+      expect(
+        resolveEmbeddedAttemptToolConstructionPlan({ toolsAllow: [group] })
+          .codingToolConstructionPlan.includePluginTools,
+      ).toBe(true);
+      expect(
+        filteredNames(tools, [group], {
+          toolMeta: (tool) =>
+            tool.name === "repository_publish"
+              ? { pluginId: "repository", policyGroups: [group] }
+              : undefined,
+        }),
+      ).toEqual(["repository_publish", "session_status"]);
+    },
+  );
+
   it("honors wildcard and group allowlists in the final filter", () => {
     const tools = namedTools("exec", "read", "message");
 

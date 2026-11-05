@@ -1,5 +1,7 @@
 import { readGitHubPublicationSelectionRejectedError } from "@openclaw/gateway-protocol/gateway-error-details";
+import { asNullableRecord } from "@openclaw/normalization-core/record-coerce";
 import type { Static } from "typebox";
+import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../../packages/gateway-protocol/src/control-ui-session-pull-requests.js";
 import type {
   GitHubPublicationPublisher,
   GitHubPublicationSelection,
@@ -8,9 +10,13 @@ import type {
   SessionGitHubPublicationResult,
   SessionGitHubStatusResult,
 } from "../../../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import type { ControlUiSessionOperationFactory } from "../../../../src/plugin-sdk/control-ui-session-operation.js";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
+import type { GatewaySessionRow } from "../../api/types.ts";
+import { t } from "../../i18n/index.ts";
 import { formatUiError } from "../format-error.ts";
 import { generateUUID } from "../uuid.ts";
+import { scopedSessionArtifactKey } from "./session-key.ts";
 
 export type GitHubPublicationOptions = Static<typeof SessionGitHubOptionsResultSchema>;
 type GitHubPublicationPresentation = {
@@ -150,6 +156,26 @@ export class GitHubPublicationOwner {
     }
     this.refreshPending = true;
     this.flushRefresh();
+  }
+
+  observeEvent(event: string, payload: unknown, row: GatewaySessionRow): void {
+    if (
+      event === "sessions.changed" &&
+      asNullableRecord(payload)?.reason === "github-publication"
+    ) {
+      this.invalidate();
+    } else if (
+      event === CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT &&
+      this.result?.status === "failed"
+    ) {
+      const snapshots = asNullableRecord(asNullableRecord(payload)?.sessions);
+      const snapshot = asNullableRecord(
+        snapshots?.[scopedSessionArtifactKey(row.key, row.agentId)],
+      );
+      if (snapshot?.status === "ready" && Array.isArray(snapshot.pullRequests)) {
+        this.invalidate();
+      }
+    }
   }
 
   private flushRefresh(): void {
@@ -504,7 +530,12 @@ export class GitHubPublicationOwner {
 
   private view(presentation: Presentation): GitHubPublicationView | undefined {
     const scope = presentation.scope;
-    if (!scope || !this.presented(presentation) || !presentation.lifetime) {
+    if (
+      !scope ||
+      !this.presentations.has(presentation) ||
+      !this.owner.isCurrent() ||
+      !scope.isCurrent()
+    ) {
       return undefined;
     }
     const version = this.version;
@@ -524,7 +555,7 @@ export class GitHubPublicationOwner {
     return {
       readiness: {
         read: this.readCompletion?.promise ?? null,
-        retired: presentation.lifetime.promise,
+        retired: presentation.lifetime?.promise ?? Promise.resolve(),
       },
       activity: this.activity,
       canPublishShared: scope.canPublishShared,
@@ -565,3 +596,14 @@ export class GitHubPublicationOwner {
     };
   }
 }
+
+export const githubPublicationOperationFactory: ControlUiSessionOperationFactory<GitHubPublicationPresentationBinding> =
+  {
+    id: "github-publication",
+    requiredMethods: ["sessions.github.publish"],
+    isOperation: (value): value is GitHubPublicationOwner =>
+      value instanceof GitHubPublicationOwner,
+    capacityError: () =>
+      new Error(t("githubPublication.capacity", { newAction: t("githubPublication.newAction") })),
+    create: (owner) => new GitHubPublicationOwner(owner),
+  };

@@ -7,6 +7,7 @@ import type { ApplicationContext } from "../app/context.ts";
 import { resolveControlUiAvatarAuth } from "../app/control-ui-auth.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
 import { t } from "../i18n/index.ts";
+import { ApplicationProvider } from "../lib/reactive/context.ts";
 import { listen } from "../lib/reactive/listener.ts";
 import { projectSource } from "../lib/reactive/projection.ts";
 import { createTimeout } from "../lib/reactive/timers.ts";
@@ -319,16 +320,22 @@ function createSessionProgressHovercard(
     if (current?.revision === revision) {
       return current;
     }
-    const focusedCardElement =
-      hovercard.card?.contains(document.activeElement) &&
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const focusedCardIndex = focusedCardElement
-      ? hovercard.focusables().indexOf(focusedCardElement)
-      : -1;
-    const focusedHref =
-      focusedCardElement instanceof HTMLAnchorElement ? focusedCardElement.href : null;
+    let focusedCardElement: HTMLElement | null = null;
+    let focusedCardIndex = -1;
+    let focusedHref: string | null = null;
+    const captureFocus = () => {
+      focusedCardElement =
+        hovercard.card?.contains(document.activeElement) &&
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      focusedCardIndex = focusedCardElement
+        ? hovercard.focusables().indexOf(focusedCardElement)
+        : -1;
+      focusedHref =
+        focusedCardElement instanceof HTMLAnchorElement ? focusedCardElement.href : null;
+    };
+    captureFocus();
     const currentContext = applicationContext();
     const input: SessionHovercardInput = {
       row: sidebarRow,
@@ -344,13 +351,24 @@ function createSessionProgressHovercard(
         ? personActivityRouting(currentContext, () => close())
         : undefined,
       pullRequests,
+      session: { sessionKey, agentId: session.agentId },
+      onContentChange: (phase) => {
+        if (phase === "before") {
+          captureFocus();
+        } else if (hovercard.card) {
+          commit(hovercard.card);
+        }
+      },
       progressCard: lastProgressCard,
     };
     const commit = (card: HTMLDivElement) => {
       if (hovercard.card !== card) {
         return;
       }
-      if (!card.firstElementChild) {
+      if (
+        !card.firstElementChild ||
+        (card.firstElementChild instanceof HTMLElement && card.firstElementChild.hidden)
+      ) {
         hovercard.clearCard();
         hovercard.pointerOverCard = false;
         hovercard.cardFocusInside = false;
@@ -434,10 +452,21 @@ function createSessionProgressHovercard(
           },
           true,
         );
+        function Content() {
+          return (
+            <HovercardControlsContext value={controlsForHovercard(card)}>
+              <SessionHovercard {...read().input} />
+            </HovercardControlsContext>
+          );
+        }
         return (
-          <HovercardControlsContext value={controlsForHovercard(card)}>
-            <SessionHovercard {...read().input} />
-          </HovercardControlsContext>
+          <Show when={applicationContext()} keyed fallback={<Content />}>
+            {(context) => (
+              <ApplicationProvider value={context} host={card}>
+                <Content />
+              </ApplicationProvider>
+            )}
+          </Show>
         );
       }, card),
     );

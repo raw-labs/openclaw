@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import type {
-  GitHubPublicationPublisher,
   SessionGitHubPublicationResult,
-  SessionGitHubPublishParams,
   SessionGitHubStatusResult,
 } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import type {
   GitHubPublicationRow as PublicationRow,
@@ -13,13 +12,16 @@ import type {
 import { readGitHubPublicationSessionLifecycleInWorker } from "../state/github-publication-session-lifecycles.js";
 import { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
 import {
-  assertExpectedSharedGitHubPublisher,
-  prepareCurrentGitHubPublicationIdentity,
   readGitHubPublicationWorktreeOwner,
   prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import { captureGitHubPublicationWorkspaceSnapshot } from "./github-publication-git-transport.js";
+import {
+  matchesCurrentPublisher,
+  prepareCurrentPublisher,
+  assertExpectedPublisher as assertExpectedSharedGitHubPublisher,
+} from "./github-publication-policy.js";
 import {
   digestGitHubPublicationRequest as digestRequest,
   projectGitHubPublicationResult,
@@ -29,12 +31,12 @@ import {
   type GitHubPublicationRecoveryBackoff,
 } from "./github-publication-recovery.js";
 import { insertGitHubPublicationRequestAsync } from "./github-publication-request-async.js";
-import {
-  isGitHubPublicationRequesterV2,
-  type GitHubPublicationRequester,
-  type GitHubPublicationRequesterV2,
-} from "./github-publication-requester.js";
-import type { PublicationSessionIdentity } from "./github-publication-session.types.js";
+import { isGitHubPublicationRequesterV2 } from "./github-publication-requester-capability.js";
+import type {
+  PublicationSessionIdentity,
+  GitHubPublicationClaimRequestV2,
+  GitHubPublicationSessionRequestV2,
+} from "./github-publication-session.types.js";
 import { readSharedGitHubPublication } from "./github-publication-shared-read.js";
 import { bindGitHubPublicationSourceLifetime } from "./github-publication-source.js";
 import {
@@ -44,39 +46,12 @@ import {
   listUnreportedPersonalGitHubPublicationsAsync,
   readGitHubPublicationRequestAsync,
 } from "./github-publication-store-async.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
 import { projectWorkerSessionTurnClaim } from "./worker-environments/placement-record.js";
 import type {
   WorkerSessionPlacementStore,
   WorkerSessionTurnClaim,
 } from "./worker-environments/placement-store.js";
-
-/** @deprecated Use GitHubPublicationClaimRequestV2; final compatibility day: 2026-12-31; removal in the first January 2027 stable release. */
-export type GitHubPublicationClaimRequest = {
-  claim: WorkerSessionTurnClaim;
-  sessionKey: string;
-  agentId: string;
-  idempotencyKey: string;
-  title?: string;
-  body?: string;
-  draft?: boolean;
-  requester: GitHubPublicationRequester;
-  expectedPublisher?: GitHubPublicationPublisher;
-};
-
-/** @deprecated Use GitHubPublicationSessionRequestV2; final compatibility day: 2026-12-31; removal in the first January 2027 stable release. */
-export type GitHubPublicationSessionRequest = SessionGitHubPublishParams & {
-  agentId: string;
-  expectedRunId?: string;
-  requester: GitHubPublicationRequester;
-};
-
-export type GitHubPublicationClaimRequestV2 = Omit<GitHubPublicationClaimRequest, "requester"> & {
-  requester: GitHubPublicationRequesterV2;
-};
-export type GitHubPublicationSessionRequestV2 = Omit<
-  GitHubPublicationSessionRequest,
-  "requester"
-> & { requester: GitHubPublicationRequesterV2 };
 
 export function exactClaimForPlacement(
   placement: NonNullable<ReturnType<WorkerSessionPlacementStore["get"]>>,
@@ -99,12 +74,13 @@ export function exactClaimForPlacement(
 }
 
 export function createGitHubPublicationCoordinatorMethods(params: {
+  provider: RepositoryPublicationProvider;
   placements: WorkerSessionPlacementStore;
   assertCurrent: () => void;
   requestForClaimV2: (
     request: GitHubPublicationClaimRequestV2,
   ) => Promise<SessionGitHubPublicationResult>;
-  getCommittedRuntimeConfig: () => import("../config/types.openclaw.js").OpenClawConfig;
+  getCommittedRuntimeConfig: () => OpenClawConfig;
   signal: AbortSignal;
   recovery?: {
     shared: GitHubPublicationRecoveryBackoff;
@@ -124,6 +100,9 @@ export function createGitHubPublicationCoordinatorMethods(params: {
   ) => Promise<SessionGitHubPublicationResult>;
   recordRequestingRun: (requestId: string, runId: string) => void;
 }) {
+  const { provider } = params;
+  const prepareCurrentGitHubPublicationIdentity = (agentId: string) =>
+    prepareCurrentPublisher(provider, agentId);
   const { sameWorktree, processRow } = params;
   const publicationResult = (row: PublicationRow | RepositoryGitHubPublicationRow) => {
     const result = projectGitHubPublicationResult(row);
@@ -533,7 +512,10 @@ export function createGitHubPublicationCoordinatorMethods(params: {
 
     async listUnreportedResultsAsync() {
       const personal = await listUnreportedPersonalGitHubPublicationsAsync();
-      const shared = await listSharedGitHubPublicationsAsync({ pending: false, unreported: true });
+      const shared = await listSharedGitHubPublicationsAsync({
+        pending: false,
+        unreported: true,
+      });
       params.assertCurrent();
       return [
         ...personal,
@@ -549,14 +531,15 @@ export function createGitHubPublicationCoordinatorMethods(params: {
     async sharedStatus(
       session: PublicationSessionIdentity,
       requestId: string,
+      preparedRead?: Parameters<typeof readSharedGitHubPublication>[2],
     ): Promise<SessionGitHubStatusResult | undefined> {
-      const row = await readSharedGitHubPublication(session, { requestId });
+      const row = await readSharedGitHubPublication(session, { requestId }, preparedRead);
       return row ? { result: publicationResult(row), confirmation: null } : undefined;
     },
 
     async latestPublishedShared(
       session: PublicationSessionIdentity,
-      preparedRead: Parameters<typeof readSharedGitHubPublication>[2],
+      preparedRead?: Parameters<typeof readSharedGitHubPublication>[2],
     ): Promise<SessionGitHubStatusResult | null> {
       const row = await readSharedGitHubPublication(session, { status: "published" }, preparedRead);
       return row ? { result: publicationResult(row), confirmation: null } : null;
@@ -565,12 +548,12 @@ export function createGitHubPublicationCoordinatorMethods(params: {
     async latestShared(
       session: PublicationSessionIdentity,
       idempotencyKey?: string,
-      isSuperseded?: (
-        snapshot: Pick<
-          PublicationRow,
-          "repository" | "branch" | "source_head_commit" | "workspace_tree"
-        >,
-      ) => Promise<boolean>,
+      isSuperseded?: (snapshot: {
+        repository: string | null;
+        branch: string;
+        sourceHeadCommit: string | null;
+        workspaceTree: string | null;
+      }) => Promise<boolean>,
       preparedRead?: Parameters<typeof readSharedGitHubPublication>[2],
     ): Promise<SessionGitHubStatusResult | null> {
       const row = await readSharedGitHubPublication(session, { idempotencyKey }, preparedRead);
@@ -583,8 +566,8 @@ export function createGitHubPublicationCoordinatorMethods(params: {
         (await isSuperseded({
           repository: row.repository,
           branch: row.branch,
-          source_head_commit: row.source_head_commit,
-          workspace_tree: row.workspace_tree,
+          sourceHeadCommit: row.source_head_commit,
+          workspaceTree: row.workspace_tree,
         }))
       ) {
         return null;
@@ -593,8 +576,143 @@ export function createGitHubPublicationCoordinatorMethods(params: {
     },
 
     async readAsync(requestId: string): Promise<SessionGitHubPublicationResult | undefined> {
-      const row = await readGitHubPublicationRequestAsync({ requestId });
+      const row = await readGitHubPublicationRequestAsync({
+        requestId,
+      });
       return row ? publicationResult(row) : undefined;
     },
   };
+}
+
+function sameClaim(row: PublicationRow, claim: WorkerSessionTurnClaim): boolean {
+  return (
+    row.claim_id === claim.claimId &&
+    row.run_id === claim.runId &&
+    row.placement_generation === claim.placementGeneration &&
+    row.environment_id === (claim.owner.environmentId ?? null) &&
+    row.owner_epoch === (claim.owner.ownerEpoch ?? null)
+  );
+}
+
+export async function requestGitHubPublicationForClaim(
+  params: {
+    provider: RepositoryPublicationProvider;
+    placements: WorkerSessionPlacementStore;
+    assertCurrent: () => void;
+    signal: AbortSignal;
+  },
+  request: GitHubPublicationClaimRequestV2,
+): Promise<SessionGitHubPublicationResult> {
+  const assertRequester = request.requester.assertCurrent;
+  const placement = await params.placements.getAsync(request.claim.sessionId);
+  assertRequester();
+  if (!params.placements.validateTurnClaim(request.claim)) {
+    throw new Error("GitHub publication lost the live session turn claim.");
+  }
+  if (
+    !placement ||
+    placement.sessionKey !== request.sessionKey ||
+    placement.agentId !== request.agentId
+  ) {
+    throw new Error("GitHub publication session identity changed.");
+  }
+  using admitted = await readGitHubPublicationWorktreeOwner({
+    allowExistingPullRequest: true,
+    sessionId: request.claim.sessionId,
+    sessionKey: request.sessionKey,
+    agentId: request.agentId,
+  });
+
+  assertRequester();
+  const identity = await prepareCurrentPublisher(params.provider, request.agentId);
+  assertRequester();
+  const existing = await readGitHubPublicationRequestAsync({
+    sessionId: request.claim.sessionId,
+    idempotencyKey: request.idempotencyKey,
+  });
+  assertRequester();
+  assertExpectedSharedGitHubPublisher(
+    request.expectedPublisher,
+    { source: identity.source, ...identity.account },
+    {
+      idempotencyKey: request.idempotencyKey,
+      hasRequest: () => Boolean(existing),
+    },
+  );
+  const worktreeOwner = admitted;
+  const { worktree } = worktreeOwner;
+  if (!params.placements.validateTurnClaim(request.claim)) {
+    throw new Error("GitHub publication lost the live session turn claim after verification.");
+  }
+  if (!matchesCurrentPublisher(identity)) {
+    throw new Error("GitHub publication identity changed.");
+  }
+  const requestDigest = digestRequest({
+    sessionId: request.claim.sessionId,
+    idempotencyKey: request.idempotencyKey,
+    title: request.title,
+    body: request.body,
+    draft:
+      existing && existing.draft == null && request.draft === undefined
+        ? undefined
+        : (request.draft ?? false),
+  });
+  const now = Date.now();
+  const requestId = randomUUID();
+  const input = {
+    request: {
+      sessionKey: request.sessionKey,
+      agentId: request.agentId,
+      idempotencyKey: request.idempotencyKey,
+      title: request.title,
+      body: request.body,
+      draft: request.draft ?? false,
+    },
+    requestId,
+    requestDigest,
+    now,
+    identity: {
+      source: identity.source,
+      profileId: identity.profileId,
+      account: identity.account,
+    },
+    worktree: {
+      id: worktree.id,
+      repoFingerprint: worktree.repoFingerprint,
+      branch: worktreeOwner.publicationBranch,
+    },
+    sessionId: request.claim.sessionId,
+    lifecycleRevision: admitted.loaded.entry?.lifecycleRevision ?? null,
+    requester: request.requester.snapshot,
+    claim: request.claim,
+  };
+  let row: PublicationRow;
+  {
+    const source = await request.requester.prepareSource({
+      agentId: request.agentId,
+      sessionKey: request.sessionKey,
+      sessionId: request.claim.sessionId,
+      lifecycleRevision: input.lifecycleRevision,
+      worktreeId: worktree.id,
+    });
+    try {
+      params.assertCurrent();
+      assertRequester();
+      worktreeOwner.assertCurrent();
+      if (
+        !params.placements.validateTurnClaim(request.claim) ||
+        !matchesCurrentPublisher(identity)
+      ) {
+        throw new Error("GitHub publication authority changed before recording.");
+      }
+      bindGitHubPublicationSourceLifetime(source, params.signal);
+      row = await insertGitHubPublicationRequestAsync(input, source);
+    } finally {
+      await source.release();
+    }
+  }
+  if (!sameClaim(row, request.claim)) {
+    throw new Error("GitHub publication idempotency key was reused.");
+  }
+  return projectGitHubPublicationResult(row);
 }

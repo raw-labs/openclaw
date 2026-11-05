@@ -59,7 +59,13 @@ export function createSyntheticPublicationTransport(params: {
   workspaceTree: string;
   baseHead: string;
   commands: string[][];
-  commandCalls: Array<{ argv: string[]; input?: string }>;
+  commandCalls: Array<{
+    argv: string[];
+    input?: string;
+    hooksPath?: string;
+    authorizationTarget?: string;
+    credentialHelperDisabled?: boolean;
+  }>;
   commandResult: typeof publicationCommandResult;
 }) {
   const {
@@ -101,10 +107,32 @@ export function createSyntheticPublicationTransport(params: {
     head: { ref: branch, sha: newHead, repo: { full_name: "openclaw/openclaw" } },
     base: { ref: "main", repo: { full_name: "openclaw/openclaw" } },
   };
-  return async (argv: string[], options?: { input?: string }) => {
+  return async (argv: string[], options?: { input?: string; env?: NodeJS.ProcessEnv }) => {
     commands.push(argv);
-    commandCalls.push({ argv, input: options?.input });
+    const config = Array.from({ length: Number(options?.env?.GIT_CONFIG_COUNT ?? 0) }, (_, i) => [
+      options?.env?.[`GIT_CONFIG_KEY_${i}`],
+      options?.env?.[`GIT_CONFIG_VALUE_${i}`],
+    ]);
+    commandCalls.push({
+      argv,
+      input: options?.input,
+      hooksPath: config.find(([key]) => key === "core.hooksPath")?.[1],
+      authorizationTarget: config.find(([key]) => key?.endsWith(".extraHeader"))?.[0],
+      credentialHelperDisabled: config.some(
+        ([key, value]) => key === "credential.helper" && value === "",
+      ),
+    });
     const command = argv.join(" ");
+    if (command === "gh auth token --hostname github.com") {
+      return commandResult("synthetic-publication-credential\n");
+    }
+    if (argv.some((arg) => arg.startsWith("repos/openclaw/openclaw/git/matching-refs/heads/"))) {
+      return commandResult(
+        JSON.stringify(
+          remotePublished ? [{ ref: `refs/heads/${branch}`, object: { sha: newHead } }] : [],
+        ),
+      );
+    }
     if (replies[command]) {
       return commandResult(...replies[command]);
     }
@@ -189,6 +217,7 @@ export async function createRealPublicationWorkspace(params: {
   branch: string;
   sessionKey: string;
   realWorktree: boolean;
+  linkedWorktree?: boolean;
   mocks: ReturnType<typeof githubPublicationTestMocks>;
   commandResult: typeof publicationCommandResult;
   interruptAt?: "push" | "observe" | "index" | "create";
@@ -244,7 +273,18 @@ export async function createRealPublicationWorkspace(params: {
   await git("add", "artifact.txt");
   await git("commit", "-m", "base");
   const baseHead = await git("rev-parse", "HEAD");
-  await git("checkout", "-b", branch);
+  if (params.linkedWorktree) {
+    const primary = path.join(root, "primary-repository");
+    await fs.rename(cwd, primary);
+    const result = await local(["git", "-C", primary, "worktree", "add", "-b", branch, cwd], {
+      cwd: root,
+    });
+    if (result.code !== 0) {
+      throw new Error(result.stderr.toString("utf8"));
+    }
+  } else {
+    await git("checkout", "-b", branch);
+  }
   await fs.writeFile(path.join(cwd, "artifact.txt"), "staged\n");
   await git("add", "artifact.txt");
   await fs.writeFile(path.join(cwd, "artifact.txt"), "accepted\n");
@@ -294,6 +334,17 @@ export async function createRealPublicationWorkspace(params: {
   }
   mocks.runCommand.mockImplementation(async (argv: string[], options?: CommandOptions) => {
     if (argv[0] === "gh") {
+      const matchingRef = argv.find((arg) =>
+        arg.startsWith("repos/openclaw/openclaw/git/matching-refs/heads/"),
+      );
+      if (matchingRef) {
+        const selectedBranch = decodeURIComponent(matchingRef.split("/heads/")[1]!);
+        const exists = Boolean(remoteHead) && selectedBranch === remoteBranch;
+        interrupt("observe", "synthetic remote observation unavailable", exists);
+        return json(
+          exists ? [{ ref: `refs/heads/${remoteBranch}`, object: { sha: remoteHead } }] : [],
+        );
+      }
       const pr = publishedPullRequest;
       if (
         pr &&

@@ -89,7 +89,7 @@ export function assertInheritedCronToolCaptureReady(
 export function replaceWithEffectiveCronCreatorToolAllowlist<T extends { name: string }>(
   target: CronCreatorToolAllowlistEntry[],
   tools: readonly T[],
-  toolMeta?: (tool: T) => { pluginId?: string } | undefined,
+  toolMeta?: (tool: T) => { pluginId?: string; policyGroups?: readonly string[] } | undefined,
   options: CronCreatorCapCaptureOptions = {},
 ): void {
   target.length = 0;
@@ -127,6 +127,7 @@ export function replaceWithEffectiveCronCreatorToolAllowlist<T extends { name: s
     captured.set(name, {
       name,
       ...(pluginId ? { pluginId } : {}),
+      ...(meta?.policyGroups?.length ? { policyGroups: meta.policyGroups } : {}),
       ...(aliasName && aliasName !== name ? { aliasName } : {}),
       ...(name === "exec" ? { execOrigin: "openclaw" as const } : {}),
       ...(projection?.execTarget ? { execTarget: { ...projection.execTarget } } : {}),
@@ -160,7 +161,7 @@ export function captureFinalEffectiveCronCreatorToolAllowlist<T extends { name: 
   target: CronCreatorToolAllowlistEntry[],
   captureRef: CronToolsAllowCaptureRef,
   tools: readonly T[],
-  toolMeta?: (tool: T) => { pluginId?: string } | undefined,
+  toolMeta?: (tool: T) => { pluginId?: string; policyGroups?: readonly string[] } | undefined,
   options: CronCreatorCapCaptureOptions = {},
 ): void {
   replaceWithEffectiveCronCreatorToolAllowlist(target, tools, toolMeta, options);
@@ -195,6 +196,7 @@ function normalizeCronCreatorToolsAllow(
     normalized.push({
       name,
       ...(pluginId ? { pluginId } : {}),
+      ...(tool.policyGroups?.length ? { policyGroups: tool.policyGroups } : {}),
       ...(aliasName && aliasName !== name ? { aliasName } : {}),
       ...(execOrigin ? { execOrigin } : {}),
       ...(execTarget ? { execTarget } : {}),
@@ -369,7 +371,8 @@ function capCronJobToolsAllow(params: {
   }
   const pluginGroups = buildPluginToolGroups({
     tools: creatorToolsAllow,
-    toolMeta: (tool) => (tool.pluginId ? { pluginId: tool.pluginId } : undefined),
+    toolMeta: (tool) =>
+      tool.pluginId ? { pluginId: tool.pluginId, policyGroups: tool.policyGroups } : undefined,
   });
   const selected = new Set(
     requestedToolsAllow.flatMap((entry) => {

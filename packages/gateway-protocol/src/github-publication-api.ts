@@ -1,4 +1,10 @@
 export {
+  GitHubBaseRefreshSchema,
+  GitHubPullRequestInspectSchema,
+  GitHubPublicationActionSchema,
+  GitHubPublicationEditSchema,
+  GitHubPublicationEvidenceSchema,
+  GitHubPublicationTitleSchema,
   SessionGitHubActionParamsSchema,
   SessionGitHubBaseRefreshResultSchema,
   SessionGitHubActionResultSchema,

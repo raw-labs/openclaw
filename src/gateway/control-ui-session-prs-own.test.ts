@@ -4,10 +4,9 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { syncCanonicalGitHubIdentity } from "../state/user-profile-writes.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-read.js";
+import { prepareControlUiSessionPrServiceTarget } from "./control-ui-session-pr-target.js";
 import { githubJson, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
 
 const io = vi.hoisted(() => ({ command: vi.fn(), identity: vi.fn(), currentIdentity: vi.fn() }));
 vi.mock("../agents/github-tool-identity.js", async (original) => ({
@@ -262,7 +261,8 @@ it("does not hydrate public or service cards from an authenticated imported snap
     await poll(f);
     expect(lastSnapshot(f)?.pullRequests).toHaveLength(1);
     const service = await prepareControlUiSessionPrServiceTarget(
-      () => getSessionRowProjection(f.context),
+      f.sessionReads,
+      f.context.getRuntimeConfig,
       { sessionKey, agentId: "main" },
     );
     expect(service).toBeDefined();
@@ -403,6 +403,16 @@ it.each(["grant", "unsubscribe"] as const)(
   async (change) => {
     await withOwnFixture(async (f, remote) => {
       await seedOwner(f);
+      const read = await f.sessionReads.createViewerRead(f.client.connId!, {
+        sessionKey,
+        allowOwnImportedPullRequest: true,
+      })?.();
+      const reader = read?.preparedOwnPullRequestReader;
+      if (!reader) {
+        throw new Error("The actual session read did not prepare its linked-account reader");
+      }
+      expect(reader.accountIds).toEqual([101]);
+      reader.assertCurrent();
       const gate = readGate();
       remote.beforeRead(gate.wait);
       try {
@@ -415,6 +425,7 @@ it.each(["grant", "unsubscribe"] as const)(
         );
         if (change === "grant") {
           await f.changeReader("grant");
+          expect(() => reader.assertCurrent()).toThrow();
         } else {
           f.subscriptions.unsubscribe(f.client.connId!);
         }

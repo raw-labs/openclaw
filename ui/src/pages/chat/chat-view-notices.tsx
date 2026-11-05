@@ -5,6 +5,9 @@ import type {
 } from "../../../../packages/gateway-protocol/src/schema/session-placement.ts";
 import type { GuestWelcomeHandle } from "../../app/guest-welcome-handle.ts";
 import type { ApplicationPlacementStartupStatus } from "../../app/session-placement-startup.ts";
+import { t } from "../../lib/reactive/i18n.ts";
+import { loadChatPendingInputs } from "./chat-pending-inputs.ts";
+import type { ChatPendingInputView } from "./chat-pending-inputs.types.ts";
 import type { ChatProviderReviewOwner } from "./chat-provider-review-controller.tsx";
 import { renderGuestWelcomeStatus } from "./components/chat-guest-welcome-status.tsx";
 import { ChatLazyBoundary } from "./components/chat-lazy-boundary.tsx";
@@ -103,5 +106,35 @@ export function renderChatComposerNotices(props: ChatComposerNoticesProps) {
         {(owner) => renderGuestWelcomeStatus(owner)}
       </Show>
     </>
+  );
+}
+
+export function ChatSavedInputNavigation(input: {
+  pendingInputs: ChatPendingInputView | undefined;
+  historyState: Parameters<typeof loadChatPendingInputs>[0] | undefined;
+}) {
+  const pendingInputs = () => input.pendingInputs;
+  const pendingButton = (page: "earlier" | "latest") => (
+    <button
+      class="btn btn--sm"
+      type="button"
+      disabled={pendingInputs()?.loading}
+      onClick={() => {
+        if (input.historyState) {
+          void loadChatPendingInputs(
+            input.historyState,
+            page === "earlier" ? pendingInputs()?.page.nextBefore : undefined,
+          );
+        }
+      }}
+    >
+      {t(`chat.pendingInputs.${page}`)}
+    </button>
+  );
+  return (
+    <div class="chat-pending-inputs chat-pending-inputs--history">
+      <Show when={pendingInputs()?.page.nextBefore !== undefined}>{pendingButton("earlier")}</Show>
+      <Show when={pendingInputs()?.before !== undefined}>{pendingButton("latest")}</Show>
+    </div>
   );
 }

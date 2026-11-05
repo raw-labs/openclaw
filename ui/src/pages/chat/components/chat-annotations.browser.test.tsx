@@ -151,6 +151,7 @@ describe("annotation chip and hovercard", () => {
   );
 
   it.each(["light", "dark"])("keeps attachment-chip text readable in %s", async (theme) => {
+    document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.themeMode = theme;
     const trigger = mountComments(3, 450);
     await container.querySelector("openclaw-tooltip")!.updateComplete;

@@ -1,7 +1,7 @@
 import {
   githubPublicationApiArgs,
-  runPublicationCommand,
-} from "./github-publication-git-transport.js";
+  runGitHubPublicationCommand as runPublicationCommand,
+} from "./github-publication-remote.js";
 
 export function createGitHubPublicationJsonReader(params: {
   host: string;

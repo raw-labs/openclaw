@@ -1,21 +1,21 @@
 import { vi } from "vitest";
-import type { ControlUiAction, ControlUiHost } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiActionV2 as ControlUiAction,
+  ControlUiHostV2 as ControlUiHost,
+} from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
+import { createInitializationContext } from "../pages/chat/chat-application-context.test-support.ts";
+import { createTestControlUiPluginHost } from "./control-ui-plugin-host.ts";
 
 export function registerSessionPluginAction(
-  context: Pick<ApplicationContext, "plugins">,
+  context: Pick<ApplicationContext, "plugins" | "gateway">,
   action: ControlUiAction,
 ) {
   const lifetime = new AbortController();
   const open = vi.fn<ControlUiHost["sessions"]["open"]>();
-  const host = {
-    signal: lifetime.signal,
-    sessions: { open },
-    agents: {},
-    navigation: {},
-    ui: {},
-    components: {},
-  } as unknown as ControlUiHost;
+  const hostContext = Object.assign(createInitializationContext(), context);
+  const host = createTestControlUiPluginHost(hostContext, "review", lifetime);
+  host.sessions.open = open;
   const entry = {
     key: `review/${action.id}`,
     pluginId: "review",

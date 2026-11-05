@@ -1,15 +1,16 @@
-import { asFiniteNumber } from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
-import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
-import { racePromiseWithAbortSignal } from "../infra/abort-signal.js";
-import { createRetainedCache } from "../infra/retained-cache.js";
-import { registerOpenClawStateDatabaseLifecycleListener } from "../state/openclaw-state-db-cache.js";
+import { racePromiseWithAbortSignal } from "../plugin-sdk/agent-harness-attempt-runtime.js";
+import { createRetainedCache } from "../plugin-sdk/concurrency-runtime.js";
 import type {
+  NativeGitHubPullRequestBinding as SessionGitHubPullRequestBinding,
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequests,
-  ControlUiSessionTaskPullRequest,
-} from "./control-ui-contract.js";
+} from "../plugin-sdk/native-github-session-read.js";
+import {
+  asFiniteNumber,
+  isRecord,
+  readNonBlankString,
+} from "../plugin-sdk/string-coerce-runtime.js";
+import type { ControlUiSessionTaskPullRequest } from "./control-ui-contract.js";
 import {
   createGitHubReadGroup,
   prepareSessionPullRequestGitHubRead,
@@ -31,11 +32,9 @@ type Entry = {
   lastGood?: ControlUiSessionPullRequest;
 };
 const metadata = createRetainedCache<Entry>();
-registerOpenClawStateDatabaseLifecycleListener((event) => {
-  if (event.kind !== "opened") {
-    metadata.clear();
-  }
-});
+export function clearSessionPullRequestMetadata() {
+  metadata.clear();
+}
 
 function metadataKey(
   target: Pick<ControlUiSessionPullRequest, "owner" | "repo" | "number">,

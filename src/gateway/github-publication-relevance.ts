@@ -1,14 +1,15 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { createRetainedCache } from "../infra/retained-cache.js";
-import type { GitHubPublicationExecutionRow } from "../state/github-publication-read.types.js";
-import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
+import type { ControlUiSessionPullRequest } from "../plugin-sdk/native-github-session-read.js";
+import { isRecord } from "../plugin-sdk/string-coerce-runtime.js";
 import { prepareSessionPullRequestGitHubRead } from "./control-ui-session-pr-request.js";
 import { sessionPullRequestRepositoryApiUrl } from "./control-ui-session-prs-checks.js";
 
-type AcceptedSnapshot = Pick<
-  GitHubPublicationExecutionRow,
-  "repository" | "branch" | "source_head_commit" | "workspace_tree"
->;
+type AcceptedSnapshot = {
+  repository: string | null;
+  branch: string;
+  sourceHeadCommit: string | null;
+  workspaceTree: string | null;
+};
 const gitObjectId = /^[a-f0-9]{40}$/iu;
 // Retain completed immutable proofs only; pending reads keep their own live authority.
 const coverage = createRetainedCache<number>();
@@ -21,7 +22,7 @@ export async function isGitHubPublicationSuperseded(
     { pullRequests: readonly ControlUiSessionPullRequest[]; assertCurrent: () => void } | undefined
   >,
 ): Promise<boolean> {
-  const tree = snapshot.workspace_tree;
+  const tree = snapshot.workspaceTree;
   if (!tree || !gitObjectId.test(tree)) {
     return false;
   }
@@ -54,7 +55,7 @@ export async function isGitHubPublicationSuperseded(
   for (const { pr, head } of candidates) {
     try {
       const root = sessionPullRequestRepositoryApiUrl({ ...pr, apiBaseUrl: read.apiBaseUrl });
-      const key = JSON.stringify([read.cacheScope, root, head, tree, snapshot.source_head_commit]);
+      const key = JSON.stringify([read.cacheScope, root, head, tree, snapshot.sourceHeadCommit]);
       read.assertCurrent();
       if ((coverage.get(key) ?? 0) > Date.now()) {
         return true;
@@ -75,7 +76,7 @@ export async function isGitHubPublicationSuperseded(
         coverage.set(key, Date.now() + COVERAGE_TTL_MS);
         return true;
       }
-      const source = snapshot.source_head_commit;
+      const source = snapshot.sourceHeadCommit;
       if (!source || source === head || !gitObjectId.test(source)) {
         continue;
       }

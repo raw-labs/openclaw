@@ -4,7 +4,10 @@ import { shouldDeferConfiguredPluginInstallRepair } from "../commands/doctor/sha
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { runFinalConfigValidationHealth } from "./doctor-config-validation-findings.js";
 import { hasActiveGatewayExecCredential } from "./doctor-gateway-exec-credential.js";
-import { runCoreHealthFindingNote } from "./doctor-health-contribution-core.js";
+import {
+  runCoreHealthFindingNote,
+  runDeclaredPluginHealth,
+} from "./doctor-health-contribution-core.js";
 import {
   collectWriteConfigHealthFindings,
   runWriteConfigHealth,
@@ -211,6 +214,10 @@ export function resolveFinalDoctorHealthContributions(params: {
     createDoctorHealthContribution("doctor:github-projects", "GitHub projects", {
       updateWork: { kind: "standalone" },
       run: runGitHubProjectHealth,
+    }),
+    createDoctorHealthContribution("doctor:plugin-health", "Plugin health", {
+      updateWork: { kind: "standalone" },
+      run: runDeclaredPluginHealth,
     }),
     createDoctorHealthContribution("doctor:browser", "Browser", {
       healthCheckIds: ["core/doctor/browser"],

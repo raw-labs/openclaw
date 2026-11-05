@@ -20,6 +20,7 @@ import {
   registerPluginCommandInRegistry,
   snapshotPluginCommandRuntimeCapabilities,
 } from "./command-registration.js";
+import type { ExecutionEnvironmentProviderV1 } from "./execution-environment-types.js";
 import { bindPluginGatewayAccessPolicy } from "./gateway-access-policy-registration.js";
 import type { PluginGatewayAccessPolicy } from "./gateway-access-policy.types.js";
 import { PluginInstanceUnavailableError } from "./plugin-instance-error.js";
@@ -275,6 +276,47 @@ export function createOperationRegistrars(state: PluginRegistryState) {
     );
   };
 
+  const registerExecutionEnvironment = (
+    record: PluginRecord,
+    provider: ExecutionEnvironmentProviderV1,
+  ) => {
+    const instance = getPluginInstance(record);
+    if (
+      !instance ||
+      typeof provider.id !== "string" ||
+      !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/u.test(provider.id) ||
+      typeof provider.prepare !== "function" ||
+      (provider.formatGitCoauthor !== undefined &&
+        typeof provider.formatGitCoauthor !== "function") ||
+      (provider.prepareSandbox !== undefined && typeof provider.prepareSandbox !== "function")
+    ) {
+      reportRegistrationError(
+        record,
+        "execution environment requires its managed plugin and a valid local ID/preparer",
+      );
+      return;
+    }
+    if (
+      registry.executionEnvironments.some(
+        (entry) => entry.pluginId === record.id && entry.provider.id === provider.id,
+      )
+    ) {
+      reportRegistrationError(record, `execution environment already registered: ${provider.id}`);
+      return;
+    }
+    // Only declared launch callbacks are executable results. Env and mount facts
+    // stay data; the existing instance owns callback admission and retirement.
+    instance.admitFactory(provider.prepare, ["wrapLocalLaunch"]);
+    if (provider.prepareSandbox) {
+      instance.admitFactory(provider.prepareSandbox, ["wrapLocalLaunch"]);
+    }
+    registry.executionEnvironments.push(
+      // This host-created callback retains instance admission at the final
+      // spawn, after argv preparation and any asynchronous approval work.
+      createRegistration(record, { provider, assertCurrent() {} }),
+    );
+  };
+
   const registerSecurityAuditCollector = (
     record: PluginRecord,
     collector: OpenClawPluginSecurityAuditCollector,
@@ -502,6 +544,7 @@ export function createOperationRegistrars(state: PluginRegistryState) {
     registerNodeHostCommand,
     registerNodeInvokePolicy,
     registerGatewayAccessPolicy,
+    registerExecutionEnvironment,
     registerRepositoryIntegration,
     registerSecurityAuditCollector,
     registerService,

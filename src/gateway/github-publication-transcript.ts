@@ -1,56 +1,34 @@
-import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { makeZeroUsageSnapshot } from "../agents/usage.js";
-import { getRuntimeConfig } from "../config/config.js";
-import { appendSessionTranscriptReport } from "../config/sessions/session-accessor.js";
+import { readRuntimeConfig } from "../config/runtime-snapshot.js";
+import { appendSessionTranscriptReport } from "../config/sessions/session-accessor.sqlite-transcript-reports.js";
 import {
   captureSessionActorStorageOwner,
   readCapturedSessionActorEntry,
 } from "../config/sessions/session-actor-storage-binding.js";
 import { attachSessionTranscriptRunId } from "../sessions/transcript-events.js";
-import type {
-  GitHubPublicationCoordinator,
-  GitHubPublicationTranscriptReport,
-} from "./github-publication.js";
-import type { resolveGatewaySessionStoreTargetInWorker } from "./session-utils-store-worker.js";
-import type { resolveCanonicalSessionEntryFromStoreKeys } from "./session-utils.js";
 
-const GITHUB_PUBLICATION_RESPONSE_PREFIX = "github-publication:";
+export type RepositoryPublicationTranscriptRuntime = {
+  resolveCanonicalSessionEntryFromStoreKeys: typeof import("./session-utils-store.js").resolveCanonicalSessionEntryFromStoreKeys;
+  resolveGatewaySessionStoreTargetInWorker: typeof import("./session-utils-store-worker.js").resolveGatewaySessionStoreTargetInWorker;
+};
+export type RepositoryPublicationTranscriptReport = {
+  sessionId: string;
+  sessionKey: string;
+  agentId: string;
+  requestId: string;
+  lifecycleRevision?: string | null;
+  runId?: string;
+  text: string;
+  responseId: string;
+};
 
-function formatGitHubPublicationResult(result: SessionGitHubPublicationResult): string {
-  const publisher = result.publisher;
-  const source =
-    publisher?.source === "personal"
-      ? "My GitHub"
-      : publisher?.source === "agent-override"
-        ? "Agent override"
-        : "System";
-  const acting = publisher ? ` Using @${publisher.login} (${source}).` : "";
-  switch (result.status) {
-    case "published":
-      return `Published ${result.repository} branch ${result.branch}: ${result.url}${acting}`;
-    case "failed":
-      return `${result.message} ${result.nextAction}${acting}`;
-    case "publishing":
-    case "requested":
-    case "needs_confirmation":
-      return `${result.message}${acting}`;
-  }
-  return result satisfies never;
-}
-
-export async function reportGitHubPublicationTranscript(
-  loadSessionRuntime: () => Promise<{
-    resolveCanonicalSessionEntryFromStoreKeys: typeof resolveCanonicalSessionEntryFromStoreKeys;
-    resolveGatewaySessionStoreTargetInWorker: typeof resolveGatewaySessionStoreTargetInWorker;
-  }>,
-  coordinator: Pick<GitHubPublicationCoordinator, "markReportedAsync" | "readReportLifecycleAsync">,
-  params: GitHubPublicationTranscriptReport,
+/** Accepted receipt custody supplies this operation; vendor code formats text and never selects transcript storage. */
+export async function reportRepositoryPublicationTranscript(
+  loadSessionRuntime: () => Promise<RepositoryPublicationTranscriptRuntime>,
+  markReported: (requestId: string) => Promise<void>,
+  params: RepositoryPublicationTranscriptReport,
 ): Promise<void> {
-  const lifecycleRevision = await coordinator.readReportLifecycleAsync(params);
-  const memory = captureSessionActorStorageOwner(params, {
-    assertCurrent() {},
-    authorize() {},
-  });
+  const memory = captureSessionActorStorageOwner(params, { assertCurrent() {}, authorize() {} });
   const selected = memory
     ? {
         target: {
@@ -63,7 +41,7 @@ export async function reportGitHubPublicationTranscript(
     : await (async () => {
         const runtime = await loadSessionRuntime();
         const target = await runtime.resolveGatewaySessionStoreTargetInWorker({
-          cfg: getRuntimeConfig(),
+          cfg: readRuntimeConfig(),
           key: params.sessionKey,
           agentId: params.agentId,
         });
@@ -78,13 +56,14 @@ export async function reportGitHubPublicationTranscript(
     entry &&
     target.canonicalKey === params.sessionKey &&
     (entry.sessionId !== params.sessionId ||
-      (entry.lifecycleRevision ?? null) !== lifecycleRevision)
+      (params.lifecycleRevision !== undefined &&
+        (entry.lifecycleRevision ?? null) !== params.lifecycleRevision))
   ) {
-    await coordinator.markReportedAsync(params.result.requestId);
+    await markReported(params.requestId);
     return;
   }
   if (entry?.sessionId !== params.sessionId || target.canonicalKey !== params.sessionKey) {
-    throw new Error("GitHub publication transcript owner changed");
+    throw new Error("Publication transcript owner changed");
   }
   const appended = await appendSessionTranscriptReport(
     {
@@ -92,18 +71,18 @@ export async function reportGitHubPublicationTranscript(
       sessionId: params.sessionId,
       sessionKey: target.canonicalKey,
       storePath: target.storePath,
-      expectedLifecycleRevision: lifecycleRevision ?? undefined,
+      expectedLifecycleRevision: params.lifecycleRevision ?? undefined,
     },
     {
       kind: "assistant",
       message: attachSessionTranscriptRunId(
         {
           role: "assistant",
-          content: [{ type: "text", text: formatGitHubPublicationResult(params.result) }],
+          content: [{ type: "text", text: params.text }],
           api: "openai-responses",
           provider: "openclaw",
           model: "gateway-publication",
-          responseId: `${GITHUB_PUBLICATION_RESPONSE_PREFIX}${params.result.requestId}`,
+          responseId: params.responseId,
           usage: makeZeroUsageSnapshot(),
           stopReason: "stop",
           timestamp: Date.now(),
@@ -113,7 +92,7 @@ export async function reportGitHubPublicationTranscript(
     },
   );
   if (!appended.ok) {
-    throw new Error("GitHub publication transcript owner changed", { cause: appended.error });
+    throw new Error("Publication transcript owner changed", { cause: appended.error });
   }
-  await coordinator.markReportedAsync(params.result.requestId);
+  await markReported(params.requestId);
 }

@@ -2,7 +2,6 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { formatErrorMessage } from "@openclaw/normalization-core/error-coercion";
-import { githubRepositoryUrl } from "../agents/github-host.js";
 import type { WorktreeGitPolicy } from "../agents/worktrees/checkout-git-config.js";
 import { hasErrnoCode } from "../infra/errno.js";
 import { gitNullConfigPath, gitReadOnlyEnvironment } from "../infra/git-exec.js";
@@ -10,18 +9,13 @@ import { appendGitConfig, gitMaintenanceEnvironment } from "../infra/git-mainten
 import { retryableGitNetworkOperation, withGitNetworkRetry } from "../infra/git-network-retry.js";
 import { createCommandError } from "../process/command-error.js";
 import { runCommandBuffered } from "../process/exec.js";
-import { withGitProcessOperation, type GitProcessOperation } from "../process/spawn-diagnostics.js";
-import { getOrCreatePromise } from "../shared/lazy-promise.js";
+import { withGitProcessOperation } from "../process/spawn-diagnostics.js";
+import type { GitProcessOperation } from "../process/spawn-diagnostics.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import {
-  githubPublicationUnsafeConfigArgs,
-  parseGitHubPublicationBaseRef,
-} from "./github-publication-base.js";
+import { githubPublicationUnsafeConfigArgs } from "./github-publication-base.js";
 import { createGitHubPublicationGitError } from "./github-publication-git-error.js";
-import {
-  hasUnapprovedGitHubPublicationWorkflowChanges,
-  isGitHubPublicationWorkflowPath,
-} from "./github-publication-workflows.js";
+import type { RepositoryPublicationPublisher } from "./repository-publication-contract.js";
+import { createRepositoryPublicationGitTransfer } from "./repository-publication-git-transfer.js";
 
 type GitCommandOptions = {
   cwd?: string;
@@ -30,6 +24,7 @@ type GitCommandOptions = {
   maxOutputBytes?: number;
   beforeRun?: () => void;
   operation?: GitProcessOperation;
+  httpAuthorization?: { url: string; value: string };
   timeoutMs?: number;
   noOutputTimeoutMs?: number;
   discardOutput?: { stdout?: boolean };
@@ -37,24 +32,16 @@ type GitCommandOptions = {
 type GitCommandResult = { code: number | null; stdout: Buffer };
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 
-export function githubPublicationApiArgs(
-  endpoint: string,
-  method = "GET",
-  host = "github.com",
-): string[] {
-  return [
-    "gh",
-    "api",
-    "--hostname",
-    host,
-    "--method",
-    method,
-    endpoint,
-    ...(method === "GET" ? [] : ["--input", "-"]),
-  ];
-}
-
 export async function runPublicationCommand(argv: string[], options: GitCommandOptions = {}) {
+  if (
+    options.httpAuthorization &&
+    (argv[0] !== "git" ||
+      !URL.canParse(options.httpAuthorization.url) ||
+      new URL(options.httpAuthorization.url).protocol !== "https:" ||
+      /[\r\n\0]/u.test(options.httpAuthorization.value))
+  ) {
+    throw new Error("Publication Git authorization is invalid.");
+  }
   return await withGitProcessOperation(options.operation ?? "publication", () =>
     withGitNetworkRetry(
       argv[0] === "git" ? retryableGitNetworkOperation(argv.slice(1)) : undefined,
@@ -68,7 +55,19 @@ export async function runPublicationCommand(argv: string[], options: GitCommandO
               : (options.env ?? {})),
             GIT_NO_REPLACE_OBJECTS: "1",
             // Pin every command against repository hooks; explicit hook-disabling -c flags stay stronger.
-            ...appendGitConfig(gitMaintenanceEnvironment(), [["core.hooksPath", os.devNull]]),
+            ...appendGitConfig(gitMaintenanceEnvironment(), [
+              ["core.hooksPath", os.devNull],
+              ...(options.httpAuthorization
+                ? [
+                    ["credential.helper", ""] as [string, string],
+                    [
+                      `http.${options.httpAuthorization.url}.extraHeader`,
+                      `Authorization: ${options.httpAuthorization.value}`,
+                    ] as [string, string],
+                  ]
+                : []),
+            ]),
+            ...(options.httpAuthorization ? { GIT_TERMINAL_PROMPT: "0" } : {}),
           },
           // Resolve optional disclosure after beforeRun, directly at the transport boundary.
           ...(options.input !== undefined
@@ -128,196 +127,9 @@ export function createGitHubPublicationCommandRunner(
   };
 }
 
-export async function readGitHubPublicationBaseSha(
-  run: ReturnType<typeof createGitHubPublicationCommandRunner>["run"],
-  repository: string,
-  branch: string,
-  host: string,
-  env: NodeJS.ProcessEnv,
-) {
-  const result = await run(
-    [
-      "gh",
-      "api",
-      "--hostname",
-      host,
-      `repos/${repository}/git/ref/heads/${branch}`,
-      "--jq",
-      "{ref: .ref, sha: .object.sha}",
-    ],
-    { env },
-  );
-  if (result.code !== 0) {
-    throw new Error("GitHub publication workspace base branch could not be verified.");
-  }
-  return parseGitHubPublicationBaseRef(result.stdout.toString("utf8"), branch);
-}
-
-export async function requireGitHubPublicationCommit(
-  run: ReturnType<typeof createGitHubPublicationCommandRunner>["run"],
-  repository: string,
-  sha: string,
-  host: string,
-  cwd: string,
-  env: NodeJS.ProcessEnv,
-  failure: string,
-  options: { contents?: boolean; commitPresent?: boolean } = {},
-) {
-  const fetch = async (missing?: string[]) => {
-    const result = await run(
-      [
-        ...GITHUB_CREDENTIAL_ARGS,
-        "-c",
-        `core.hooksPath=${os.devNull}`,
-        "-c",
-        "core.fsmonitor=false",
-        "fetch",
-        "--no-auto-maintenance",
-        "--no-tags",
-        "--no-write-fetch-head",
-        "--recurse-submodules=no",
-        // Keep ancestry and tree metadata; callers request file contents below.
-        ...(missing ? ["--refetch", "--stdin"] : ["--filter=blob:none"]),
-        "--",
-        githubRepositoryUrl(repository, host),
-        ...(missing ? [] : [sha]),
-      ],
-      { cwd, env, ...(missing ? { input: `${missing.join("\n")}\n` } : {}) },
-    );
-    if (result.code !== 0 || result.error) {
-      throw createGitHubPublicationGitError(
-        failure,
-        missing ? "content fetch" : "commit fetch",
-        result,
-        DEFAULT_COMMAND_TIMEOUT_MS,
-      );
-    }
-  };
-  if (!options.commitPresent) {
-    // Fetching a present non-promisor commit still makes Git enumerate every
-    // promisor object for connectivity. Probe the physical commit without lazy
-    // fetching or trusting commit-graph metadata; content hydration stays below.
-    const present = await run(
-      [
-        "git",
-        "-c",
-        "core.commitGraph=false",
-        "rev-list",
-        "--missing=allow-any",
-        "--no-walk",
-        `${sha}^{commit}`,
-      ],
-      { cwd, env },
-    );
-    if (present.code !== 0 || !present.stdout.toString("utf8").trim()) {
-      await fetch();
-    }
-  }
-  if (!options.contents) {
-    return;
-  }
-  const missingObjects = async (stage = "content inventory") => {
-    const result = await run(
-      [
-        "git",
-        "rev-list",
-        "--objects",
-        "--missing=print",
-        "--no-object-names",
-        "--max-count=1",
-        sha,
-      ],
-      {
-        cwd,
-        env: { ...env, GIT_NO_LAZY_FETCH: "1" },
-        maxOutputBytes: TREE_LISTING_MAX_OUTPUT_BYTES,
-      },
-    );
-    if (result.code !== 0 || result.error) {
-      throw createGitHubPublicationGitError(failure, stage, result, DEFAULT_COMMAND_TIMEOUT_MS);
-    }
-    return result.stdout
-      .toString("utf8")
-      .split("\n")
-      .filter((line) => line.startsWith("?"))
-      .map((line) => line.slice(1));
-  };
-  const missing = await missingObjects();
-  if (missing.length) {
-    // A known partial-clone commit can still lack its tree contents after fetch.
-    // Hydrate through the selected authenticated URL before any offline snapshots.
-    await fetch(missing);
-    if ((await missingObjects("content verification")).length) {
-      throw new Error(
-        `${failure} Git content verification failed: required objects are still missing after fetching.`,
-      );
-    }
-  }
-}
-
 // Recursive inventories scale with repository size, far past the default
 // per-command cap. Keep an explicit bound for tree and missing-object listings.
 const TREE_LISTING_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
-
-export async function hasGitHubPublicationWorkflowChanges(params: {
-  cwd: string;
-  comparisonCommit: string;
-  ancestryCommit: string;
-  targetCommit: string;
-  workspaceTree: string;
-  run: typeof runPublicationCommand;
-}): Promise<boolean> {
-  const trees = new Map<string, Promise<Map<string, string>>>();
-  const workflows = (tree: string) =>
-    getOrCreatePromise(trees, tree, async () => {
-      const listing = await params.run(
-        ["git", "ls-tree", "-r", "-z", "--full-tree", tree, "--", ".github/workflows"],
-        { cwd: params.cwd, maxOutputBytes: TREE_LISTING_MAX_OUTPUT_BYTES },
-      );
-      if (listing.code !== 0) {
-        throw new Error("GitHub publication workspace workflows could not be verified.");
-      }
-      const entries = new Map<string, string>();
-      for (const record of listing.stdout.toString("latin1").split("\0").filter(Boolean)) {
-        const tab = record.indexOf("\t");
-        const [mode, , sha] = record.slice(0, tab).split(" ");
-        if (tab < 0 || !mode || !sha) {
-          throw new Error("GitHub publication workspace workflows could not be verified.");
-        }
-        const file = record.slice(tab + 1);
-        if (isGitHubPublicationWorkflowPath(file)) {
-          entries.set(file, mode + ":" + sha);
-        }
-      }
-      return entries;
-    });
-  const [before, accepted] = await Promise.all([
-    workflows(params.comparisonCommit),
-    workflows(params.workspaceTree),
-  ]);
-  return await hasUnapprovedGitHubPublicationWorkflowChanges({
-    before,
-    accepted,
-    readUpstream: async () => {
-      const result = await params.run(
-        ["git", "merge-base", "--all", params.ancestryCommit, params.targetCommit],
-        { cwd: params.cwd },
-      );
-      if (result.code !== 0) {
-        throw new Error("GitHub publication workflow ancestry could not be verified.");
-      }
-      const bases = result.stdout.toString("utf8").trim().split(/\s+/u);
-      if (bases.length !== 1 || !/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/u.test(bases[0]!)) {
-        return undefined;
-      }
-      const [ancestor, target] = await Promise.all([
-        workflows(bases[0]!),
-        workflows(params.targetCommit),
-      ]);
-      return { ancestor, target };
-    },
-  });
-}
 
 export async function assertSafeGitPublicationWorkspace(
   cwd: string,
@@ -340,7 +152,9 @@ export async function assertSafeGitPublicationWorkspace(
       (worktreeConfigValue === "true" || worktreeConfigValue === "false")) ||
     (worktreeConfig.code === 1 && worktreeConfig.stdout.length === 0);
   if (localUnsafe.code !== 1 || localUnsafe.stdout.length > 0 || !worktreeConfigKnown) {
-    throw new Error("GitHub publication workspace has unsupported Git transport configuration.");
+    throw new Error(
+      "Repository publication workspace has unsupported Git transport configuration.",
+    );
   }
   const worktreeUnsafe =
     worktreeConfigValue === "true"
@@ -350,20 +164,22 @@ export async function assertSafeGitPublicationWorkspace(
         })
       : undefined;
   if (worktreeUnsafe && (worktreeUnsafe.code !== 1 || worktreeUnsafe.stdout.length > 0)) {
-    throw new Error("GitHub publication workspace has unsupported Git transport configuration.");
+    throw new Error(
+      "Repository publication workspace has unsupported Git transport configuration.",
+    );
   }
   const [replacements, graftPath] = await Promise.all([
     run(["git", "for-each-ref", "--count=1", "--format=%(refname)", "refs/replace"], { cwd }),
     run(["git", "rev-parse", "--git-path", "info/grafts"], { cwd }),
   ]);
   if (replacements.code !== 0 || replacements.stdout.length > 0 || graftPath.code !== 0) {
-    throw new Error("GitHub publication workspace has unsupported Git replacement metadata.");
+    throw new Error("Repository publication workspace has unsupported Git replacement metadata.");
   }
   const grafts = await readOptionalAttributeFile(
     path.resolve(cwd, graftPath.stdout.toString("utf8").trim()),
   );
   if (grafts && grafts.length > 0) {
-    throw new Error("GitHub publication workspace has unsupported Git replacement metadata.");
+    throw new Error("Repository publication workspace has unsupported Git replacement metadata.");
   }
 }
 
@@ -374,7 +190,7 @@ function assertNoGitFilterAttributes(contents: Buffer): void {
       continue;
     }
     if (fields.slice(1).some((field) => /^(?:-|!)?filter(?:=|$)/u.test(field))) {
-      throw new Error("GitHub publication workspace uses an unsupported Git clean filter.");
+      throw new Error("Repository publication workspace uses an unsupported Git clean filter.");
     }
   }
 }
@@ -400,7 +216,7 @@ export async function readGitHubPublicationTree(
     maxOutputBytes: TREE_LISTING_MAX_OUTPUT_BYTES,
   });
   if (listing.code !== 0) {
-    throw new Error("GitHub publication workspace tree could not be verified.");
+    throw new Error("Repository publication workspace tree could not be verified.");
   }
   return listing.stdout;
 }
@@ -435,12 +251,12 @@ async function assertGitHubPublicationIndexHasNoFilters(
     listing.stdout.toString("utf8").trim().split("\n").filter(Boolean),
   );
   if (attributeObjects.size > 1024) {
-    throw new Error("GitHub publication workspace has too many Git attribute files.");
+    throw new Error("Repository publication workspace has too many Git attribute files.");
   }
   for (const objectId of attributeObjects) {
     const blob = await runPublicationCommand(["git", "cat-file", "blob", objectId], { cwd });
     if (blob.code !== 0) {
-      throw new Error("GitHub publication workspace attributes could not be verified.");
+      throw new Error("Repository publication workspace attributes could not be verified.");
     }
     assertNoGitFilterAttributes(blob.stdout);
   }
@@ -452,7 +268,7 @@ async function assertGitHubPublicationIndexHasNoFilters(
     },
   );
   if (infoPath.code !== 0) {
-    throw new Error("GitHub publication workspace attributes could not be verified.");
+    throw new Error("Repository publication workspace attributes could not be verified.");
   }
   const attributeFiles = await Promise.all(
     ["GIT_ATTR_GLOBAL", "GIT_ATTR_SYSTEM"].map(
@@ -460,7 +276,7 @@ async function assertGitHubPublicationIndexHasNoFilters(
     ),
   );
   if (attributeFiles.some((result) => result.code !== 0)) {
-    throw new Error("GitHub publication workspace attributes could not be verified.");
+    throw new Error("Repository publication workspace attributes could not be verified.");
   }
   const paths = [
     path.resolve(cwd, infoPath.stdout.toString("utf8").trim()),
@@ -494,8 +310,17 @@ export async function captureGitHubPublicationWorkspaceSnapshot(params: {
     throw new Error("Workspace base integration state could not be verified; retry refresh_base.");
   }
   const context = captureOpenClawStateWorkerContext();
-  const { withSettledLocalWorkspacePath } =
-    await import("./worker-environments/local-workspace-projection.js");
+  const [
+    { withSettledLocalWorkspacePath },
+    { readLiveRegistryWorktreeByPath },
+    { withManagedWorktreeGit },
+    { readRuntimeConfig },
+  ] = await Promise.all([
+    import("./worker-environments/local-workspace-projection.js"),
+    import("../agents/worktrees/registry-read.js"),
+    import("../agents/worktrees/checkout-policy.js"),
+    import("../config/runtime-snapshot.js"),
+  ]);
   return await withSettledLocalWorkspacePath(params, async (custody) => {
     const admittedPaths = await custody?.canonicalPaths?.();
     const bound = {
@@ -506,12 +331,6 @@ export async function captureGitHubPublicationWorkspaceSnapshot(params: {
         custody?.assertCurrent();
       },
     };
-    const [{ readLiveRegistryWorktreeByPath }, { withManagedWorktreeGit }, { getRuntimeConfig }] =
-      await Promise.all([
-        import("../agents/worktrees/registry-read.js"),
-        import("../agents/worktrees/checkout-policy.js"),
-        import("../config/config.js"),
-      ]);
     const record = await readLiveRegistryWorktreeByPath(context, params.cwd);
     bound.assertCurrent();
     return record
@@ -519,7 +338,7 @@ export async function captureGitHubPublicationWorkspaceSnapshot(params: {
           {
             record,
             env: process.env,
-            getConfig: getRuntimeConfig,
+            getConfig: readRuntimeConfig,
             beforeRun: bound.assertCurrent,
           },
           (git) =>
@@ -560,7 +379,7 @@ export async function captureSettledGitHubPublicationWorkspaceSnapshot(
     cwd: params.cwd,
   });
   const index = path.resolve(params.cwd, await git(["rev-parse", "--git-path", "index"]));
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-github-snapshot-"));
+  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "openclaw-publication-snapshot-"));
   try {
     const env = {
       GIT_ATTR_NOSYSTEM: "1",
@@ -640,14 +459,6 @@ export async function captureSettledGitHubPublicationWorkspaceSnapshot(
   }
 }
 
-const GITHUB_CREDENTIAL_ARGS = [
-  "git",
-  "-c",
-  "credential.helper=",
-  "-c",
-  "credential.helper=!gh auth git-credential",
-] as const;
-
 export async function readGitHubPublicationCoauthorTrailers(params: {
   cwd: string;
   headCommit: string;
@@ -670,65 +481,17 @@ export async function readGitHubPublicationCoauthorTrailers(params: {
   return output.split(/\r?\n/u);
 }
 
-export function appendGitHubPublicationMessage(base: string, lines: readonly string[]): string {
-  const footer = [...new Set(lines)].join("\n");
-  return footer ? `${base.trimEnd()}\n\n${footer}` : base.trimEnd();
-}
-
-/** Prepared commits use our terminal credit footer, never matching prose elsewhere in the message. */
-export function hasGitHubPublicationMessageFooter(
-  message: string,
-  coauthorTrailers: readonly string[],
-  publicationMarker: string,
-): boolean {
-  const lines = message.replace(/[\r\n]+$/u, "").split(/\r?\n/u);
-  const separator = lines.lastIndexOf("");
-  if (separator < 1 || lines.at(-1) !== publicationMarker) {
-    return false;
-  }
-  const actual = lines.slice(separator + 1, -1);
-  const expected = new Set(coauthorTrailers);
-  return actual.length === expected.size && [...expected].every((line) => actual.includes(line));
-}
-
 export async function assertGitHubPublicationBranchRef(
   branch: string,
   run: (argv: string[]) => Promise<number>,
 ): Promise<void> {
   const code = await run(["git", "symbolic-ref", "--quiet", `refs/heads/${branch}`]);
   if (code === 0) {
-    throw new Error("GitHub publication workspace branch ref became symbolic.");
+    throw new Error("Repository publication workspace branch ref became symbolic.");
   }
   if (code !== 1) {
-    throw new Error("GitHub publication workspace branch ref could not be verified.");
+    throw new Error("Repository publication workspace branch ref could not be verified.");
   }
-}
-
-export function githubPublicationPushArgs(
-  remote: string,
-  headCommit: string,
-  branch: string,
-  expectedRemoteHead: string,
-): string[] {
-  return [
-    ...GITHUB_CREDENTIAL_ARGS,
-    "-c",
-    `core.hooksPath=${os.devNull}`,
-    "push",
-    "--porcelain",
-    // The executor proves ancestry first. Pin that proof to this exact remote
-    // value (or absence); the lease never substitutes for the fast-forward check.
-    `--force-with-lease=refs/heads/${branch}:${expectedRemoteHead}`,
-    "--no-follow-tags",
-    "--recurse-submodules=no",
-    "--",
-    remote,
-    `${headCommit}:refs/heads/${branch}`,
-  ];
-}
-
-export function githubPublicationRemoteHeadArgs(remote: string, branch: string): string[] {
-  return [...GITHUB_CREDENTIAL_ARGS, "ls-remote", "--refs", remote, `refs/heads/${branch}`];
 }
 
 export function githubPublicationUpdateRefArgs(
@@ -747,4 +510,169 @@ export function githubPublicationUpdateRefArgs(
     commit,
     previousHead,
   ];
+}
+
+export function githubPublicationPushArgs(
+  remote: string,
+  headCommit: string,
+  branch: string,
+  expectedRemoteHead: string,
+): string[] {
+  return [
+    "git",
+    "-c",
+    "http.followRedirects=false",
+    "push",
+    "--porcelain",
+    `--force-with-lease=refs/heads/${branch}:${expectedRemoteHead}`,
+    "--no-follow-tags",
+    "--recurse-submodules=no",
+    "--",
+    remote,
+    `${headCommit}:refs/heads/${branch}`,
+  ];
+}
+
+export async function runAuthorizedPublicationGit(
+  publisher: RepositoryPublicationPublisher,
+  remoteUrl: string,
+  argv: string[],
+  options: Parameters<typeof runPublicationCommand>[1],
+  assertCurrent: () => void,
+) {
+  const operation = createRepositoryPublicationGitTransfer(
+    (authorization, assertCredential) =>
+      runPublicationCommand(argv, {
+        ...options,
+        httpAuthorization: { url: remoteUrl, value: authorization },
+        beforeRun: () => {
+          assertCurrent();
+          assertCredential();
+        },
+      }),
+    assertCurrent,
+  );
+  await publisher.authorizeGit(operation.transfer);
+  return operation.result();
+}
+export async function requireGitHubPublicationCommit(params: {
+  publisher: RepositoryPublicationPublisher;
+  remoteUrl: string;
+  sha: string;
+  cwd: string;
+  assertCurrent: () => void;
+  failure: string;
+  contents?: boolean;
+  commitPresent?: boolean;
+}) {
+  const { publisher, remoteUrl, sha, cwd, assertCurrent, failure } = params;
+  const fetch = async (missing?: string[]) => {
+    const result = await runAuthorizedPublicationGit(
+      publisher,
+      remoteUrl,
+      [
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        "-c",
+        "http.followRedirects=false",
+        "-c",
+        "maintenance.auto=false",
+        "-c",
+        "gc.auto=0",
+        "fetch",
+        "--no-auto-maintenance",
+        "--no-tags",
+        "--no-write-fetch-head",
+        "--recurse-submodules=no",
+        ...(missing ? ["--refetch", "--stdin"] : ["--filter=blob:none"]),
+        "--",
+        remoteUrl,
+        ...(missing ? [] : [sha]),
+      ],
+      { cwd, ...(missing ? { input: missing.join("\n") + "\n" } : {}) },
+      assertCurrent,
+    );
+    assertCurrent();
+    if (result.code !== 0 || result.error) {
+      throw createGitHubPublicationGitError(
+        failure,
+        missing ? "content fetch" : "commit fetch",
+        result,
+        DEFAULT_COMMAND_TIMEOUT_MS,
+      );
+    }
+  };
+  if (!params.commitPresent) {
+    // Probe physical commit metadata without lazy fetching or trusting commit graphs.
+    // A local commit can already be complete while unrelated promisor objects are absent.
+    const present = await runPublicationCommand(
+      [
+        "git",
+        "-c",
+        "core.commitGraph=false",
+        "rev-list",
+        "--missing=allow-any",
+        "--no-walk",
+        `${sha}^{commit}`,
+      ],
+      { cwd, beforeRun: assertCurrent },
+    );
+    assertCurrent();
+    if (present.code !== 0 || !present.stdout.toString("utf8").trim()) {
+      await fetch();
+    }
+  }
+  if (!params.contents) {
+    return;
+  }
+  const readMissing = async (stage = "content inventory") => {
+    const result = await runPublicationCommand(
+      [
+        "git",
+        "rev-list",
+        "--objects",
+        "--missing=print",
+        "--no-object-names",
+        "--max-count=1",
+        sha,
+      ],
+      {
+        cwd,
+        env: { ...process.env, GIT_NO_LAZY_FETCH: "1" },
+        beforeRun: assertCurrent,
+        maxOutputBytes: TREE_LISTING_MAX_OUTPUT_BYTES,
+      },
+    );
+    assertCurrent();
+    if (result.code !== 0) {
+      throw createGitHubPublicationGitError(failure, stage, result, DEFAULT_COMMAND_TIMEOUT_MS);
+    }
+    return result.stdout
+      .toString("utf8")
+      .split("\n")
+      .filter((line) => line.startsWith("?"))
+      .map((line) => line.slice(1));
+  };
+  const missing = await readMissing();
+  if (missing.length) {
+    await fetch(missing);
+    if ((await readMissing("content verification")).length) {
+      throw new Error(
+        `${failure} Git content verification failed: required objects are still missing after fetching.`,
+      );
+    }
+  }
+}
+
+export {
+  githubPublicationApiArgs,
+  readGitHubPublicationBaseSha,
+} from "./github-publication-remote.js";
+export {
+  appendGitHubPublicationMessage,
+  hasGitHubPublicationMessageFooter,
+} from "./repository-publication-message.js";
+export function githubPublicationRemoteHeadArgs(remote: string, branch: string) {
+  return ["git", "ls-remote", "--exit-code", "--heads", remote, `refs/heads/${branch}`];
 }

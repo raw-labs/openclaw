@@ -275,6 +275,7 @@ export function prepareGroupedMessage(
     codeBlockChrome: role === "user" ? "none" : "copy",
     codeBlockInteraction: role === "assistant" ? "interactive" : "static",
     fileLinks: true,
+    textReferences: role === "assistant" ? opts.textReferences : undefined,
     humanMentions: markdown === displayMarkdown ? humanMentions : undefined,
     interactiveImages: opts.onOpenImage !== undefined,
     sessionLinks: true,

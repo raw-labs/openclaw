@@ -4,14 +4,14 @@ import { hasOperatorWriteAccess } from "../../app/operator-access.ts";
 import { isCloudWorkerPlacementState } from "../../components/session-row-badge-presentation.ts";
 import { canCallGatewayMethod, isGatewayMethodAdvertised } from "../../lib/gateway-methods.ts";
 import { readSessionMethodAccess } from "../../lib/session-method-access.ts";
-import { GitHubPublicationOwner } from "../../lib/sessions/github-publication-owner.ts";
-import type { createSessionGitHubPublication } from "../../lib/sessions/session-github-publication.ts";
+import { githubPublicationOperationFactory } from "../../lib/sessions/github-publication-owner.ts";
+import type { createSessionRetainedOperations } from "../../lib/sessions/session-retained-operations.ts";
 import type { GitHubPublicationBinding } from "../../lib/sessions/session-types.ts";
 
 /** Attach the pane to session-owned publication state without taking custody of the operation. */
 export function synchronizeChatPanePublication(params: {
   holder: { binding: GitHubPublicationBinding | null };
-  publications: Pick<ReturnType<typeof createSessionGitHubPublication>, "attach">;
+  publications: Pick<ReturnType<typeof createSessionRetainedOperations>, "attach">;
   gatewaySnapshot: ApplicationGatewaySnapshot;
   readRow: () => GatewaySessionRow | undefined;
   isScopeCurrent: (() => boolean) | undefined;
@@ -34,7 +34,11 @@ export function synchronizeChatPanePublication(params: {
   }
   if (!holder.binding?.matches(row)) {
     holder.binding?.detach();
-    holder.binding = params.publications.attach(row, GitHubPublicationOwner);
+    holder.binding = params.publications.attach(
+      row,
+      githubPublicationOperationFactory,
+      "openclaw-native",
+    );
   }
   const publication = holder.binding;
   const canMutate = !row.archived && !params.participationBlocked;

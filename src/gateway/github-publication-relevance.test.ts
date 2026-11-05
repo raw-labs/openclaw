@@ -13,8 +13,8 @@ const head = "3".repeat(40);
 const snapshot = {
   repository: "owner/repo",
   branch: "feature",
-  source_head_commit: source,
-  workspace_tree: tree,
+  sourceHeadCommit: source,
+  workspaceTree: tree,
 };
 const pr: ControlUiSessionPullRequest = {
   owner: "owner",
@@ -80,7 +80,7 @@ it.each(["head", "snapshot", "credential", "expiry", "authority"])(
       json(requestUrl(input).includes("/compare/") ? comparison : published(nextHead)),
     );
     expect(
-      await check(fetchImpl, change === "snapshot" ? { workspace_tree: "8".repeat(40) } : {}, [
+      await check(fetchImpl, change === "snapshot" ? { workspaceTree: "8".repeat(40) } : {}, [
         { ...pr, headSha: nextHead },
       ]),
     ).toBe(change !== "snapshot");
@@ -147,14 +147,16 @@ type Scenario = {
   tree?: string;
   compared?: unknown;
 };
-it.each<[name: string, input: Scenario, superseded: boolean]>([
-  ["committed merged history", {}, true],
-  ["uncommitted exact tree", { snapshot: { source_head_commit: null }, tree }, true],
-  ["another branch", { pr: { branch: "another-branch" }, tree }, false],
-  ["another repository", { pr: { repo: "another-repo" }, tree }, false],
-  ["closed PR", { pr: { state: "closed" }, tree }, false],
-  ["unpublished PR", { pr: { headSha: undefined }, tree }, false],
-  ["newer unpublished snapshot", { snapshot: { workspace_tree: "5".repeat(40) } }, false],
+it.each<[name: string, input: Scenario, superseded: boolean, calls?: number]>([
+  ["committed open history", { pr: { state: "open" } }, true, 2],
+  ["committed draft history", { pr: { state: "draft" } }, true, 2],
+  ["committed merged history", { pr: { state: "merged" } }, true, 2],
+  ["uncommitted exact tree", { snapshot: { sourceHeadCommit: null }, tree }, true, 1],
+  ["another branch", { pr: { branch: "another-branch" }, tree }, false, 0],
+  ["another repository", { pr: { repo: "another-repo" }, tree }, false, 0],
+  ["closed PR", { pr: { state: "closed" }, tree }, false, 0],
+  ["unpublished PR", { pr: { headSha: undefined }, tree }, false, 0],
+  ["newer unpublished snapshot", { snapshot: { workspaceTree: "5".repeat(40) } }, false],
   ["diverged history", { compared: { ...comparison, status: "diverged" } }, false],
   ["wrong merge base", { compared: { ...comparison, merge_base_commit: { sha: head } } }, false],
   ["unreadable comparison", { compared: null }, false],

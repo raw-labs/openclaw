@@ -251,11 +251,11 @@ export function createAgentHarnessHostCapabilities(params: {
     assertCurrent: assertActive,
   });
   const preparedRunEnvironment = prepareAgentHarnessEnvironment({
+    ...attempt,
     config,
-    agentId: attempt.agentId,
-    sessionKey: attempt.sessionKey,
-    sandboxAgentId: attempt.sandboxAgentId,
     installationTarget,
+    assertCurrent: assertActive,
+    signal: bindAbortSignal(attempt.abortSignal),
   });
   const skillUsagePaths = attempt.sandbox?.skillUsagePaths
     ? cloneSnapshot(attempt.sandbox.skillUsagePaths)
@@ -495,6 +495,7 @@ export function createAgentHarnessHostCapabilities(params: {
     ...bindHarnessTrajectory(attempt, assertActive.assertScopeCurrent),
     preparedEnvironment: () => {
       assertActive.assertScopeCurrent();
+      preparedRunEnvironment.assertCurrent();
       return preparedRunEnvironment;
     },
     activeComputerContext: () => {
@@ -584,8 +585,8 @@ export function createAgentHarnessHostCapabilities(params: {
           : undefined;
       try {
         const result = await withCaller(
-          async () =>
-            await withGatewayToolApprovalOwner(
+          () =>
+            withGatewayToolApprovalOwner(
               params.pluginId,
               async () =>
                 await callGatewayTool(
@@ -718,8 +719,6 @@ export function createAgentHarnessHostCapabilities(params: {
         release?.();
       }
     },
-    close: () => {
-      capabilityAbortController.abort();
-    },
+    close: () => capabilityAbortController.abort(),
   };
 }

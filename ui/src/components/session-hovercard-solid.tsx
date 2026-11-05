@@ -1,6 +1,6 @@
 import type { ProgressCard } from "@openclaw/gateway-protocol";
 import type { JSX } from "@solidjs/web";
-import { createMemo, For, Show, useContext } from "solid-js";
+import { createMemo, createSignal, For, onSettled, Show, useContext } from "solid-js";
 import type { SessionParticipant } from "../../../packages/gateway-protocol/src/schema/session-participant.js";
 import type {
   ControlUiSessionBranch,
@@ -16,6 +16,7 @@ import {
   sessionPullRequestStateIcons,
   type SessionDisplayPullRequest,
 } from "../lib/session-pull-request-presentation.ts";
+import { PluginContributions } from "../plugins/control-ui-contributions.solid.tsx";
 import type { SidebarSessionHovercardRow } from "./app-sidebar-session-types.ts";
 import { formatGitHubItemReference } from "./github-link-target.ts";
 import { PersonAvatarLink, PersonName } from "./person-activity-link-solid.tsx";
@@ -180,6 +181,8 @@ export type SessionHovercardInput = {
   avatarAuth?: SessionHovercardAvatarAuth;
   personActivity?: PersonActivityRouting;
   pullRequests?: ControlUiSessionPullRequestSnapshot;
+  session?: { sessionKey: string; agentId?: string };
+  onContentChange?: (phase: "before" | "after") => void;
   progressCard?: ProgressCard | null;
   connected?: boolean;
 };
@@ -576,11 +579,22 @@ export function SessionHovercard(props: SessionHovercardInput) {
   const commentary = () => props.progressCard?.markdown?.trim() || undefined;
   const preview = () =>
     props.progressCard ? undefined : props.row?.lastMessagePreview?.trim() || undefined;
+  const nativeContent = () =>
+    Boolean(props.row || hasContext() || hasPullRequestSection() || props.progressCard);
+  // The optional renderer may still be loading before its first presence report.
+  const [contributionPresent, setContributionPresent] = createSignal<boolean | undefined>(
+    undefined,
+    {
+      ownedWrite: true,
+    },
+  );
   return (
     <Show
-      when={Boolean(props.row || hasContext() || hasPullRequestSection() || props.progressCard)}
+      when={Boolean(
+        props.row || props.session || hasContext() || hasPullRequestSection() || props.progressCard,
+      )}
     >
-      <div class="session-hovercard">
+      <div class="session-hovercard" hidden={!nativeContent() && contributionPresent() === false}>
         <Show when={props.row || hasContext()}>
           <div class="session-hovercard__top">
             <Show when={props.row}>
@@ -598,6 +612,22 @@ export function SessionHovercard(props: SessionHovercardInput) {
               </section>
             </Show>
           </div>
+        </Show>
+        <Show when={props.session}>
+          {(session) => (
+            <PluginContributions
+              kind="session-hovercard"
+              sessionKey={session().sessionKey}
+              agentId={session().agentId}
+              presented={true}
+              registerControls={controls?.registerSource}
+              onContentChange={props.onContentChange}
+              onPresenceChange={(present) => {
+                setContributionPresent(present);
+                onSettled(() => props.onContentChange?.("after"));
+              }}
+            />
+          )}
         </Show>
         <Show when={props.row?.attention?.kind === "error"}>
           <section class="session-hovercard__section session-hovercard__error">

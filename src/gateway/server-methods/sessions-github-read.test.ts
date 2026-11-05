@@ -16,10 +16,10 @@ import * as stateWriter from "../../state/openclaw-state-worker-owner.js";
 import type { UserGitHubConnection } from "../../state/user-github-connections.js";
 import { updateUserGitHubConnection } from "../../state/user-github-connections.test-support.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
-import * as prRead from "../control-ui-session-pr-read.js";
+import type { ControlUiSessionPullRequestSnapshot } from "../control-ui-contract.js";
 import { requestCurrentGitHubOAuthRefresh } from "../github-oauth-lifecycle.js";
 import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
-import * as publicationAvailability from "../github-publication-availability.js";
+import * as publicationIdentity from "../github-publication-identity.js";
 import * as relevance from "../github-publication-relevance.js";
 import {
   expectFailure,
@@ -72,7 +72,7 @@ const expectOptions = (respond: Respond, overrides: Record<string, unknown> = {}
 const expectPartialReply = (respond: Respond, result: Record<string, unknown>) =>
   expectReply(respond, expect.objectContaining(result));
 function useRealIdentity(token?: string) {
-  vi.mocked(publicationAvailability.prepareCurrentGitHubPublicationOptionsIdentity).mockRestore();
+  vi.mocked(publicationIdentity.prepareCurrentGitHubPublicationOptionsIdentity).mockRestore();
   vi.stubEnv("GH_TOKEN", token);
   vi.stubEnv("GITHUB_TOKEN", undefined);
 }
@@ -130,7 +130,7 @@ it("reads personal options and receipts while shared identity discovery is pendi
     const entered = createDeferredCore();
     const release = createDeferredCore();
     vi.mocked(
-      publicationAvailability.prepareCurrentGitHubPublicationOptionsIdentity,
+      publicationIdentity.prepareCurrentGitHubPublicationOptionsIdentity,
     ).mockImplementationOnce(async () => {
       entered.resolve();
       await release.promise;
@@ -245,7 +245,7 @@ it("marks only expired personal account facts stale through options revalidation
 }) => {
   const personalToken = "synthetic-personal-options-stale";
   const sharedToken = "synthetic-shared-options-fresh";
-  vi.mocked(publicationAvailability.prepareCurrentGitHubPublicationOptionsIdentity).mockRestore();
+  vi.mocked(publicationIdentity.prepareCurrentGitHubPublicationOptionsIdentity).mockRestore();
   vi.stubEnv("GH_TOKEN", sharedToken);
   mocks.runCommandBuffered.mockResolvedValue(commandResult(sharedToken));
   const refresh = createDeferredCore<Response>();
@@ -311,12 +311,6 @@ it("retains a failed publication without a captured tree when PR discovery is un
       },
       confirmation: null,
     };
-    vi.spyOn(prRead, "createControlUiSessionPrRead").mockReturnValue(async () => ({
-      params: { sessionKey, agentId: "main" },
-      identity: "pr-source",
-      readSource: { agentId: "main", path: "/fixture" },
-      source: { owner: "owner", repo: "repo", branch: "feature" },
-    }));
     fixture.pullRequests.read.mockRejectedValue(new Error("PR discovery is unavailable"));
     fixture.latestShared.mockImplementation(async (_session, _key, isSuperseded) =>
       (await isSuperseded(snapshot)) ? null : failed,
@@ -336,17 +330,10 @@ it.each([false, true])(
         source_head_commit: "1".repeat(40),
         workspace_tree: "2".repeat(40),
       };
-      const target = {
-        params: { sessionKey, agentId: "main" },
-        identity: "pr-source",
-        readSource: { agentId: "main", path: "/fixture" },
-        source: { owner: "owner", repo: "repo", branch: "feature" },
-        assertCurrent: vi.fn(),
-      };
-      vi.spyOn(prRead, "createControlUiSessionPrRead").mockReturnValue(async () => target);
-      const prs = [
+      const source = { owner: "owner", repo: "repo", branch: "feature" };
+      const prs: ControlUiSessionPullRequestSnapshot["pullRequests"] = [
         {
-          ...target.source,
+          ...source,
           number: 1,
           title: "Published work",
           url: "https://github.com/owner/repo/pull/1",
@@ -374,7 +361,10 @@ it.each([false, true])(
       }
       expect(covered).toHaveBeenCalledWith(snapshot, expect.any(Function));
       expect(fixture.pullRequests.read).toHaveBeenCalledWith(
-        target,
+        expect.objectContaining({
+          session: expect.objectContaining({ sessionKey, agentId: "main" }),
+          assertCurrent: expect.any(Function),
+        }),
         expect.any(Function),
         "publication",
       );
@@ -394,9 +384,7 @@ it.each(["refresh", "personal", "receipt"] as const)(
         await pending.promise;
       };
       if (phase === "refresh") {
-        vi.mocked(
-          publicationAvailability.prepareCurrentGitHubPublicationOptionsIdentity,
-        ).mockRestore();
+        vi.mocked(publicationIdentity.prepareCurrentGitHubPublicationOptionsIdentity).mockRestore();
         vi.mocked(requestCurrentGitHubOAuthRefresh).mockImplementationOnce(hold);
         mocks.runCommandBuffered.mockClear();
       } else if (phase === "personal") {
@@ -470,7 +458,7 @@ it.each(["accepted", "missing", "scope", "connection", "unverified-profile"] as 
         );
         expect(fixture.requestForSession).not.toHaveBeenCalled();
         expect(
-          publicationAvailability.prepareCurrentGitHubPublicationOptionsIdentity,
+          publicationIdentity.prepareCurrentGitHubPublicationOptionsIdentity,
         ).not.toHaveBeenCalled();
       } else {
         expect(respond).toHaveBeenCalledWith(false, undefined, expect.any(Object));

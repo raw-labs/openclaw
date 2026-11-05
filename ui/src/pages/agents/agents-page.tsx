@@ -1,5 +1,6 @@
 import { createEffect, createMemo } from "solid-js";
 import { useApplication } from "../../lib/reactive/context.ts";
+import { ControlUiSettingsSlot } from "../../plugins/control-ui-settings-slot.solid.tsx";
 import { createAgentsPageState } from "./agents-page-state.ts";
 import type { AgentsRouteData } from "./route.ts";
 import { Agents } from "./view.tsx";
@@ -17,7 +18,12 @@ export function AgentsPage(props: { routeData?: AgentsRouteData }) {
   }));
   return (
     <openclaw-agents-page>
-      <Agents {...viewProps()} />
+      <Agents
+        {...viewProps()}
+        renderToolsSettings={() => (
+          <ControlUiSettingsSlot placement={{ section: "agents", panel: "tools" }} />
+        )}
+      />
     </openclaw-agents-page>
   );
 }

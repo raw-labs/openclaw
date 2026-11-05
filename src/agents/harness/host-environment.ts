@@ -6,8 +6,10 @@ import {
   type InstallationTarget,
 } from "../../infra/installation-target-context.js";
 import { applyPathPrepend, findPathKey, normalizePathPrepend } from "../../infra/path-prepend.js";
+import { getPluginRegistryForContext } from "../../plugins/runtime/gateway-request-scope.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { resolveSessionAgentIdStrict } from "../agent-scope.js";
+import { capturePreparedExecutionEnvironment } from "../execution-environment.js";
 import { prepareGitHubToolEnvironment } from "../github-tool-identity.js";
 import { resolveExecToolConfig } from "../lazy-exec-tool.js";
 
@@ -40,6 +42,8 @@ export function prepareAgentHarnessEnvironment(params: {
   sessionKey?: string;
   sandboxAgentId?: string;
   installationTarget?: InstallationTarget;
+  assertCurrent: () => void;
+  signal?: AbortSignal;
 }) {
   const execConfig = resolveExecToolConfig({
     cfg: params.config,
@@ -58,11 +62,20 @@ export function prepareAgentHarnessEnvironment(params: {
     applyPathPrepend(localToolEnv, [...localToolPathPrepend]);
     Object.freeze(localToolEnv);
   }
-  const identity = prepareGitHubToolEnvironment({
+  const secrets = getActiveSecretsRuntimeConfigSnapshot();
+  const input = {
     config: params.config ?? {},
-    sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig,
+    sourceConfig: secrets?.sourceConfig,
     agentId: resolveSessionAgentIdStrict(params),
-  });
+    assertCurrent: params.assertCurrent,
+    signal: params.signal,
+  };
+  const identity = capturePreparedExecutionEnvironment(
+    input,
+    prepareGitHubToolEnvironment(input),
+    getPluginRegistryForContext(),
+    secrets?.executionEnvironmentExclusions,
+  );
   const localProcessEnv = installationTargetEnv(params.installationTarget);
   return Object.freeze({
     ...identity,

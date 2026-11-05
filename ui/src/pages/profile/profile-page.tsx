@@ -48,6 +48,7 @@ import { useApplication } from "../../lib/reactive/context.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { projectOwner } from "../../lib/reactive/projection.ts";
 import { uploadsEnabled } from "../../lib/uploads.ts";
+import { ControlUiSettingsSlot } from "../../plugins/control-ui-settings-slot.solid.tsx";
 import "../../styles/profile.css";
 import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import { DiscordIdentity } from "./discord-identity.tsx";
@@ -616,6 +617,7 @@ export function ProfilePage() {
               }
             />
             <GitHubConnections />
+            <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />
             <AttributionSection />
           </Show>
           <Show when={hasPresentation()}>

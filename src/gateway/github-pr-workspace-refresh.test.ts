@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabasesAsync } from "../state/openclaw-agent-db.js";
 import { linkCanonicalUserProfileEmail } from "../state/user-profile-writes.js";
+import * as publicationPublisher from "./github-publication-publisher.js";
 import {
   commandResult,
   installGitHubPublicationTestHarness,
@@ -17,6 +18,54 @@ describe("imported PR source refresh", () => {
     creatorEmail: "publication-guest@example.test",
     sandbox: "required",
     realWorktree: true,
+  });
+
+  it("uses the publisher-provided author for local source-integration commits", async () => {
+    const preparePublisher = publicationPublisher.prepareGitHubPublisher;
+    const selectedAuthor = { name: "Verified Publisher", email: "publisher@example.test" };
+    const override = vi
+      .spyOn(publicationPublisher, "prepareGitHubPublisher")
+      .mockImplementation(async (...args) => {
+        const publisher = await preparePublisher(...args);
+        publisher.author = selectedAuthor;
+        return publisher;
+      });
+    try {
+      const f = await fixture();
+      // Import fixture history first so new objects below are host-generated commits,
+      // not the existing PR author's commits brought in by the source fetch.
+      await f.git("fetch", "--no-write-fetch-head", f.upstream, "main", "topic/existing");
+      const commits = async () =>
+        (
+          await f.git(
+            "cat-file",
+            "--batch-all-objects",
+            "--batch-check=%(objectname) %(objecttype)",
+          )
+        )
+          .split("\n")
+          .filter((line) => line.endsWith(" commit"))
+          .map((line) => line.split(" ")[0]!);
+      const before = new Set(await commits());
+      expect(await f.invoke()).toMatchObject({ status: "prepared" });
+      const integrationCommits: string[] = [];
+      for (const commit of (await commits()).filter((objectCommit) => !before.has(objectCommit))) {
+        if (
+          (await f.git("show", "-s", "--format=%s", commit)) === "Prepare selected base integration"
+        ) {
+          integrationCommits.push(commit);
+        }
+      }
+      expect(integrationCommits).toHaveLength(1);
+      for (const commit of integrationCommits) {
+        expect(await f.git("show", "-s", "--format=%an <%ae>%n%cn <%ce>", commit)).toBe(
+          "Verified Publisher <publisher@example.test>\nVerified Publisher <publisher@example.test>",
+        );
+      }
+      expect(f.writes).toEqual([]);
+    } finally {
+      override.mockRestore();
+    }
   });
 
   it.each([false, true])(
@@ -309,11 +358,12 @@ describe("imported PR source refresh", () => {
         f.pr.head.sha = f.branch.commit.sha = commit!;
         return commandResult();
       }
-      if (argv.includes("ls-remote")) {
-        return commandResult(`${f.pr.head.sha}\trefs/heads/${published.branch}\n`);
+      if (endpoint?.includes("/git/matching-refs/heads/")) {
+        const ref = `refs/heads/${decodeURIComponent(endpoint.split("/git/matching-refs/heads/")[1]!)}`;
+        return json([{ ref, object: { sha: await upstreamGit("rev-parse", ref) } }]);
       }
       if (endpoint?.includes("/git/ref/")) {
-        const ref = `refs/${endpoint.split("/git/ref/")[1]}`;
+        const ref = `refs/${decodeURIComponent(endpoint.split("/git/ref/")[1]!)}`;
         return json({ ref, sha: await upstreamGit("rev-parse", ref) });
       }
       if (endpoint?.includes("/git/commits/")) {

@@ -1,20 +1,28 @@
-import "../test-utils/prepare-compiled-subprocesses.js";
+import * as pluginProcessCommands from "openclaw/plugin-sdk/process-runtime";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import * as registryRead from "../agents/worktrees/registry-read.js";
+import "../test-utils/prepare-compiled-subprocesses.js";
 import {
   deleteRegistryWorktree,
   insertRegistryWorktree,
   updateRegistryWorktree,
 } from "../agents/worktrees/registry.js";
 import { findLiveRegistryWorktreeByOwner } from "../agents/worktrees/registry.test-support.js";
+import { managedWorktrees } from "../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
 import * as configIo from "../config/io.js";
+import {
+  setRuntimeConfigSnapshot,
+  clearRuntimeConfigSnapshot,
+} from "../config/runtime-snapshot.js";
 import { patchSessionEntryCore } from "../config/sessions/session-accessor.sqlite-entry.js";
 import { memorySessionActorOwners } from "../config/sessions/session-actor-memory-owner.js";
 import { runWithSessionActorStorage } from "../config/sessions/session-actor-storage-binding.js";
 import { readSessionActorStorageResult } from "../config/sessions/session-actor-storage-result.js";
 import type { withSessionEntryReadOnlyInWorker } from "../config/sessions/session-entry-read-runtime.js";
+import type { OpenClawConfig } from "../config/types.openclaw.js";
+import * as processCommands from "../process/exec.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseAsync } from "../state/openclaw-state-db.js";
 import {
@@ -27,22 +35,36 @@ import {
   prepareGitHubPublicationSession,
   prepareGitHubPublicationWorkspaceOwner,
 } from "./github-publication-availability.js";
-import {
-  readGitHubPublicationFact,
-  startGitHubPublicationDiscovery,
-} from "./github-publication-discovery.js";
+import { createRepositoryPublicationDiscovery } from "./github-publication-discovery.js";
+import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import type { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
-import { prepareGitHubPublicationFact } from "./worker-environments/worker-github-binding.js";
+import { prepareRepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
 
-async function prepareGitHubPublicationAvailability(
-  params: Parameters<typeof prepareGitHubPublicationFact>[0],
-) {
-  return (await prepareGitHubPublicationFact(params))?.available ?? false;
+let service: AbortController;
+function provider() {
+  return createGitHubPublicationProvider({
+    getConfig: mocks.config,
+    refreshIdentity: async () => {},
+    refreshPersonal: async () => {},
+    assertCurrent: () => service.signal.throwIfAborted(),
+    signal: service.signal,
+  });
+}
+async function prepareGitHubPublicationAvailability(params: typeof session) {
+  return (
+    (
+      await prepareRepositoryWorkerPublicationFact({
+        ...params,
+        provider: provider(),
+        assertCurrent: () => service.signal.throwIfAborted(),
+      })
+    )?.available ?? false
+  );
 }
 
 const identity = {
   source: "system-detected",
-  account: { login: "test" },
+  account: { accountId: 42, login: "test" },
   env: { GH_TOKEN: "synthetic" },
 };
 const mocks = vi.hoisted(() => ({
@@ -238,9 +260,11 @@ async function memoryFixture(sessionKey: string, activeWriterRunId?: string) {
 }
 
 beforeEach(async () => {
+  service = new AbortController();
   vi.stubEnv("OPENCLAW_STATE_DIR", tempDirs.make("publication-worktree-read-"));
   mocks.config.mockReset().mockReturnValue({});
   vi.spyOn(configIo, "getRuntimeConfig").mockImplementation(mocks.config);
+  setRuntimeConfigSnapshot(mocks.config());
   mocks.session.mockReset().mockReturnValue({
     canonicalKey: session.sessionKey,
     agentId: session.agentId,
@@ -257,6 +281,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  service.abort();
+  clearRuntimeConfigSnapshot();
   await closeOpenClawStateDatabaseAsync();
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -327,6 +353,7 @@ it("rejects a worktree retired while publication identity is prepared", async ()
 
 it("keeps an admitted stored main alias under its canonical publication owner", async () => {
   mocks.config.mockReturnValue({ session: { scope: "global" } });
+  setRuntimeConfigSnapshot(mocks.config());
   const aliasWorktree = {
     ...worktree,
     id: "publication-global-worktree",
@@ -376,7 +403,9 @@ it.each(["session", "identity", "discovery"])(
         },
       );
       expect(
-        await qualifyGitHubPublicationSource(session, () => {}, prepared.readCurrent),
+        await qualifyGitHubPublicationSource(session, () => {}, prepared.readCurrent, {
+          supportsOrigin: provider().supportsOrigin,
+        }),
       ).toMatchObject({
         ok: true,
         custody: { kind: "qualified", source: "worktree" },
@@ -399,7 +428,7 @@ it.each(["branch replacement", "turn cancellation and release"])(
     const sql = observeMainThreadSql();
     const clock = createGatewaySchedulerClock();
     const scheduler = createTestGatewayScheduler(clock.clock);
-    const discovery = startGitHubPublicationDiscovery({ scheduler });
+    const discovery = createRepositoryPublicationDiscovery({ scheduler, getProvider: provider });
     try {
       expect(await prepareGitHubPublicationAvailability(selected)).toBe(true);
       if (change === "turn cancellation and release") {
@@ -413,12 +442,12 @@ it.each(["branch replacement", "turn cancellation and release"])(
               authorize() {},
             },
           },
-          () => readGitHubPublicationFact(selected),
+          () => discovery.read(selected),
         );
         turn.abort();
         await actor.release();
         await clock.wake();
-        expect(readGitHubPublicationFact(selected).available).toBe(true);
+        expect(discovery.read(selected).available).toBe(true);
       } else {
         mocks.identity.mockImplementationOnce(async () => {
           await patchSessionEntryCore(
@@ -438,7 +467,6 @@ it.each(["branch replacement", "turn cancellation and release"])(
       sql.expectIdle();
     } finally {
       sql.restore();
-      await discovery.stop();
       await scheduler.stop();
     }
   },
@@ -464,4 +492,38 @@ it("retains the memory session outside its async scope and rejects a replacement
     ),
   );
   expect(() => prepared.current()).toThrow();
+});
+
+it("requalifies cached physical origins when the selected provider host changes", async () => {
+  let providerConfig: OpenClawConfig = { gateway: { github: { host: "github.com" } } };
+  const selected = createGitHubPublicationProvider({
+    getConfig: () => providerConfig,
+    refreshIdentity: async () => {},
+    refreshPersonal: async () => {},
+    assertCurrent: () => service.signal.throwIfAborted(),
+    signal: service.signal,
+  });
+  const origins = vi.spyOn(managedWorktrees, "resolveRepositoryIdentity");
+  const nativeCommands = vi.spyOn(processCommands, "runCommandBuffered");
+  const pluginCommands = vi.spyOn(pluginProcessCommands, "runCommandBuffered");
+  using prepared = await prepareGitHubPublicationSession(session.sessionKey, {
+    agentId: session.agentId,
+  });
+  const first = await qualifyGitHubPublicationSource(session, () => {}, prepared.readCurrent, {
+    supportsOrigin: selected.supportsOrigin,
+  });
+  expect(first).toMatchObject({ ok: true, target: { kind: "supported", freshness: "observed" } });
+  if (!first.ok) {
+    throw first.cause;
+  }
+  providerConfig = { gateway: { github: { host: "engineering.ghe.com" } } };
+  expect(first.assertCurrent).toThrow("target support changed");
+  const second = await qualifyGitHubPublicationSource(session, () => {}, prepared.readCurrent, {
+    supportsOrigin: selected.supportsOrigin,
+  });
+  expect(second).toMatchObject({ ok: true, target: { kind: "unsupported" } });
+  expect(origins).toHaveBeenCalledOnce();
+  expect(mocks.identity).not.toHaveBeenCalled();
+  expect(nativeCommands).not.toHaveBeenCalled();
+  expect(pluginCommands).not.toHaveBeenCalled();
 });

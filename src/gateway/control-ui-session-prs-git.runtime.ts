@@ -211,7 +211,7 @@ async function readForkHeadCandidates(
     remoteHost,
   }: {
     branch: string;
-    base: Pick<GitCheckoutContext, "owner" | "repo">;
+    base: { owner: string; repo: string };
     head: ReturnType<typeof readCheckoutHead>;
     remoteHost: string;
   },
@@ -253,7 +253,6 @@ async function readForkHeadCandidates(
 
 export async function readCheckoutGitContext(
   root: string,
-  githubHost = "github.com",
 ): Promise<GitReadOperations["checkout.context"]["output"]> {
   const head = readCheckoutHead(root);
   const branch =
@@ -266,12 +265,11 @@ export async function readCheckoutGitContext(
     return null;
   }
   const remoteUrl = await gitOutput(root, ["remote", "get-url", "origin"]);
-  const publicRemote = remoteUrl ? parseGitHubRemoteUrl(remoteUrl) : null;
-  const remote = publicRemote ?? (remoteUrl ? parseGitHubRemoteUrl(remoteUrl, githubHost) : null);
-  if (!remote) {
+  if (!remoteUrl) {
     return null;
   }
-  const remoteHost = publicRemote ? "github.com" : githubHost;
+  const remoteHost = URL.parse(remoteUrl)?.hostname ?? /^git@([^:]+):/u.exec(remoteUrl)?.[1];
+  const remote = remoteHost ? parseGitHubRemoteUrl(remoteUrl, remoteHost) : null;
   const preparedDefaultRef = readDefaultRef(head);
   const defaultRef =
     preparedDefaultRef === undefined
@@ -281,12 +279,12 @@ export async function readCheckoutGitContext(
         )
       : preparedDefaultRef;
   const defaultBranch = defaultRef?.replace(/^origin\//, "");
-  const forkHeadCandidates = canDiscoverAlternateForkHeads(branch, defaultBranch)
-    ? await readForkHeadCandidates(root, { branch, base: remote, head, remoteHost })
-    : [];
+  const forkHeadCandidates =
+    remote && remoteHost && canDiscoverAlternateForkHeads(branch, defaultBranch)
+      ? await readForkHeadCandidates(root, { branch, base: remote, head, remoteHost })
+      : [];
   return {
-    ...remote,
-    ...(!publicRemote ? { host: githubHost } : {}),
+    originUrl: remoteUrl,
     branch: branch === "HEAD" ? null : branch,
     root,
     ...(defaultBranch ? { defaultBranch } : {}),

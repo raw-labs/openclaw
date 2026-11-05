@@ -27,6 +27,26 @@ function writeWorkspacePackageEntry(params: {
 }
 
 describe("plugin workspace package export aliases", () => {
+  it.each(["src", "dist"] as const)("resolves narrow cron validation imports from %s", (mode) => {
+    const fixture = createPluginSdkAliasFixture();
+    const files = writeWorkspacePackageEntry({
+      root: fixture.root,
+      packageDir: "gateway-protocol",
+      srcFile: "cron-list-page-validation.ts",
+      distFile: "cron-list-page-validation.mjs",
+    });
+    const sourcePluginEntry = writePluginEntry(
+      fixture.root,
+      bundledPluginFile("demo", "src/index.ts"),
+    );
+    const aliases = withEnv({ NODE_ENV: undefined }, () =>
+      buildPluginLoaderAliasMap(sourcePluginEntry, undefined, undefined, mode),
+    );
+    expect(aliases["@openclaw/gateway-protocol/cron-list-page-validation"]).toBe(
+      fs.realpathSync(mode === "src" ? files.srcFile : files.distFile),
+    );
+  });
+
   it("resolves workspace export targets and excludes unsupported or missing entries", () => {
     const fixture = createPluginSdkAliasFixture();
     const targets = Object.fromEntries(

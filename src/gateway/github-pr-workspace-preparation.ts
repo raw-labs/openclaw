@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionGitHubActionParams } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
-import { canPrepareGitHubPullRequest } from "../agents/sandbox/github-publication.js";
+import { canPrepareRepositoryWorkspace } from "../agents/sandbox/github-publication.js";
 import { getGatewayToolCallerIdentity } from "../agents/tools/gateway-caller-context.js";
 import { withWorktreeGitConfig } from "../agents/worktrees/checkout-git-config.js";
 import { isEmptyWorktreeSource } from "../agents/worktrees/empty-source.js";
@@ -10,42 +10,65 @@ import { sessionEntryCommitGuardOptions } from "../config/sessions/session-sourc
 import type { SessionEntry, SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
 import { normalizeAgentId } from "../routing/session-key.js";
 import {
-  matchesCurrentGitHubPublicationIdentity,
-  prepareCurrentGitHubPublicationIdentity,
   prepareGitHubPublicationRepositoryIdentity,
   prepareGitHubPublicationSession,
 } from "./github-publication-availability.js";
 import { integrateManagedWorkspaceSource } from "./github-publication-base-refresh.js";
 import { parseGitHubPublicationBaseBranch } from "./github-publication-base.js";
-import {
-  createGitHubPublicationCommandRunner,
-  readGitHubPublicationBaseSha,
-} from "./github-publication-git-transport.js";
-import { inspectOwnGitHubPullRequest } from "./github-publication-inspect.js";
-import { assertExistingPullRequestWriteAccess } from "./github-publication-pr-preflight.js";
+import { prepareOwnGitHubPullRequestReader } from "./github-publication-inspect-reader.js";
 import {
   captureGitHubPublicationActionAuthority,
-  prepareGitHubPublicationRequesterV2,
+  type GitHubPublicationRequesterV2,
 } from "./github-publication-requester.js";
 import { prepareManagedWorkspaceReviewBase } from "./github-publication-workspace-review.js";
 import { parseGitHubRemoteUrl } from "./github-remote.js";
-import type { GatewayRequestHandlerOptions } from "./server-methods/types.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
+import type { GatewayRequestContext } from "./server-methods/types.js";
 import { isSessionOwnRequester } from "./session-sharing-policy.js";
 import { resolveLocalWorkspaceOwner } from "./worker-environments/local-workspace-projection.js";
 
+export type PullRequestPreparationInput = {
+  params: Extract<SessionGitHubActionParams, { action: "prepare_pr" | "refresh_base" }>;
+  requester: GitHubPublicationRequesterV2;
+  signal?: AbortSignal;
+};
+
+/** The conversation as preparation and adoption compare it, including its skills snapshot. */
+export function preparePullRequestSession(
+  sessionKey: string,
+  options: { agentId?: string; assertCurrent: () => void },
+) {
+  return prepareGitHubPublicationSession(sessionKey, {
+    ...options,
+    // The worktree owner retains its binding; preparation itself writes the nested PR association.
+    fields: [
+      "sessionId",
+      "lifecycleRevision",
+      "archivedAt",
+      "repositoryWorkspaceId",
+      "owner",
+      "createdActor",
+      "visibility",
+      "incognito",
+    ],
+    // Adoption's file-source check selects skill libraries from the full entry.
+    projection: ["skillsSnapshot"],
+  });
+}
+
 export async function performSessionGitHubPreparation(
-  options: Omit<GatewayRequestHandlerOptions, "params"> & {
-    params: Extract<SessionGitHubActionParams, { action: "prepare_pr" | "refresh_base" }>;
-  },
-): Promise<void> {
-  const { params, context } = options;
+  options: PullRequestPreparationInput,
+  provider: RepositoryPublicationProvider,
+  context: GatewayRequestContext,
+) {
+  const { params } = options;
   const refreshingBase = params.action === "refresh_base";
   const caller = getGatewayToolCallerIdentity();
   let sandbox = caller?.workspaceBaseRefreshSandbox;
   const adopting = sandbox?.workspaceSource !== "managed-worktree";
   if (
     !caller ||
-    !canPrepareGitHubPullRequest(sandbox) ||
+    !canPrepareRepositoryWorkspace(sandbox) ||
     (adopting && (!caller.workspacePrAdoptionSessionId || refreshingBase))
   ) {
     throw new Error(
@@ -63,7 +86,7 @@ export async function performSessionGitHubPreparation(
   // The conversation as preparation and adoption compare it, including its skills snapshot.
   using selected = await prepareGitHubPublicationSession(params.sessionKey, {
     agentId: caller.agentId ?? params.agentId,
-    assertCurrent: () => options.sessionMutationAuthorization?.assertCurrent(),
+    assertCurrent: () => options.requester.assertCurrent(),
     // The worktree owner retains its binding; preparation itself writes the nested PR association.
     fields: [
       "sessionId",
@@ -91,15 +114,17 @@ export async function performSessionGitHubPreparation(
   }
   const session = { agentId: loaded.agentId, sessionKey: loaded.canonicalKey };
   const publicationSession = { ...session, sessionId: loaded.entry.sessionId };
-  const admitted = await prepareGitHubPublicationRequesterV2(options, session);
-  using _ = { [Symbol.dispose]: admitted.release };
+  const admitted = { requester: options.requester };
+  const { getPluginRuntimeGatewayRequestScope } =
+    await import("../plugins/runtime/gateway-request-scope.js");
+  const client = getPluginRuntimeGatewayRequestScope()?.client ?? null;
   const authority = captureGitHubPublicationActionAuthority(admitted.requester);
   // Guests prepare their own conversation; a current full-write maintainer may assist.
   const { actor } = admitted.requester.snapshot;
   if (
     !authority.operatorWrite &&
     !isSessionOwnRequester(
-      { cfg: context.getRuntimeConfig(), client: options.client },
+      { cfg: context.getRuntimeConfig(), client },
       { canonicalKey: loaded.canonicalKey, entry: loaded.entry },
       actor.kind === "operator" && actor.profileId !== GATEWAY_OWNER_PROFILE_ID
         ? actor.profileId
@@ -126,29 +151,21 @@ export async function performSessionGitHubPreparation(
     throw new Error("Workspace coordination is unavailable; retry after Gateway startup.");
   }
   const inspectCurrent = async (assertWorkspace: () => void) => {
-    const inspected = await inspectOwnGitHubPullRequest({
+    const inspected = await provider.inspectPullRequest({
       pullRequestUrl,
-      session: publicationSession,
-      requester: admitted.requester,
+      agentId: session.agentId,
+      reader: await prepareOwnGitHubPullRequestReader(admitted.requester, publicationSession),
       assertCurrent: assertWorkspace,
     });
-    const identity = await prepareCurrentGitHubPublicationIdentity(
-      session.agentId,
-      inspected.assertCurrent,
-    );
+    await inspected.verifyWriteAccess();
+    const publisher = await provider.preparePublisher(session.agentId);
     const assertCurrent = () => {
       inspected.assertCurrent();
-      if (!matchesCurrentGitHubPublicationIdentity({ agentId: session.agentId, identity })) {
-        throw new Error("The GitHub publisher changed; retry PR preparation.");
-      }
+      publisher.assertCurrent();
+      assertWorkspace();
     };
-    await assertExistingPullRequestWriteAccess({
-      pullRequest: inspected.result,
-      identity,
-      assertCurrent,
-      requirePublicRepositories: inspected.requirePublicRepositories,
-    });
-    return { inspected, identity, assertCurrent };
+    assertCurrent();
+    return { inspected, publisher, assertCurrent };
   };
   const prepare = async (assertOwned: () => void) => {
     const assertPlacement = () => {
@@ -170,12 +187,7 @@ export async function performSessionGitHubPreparation(
         sandbox: sandbox!,
         assertCurrent: eligibility.assertCurrent,
         verifyBeforeBinding: async () => {
-          await assertExistingPullRequestWriteAccess({
-            pullRequest: eligibility.inspected.result,
-            identity: eligibility.identity,
-            assertCurrent: eligibility.assertCurrent,
-            requirePublicRepositories: eligibility.inspected.requirePublicRepositories,
-          });
+          await eligibility.inspected.verifyWriteAccess();
         },
         signal: options.signal,
       });
@@ -206,7 +218,7 @@ export async function performSessionGitHubPreparation(
         "PR preparation requires this conversation's existing local managed workspace.",
       );
     }
-    const { inspected, identity, assertCurrent } = await inspectCurrent(owner.assertCurrent);
+    const { inspected, publisher, assertCurrent } = await inspectCurrent(owner.assertCurrent);
     const { url, host, number, base, head } = inspected.result;
     if (!head) {
       throw new Error("The original PR head is unavailable; saved work was preserved.");
@@ -329,16 +341,21 @@ export async function performSessionGitHubPreparation(
           previous.base.commit !== pullRequest.base.commit))
     ) {
       // PR details can lag the live ref, including after a completed base refresh.
-      const { run } = createGitHubPublicationCommandRunner(assertCurrent);
+      const baseUrl = `https://${pullRequest.host}/${pullRequest.base.repository}.git`;
       pullRequest.base = {
         ...pullRequest.base,
-        commit: await readGitHubPublicationBaseSha(
-          run,
-          pullRequest.base.repository,
-          pullRequest.base.branch,
-          pullRequest.host,
-          identity.env,
-        ),
+        commit: await provider.readBase({
+          target: {
+            pushRepository: pullRequest.head.repository,
+            repository: pullRequest.base.repository,
+            branch: pullRequest.head.branch,
+            baseBranch: pullRequest.base.branch,
+            remoteUrl: `https://${pullRequest.host}/${pullRequest.head.repository}.git`,
+            baseRemoteUrl: baseUrl,
+          },
+          publisher,
+          assertCurrent,
+        }),
       };
     }
     if (
@@ -417,12 +434,7 @@ export async function performSessionGitHubPreparation(
     const accept = async () => {
       if (preparedHead) {
         // Source fetches can outlive a remote head or permission observation.
-        await assertExistingPullRequestWriteAccess({
-          pullRequest: inspected.result,
-          identity,
-          assertCurrent,
-          requirePublicRepositories: inspected.requirePublicRepositories,
-        });
+        await inspected.verifyWriteAccess();
       }
       assertReserved();
       const committedEntry = await patchSessionEntryCore(
@@ -453,7 +465,8 @@ export async function performSessionGitHubPreparation(
     assertReserved();
     const integration = await integrateManagedWorkspaceSource({
       owner,
-      identity,
+      provider,
+      publisher,
       sandbox: publicationSandbox,
       signal,
       assertCurrent: assertReserved,
@@ -538,5 +551,5 @@ export async function performSessionGitHubPreparation(
     result = await placements.withWorkspaceExclusion(loaded.entry.sessionId, prepare);
   }
   assertSession();
-  options.respond(true, result);
+  return result;
 }

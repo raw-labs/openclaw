@@ -444,7 +444,12 @@ describe("loadControlUiSessionPullRequests", () => {
     vi.stubGlobal("fetch", routedFetch([pullsRoute(() => githubJson([])), repoRoute()]));
     mockPrCheckout({
       revision: () => revision,
-      resolve: (root) => ({ ...context, branch, root, defaultBranch: "main" }),
+      resolve: (root) => ({
+        originUrl: `https://github.com/${context.owner}/${context.repo}`,
+        branch,
+        root,
+        defaultBranch: "main",
+      }),
     });
     const loadContext = (refresh = false) =>
       load(

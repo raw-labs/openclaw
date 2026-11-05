@@ -1,3 +1,4 @@
+import { createContext as createGatewayContext } from "./server-plugin-in-process-dispatch.test-support.js";
 // oxfmt-ignore
 import {
   commandResult,
@@ -17,7 +18,6 @@ import {
 } from "./github-publication-requester.test-support.js";
 import { captureGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import { handleGatewayRequest } from "./server-methods.js";
-import type { GatewayRequestContext } from "./server-methods/types.js";
 
 const mocks = githubPublicationTestMocks();
 
@@ -197,10 +197,11 @@ export function createPublicationActionInvoker(
     const principal =
       actor === "guest" ? f.guestSource : actor === "writer" ? writerSource : f.maintainerSource;
     const client = invocation.client ?? principal.client;
-    const context = {
-      ...principal.context,
-      githubPublicationService: f.coordinator,
-    } as GatewayRequestContext;
+    const context = Object.assign(
+      createGatewayContext([], principal.context.getRuntimeConfig),
+      principal.context,
+      { githubPublicationService: f.coordinator },
+    );
     const operator = await captureGatewayOperatorRunAuthority({ client, context });
     const callGateway: InProcessGatewayCaller = async <T>(
       method: string,

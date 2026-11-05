@@ -6,11 +6,9 @@ import { prepareUserProfileRolePolicyAuthority } from "../../state/user-channel-
 import { captureResidentUserProfileAccess } from "../../state/user-profile-list.js";
 import type { PersonalGitHubAction } from "../github-personal-oauth.js";
 import type { PersonalGitHubSessionActionV2 } from "../github-personal-publication.js";
-import {
-  currentGitHubPublicationConfig,
-  prepareGitHubPublicationSession,
-} from "../github-publication-availability.js";
-import { GitHubPublicationSessionChangedError } from "../github-publication-failure.js";
+import { prepareGitHubPublicationSession } from "../github-publication-availability.js";
+import { RepositoryPublicationSessionChangedError } from "../github-publication-errors.js";
+import { currentGitHubPublicationConfig } from "../github-publication-identity.js";
 import { prepareGitHubPublicationRequesterV2 } from "../github-publication-requester.js";
 import { operatorSessionCap } from "../operator-role-policy.js";
 import type { SessionMutationTarget } from "../session-mutation-authorization-error.js";
@@ -83,7 +81,7 @@ async function prepareOptionsSession(
     return {
       readCurrent: () => {
         if (!active) {
-          throw new GitHubPublicationSessionChangedError();
+          throw new RepositoryPublicationSessionChangedError();
         }
         return session.readCurrent();
       },
@@ -198,7 +196,7 @@ export async function prepareGitHubPublicationOptionsRead(
           target.entry.sessionId !== loaded.entry?.sessionId ||
           target.entry.lifecycleRevision !== loaded.entry?.lifecycleRevision)
       ) {
-        throw new GitHubPublicationSessionChangedError();
+        throw new RepositoryPublicationSessionChangedError();
       }
       const filter = createSessionListEntryFilter({
         cfg,
@@ -330,7 +328,7 @@ async function bindPersonalGitHubSessionAction(
       currentGitHubClient(options, "operator.write", action.owner);
       const current = prepared.readCurrent();
       if (current.entry?.archivedAt !== undefined) {
-        throw new GitHubPublicationSessionChangedError();
+        throw new RepositoryPublicationSessionChangedError();
       }
       authorization?.assertCurrent();
     };

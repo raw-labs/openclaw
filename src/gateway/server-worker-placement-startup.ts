@@ -1,4 +1,3 @@
-import { resolveConfiguredGitHubToolIdentity } from "../agents/github-tool-identity.js";
 import type { SessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { installSessionPlacementAdmissionProvider } from "../agents/session-placement-admission.js";
 import { getRuntimeConfig } from "../config/config.js";
@@ -14,7 +13,10 @@ import { onSessionIdentityMutation } from "../sessions/session-lifecycle-events.
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
-import { createGitHubPublicationRuntime } from "./github-publication-runtime.js";
+import {
+  createGitHubPublicationRuntime,
+  createNativeGitHubPublicationRuntime,
+} from "./github-publication-runtime.js";
 import type { NodeWorkerSupervisorTransport } from "./node-registry-private.js";
 import { measureGatewayCloseStep, measureGatewayRestartTrace } from "./restart-trace.js";
 import { emitSessionsChanged } from "./server-methods/session-change-event.js";
@@ -76,6 +78,7 @@ type WorkerPlacementSidecar = { stop: () => Promise<void> };
 
 export type GatewayWorkerPlacementRuntimeParams = {
   githubPublicationRuntime?: ReturnType<typeof createGitHubPublicationRuntime>;
+  workspacePublicationHost?: import("./workspace-publication-provider.js").WorkspacePublicationHost;
   scheduler: GatewayScheduler;
   placements: WorkerSessionPlacementStore;
   initialPlacements: readonly WorkerSessionPlacementRecord[];
@@ -90,18 +93,6 @@ export type GatewayWorkerPlacementRuntimeParams = {
   info?: (message: string) => void;
   warn: (message: string) => void;
 };
-
-export function createGatewayGitHubPublicationRuntime(params: {
-  placements: WorkerSessionPlacementStore;
-  environments?: Pick<WorkerEnvironmentService, "get" | "startTunnel" | "ensureRetainedRunning">;
-  getCommittedRuntimeConfig: () => OpenClawConfig;
-  warn: (message: string) => void;
-}) {
-  return createGitHubPublicationRuntime({
-    ...params,
-    loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
-  });
-}
 
 export type GatewayWorkerPlacementRuntime = ReturnType<typeof createGatewayWorkerPlacementRuntime>;
 
@@ -123,10 +114,16 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
     ready: githubPublicationReady,
     close: closeGitHubPublication,
     coordinator: githubPublication,
+    resolveGitAuthor,
     prepareAcceptedWorkspacePublication,
     publishAcceptedWorkspace,
     reconcilePublications,
-  } = params.githubPublicationRuntime ?? createGatewayGitHubPublicationRuntime(params);
+  } = params.workspacePublicationHost ??
+  params.githubPublicationRuntime ??
+  createNativeGitHubPublicationRuntime({
+    ...params,
+    loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
+  });
   const withPreparedRecovery = createWorkerWorkspaceRecoveryPreparer({
     loadSessionRuntime: loadWorkerPlacementSessionRuntimeModule,
     getConfig: getRuntimeConfig,
@@ -260,19 +257,7 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
       workspaceOperations,
       prepareAcceptedWorkspacePublication,
       publishAcceptedWorkspace,
-      resolveGitAuthor: (agentId) =>
-        (
-          resolveConfiguredGitHubToolIdentity({
-            config: getRuntimeConfig(),
-            agentId,
-            scope: "agent",
-          }) ??
-          resolveConfiguredGitHubToolIdentity({
-            config: getRuntimeConfig(),
-            agentId,
-            scope: "system",
-          })
-        )?.gitAuthor,
+      resolveGitAuthor,
     }),
     createGatewayWorkerDispatchAdmission(),
     publishPlacementChanges,
@@ -337,6 +322,7 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
     warn: params.warn,
   });
   const admissionProvider = createWorkerSessionTurnPlacementProvider({
+    readWorkerPublicationFact: params.workspacePublicationHost?.readWorkerPublicationFact,
     withRequiredSession,
     environments: params.environments,
     placements: params.placements,
@@ -680,3 +666,5 @@ export function createGatewayWorkerPlacementRuntime(params: GatewayWorkerPlaceme
     startRuntime,
   };
 }
+
+export { loadWorkerPlacementSessionRuntimeModule } from "./server-worker-placement-session-target.js";

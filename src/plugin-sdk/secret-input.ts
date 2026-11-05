@@ -6,6 +6,7 @@ import { buildSecretInputSchema, registerSensitiveConfigSchema } from "./secret-
 export {
   hasConfiguredSecretInput,
   isSecretRef,
+  isValidEnvSecretRefId,
   coerceSecretRef,
   resolveSecretInputString,
   normalizeResolvedSecretInputString,

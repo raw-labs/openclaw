@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import { loadTranscriptEvents } from "../config/sessions/session-accessor.js";
 import { formatErrorMessage } from "../infra/errors.js";
-import { appendGitConfig, gitMaintenanceEnvironment } from "../infra/git-maintenance-env.js";
 import * as loggingConfig from "../logging/config.js";
 import { withPluginRuntimePluginScope } from "../plugins/runtime/gateway-request-scope.js";
 import { githubPublicationReceipts } from "../state/github-publication-receipts.js";
@@ -16,6 +15,7 @@ import {
   openOpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
 import { closeStateDatabaseForTest } from "../test-utils/database-cleanup.js";
+import * as publicationStore from "./github-publication-store-async.js";
 import {
   BRANCH,
   NEW_HEAD,
@@ -30,7 +30,7 @@ import {
   commands,
   createSystemGitHubPublicationRequesterFixture,
   createTestGitHubPublicationCoordinator as createGitHubPublicationCoordinator,
-  createTestGitHubPublicationRuntime as createGitHubPublicationRuntime,
+  createTestGitHubPublicationRuntime as createRepositoryPublicationRuntime,
   githubPublicationTestMocks,
   installGitHubPublicationTestHarness,
   persistClaimPublicationWorkspace,
@@ -195,6 +195,11 @@ describe("Gateway GitHub publication", () => {
       true,
     );
     expect(commands.some((argv) => argv.some((arg) => arg.includes("roboclaw-token")))).toBe(false);
+    for (const call of commandCalls.filter(({ argv }) =>
+      ["update-ref", "read-tree", "add", "reset", "push"].some((arg) => argv.includes(arg)),
+    )) {
+      expect(call.hooksPath, call.argv.join(" ")).toBe(os.devNull);
+    }
     for (const argv of commandMatchesAny("read-tree", "add", "reset")) {
       expect(argv).toContain("core.fsmonitor=false");
     }
@@ -204,11 +209,14 @@ describe("Gateway GitHub publication", () => {
       expect.arrayContaining([
         "--no-follow-tags",
         "--recurse-submodules=no",
-        "credential.helper=!gh auth git-credential",
         `${NEW_HEAD}:refs/heads/${BRANCH}`,
       ]),
     );
     expect(push).not.toContain(`HEAD:refs/heads/${BRANCH}`);
+    expect(commandCalls.find((call) => call.argv === push)).toMatchObject({
+      credentialHelperDisabled: true,
+      authorizationTarget: "http.https://github.com/openclaw/openclaw.git.extraHeader",
+    });
     const fetch = commands.find((argv) => argv.includes("fetch"));
     expect(fetch).toEqual(
       expect.arrayContaining([
@@ -226,10 +234,21 @@ describe("Gateway GitHub publication", () => {
       base: "main",
       draft: false,
     });
-    for (const [, options] of mocks.runCommand.mock.calls) {
-      expect(options?.env).toMatchObject(
-        appendGitConfig(gitMaintenanceEnvironment(), [["core.hooksPath", os.devNull]]),
+    for (const [argv, options] of mocks.runCommand.mock.calls) {
+      if (argv[0] === "gh" && argv[1] === "auth") {
+        continue;
+      }
+      const config = Object.fromEntries(
+        Array.from({ length: Number(options?.env?.GIT_CONFIG_COUNT ?? 0) }, (_, i) => [
+          options?.env?.[`GIT_CONFIG_KEY_${i}`],
+          options?.env?.[`GIT_CONFIG_VALUE_${i}`],
+        ]),
       );
+      expect(config).toMatchObject({
+        "maintenance.auto": "false",
+        "gc.auto": "0",
+        "core.hooksPath": os.devNull,
+      });
     }
     const persisted = database.db
       .prepare("SELECT * FROM github_publication_requests WHERE session_id = ?")
@@ -271,12 +290,10 @@ describe("Gateway GitHub publication", () => {
             '{"fork":true,"default_branch":"main","parent":{"name":"openclaw","default_branch":"main","owner":{"login":"openclaw"}}}\n',
           );
         }
-        if (
-          fork &&
-          command.includes("ls-remote") &&
-          command.includes("roboclaw-bot/openclaw.git")
-        ) {
-          return commandResult(`${NEW_HEAD}\trefs/heads/${BRANCH}\n`);
+        if (fork && command.includes("repos/roboclaw-bot/openclaw/git/matching-refs/heads/")) {
+          return commandResult(
+            JSON.stringify([{ ref: `refs/heads/${BRANCH}`, object: { sha: NEW_HEAD } }]),
+          );
         }
         if (pullLookup(command)) {
           pullLookups++;
@@ -597,12 +614,12 @@ describe("Gateway GitHub publication", () => {
           );
         }
 
-        if (
-          command.startsWith(
-            "git -c credential.helper= -c credential.helper=!gh auth git-credential ls-remote",
-          )
-        ) {
-          return commandResult(remotePublished ? `${NEW_HEAD}\trefs/heads/${BRANCH}\n` : "");
+        if (command.includes("/git/matching-refs/heads/")) {
+          return commandResult(
+            JSON.stringify(
+              remotePublished ? [{ ref: `refs/heads/${BRANCH}`, object: { sha: NEW_HEAD } }] : [],
+            ),
+          );
         }
         if (argv.includes("push")) {
           remotePublished = true;
@@ -641,7 +658,7 @@ describe("Gateway GitHub publication", () => {
 
   it("reports an in-run publication notice into the requesting run", async () => {
     await persistPublicationTestSession();
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements: createWorkerSessionPlacementStore({ database: openDatabase() }),
       loadSessionRuntime,
       warn: (message) => {
@@ -677,7 +694,7 @@ describe("Gateway GitHub publication", () => {
     );
     await persistClaimPublicationWorkspace();
     const warnings: string[] = [];
-    const runtime = createGitHubPublicationRuntime({
+    const runtime = createRepositoryPublicationRuntime({
       placements,
       loadSessionRuntime,
       warn: (message) => warnings.push(message),
@@ -732,9 +749,17 @@ describe("Gateway GitHub publication", () => {
     });
     expect(warnings).toEqual([expect.stringContaining("GitHub publication recovery deferred")]);
     warnings.length = 0;
-    vi.spyOn(runtime.coordinator, "markReportedAsync").mockImplementationOnce(() => {
-      throw new Error("Gateway stopped after transcript append");
-    });
+    // Fail only the report receipt after the real transcript append, not the coordinator call.
+    const maintain = publicationStore.runGitHubPublicationMaintenanceAsync;
+    const markReported = vi
+      .spyOn(publicationStore, "runGitHubPublicationMaintenanceAsync")
+      .mockImplementation(async (input, assertCurrent) => {
+        if (input.operation === "report") {
+          markReported.mockRestore();
+          throw new Error("Gateway stopped after transcript append");
+        }
+        return maintain(input, assertCurrent);
+      });
 
     await runtime.reconcilePublications();
     expect(warnings).toEqual([
@@ -752,7 +777,7 @@ describe("Gateway GitHub publication", () => {
     await closeOpenClawStateDatabaseAsync();
     closeOpenClawStateDatabaseForTest();
     const reopened = openDatabase();
-    const restarted = createGitHubPublicationRuntime({
+    const restarted = createRepositoryPublicationRuntime({
       placements: createWorkerSessionPlacementStore({ database: reopened }),
       loadSessionRuntime,
       warn: (message) => warnings.push(message),

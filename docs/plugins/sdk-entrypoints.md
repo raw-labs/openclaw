@@ -32,6 +32,66 @@ without adding imports from Gateway internals.
   [Provider Plugins](/plugins/sdk-provider-plugins) for step-by-step guides.
 </Tip>
 
+The `execution-environment` entrypoint exposes optional preparation contracts
+consumed by host exec, agent harnesses, and supported sandbox backends. See
+[Execution environment registration](/plugins/sdk-execution-environments).
+
+The `repository-sources` entrypoint exposes repository preparation and bounded
+checkout contracts. Plugins declare discovery metadata and register their source;
+the existing picker, session creation, and cloud workspace owners consume it.
+See [Repository sources](/plugins/sdk-repository-sources).
+
+The native GitHub integration uses three explicit host bridges. They preserve the
+existing GitHub account records, publication receipts, and wire methods; they are
+not generic account storage or a multi-vendor publication engine. Repository
+sources and execution-environment contributions use the independent generic
+contracts above.
+
+| Entry point                      | Responsibility                                                                                                             |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `native-github-account-host`     | Native account records, owner-bound OAuth/refresh, native realm facts and current service/environment credential selection |
+| `native-github-publication-host` | Native receipt provenance, admitted publication installation, Git transfer effects, and prepared content facts             |
+| `native-github-session-read`     | Native GitHub review admission, pure remote parsing and presentation over common session/source observations               |
+| `dashboard`                      | A declared data binding with Board-owned grant preparation and persisted legacy grant grammar                              |
+
+A publication provider supplies typed `NativeGitHubPublisherProvenance` facts:
+the recorded source, optional managed profile, and verified account ID/login.
+The host records these facts in the existing native receipt fields and compares
+them directly on replay. Live account and request assertions still authorize
+every effect. The provider's `supportsOrigin(url)` answers current host policy;
+origin qualification caches physical checkout facts and reevaluates this policy
+when used, including after configuration changes. The installed provider also
+owns display-only options identity and personal account-status preparation. The
+host consumes those facts and invokes the returned status assertion before
+responding; OAuth state and its original status-read authority stay with the
+provider. Publication receipt-status operations remain host-owned. Existing
+publication relevance checks consume host-admitted PR summaries through the same
+installed provider, preserving the session reader's disclosure checks.
+Native realm facts and the existing public-reader transport keep verified-profile
+identity independent of optional repository-plugin activation. The bridge selects
+current service or environment credentials through one native selector; it grants
+no additional authority. Repository source display hints are immutable facts and
+never authorize reads or checkout effects.
+The account bridge retains existing shutdown drain and exact refresh settlement
+contracts, including the released synchronous adapters through December 31, 2026.
+The read bridge keeps common session/source observations separate from its
+GitHub-specific own-PR binding and prepared linked-account reader capability. The
+vendor reader keeps inspection details and credentials private; the host-provided
+reader assertion retains its admitted viewer and session authority. A bound read
+service can use `runDetached` for service work that must discard the request's
+ambient context while retaining its captured service broker and lifetime.
+
+A plugin tool's optional `context.gateway` capability calls only that plugin's
+registered methods and its installed publication host operations. The host
+retains request authority and accepted handoff custody; plugins do not receive an
+administrative Gateway client. Read-only `clientCaps` records the invoking client's
+capabilities, and `workspace.workspacePreparationAvailable` reports whether that
+invocation can prepare its workspace. These facts support tool presentation;
+existing host guards still authorize dispatch and workspace effects. A handoff that
+needs the invoking user after the turn yields can set `retainRequester: true`; the
+existing host continuation captures that selection while current and revalidates
+its retained authority. The plugin cannot supply a replacement identity.
+
 ## Where each section moved
 
 Every section of the single-page version now lives on this page or on one of
@@ -563,6 +623,8 @@ generic environment sanitization and `assertCurrent` synchronously immediately
 before a process effect. The lease and invocation own its lifetime; saved copies
 do not survive release or cancellation. Use `redactOutput` at diagnostic egress.
 This capability is host-local and is never a wire environment override.
+
+`process-runtime` exports `gitMaintenanceEnvironment` and `appendGitConfig` so plugin transports can preserve the host Git maintenance policy while adding command-specific configuration.
 
 `process-runtime` exports `createBoundedLineFramer` for bounded LF-delimited byte
 streams. It preserves incomplete lines and leaves CR handling to the consumer.

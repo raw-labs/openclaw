@@ -41,7 +41,8 @@ export async function runStructuredHealthRepairs(
   if (!ctx.prompter.shouldRepair) {
     return;
   }
-  const { registerBundledHealthChecks } = await import("./bundled-health-checks.js");
+  const { registerBundledHealthChecks, collectDeclaredPluginDoctorHealthChecks } =
+    await import("./bundled-health-checks.js");
   const { listExtensionHealthChecksForDoctor } = await import("./health-check-registry.js");
   const { runDoctorHealthRepairs } = await import("./doctor-repair-flow.js");
 
@@ -51,9 +52,16 @@ export async function runStructuredHealthRepairs(
     cwd: workspaceDir,
     env: ctx.env,
   });
+  const declared = collectDeclaredPluginDoctorHealthChecks({
+    cfg: ctx.cfg,
+    cwd: workspaceDir,
+    env: ctx.env,
+  });
+  availabilityFindings.push(...declared.findings);
   const checks = listExtensionHealthChecksForDoctor(
     await resolveCoreChecks(),
     availabilityFindings,
+    declared.checks,
   ).filter(isHealthCheckEnabledByDefault);
   const result = await runDoctorHealthRepairs(
     createDoctorHealthCheckContext(ctx, {
@@ -63,7 +71,12 @@ export async function runStructuredHealthRepairs(
     }),
     { checks, progress: ctx.options.json !== true },
   );
-  reportDoctorRepairResult(ctx, result, [...availabilityFindings, ...result.remainingFindings]);
+  reportDoctorRepairResult(ctx, result, [
+    ...availabilityFindings.filter(
+      (finding) => !checks.some((check) => check.id === finding.checkId),
+    ),
+    ...result.remainingFindings,
+  ]);
 }
 
 export async function runCoreContributionHealth(
@@ -125,4 +138,24 @@ export async function runCoreHealthFindingNote(
   ) {
     ctx.healthOk = false;
   }
+}
+
+/** Non-mutating declared checks are available in ordinary Doctor, independently of --fix. */
+export async function runDeclaredPluginHealth(ctx: DoctorHealthFlowContext): Promise<void> {
+  const { collectDeclaredPluginDoctorHealthChecks } = await import("./bundled-health-checks.js");
+  const { runDoctorLintChecks } = await import("./doctor-lint-flow.js");
+  const cwd = resolveDoctorWorkspaceDir(ctx.cfg, ctx.env);
+  const prepared = collectDeclaredPluginDoctorHealthChecks({ cfg: ctx.cfg, cwd, env: ctx.env });
+  const result = await runDoctorLintChecks(
+    createDoctorHealthCheckContext(ctx, {
+      mode: "doctor" as const,
+      cwd,
+      env: ctx.env,
+      allowExecSecretRefs: ctx.options.allowExec === true,
+    }),
+    { checks: prepared.checks },
+  );
+  const findings = [...prepared.findings, ...result.findings];
+  renderStructuredHealthFindings(ctx, findings);
+  recordDoctorHealthWarnings(ctx, findings);
 }

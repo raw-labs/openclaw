@@ -9,6 +9,7 @@ import { isGatewayCredentialEnvVarName } from "../../infra/host-env-security.js"
 import { getCurrentPluginMetadataSnapshot } from "../../plugins/current-plugin-metadata-snapshot.js";
 import { isInstalledPluginEnabled } from "../../plugins/installed-plugin-index.js";
 import { listKnownSecretEnvVarNames } from "../../secrets/provider-env-vars.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { SECRET_ENV_NAME_RE } from "../../secrets/secret-env-name.js";
 import { SANDBOX_DOCKER_EXPLICIT_ENV_POLICY_EPOCH } from "./config-hash.js";
 
@@ -95,9 +96,13 @@ export function sanitizeEnvVars(
       }
     : undefined;
   const knownSecretNames = new Set(
-    listKnownSecretEnvVarNames({ metadataSnapshot: activeMetadataSnapshot }).map((name) =>
-      name.trim().toUpperCase(),
-    ),
+    [
+      ...listKnownSecretEnvVarNames({ metadataSnapshot: activeMetadataSnapshot }),
+      ...Object.keys(
+        getActiveSecretsRuntimeConfigSnapshot()?.executionEnvironmentExclusions
+          ?.credentialScrubEnv ?? {},
+      ),
+    ].map((name) => name.trim().toUpperCase()),
   );
 
   return sanitizeSandboxEnvValues(

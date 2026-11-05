@@ -17,6 +17,8 @@
     "../../src/gateway/github*.test.ts",
     "../../src/gateway/github*.test.tsx",
     "../../src/gateway/server*.test.ts",
-    "../../src/gateway/server*.test.tsx"
+    "../../src/gateway/server*.test.tsx",
+    "../../src/gateway/node-*.test.ts",
+    "../../src/gateway/node-*.test.tsx"
   ]
 }

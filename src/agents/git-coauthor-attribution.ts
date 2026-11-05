@@ -6,29 +6,24 @@ import {
 import { readSessionEntriesFromStoreInWorker } from "../config/sessions/session-entry-read-runtime.js";
 import { resolveSessionStorePathForScope } from "../config/sessions/session-store-path.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import type {
+  GitCoauthorFormatInputV1,
+  FormattedGitCoauthorV1,
+} from "../plugins/execution-environment-types.js";
+import type { PluginRegistry } from "../plugins/registry-types.js";
+import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
 import { isIncognitoSessionKey } from "../routing/session-key.js";
 import {
   prepareUserProfileGitHubAttribution,
   resolveUserProfileGitHubAttribution,
 } from "../state/user-profile-github-identity.js";
+import { formatGitHubCoauthor } from "./github-git-attribution.js";
 import { resolveConfiguredGitHubHost } from "./github-host.js";
-import { resolveConfiguredGitHubToolIdentity } from "./github-tool-identity.js";
 
-type GitCoauthorAttribution = {
-  trailers: string[];
-  logins: string[];
-};
-
-type GitCoauthorContributor = {
-  accountId: number;
-  email: string;
-  contributionCount: number;
-  firstPromptedAt: number | null;
-  login: string;
-  inheritedOrder?: number;
-};
+type GitCoauthorAttribution = { trailers: string[]; logins: string[] };
 
 type GitCoauthorAttributionParams = {
+  registry?: PluginRegistry;
   agentId: string;
   config: OpenClawConfig;
   excludeAccountId?: number;
@@ -63,6 +58,10 @@ async function resolveAttribution(
   retainAuthority: boolean,
 ): Promise<PreparedGitCoauthorAttribution> {
   const empty = { attribution: undefined, isCurrent: () => true };
+  const formatters =
+    (params.registry ?? getPluginRegistryForContext())?.executionEnvironments.filter(
+      ({ provider }) => provider.formatGitCoauthor,
+    ) ?? [];
   if (!params.sessionKey || isIncognitoSessionKey(params.sessionKey)) {
     return empty;
   }
@@ -115,33 +114,29 @@ async function resolveAttribution(
         }),
         isCurrent: () => true,
       };
-  const identities = prepared.identities;
-  const primaryIdentity =
-    resolveConfiguredGitHubToolIdentity({ ...params, scope: "agent" }) ??
-    resolveConfiguredGitHubToolIdentity({ ...params, scope: "system" });
-  const primaryEmail = primaryIdentity?.gitAuthor?.email?.trim().toLowerCase();
-  const contributors = new Map<number, GitCoauthorContributor>();
+  for (const provider of formatters) {
+    provider.assertCurrent();
+  }
+  const contributors = new Map<
+    number,
+    {
+      identity: GitCoauthorFormatInputV1["identity"];
+      accountId: number;
+      contributionCount: number;
+      firstPromptedAt: number | null;
+      inheritedOrder?: number;
+    }
+  >();
   for (const profileId of profileIds) {
-    const record = profileRecords.get(profileId);
-    const identity = identities.get(profileId);
+    const identity = prepared.identities.get(profileId);
     if (!identity) {
       continue;
     }
     const issuer = "host" in identity ? identity.host : "github.com";
-    if (issuer !== host || identity.accountId === params.excludeAccountId) {
+    if (issuer !== host) {
       continue;
     }
-    const email =
-      "host" in identity
-        ? identity.verifiedEmail
-        : `${identity.accountId}+${identity.login}@users.noreply.github.com`;
-    if (!email) {
-      continue;
-    }
-    // An explicit publisher replaces the configured primary; the other account may deserve credit.
-    if (params.excludeAccountId === undefined && email.toLowerCase() === primaryEmail) {
-      continue;
-    }
+    const record = profileRecords.get(profileId);
     const contributor = contributors.get(identity.accountId);
     if (contributor) {
       if (record) {
@@ -154,16 +149,21 @@ async function resolveAttribution(
       continue;
     }
     contributors.set(identity.accountId, {
+      identity: {
+        issuer,
+        subject: String(identity.accountId),
+        name: identity.login,
+        ...("host" in identity && identity.verifiedEmail
+          ? { verifiedEmail: identity.verifiedEmail }
+          : {}),
+      },
       accountId: identity.accountId,
-      email,
       contributionCount: record?.contributionCount ?? 0,
       firstPromptedAt: record?.firstPromptedAt ?? null,
-      login: identity.login,
       ...(!record ? { inheritedOrder: inheritedProfileIds.indexOf(profileId) } : {}),
     });
   }
-
-  const orderedContributors = [...contributors.values()].toSorted(
+  const ordered = [...contributors.values()].toSorted(
     (left, right) =>
       right.contributionCount - left.contributionCount ||
       (left.firstPromptedAt === null
@@ -177,13 +177,54 @@ async function resolveAttribution(
         (right.inheritedOrder ?? Number.MAX_SAFE_INTEGER) ||
       left.accountId - right.accountId,
   );
-  const visibleContributors = orderedContributors.slice(0, MAX_SESSION_PARTICIPANTS);
-  const logins = visibleContributors.map(({ login }) => login);
-  const trailers = visibleContributors.map(
-    ({ email, login }) => `Co-authored-by: ${login} <${email}>`,
-  );
+  const usedFormatters = new Set<(typeof formatters)[number]>();
+  const visible = ordered
+    .flatMap(({ identity }) => {
+      const input: GitCoauthorFormatInputV1 = {
+        config: params.config,
+        agentId: params.agentId,
+        issuer: params.host,
+        excludeSubject:
+          params.excludeAccountId === undefined ? undefined : String(params.excludeAccountId),
+        identity,
+      };
+      let formatted: FormattedGitCoauthorV1 | null | undefined;
+      for (const formatterEntry of formatters) {
+        formatterEntry.assertCurrent();
+        const result = formatterEntry.provider.formatGitCoauthor?.(input);
+        formatterEntry.assertCurrent();
+        if (result !== undefined) {
+          usedFormatters.add(formatterEntry);
+          if (formatted !== undefined) {
+            throw new Error(
+              `Several execution providers format Git co-author issuer ${identity.issuer}.`,
+            );
+          }
+          formatted = result;
+        }
+      }
+      if (formatted === undefined) {
+        formatted = formatGitHubCoauthor(input);
+      }
+      return formatted ? [formatted] : [];
+    })
+    .slice(0, MAX_SESSION_PARTICIPANTS);
   return {
-    attribution: trailers.length ? { trailers, logins } : undefined,
-    isCurrent: prepared.isCurrent,
+    attribution: visible.length
+      ? { trailers: visible.map(({ trailer }) => trailer), logins: visible.map(({ name }) => name) }
+      : undefined,
+    isCurrent() {
+      if (!prepared.isCurrent()) {
+        return false;
+      }
+      try {
+        for (const formatterEntry of usedFormatters) {
+          formatterEntry.assertCurrent();
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
 }

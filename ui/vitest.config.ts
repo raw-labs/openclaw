@@ -76,9 +76,10 @@ const nodeSetupFiles = ["./src/test-helpers/dom.setup.ts"];
 const nodeDrivenBrowserLayoutTests = relativizeScopedPatterns(uiNodeDrivenBrowserTestFiles, "ui");
 const timingTests = relativizeScopedPatterns(uiTimingTestFiles, "ui");
 const mockRegistryUnitTests = uiIsolatedTestFiles.map((testFile) => testFile.slice("ui/".length));
-// These renderer mocks require their own module graph even when a native pane ran first.
+// Renderer mocks and held lazy imports need a fresh graph after native panes have loaded.
 const mockRegistryBrowserTests = [
   "src/pages/chat/chat-pane-frame-updates.browser.test.tsx",
+  "src/pages/plugins/skill-preview.browser.test.tsx",
   "src/pages/chat/components/chat-transcript-geometry-updates.browser.test.tsx",
 ].map((file) => resolveUiTypeScriptPath(file, here));
 function resolveChromiumLaunchOptions(): { executablePath: string } | undefined {

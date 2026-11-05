@@ -1,11 +1,11 @@
 import { GatewayProtocolRequestError } from "@openclaw/gateway-client/browser";
-import { timestampMsToIsoString } from "@openclaw/normalization-core/number-coercion";
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import type { CronListParams } from "../../../../packages/gateway-protocol/src/schema/cron.types.ts";
 import {
   readCanonicalCronListPage,
   resolveCronListPageNextOffset,
-} from "../../../../src/cron/service/list-page-validation.js";
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
+import { timestampMsToIsoString } from "@openclaw/normalization-core/number-coercion";
+import { isRecord } from "@openclaw/normalization-core/record-coerce";
+import type { CronListParams } from "../../../../packages/gateway-protocol/src/schema/cron.types.ts";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { CronCompactJob, CronJob, CronJobsListResult } from "../../api/types.ts";
 import { formatUiError } from "../format-error.ts";

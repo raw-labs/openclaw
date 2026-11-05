@@ -47,6 +47,11 @@
       "import": "./dist/connect-error-details.mjs",
       "default": "./dist/connect-error-details.mjs"
     },
+    "./cron-list-page-validation": {
+      "types": "./dist/cron-list-page-validation.d.mts",
+      "import": "./dist/cron-list-page-validation.mjs",
+      "default": "./dist/cron-list-page-validation.mjs"
+    },
     "./frame-guards": {
       "types": "./dist/frame-guards.d.mts",
       "import": "./dist/frame-guards.mjs",

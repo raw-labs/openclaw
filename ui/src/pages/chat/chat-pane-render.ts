@@ -251,9 +251,17 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         }
       );
     };
+    const sessionHeaderFacts = this.captureSessionHeaderFacts(
+      state,
+      selectedSession,
+      readPublicationRow,
+      publicationScope,
+      sessionParticipationBlocked,
+      Boolean(workspaceConflict),
+    );
     synchronizeChatPanePublication({
       holder: this.publication,
-      publications: this.context.sessions.githubPublication,
+      publications: this.context.sessions.retainedOperations,
       gatewaySnapshot,
       readRow: readPublicationRow,
       isScopeCurrent: publicationScope
@@ -359,6 +367,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         participationBlocked: sessionParticipationBlocked,
       }),
       applicationContext: this.context,
+      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       // Ends with cachedSessionStatePending(); live overflow keeps its entrance fade.

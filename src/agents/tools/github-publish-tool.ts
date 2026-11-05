@@ -25,9 +25,9 @@ import { captureExecRequestOwners } from "../../infra/exec-request-context.js";
 import { resolveReplyRunForCurrentSessionId } from "../../sessions/session-controller.identity.js";
 import { findSessionControllerOperationByRunId } from "../../sessions/session-controller.queries.js";
 import {
-  canPrepareGitHubPullRequest,
-  canRefreshGitHubPublicationBase,
-  canUploadGitHubPublicationEvidence,
+  canPrepareRepositoryWorkspace,
+  canRefreshWorkspacePublicationBase,
+  canReadWorkspaceArtifactSource,
 } from "../sandbox/github-publication.js";
 import type { SandboxContext } from "../sandbox/types.js";
 import { stringEnum } from "../schema/string-enum.js";
@@ -171,6 +171,7 @@ function resolveGitHubPublishParameters(params: {
 export function createGitHubPublishTool(
   options: {
     publicationAvailable?: boolean;
+    inheritToolPolicy?: (definition: Pick<AnyAgentTool, "name" | "parameters">) => void;
     /** Inventory only: expose conditional action declarations without an execution path. */
     preview?: true;
     sandbox?: SandboxContext | null;
@@ -181,12 +182,16 @@ export function createGitHubPublishTool(
   } = {},
 ): AnyAgentTool {
   const publicationAvailable = options.publicationAvailable !== false;
+  if (!publicationAvailable) {
+    options.inheritToolPolicy?.(githubPublishToolDefinition);
+  }
   const workspacePreparationAvailable = !options.sandbox;
-  const prepareAvailable = options.preview || canPrepareGitHubPullRequest(options.sandbox);
+  const prepareAvailable = options.preview || canPrepareRepositoryWorkspace(options.sandbox);
   // An unbound sandboxed conversation prepares by yielding and adopting a managed workspace.
   const adopting = prepareAvailable && options.sandbox?.workspaceSource !== "managed-worktree";
-  const refreshBaseAvailable = options.preview || canRefreshGitHubPublicationBase(options.sandbox);
-  const evidenceAvailable = options.preview || canUploadGitHubPublicationEvidence(options.sandbox);
+  const refreshBaseAvailable =
+    options.preview || canRefreshWorkspacePublicationBase(options.sandbox);
+  const evidenceAvailable = options.preview || canReadWorkspaceArtifactSource(options.sandbox);
   const workspaceActions = publicationWorkspaceActions.filter(
     (action) =>
       (action !== "prepare_pr" || prepareAvailable) &&

@@ -250,6 +250,9 @@ export function createOverlay(
       }
       refreshRegistry();
       refreshOverlayRoots(registry, api);
+      if (next && !opened && !notifyingRetirement) {
+        options.prepareOpen?.();
+      }
       if (notifyingRetirement || (next && !valid())) {
         return !next;
       }

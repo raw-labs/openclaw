@@ -20,7 +20,8 @@ import {
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
 import { closeOpenClawStateDatabaseForTest } from "../state/openclaw-state-db.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import { reportGitHubPublicationTranscript } from "./github-publication-transcript.js";
+import { formatGitHubPublicationTranscript } from "./github-publication-report.js";
+import { reportRepositoryPublicationTranscript } from "./github-publication-transcript.js";
 
 const reportFault = useSqliteWorkerFault([
   {
@@ -66,10 +67,10 @@ function report(
   result: SessionGitHubPublicationResult,
   markReportedAsync: (requestId: string) => Promise<void>,
 ) {
-  return reportGitHubPublicationTranscript(
+  return reportRepositoryPublicationTranscript(
     () => import("./session-utils.js"),
-    { markReportedAsync, readReportLifecycleAsync: async () => identity.lifecycleRevision },
-    { ...identity, result },
+    markReportedAsync,
+    { ...identity, requestId: result.requestId, ...formatGitHubPublicationTranscript(result) },
   );
 }
 
@@ -155,11 +156,12 @@ describe("GitHub publication transcript reporting", () => {
       const sql = observeHostDataSql();
       try {
         for (let attempt = 0; attempt < 2; attempt++) {
-          await reportGitHubPublicationTranscript(
-            loadRuntime,
-            { markReportedAsync, readReportLifecycleAsync: async () => null },
-            { ...session, result },
-          );
+          await reportRepositoryPublicationTranscript(loadRuntime, markReportedAsync, {
+            ...session,
+            lifecycleRevision: null,
+            requestId: result.requestId,
+            ...formatGitHubPublicationTranscript(result),
+          });
         }
         const events = await loadTranscriptEvents({
           ...session,

@@ -1,7 +1,4 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { githubIdentityChanges } from "../agents/github-read-identity.js";
-import { onManagedGitHubProfileChanged } from "../agents/github-tool-identity.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.types.js";
 import {
   captureSessionActorStorageOwner,
   runWithSessionActorStorage,
@@ -9,35 +6,29 @@ import {
 } from "../config/sessions/session-actor-storage-binding.js";
 import type { GatewayScheduler } from "../infra/gateway-scheduler.js";
 import { LruCache } from "../infra/lru-cache.js";
-import { sessionChanges } from "../sessions/session-row-changes.js";
-import type { WorkerGitHubLaunchBinding } from "../worker/launch-descriptor.js";
-import type { PublicationSessionIdentity } from "./github-publication-session.types.js";
+import {
+  sessionChanges,
+  sessionChangeScopeAffectsStoredRows,
+} from "../sessions/session-row-changes.js";
+import type { PublicationSessionIdentity } from "./github-publication-availability.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
 import type { SelectionRow } from "./session-row-projection-record.js";
-import { prepareGitHubPublicationFact } from "./worker-environments/worker-github-binding.js";
+import type { RepositoryWorkerPublicationFact } from "./worker-environments/worker-github-binding.js";
 
 type WorkspaceRow = Pick<SelectionRow, "agentId" | "key" | "entry">;
-type PublicationFact = {
-  available: boolean;
-  github?: WorkerGitHubLaunchBinding;
-  identity?: PreparedGitHubPublicationIdentity;
-  workspaceKey?: string;
+type DiscoveryProjection = {
+  onSelectionChange(
+    listener: (change: { kind: "reset" } | { kind: "row"; row?: WorkspaceRow }) => void,
+  ): void;
 };
-const unavailable: PublicationFact = { available: false };
-const PUBLICATION_FACT_MAX_AGE_MS = 60_000;
-let readPublished: ((session: PublicationSessionIdentity) => PublicationFact) | undefined;
+const unavailable: RepositoryWorkerPublicationFact = { available: false };
+const MAX_AGE_MS = 60_000;
 
-/** Discovery can lag a refresh; publication and process launch still validate at the effect. */
-export function readGitHubPublicationFact(session: PublicationSessionIdentity): PublicationFact {
-  return readPublished?.(session) ?? unavailable;
-}
-
-export function startGitHubPublicationDiscovery(params: {
+/** A Gateway-owned demand cache; it never warms the session corpus or creates a memory owner. */
+export function createRepositoryPublicationDiscovery(params: {
   scheduler: GatewayScheduler;
-  projection?: {
-    onSelectionChange(
-      listener: (change: { kind: "reset" } | { kind: "row"; row?: WorkspaceRow }) => void,
-    ): void;
-  };
+  getProvider(): RepositoryPublicationProvider;
+  projection?: DiscoveryProjection;
 }) {
   const inOwner = AsyncLocalStorage.snapshot();
   const scheduler = params.scheduler.scope();
@@ -45,40 +36,53 @@ export function startGitHubPublicationDiscovery(params: {
     session: PublicationSessionIdentity;
     binding?: string;
     incognito?: Pick<CapturedSessionActorStorageOwner, "owner" | "agentId" | "path">;
-    fact: PublicationFact;
+    fact: RepositoryWorkerPublicationFact;
     refreshAfterMs: number;
   }>(256);
   const keyOf = (session: PublicationSessionIdentity) =>
     `${session.agentId}\0${session.sessionKey}`;
-  const refresh = (key: string, retireCredentials = false) => {
+  const refresh = (key: string, retire = false) => {
     const previous = sessions.peek(key);
     if (!previous || scheduler.signal.aborted) {
       return undefined;
     }
     const current = {
       ...previous,
-      fact: retireCredentials ? { available: previous.fact.available } : previous.fact,
-      refreshAfterMs: scheduler.now() + PUBLICATION_FACT_MAX_AGE_MS,
+      fact: retire ? { available: previous.fact.available } : previous.fact,
+      refreshAfterMs: scheduler.now() + MAX_AGE_MS,
     };
     sessions.set(key, current);
     inOwner(() =>
       scheduler.schedule({
-        id: `github-publication:${key}`,
+        id: `repository-discovery:${key}`,
         delayMs: 0,
         run: async () => {
-          const prepare = () =>
-            prepareGitHubPublicationFact({
+          const assertCurrent = () => {
+            scheduler.signal.throwIfAborted();
+            if (sessions.peek(key) !== current) {
+              throw new Error("Repository discovery owner changed.");
+            }
+          };
+          const prepare = async () => {
+            const { prepareRepositoryWorkerPublicationFact } =
+              await import("./worker-environments/worker-github-binding.js");
+            assertCurrent();
+            return await prepareRepositoryWorkerPublicationFact({
               ...current.session,
-              assertCurrent: () => !scheduler.signal.aborted && sessions.peek(key) === current,
+              provider: params.getProvider(),
+              assertCurrent,
             });
-          let fact: PublicationFact | undefined;
-          if (current.incognito) {
-            // Discovery belongs to the Gateway, independently of the borrowing turn.
-            const assertCurrent = () => scheduler.signal.throwIfAborted();
-            try {
+          };
+          let fact: RepositoryWorkerPublicationFact | undefined;
+          try {
+            if (current.incognito) {
+              // The Gateway borrows only the existing selected namespace, independently from a turn.
               const actor = await current.incognito.owner?.acquireExisting(
                 current.session.sessionKey,
-                { assertCurrent, assertReadable: assertCurrent },
+                {
+                  assertCurrent,
+                  assertReadable: assertCurrent,
+                },
               );
               if (actor) {
                 try {
@@ -95,12 +99,11 @@ export function startGitHubPublicationDiscovery(params: {
                   await actor.release();
                 }
               }
-            } catch {
-              // Closed memory owners retire discovery without creating a replacement.
-              fact = undefined;
+            } else {
+              fact = await prepare();
             }
-          } else {
-            fact = await prepare();
+          } catch {
+            fact = undefined;
           }
           if (!scheduler.signal.aborted && sessions.peek(key) === current) {
             current.fact = fact ?? unavailable;
@@ -110,55 +113,24 @@ export function startGitHubPublicationDiscovery(params: {
     );
     return current;
   };
-  const read = (session: PublicationSessionIdentity) => {
-    const key = keyOf(session);
-    let current = sessions.get(key);
-    if (!current || current.session.sessionId !== session.sessionId) {
-      current = {
-        session: { ...session },
-        incognito: captureSessionActorStorageOwner(session, {
-          assertCurrent: () => scheduler.signal.throwIfAborted(),
-          authorize() {},
-        }),
-        fact: unavailable,
-        refreshAfterMs: 0,
-      };
-      sessions.set(key, current);
-      refresh(key);
-    } else if (current.refreshAfterMs <= scheduler.now()) {
-      // Idle sessions need no polling; an expired credential cannot authorize a new launch.
-      current = refresh(key, true) ?? current;
-    }
-    return current.fact;
-  };
-  readPublished = read;
-  const refreshAll = (retireCredentials = false) => {
-    // Refresh replaces LRU entries; the live iterator would revisit them.
-    const keys = [...sessions.keys()];
+  const invalidate = () => {
+    const keys = Array.from(sessions.keys());
     for (const key of keys) {
-      refresh(key, retireCredentials);
+      refresh(key, true);
     }
   };
-  const stopProfile = onManagedGitHubProfileChanged(() => refreshAll(true));
-  githubIdentityChanges.onChange = () => refreshAll(true);
-  const stopConfig = sessionChanges.subscribe((change) => {
-    if ("all" in change && change.scope === "config") {
-      refreshAll(true);
-    }
-  });
   const observe = (row: WorkspaceRow) => {
     if (scheduler.signal.aborted) {
       return;
     }
     const session = { agentId: row.agentId, sessionKey: row.key, sessionId: row.entry.sessionId };
     const key = keyOf(session);
-    // Only demand creates discovery work; roster hydration must not warm the whole corpus.
     const previous = sessions.peek(key);
     if (!previous) {
       return;
     }
     if (!row.entry.repositoryWorkspaceId && !row.entry.worktree?.id) {
-      // Resident absence retires pending facts; explicit demand can still prepare an unknown target.
+      // Resident absence retires pending credentials; only renewed demand may rebind.
       sessions.delete(key);
       return;
     }
@@ -172,23 +144,108 @@ export function startGitHubPublicationDiscovery(params: {
       refresh(key);
     }
   };
-  params.projection?.onSelectionChange((change) => {
-    if (change.kind === "row" && change.row) {
-      observe(change.row);
+  const bindProjection = (projection: DiscoveryProjection | undefined) => {
+    if (!projection) {
+      return;
+    }
+    projection.onSelectionChange((change) => {
+      if (scheduler.signal.aborted) {
+        return;
+      }
+      if (change.kind === "row" && change.row) {
+        observe(change.row);
+      } else if (change.kind === "reset") {
+        sessions.clear();
+      }
+    });
+  };
+  if (params.projection) {
+    bindProjection(params.projection);
+  }
+  const stopChanges = sessionChanges.subscribeFacts((change) => {
+    if ("all" in change) {
+      if (
+        change.scope === "config" ||
+        change.scope === "profiles" ||
+        sessionChangeScopeAffectsStoredRows(change)
+      ) {
+        invalidate();
+      }
+      return;
+    }
+    if (!sessionChangeScopeAffectsStoredRows(change)) {
+      return;
+    }
+    const keys = Array.from(sessions.keys());
+    for (const key of keys) {
+      const current = sessions.peek(key);
+      if (
+        current?.session.sessionKey === change.sessionKey &&
+        (!change.agentId || current.session.agentId === change.agentId)
+      ) {
+        if (change.facts?.kind === "removed") {
+          sessions.delete(key);
+        } else {
+          refresh(key, true);
+        }
+      }
     }
   });
+  const clear = () => {
+    sessions.clear();
+  };
+  scheduler.signal.addEventListener(
+    "abort",
+    () => {
+      stopChanges();
+      clear();
+    },
+    { once: true },
+  );
   return {
-    name: "github-publication-discovery",
-    stop: async () => {
-      scheduler.beginClose();
-      githubIdentityChanges.onChange = undefined;
-      stopProfile();
-      stopConfig();
-      if (readPublished === read) {
-        readPublished = undefined;
+    bindProjection,
+    clear,
+    invalidate,
+    read(session: PublicationSessionIdentity): RepositoryWorkerPublicationFact {
+      if (scheduler.signal.aborted) {
+        return unavailable;
       }
-      sessions.clear();
-      await scheduler.stop();
+      try {
+        params.getProvider().assertCurrent();
+      } catch {
+        return unavailable;
+      }
+      const key = keyOf(session);
+      let current = sessions.get(key);
+      if (!current || current.session.sessionId !== session.sessionId) {
+        const assertOwner = () => {
+          scheduler.signal.throwIfAborted();
+          params.getProvider().assertCurrent();
+        };
+        const captured = captureSessionActorStorageOwner(session, {
+          assertCurrent: assertOwner,
+          authorize: assertOwner,
+        });
+        current = {
+          session: { ...session },
+          ...(captured
+            ? {
+                incognito: {
+                  owner: captured.owner,
+                  agentId: captured.agentId,
+                  path: captured.path,
+                },
+              }
+            : {}),
+          fact: unavailable,
+          refreshAfterMs: 0,
+        };
+        sessions.set(key, current);
+        refresh(key);
+      } else if (current.refreshAfterMs <= scheduler.now()) {
+        current = refresh(key, true) ?? current;
+      }
+      return current.fact;
     },
   };
 }

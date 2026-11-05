@@ -9,8 +9,11 @@ import {
   createOAuthRefreshResponseError,
 } from "../shared/oauth-refresh-outcome.js";
 import { resolveConfiguredGitHubApiBaseUrl } from "./github-host.js";
+import type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 import { clearNativeGitHubTokenCache } from "./github-read-identity.js";
 import type { GitHubToolAccount } from "./github-tool-account.js";
+
+export type { GitHubOAuthTokenPair } from "./github-oauth-records.js";
 
 const GITHUB_OAUTH_CLIENT_ID = "Ov23liUjOXHi28w2fDlH";
 const GITHUB_OAUTH_DEVICE_CODE_URL = "https://github.com/login/device/code";
@@ -51,15 +54,6 @@ type GitHubOAuthRequestOptions = {
   timeoutMs?: number;
   apiBaseUrl?: string;
   assertCurrent?: () => void | Promise<void>;
-};
-
-export type GitHubOAuthTokenPair = {
-  accessToken: string;
-  tokenType: "bearer";
-  scopes: string[];
-  expiresInSeconds: number;
-  refreshToken: string;
-  refreshTokenExpiresInSeconds: number;
 };
 
 const GITHUB_OAUTH_ERROR_CODES = [

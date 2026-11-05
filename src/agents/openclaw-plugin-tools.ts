@@ -48,6 +48,7 @@ import {
   type OpenClawPluginToolOptions,
 } from "./openclaw-tools.plugin-context.js";
 import { preparePluginToolExecutionCapabilities } from "./plugin-tool-execution.js";
+import { preparePluginToolGatewayCapability } from "./plugin-tool-gateway.js";
 import type { PreparedModelRuntimeSnapshot } from "./prepared-model-runtime.types.js";
 import type { AgentToolResult } from "./runtime/index.js";
 import { normalizeToolPolicyName } from "./tool-policy.js";
@@ -373,19 +374,29 @@ function* resolveOpenClawPluginToolSteps(
   const metadataSnapshot = preparedModelRuntime?.metadataSnapshot ?? loadContext?.metadataSnapshot;
   const assertCallerCurrent = captureGatewayToolCallerAssertion();
   const assertRequestCurrent = params.options?.assertInvocationCurrent;
+  const bindExecutionCapabilities = preparePluginToolExecutionCapabilities({
+    sandbox: params.options?.sandbox?.enabled ? params.options.sandbox : undefined,
+    skillsSnapshot: params.options?.pluginExecutionSkillsSnapshot,
+    signal: params.options?.abortSignal,
+    authority: params.options?.pluginExecutionAuthority,
+    modelContextWindowTokens: params.options?.modelContextWindowTokens,
+    preparedModelRuntime,
+    config: availabilityConfig,
+    agentId: pluginToolInputs.context.agentId,
+    sessionKey: pluginToolInputs.context.sessionKey,
+    sessionId: pluginToolInputs.context.sessionId,
+  });
+  const bindGateway = preparePluginToolGatewayCapability(params.options, pluginToolInputs.context);
   const resolution = {
     ...pluginToolInputs,
-    bindExecutionCapabilities: preparePluginToolExecutionCapabilities({
-      sandbox: params.options?.sandbox?.enabled ? params.options.sandbox : undefined,
-      skillsSnapshot: params.options?.pluginExecutionSkillsSnapshot,
-      signal: params.options?.abortSignal,
-      authority: params.options?.pluginExecutionAuthority,
-      modelContextWindowTokens: params.options?.modelContextWindowTokens,
-      preparedModelRuntime,
-      config: availabilityConfig,
-      agentId: pluginToolInputs.context.agentId,
-      sessionKey: pluginToolInputs.context.sessionKey,
-      sessionId: pluginToolInputs.context.sessionId,
+    bindExecutionCapabilities: (
+      assertCurrent: () => void,
+      signal?: AbortSignal,
+      gatewayMethods?: readonly string[],
+      pluginId?: string,
+    ) => ({
+      ...bindExecutionCapabilities(assertCurrent, signal),
+      gateway: bindGateway(assertCurrent, signal, gatewayMethods, pluginId),
     }),
     context: {
       ...pluginToolInputs.context,

@@ -31,6 +31,7 @@ export function createConnectedContext(
   const routeListeners = new Set<() => void>();
   const subscribe = () => () => undefined;
   const baseContext = {
+    plugins: { settingsContributions: [], subscribe },
     router: {
       subscribe(listener: () => void) {
         routeListeners.add(listener);

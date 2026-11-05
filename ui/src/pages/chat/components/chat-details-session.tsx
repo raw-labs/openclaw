@@ -13,6 +13,7 @@ import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { createScrollPosition } from "../../../lib/reactive/scroll-state.ts";
 import { scopedSessionArtifactKey } from "../../../lib/sessions/session-key.ts";
 import { defineSolidBridge, type SolidBridgeElement } from "../../../lib/solid-bridge.ts";
+import { PluginContributions } from "../../../plugins/control-ui-contributions.solid.tsx";
 import { ProcessesPanelData } from "../processes-panel-data.ts";
 import { getSessionCacheValue, setSessionCacheValue } from "../session-cache.ts";
 import { ChatAuthorAvatar } from "./chat-author-avatar.ts";
@@ -564,6 +565,16 @@ export const ChatDetailsSession = defineSolidBridge<Props>(
                     </Show>
                   )}
                 </Show>
+                <PluginContributions
+                  kind="session-context"
+                  sessionKey={props.props?.sessionKey ?? ""}
+                  agentId={props.props?.currentAgentId ?? undefined}
+                  facts={props.props?.sessionHeaderFacts}
+                  presented={active()}
+                  compact={true}
+                  dismissed={props.dismissed}
+                  onOpenSessionDiff={props.props?.onOpenSessionDiff}
+                />
                 <Show when={!props.desktop}>
                   <DetailsAutomations props={props.props} presented={active()} />
                 </Show>

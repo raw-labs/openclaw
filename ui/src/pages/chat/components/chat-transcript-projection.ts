@@ -197,9 +197,7 @@ export function projectChatTranscript(
     );
   };
   const hasTypingActors = (props.typingActors?.length ?? 0) > 0;
-  const hasLiveContent = Boolean(
-    subagents.wait || hasTypingActors || realtimeConversation.hasEntries(),
-  );
+  const hasLiveContent = subagents.wait || hasTypingActors || realtimeConversation.hasEntries();
   // An empty page is not an empty conversation. Keep the transcript mounted
   // while older history exists so the reader can request the next page.
   const isEmpty =
@@ -305,6 +303,7 @@ export function projectChatTranscript(
     allowExternalEmbedUrls: props.allowExternalEmbedUrls ?? false,
     fetchLinkFavicon: props.fetchLinkFavicon,
     pluginToolIcons: props.pluginToolIcons,
+    textReferences: props.textReferences,
     showAssistantAvatar: avatarPlacement === "gutter",
     bubbleMode: props.chatBubbleMode === true && !searchFiltering,
   } satisfies StreamGroupOptions;
@@ -505,6 +504,7 @@ export function projectChatTranscript(
     props.allowExternalEmbedUrls ?? false,
     Boolean(props.fetchLinkFavicon),
     props.pluginToolIcons,
+    props.textReferences?.key ?? "",
     threadContextWindow,
     Boolean(props.onSetReply),
     props.messageReactions,

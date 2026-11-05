@@ -25,6 +25,7 @@ import type {
   SystemAgentApprovalResolved,
 } from "../../infra/system-agent-approvals.js";
 import type { SubsystemLogger } from "../../logging/subsystem.js";
+import type { RepositorySources } from "../../plugins/repository-source-types.js";
 import type { PluginRuntimeCore } from "../../plugins/runtime/types-core.js";
 import type { SystemAgentOperation } from "../../system-agent/operation-types.js";
 import type { WizardSession } from "../../wizard/session.js";
@@ -393,9 +394,7 @@ type GatewayTransportContext = {
 /** Resident-owned services bridged into request handling by the server lifecycle. */
 type GatewayResidentBridgeContext = {
   getGatewayMethodRegistry?: () => import("../methods/registry.js").GatewayMethodRegistry;
-  controlUiSessionPullRequests?: ReturnType<
-    typeof import("../control-ui-session-pr-subscriptions.js").createControlUiSessionPullRequestSubscriptions
-  >;
+  repositorySessions?: import("../control-ui-session-pr-runtime.js").RepositorySessionReadHost;
   sessionViewerPresence?: ReturnType<
     typeof import("../session-viewer-presence.js").createSessionViewerPresenceDeclarations
   >;
@@ -433,6 +432,7 @@ type GatewayResidentBridgeContext = {
   githubOAuthService?: ReturnType<
     typeof import("../github-oauth-lifecycle.js").createGitHubOAuthLifecycle
   >;
+  repositorySources?: RepositorySources;
   modelAccountConnectService?: ReturnType<
     typeof import("../model-account-connect.js").createModelAccountConnectService
   >;

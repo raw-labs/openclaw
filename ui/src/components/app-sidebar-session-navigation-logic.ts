@@ -357,7 +357,10 @@ export function restoreSnapshotNavigation(model: SidebarSnapshotModel, selectedK
 export function buildReconciledSidebarZone(input: {
   sidebarEntries: readonly string[];
   rows: SidebarRecentSession[];
-  pluginNavigation: readonly ControlUiRegistration<ControlUiNavigationItem>[];
+  pluginNavigation: readonly Pick<
+    ControlUiRegistration<ControlUiNavigationItem>,
+    "key" | "pluginId" | "value"
+  >[];
   pluginTabs: readonly GatewayControlUiPluginTab[] | undefined;
   pendingPlugins?: Pick<SidebarSnapshotModel, "entries" | "plugins"> | null;
 }) {

@@ -4,8 +4,8 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { resolveProjectedAgentRunProgressState } from "../infra/agent-run-registry.js";
 import type { ControlUiSessionPullRequest } from "./control-ui-contract.js";
 import type { PublicSessionCard } from "./control-ui-public-session-card-render.js";
-import { resolveProjectedControlUiSessionPrTarget } from "./control-ui-session-pr-read.js";
-import type { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
+import type { RepositorySessionPresentation } from "./control-ui-session-pr-runtime.js";
+import { observeProjectedRepositorySession } from "./control-ui-session-pr-source.js";
 import type { MaterializedRow } from "./session-row-projection-record.js";
 import type { SessionListRowContext } from "./session-utils-contracts.js";
 import { projectGatewaySessionRunState } from "./session-utils-display.js";
@@ -51,10 +51,7 @@ export function resolvePublicSessionCardFacts(params: {
     SessionListRowContext,
     "subagentRuns" | "projectedAgentRuns" | "projectedSubagentActivity"
   >;
-  pullRequests?: Pick<
-    ReturnType<typeof createControlUiSessionPullRequestSubscriptions>,
-    "readPrepared"
-  >;
+  pullRequests?: Pick<RepositorySessionPresentation, "readPrepared">;
   now?: number;
 }): PublicSessionCardFacts {
   const { cfg, record, rowContext } = params;
@@ -92,9 +89,7 @@ export function resolvePublicSessionCardFacts(params: {
       : undefined);
   const agentName = cardText(resolveAgentIdentity(cfg, record.agentId)?.name, 80);
   const target =
-    entry.worktree || entry.projectId
-      ? resolveProjectedControlUiSessionPrTarget(cfg, record)
-      : undefined;
+    entry.worktree || entry.projectId ? observeProjectedRepositorySession(cfg, record) : undefined;
   // A cold public card must never discover a checkout or start a GitHub request.
   const snapshot = target ? params.pullRequests?.readPrepared(target, () => false) : undefined;
   const branch = cardText(entry.worktree?.branch, 180);

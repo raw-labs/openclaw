@@ -32,3 +32,5 @@ export type {
   HelloOk,
   QuestionRecord,
 } from "@openclaw/gateway-protocol";
+
+export { readSessionMessageDisplayContent } from "./session-projection-message-content.js";

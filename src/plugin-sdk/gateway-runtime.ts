@@ -55,7 +55,7 @@ export type {
 export type {
   GitHubPublicationClaimRequestV2,
   GitHubPublicationSessionRequestV2,
-} from "../gateway/github-publication-coordinator-methods.js";
+} from "../gateway/github-publication-session.types.js";
 export type { PersonalGitHubSessionActionV2 } from "../gateway/github-personal-publication.js";
 
 /** Prepare a host-owned requester from this handler's admitted Gateway authority. */
@@ -83,3 +83,7 @@ export {
 } from "../gateway/channel-status-patches.js";
 
 export { parseTimeoutMsWithFallback } from "../cli/parse-timeout.js";
+
+export { getGatewayServiceLifetime } from "../plugins/runtime/gateway-service-owner.js";
+
+export type { GatewayRequestContext } from "../gateway/server-methods/types.js";

@@ -4,7 +4,7 @@ import { createRouter, definePage } from "@openclaw/uirouter";
 import { render } from "@solidjs/testing-library";
 import { createComponent, createRoot, flush, onSettled } from "solid-js";
 import { expect, it, onTestFinished, vi } from "vitest";
-import type { ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
+import type { ControlUiReplacementV2 as ControlUiReplacement } from "../../../src/plugin-sdk/control-ui.js";
 import { GatewayBrowserClient } from "../api/gateway.ts";
 import * as settingsSidebar from "../components/settings-sidebar-shell.tsx";
 import { ApplicationProvider } from "../lib/reactive/context.ts";
@@ -885,6 +885,7 @@ it("restores the delegated shell after a pending update and can select another w
     expectShell();
   };
   const delegatedWorkspace = async () => {
+    await vi.waitFor(() => expect(query("openclaw-plugin-view")).not.toBeNull());
     const plugin = query<HTMLElementTagNameMap["openclaw-plugin-view"]>("openclaw-plugin-view");
     expect(plugin).not.toBeNull();
     await settleLitElement(plugin!);
@@ -901,7 +902,7 @@ it("restores the delegated shell after a pending update and can select another w
   const replacement: ControlUiRegistration<ControlUiReplacement> = {
     key: "fixture/workspace",
     pluginId: "fixture",
-    signal: abort.signal,
+    signal: host.signal,
     host,
     value: {
       id: "workspace",

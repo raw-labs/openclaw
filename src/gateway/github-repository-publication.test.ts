@@ -8,6 +8,7 @@ import {
   personalPublicationAccount,
   expectPersonalPublicationReplay,
 } from "./github-personal-publication.test-support.js";
+import { RepositoryPublicationProviderUnavailableError } from "./github-publication-errors.js";
 import { createGitHubPublicationRecoveryBackoff } from "./github-publication-recovery.js";
 import { claimRepositoryGitHubPublicationAsync } from "./github-publication-store-async.js";
 import {
@@ -381,6 +382,83 @@ it("settles unreadable repository publication without replaying its dispatched p
   now += 3_600_000;
   await coordinator.resumeSessionRequests();
   expect(mocks.runCommand).toHaveBeenCalledTimes(calls);
+  expect(f.runtime.effects).toEqual(["push"]);
+});
+
+it("retains accepted publication while its provider is unavailable and resumes after re-enable", async () => {
+  const f = await repositoryFixture();
+  f.runtime.interruptPush = true;
+  const first = await f.publish("provider-unavailable");
+  expect(first.status).toBe("requested");
+  const before = readReceipt(first.requestId)!;
+  let now = performance.now();
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const coordinator = createTestGitHubPublicationCoordinator({
+    placements: f.placements,
+    recovery: {
+      shared: createGitHubPublicationRecoveryBackoff(),
+      repository: createGitHubPublicationRecoveryBackoff(),
+    },
+  });
+  const assertProvider = coordinator.provider.assertCurrent;
+  let enabled = false;
+  vi.spyOn(coordinator.provider, "assertCurrent").mockImplementation(() => {
+    if (!enabled) {
+      throw new RepositoryPublicationProviderUnavailableError();
+    }
+    assertProvider();
+  });
+  const calls = mocks.runCommand.mock.calls.length;
+  for (const waitMs of [0, 60_000, 120_000, 3_600_000]) {
+    now += waitMs;
+    await coordinator.resumeSessionRequests().catch((error: unknown) => {
+      expect(error).toBeInstanceOf(AggregateError);
+    });
+    expect(readReceipt(first.requestId)).toMatchObject({
+      status: "requested",
+      head_commit: before.head_commit,
+      last_effect: "push",
+      effect_state: "dispatched",
+    });
+  }
+  expect(mocks.runCommand.mock.calls.slice(calls).filter(([argv]) => argv[0] === "gh")).toEqual([]);
+  enabled = true;
+  await coordinator.resumeSessionRequests();
+  expect(await coordinator.readAsync(first.requestId)).toMatchObject({
+    status: "published",
+    url,
+  });
+  expect(f.runtime.effects).toEqual(["push", "pull_request"]);
+});
+
+it("never observes a recorded publication on a replacement GitHub host", async () => {
+  const f = await repositoryFixture();
+  f.runtime.interruptPush = true;
+  const first = await f.publish("recorded-host-change");
+  expect(first.status).toBe("requested");
+  const selected = await mocks.prepareIdentity();
+  mocks.prepareIdentity.mockResolvedValue({ ...selected, host: "other-github.example.test" });
+  f.runtime.pr = {
+    url: "https://other-github.example.test/owner/repository/pull/1",
+    userId: 42,
+    state: "open",
+    body: `<!-- openclaw-publication:${first.requestId} -->`,
+    headSha: f.runtime.head!,
+    headRef: f.workspace.branch,
+    baseRef: "main",
+  };
+  const coordinator = createTestGitHubPublicationCoordinator({ placements: f.placements });
+  const calls = mocks.runCommand.mock.calls.length;
+  await coordinator.resumeSessionRequests().catch((error: unknown) => {
+    expect(error).toBeInstanceOf(AggregateError);
+  });
+  expect(readReceipt(first.requestId)).toMatchObject({
+    status: "requested",
+    last_effect: "push",
+    effect_state: "dispatched",
+    pull_request_url: null,
+  });
+  expect(mocks.runCommand.mock.calls.slice(calls).filter(([argv]) => argv[0] === "gh")).toEqual([]);
   expect(f.runtime.effects).toEqual(["push"]);
 });
 

@@ -119,6 +119,17 @@ async function fixture(fork = false, linked = true, maintainer = false, sameBran
       }
       const endpoint = argv[argv.indexOf("GET") + 1]!;
       await beforeRead?.(endpoint);
+      const matchingRefs = `repos/${headRepo.full_name}/git/matching-refs/heads/`;
+      if (endpoint.startsWith(matchingRefs)) {
+        const branch = decodeURIComponent(endpoint.slice(matchingRefs.length));
+        return commandResult(
+          JSON.stringify(
+            branch === pr.head.ref
+              ? [{ ref: `refs/heads/${branch}`, object: { sha: branchHead } }]
+              : [],
+          ),
+        );
+      }
       const value =
         endpoint === `repos/${baseRepo.full_name}`
           ? baseRepo
@@ -332,14 +343,17 @@ describe("shared publication to a prepared original PR", () => {
     async (sameBranch) => {
       const f = await fixture(false, false, true, sameBranch);
       f.pr.user = { id: 42, login: "roboclaw-bot" };
-      const { inspectOwnGitHubPullRequest } = await import("./github-publication-inspect.js");
+      const { prepareOwnGitHubPullRequestReader } =
+        await import("./github-publication-inspect-reader.js");
       await expect(
-        inspectOwnGitHubPullRequest({
-          pullRequestUrl: f.pr.html_url,
-          session: f.publicationSession,
-          requester: f.guest,
-          assertCurrent: () => f.guest.assertCurrent(),
-        }),
+        prepareOwnGitHubPullRequestReader(f.guest, f.publicationSession).then((reader) =>
+          f.coordinator.inspectPullRequest({
+            pullRequestUrl: f.pr.html_url,
+            agentId: f.publicationSession.agentId,
+            reader,
+            assertCurrent: () => f.guest.assertCurrent(),
+          }),
+        ),
       ).rejects.toThrow("Link a verified");
       f.expectPublished(await f.publish("maintainer-assistance"));
       expect(

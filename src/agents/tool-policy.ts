@@ -33,6 +33,7 @@ export type ToolPolicyLike = {
 export type PluginToolGroups = {
   all: string[];
   byPlugin: Map<string, string[]>;
+  byPolicyGroup?: Map<string, string[]>;
 };
 
 /** Analysis of an allowlist after matching core and plugin tool ids. */
@@ -158,10 +159,11 @@ export function collectExplicitDenylist(policies: Array<ToolPolicyLike | undefin
 
 export function buildPluginToolGroups<T extends { name: string }>(params: {
   tools: T[];
-  toolMeta: (tool: T) => { pluginId: string } | undefined;
+  toolMeta: (tool: T) => { pluginId: string; policyGroups?: readonly string[] } | undefined;
 }): PluginToolGroups {
   const all: string[] = [];
   const byPlugin = new Map<string, string[]>();
+  const byPolicyGroup = new Map<string, string[]>();
   for (const tool of params.tools) {
     const meta = params.toolMeta(tool);
     if (!meta) {
@@ -169,6 +171,9 @@ export function buildPluginToolGroups<T extends { name: string }>(params: {
     }
     const name = normalizeToolPolicyName(tool.name);
     all.push(name);
+    for (const group of meta.policyGroups ?? []) {
+      byPolicyGroup.set(group, [...(byPolicyGroup.get(group) ?? []), name]);
+    }
     const pluginId = normalizeOptionalLowercaseString(meta.pluginId);
     if (!pluginId) {
       continue;
@@ -177,7 +182,7 @@ export function buildPluginToolGroups<T extends { name: string }>(params: {
     list.push(name);
     byPlugin.set(pluginId, list);
   }
-  return { all, byPlugin };
+  return { all, byPlugin, byPolicyGroup };
 }
 
 /** Expands group:plugins and plugin-id entries into concrete plugin tool names. */
@@ -192,7 +197,10 @@ function expandPluginGroups(
   const expanded: string[] = [];
   for (const entry of renamed) {
     const tools = entry === "group:plugins" ? groups.all : groups.byPlugin.get(entry);
-    expanded.push(...(tools?.length ? tools : [entry]));
+    expanded.push(
+      ...(tools?.length ? tools : [entry]),
+      ...(groups.byPolicyGroup?.get(entry) ?? []),
+    );
   }
   return uniqueStrings(expanded);
 }
@@ -283,6 +291,7 @@ export function analyzeAllowlistByToolType(
     }
     const isPluginEntry =
       entry === "group:plugins" ||
+      groups.byPolicyGroup?.has(entry) === true ||
       pluginIds.has(entry) ||
       pluginTools.has(entry) ||
       isDeclaredMcpAllowlistEntry(entry, mcpToolPrefixes);

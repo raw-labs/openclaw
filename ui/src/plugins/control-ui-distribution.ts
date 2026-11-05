@@ -8,7 +8,7 @@ export type ControlUiPluginDistribution = Pick<
   styles: string[];
   imports: string[];
   activation?: "settings-only";
-  settingsViews?: readonly import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsPlacement[];
+  settingsViews?: readonly import("../../../src/plugin-sdk/control-ui-settings.js").AnyControlUiSettingsPlacement[];
 };
 
 // The production Vite adapter replaces this module with its emitted asset inventory.

@@ -565,6 +565,12 @@ export function createMarkdownParser(): MarkdownItParser {
   });
 
   installMarkdownGitHubRefs(markdownParser);
+  markdownParser.core.ruler.before("web-link-classes", "plugin-text-references", (state) => {
+    // SAFETY: markdown.ts supplies normalized options to markdown-it's untyped env.
+    const env = state.env as Partial<MarkdownRenderEnv> | undefined;
+    const references = env?.textReferences;
+    references?.snapshots[0]?.render(state, references.snapshots);
+  });
 
   markdownParser.core.ruler.after("inline", "task-lists", (state) => {
     for (const [index, inline] of state.tokens.entries()) {

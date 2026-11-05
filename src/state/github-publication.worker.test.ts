@@ -297,7 +297,7 @@ it("creates the lazy shared schema and replaces a missing lifecycle binding on i
       identity: {
         source: "system-configured",
         profileId: "fixture-profile",
-        account: { accountId: 42, login: "fixture-bot", avatarUrl: null },
+        account: { accountId: 42, login: "fixture-bot" },
       },
     },
     source,

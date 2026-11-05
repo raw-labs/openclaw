@@ -163,6 +163,11 @@ export function createNetworkRegistrars(state: PluginRegistryState) {
     handler: Parameters<OpenClawPluginApi["registerGatewayMethod"]>[1],
     opts?: {
       scope?: OperatorScope;
+      startup?: "available" | "unavailable-until-sidecars";
+      controlPlaneWrite?: boolean;
+      advertise?: boolean;
+      description?: string;
+      since?: string;
       profileAccess?: GatewayMethodProfileAccess;
       sessionAccess?: import("../gateway/methods/descriptor.js").GatewayMethodSessionAccess;
       shareKey?: import("../gateway/methods/descriptor.js").GatewayReadSharing["shareKey"];
@@ -196,6 +201,11 @@ export function createNetworkRegistrars(state: PluginRegistryState) {
         name: trimmed,
         handler: wrappedHandler,
         scope: normalizedScope.scope,
+        ...(opts?.startup ? { startup: opts.startup } : {}),
+        ...(opts?.controlPlaneWrite ? { controlPlaneWrite: true } : {}),
+        ...(opts?.advertise === false ? { advertise: false } : {}),
+        ...(opts?.description ? { description: opts.description } : {}),
+        ...(opts?.since ? { since: opts.since } : {}),
         ...(opts?.profileAccess ? { profileAccess: opts.profileAccess } : {}),
         ...(opts?.sessionAccess ? { sessionAccess: opts.sessionAccess } : {}),
         ...(opts?.shareKey

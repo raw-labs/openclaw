@@ -3,17 +3,19 @@ import { createEffect, createRoot, getOwner, onCleanup, runWithOwner } from "sol
 import { listen } from "../../lib/reactive/listener.ts";
 import type { Overlay } from "../overlay-lifecycle.ts";
 
+type OverlayControlProps = {
+  open?: boolean;
+  disabled?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onBeforeShow?(event: Event): void;
+  onBeforeHide?(event: Event): void;
+};
+
 /** Controlled values and veto callbacks share the native overlay's accepted-open authority. */
 export function useOverlayControl(
   overlay: Overlay,
   initialLazy: boolean | "while-open" | undefined,
-  props: {
-    open?: boolean;
-    disabled?: boolean;
-    onOpenChange?(open: boolean): void;
-    onBeforeShow?(event: Event): void;
-    onBeforeHide?(event: Event): void;
-  },
+  props: OverlayControlProps,
   renderBody?: () => JSX.Element,
 ) {
   const owner = getOwner();
@@ -26,17 +28,19 @@ export function useOverlayControl(
     }
   };
   let mounted = false;
+  let onOpenChange: OverlayControlProps["onOpenChange"];
   const syncOpen = (open: boolean) => {
     if (open === overlay.open) {
       return;
     }
     if (!overlay.request(open)) {
-      props.onOpenChange?.(overlay.open);
+      onOpenChange?.(overlay.open);
     }
   };
   createEffect(
-    () => (props.disabled ? false : props.open),
-    (open) => {
+    () => [props.disabled ? false : props.open, props.onOpenChange] as const,
+    ([open, notify]) => {
+      onOpenChange = notify;
       if (mounted && open !== undefined) {
         syncOpen(open);
       }
@@ -48,7 +52,7 @@ export function useOverlayControl(
     // Deliver each accepted transition to policy callbacks before publishing onOpenChange.
     const stopOpen = overlay.subscribe((open) => {
       onOpen?.(open);
-      props.onOpenChange?.(open);
+      onOpenChange?.(open);
     });
     const stopShow = listen(overlay.surface, "overlay-show", (event: Event) => {
       if (event.target === overlay.surface) {

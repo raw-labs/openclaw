@@ -1,8 +1,9 @@
 import type { ProgressCard } from "@openclaw/gateway-protocol";
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
 import { SESSION_PULL_REQUESTS_SUBSCRIBE_METHOD } from "../../../src/gateway/control-ui-contract.js";
 import type { ApplicationContext } from "../app/context.ts";
 import type { ApplicationGateway } from "../app/gateway.ts";
+import { ControlUiPluginRuntime } from "../plugins/control-ui-runtime.ts";
 import { flush } from "../test-helpers/solid-settle.ts";
 import type { SidebarSessionHovercardRow } from "./app-sidebar-session-types.ts";
 import type { SessionProgressHovercardProvider } from "./session-progress-hovercard.runtime.tsx";
@@ -101,6 +102,9 @@ export function createHovercard({
       subscribe: selection.subscribe,
     },
   } as unknown as ApplicationContext;
+  const plugins = new ControlUiPluginRuntime(() => context);
+  Object.assign(context, { plugins });
+  onTestFinished(() => plugins.dispose());
   if (browser || triggerKind === "markdown") {
     const agentsList = { agents: [{ id: "research" }], defaultId: "research", mainKey: "main" };
     const result = { sessions: [{ key: sessionKey, displayName: "Synthetic provider session" }] };

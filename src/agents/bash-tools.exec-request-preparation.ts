@@ -24,9 +24,11 @@ import {
 } from "../infra/shell-env.js";
 import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import type { PluginHookChannelContext } from "../plugins/hook-types.js";
+import { getPluginRegistryForContext } from "../plugins/runtime/gateway-request-scope.js";
 import { parseAgentSessionKey } from "../routing/session-key.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { normalizeDeliveryContext } from "../utils/delivery-context.shared.js";
+import { captureAgentToolSourceExecutionGuard } from "./agent-tool-source-execution-guard.js";
 import type { HookContext } from "./agent-tools.before-tool-call.js";
 import { stripMalformedXmlArgValueSuffixFromKeys } from "./agent-tools.params.js";
 import { DEFAULT_PATH, applyPathPrepend, applyShellPath } from "./bash-tools.exec-runtime.js";
@@ -35,6 +37,7 @@ import { type ExecWorkdirResolution, resolveExecWorkdir } from "./bash-tools.exe
 import { buildSandboxEnv, coerceEnv } from "./bash-tools.shared.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import { EXEC_NODE_PATH_PREPEND_WARNING } from "./exec-node-path-prepend.js";
+import { capturePreparedExecutionEnvironment } from "./execution-environment.js";
 import { prepareGitHubToolEnvironment } from "./github-tool-identity.js";
 import { sanitizeEnvVars } from "./sandbox/sanitize-env-vars.js";
 import { isSubagentEnvelopeSession } from "./subagents/spawn/subagent-capabilities.js";
@@ -216,14 +219,38 @@ export function resolveExecNotificationDefaults(defaults?: ExecToolDefaults) {
 }
 
 export function resolveExecPreparedRunEnvironment(defaults?: ExecToolDefaults) {
+  const secrets = getActiveSecretsRuntimeConfigSnapshot();
+  const input = {
+    config: defaults?.config ?? {},
+    sourceConfig: secrets?.sourceConfig,
+    agentId: defaults?.executionAgentId ?? defaults?.agentId ?? "main",
+    assertCurrent: captureAgentToolSourceExecutionGuard(),
+  };
   return {
     ...(defaults?.preparedRunEnvironment ??
-      prepareGitHubToolEnvironment({
-        config: defaults?.config ?? {},
-        sourceConfig: getActiveSecretsRuntimeConfigSnapshot()?.sourceConfig,
-        agentId: defaults?.executionAgentId ?? defaults?.agentId ?? "main",
-      })),
+      capturePreparedExecutionEnvironment(
+        input,
+        prepareGitHubToolEnvironment(input),
+        getPluginRegistryForContext(),
+        secrets?.executionEnvironmentExclusions,
+      )),
     localProcessEnv: installationTargetEnv(getInstallationTarget()),
+  };
+}
+
+/** Both approval replay and immediate launch consume the same captured transport facts. */
+export function resolveExecProcessEnvironment(
+  host: ExecHost,
+  environment: ReturnType<typeof resolveExecPreparedRunEnvironment>,
+) {
+  return {
+    githubProfileDir:
+      host === "gateway" && environment.managedLocalIdentity
+        ? environment.localIdentityEnv.GH_CONFIG_DIR
+        : undefined,
+    wrapLocalLaunch: host === "gateway" ? environment.wrapLocalLaunch : undefined,
+    assertExecutionEnvironmentCurrent: environment.assertCurrent,
+    transportCredentialScrubEnv: environment.credentialScrubEnv,
   };
 }
 

@@ -257,3 +257,28 @@ export function bindAdoptedCatalogSession(
       : catalog,
   );
 }
+
+const CATALOG_CONTROLS = [
+  ["link", ".sidebar-recent-session__link"],
+  ["children", "[data-child-session-toggle]"],
+  ["pin", "[data-sidebar-session-pin]"],
+  ["archive", "[data-sidebar-session-archive]"],
+  ["menu", "[data-sidebar-session-menu]"],
+  ["catalogMenu", "[data-catalog-session-menu]"],
+] as const;
+
+export function catalogRowFocusControl(
+  previousFocus: Element | null,
+  identityKey: string,
+  sessionKey: string,
+) {
+  const active = previousFocus instanceof HTMLElement ? previousFocus : null;
+  const activeRow = active?.closest<HTMLElement>("[data-session-key]");
+  const control = CATALOG_CONTROLS.find(([, selector]) => active?.matches(selector))?.[0];
+  return control !== undefined &&
+    (activeRow?.dataset.catalogSessionKey === identityKey ||
+      activeRow?.dataset.sessionKey === identityKey ||
+      activeRow?.dataset.sessionKey === sessionKey)
+    ? control
+    : undefined;
+}

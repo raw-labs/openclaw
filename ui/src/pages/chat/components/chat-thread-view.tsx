@@ -1,4 +1,4 @@
-import { Show, createMemo, createSignal, onSettled, useContext } from "solid-js";
+import { Show, createMemo, createSignal, merge, onSettled, useContext } from "solid-js";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
 import {
   linkReaderPrefetchRef as createLinkReaderPrefetchRef,
@@ -20,11 +20,13 @@ import {
   anchorFromNavigationEvent,
   shouldHandleNavigationClick,
 } from "../../../lib/navigation-click.ts";
+import { useOptionalApplication } from "../../../lib/reactive/context.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import { createParkedProjection } from "../../../lib/reactive/parked-projection.ts";
 import { projectOwner, projectSource } from "../../../lib/reactive/projection.ts";
+import { createTextReferenceProjection } from "../../../plugins/control-ui-text-reference-projection.ts";
 import { usePanePresentation } from "../chat-pane-presentation.ts";
 import {
   getExpandedToolCards,
@@ -83,6 +85,18 @@ export function ChatThread(input: {
   historySupplement?: TranscriptHeader;
 }) {
   const mobile = useContext(ChatConversationMobile);
+  const application = useOptionalApplication();
+  const textReferences = createTextReferenceProjection(() => ({
+    context: input.props.applicationContext ?? application,
+    session: {
+      sessionKey: input.props.sessionKey,
+      agentId: input.props.currentAgentId ?? input.props.fullMessageAgentId,
+    },
+    presented:
+      typeof input.props.transcriptVisible === "object"
+        ? input.props.transcriptVisible.isPresented()
+        : input.props.transcriptVisible !== false,
+  }));
   const [root, setRoot] = createSignal<HTMLDivElement>();
   let stopSelectionGesture: (() => void) | undefined;
   const historyIntent = (event: Event) => input.props.onHistoryIntent?.(event);
@@ -133,7 +147,17 @@ export function ChatThread(input: {
   const current = createMemo(() => {
     const searchState = search().read();
     const { session } = presentation();
-    const projection = projectChatTranscript(input.props, session, searchState);
+    const projection = projectChatTranscript(
+      // Keep live stream getters subscribed by their leaf renderer, outside row projection.
+      merge(input.props, {
+        textReferences:
+          input.props.applicationContext || application
+            ? textReferences()
+            : input.props.textReferences,
+      }),
+      session,
+      searchState,
+    );
     expansionVersions();
     // Empty shells establish the baseline for first-submission animation.
     if (projection.isEmpty || projection.showLoadingSkeleton) {

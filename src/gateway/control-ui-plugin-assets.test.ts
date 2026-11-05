@@ -185,10 +185,10 @@ function activateFixture(origin: PluginRecord["origin"] = "bundled") {
 }
 
 function cookieForGrant(
-  overrides: { pluginId?: string; generation?: string; profileId?: string } = {},
+  overrides: { pluginId?: string; generation?: string; profileId?: string; scopes?: string[] } = {},
 ): string {
   const response = createResponse();
-  const [grant] = listControlUiPluginTabAuthGrants(["operator.read"]);
+  const [grant] = listControlUiPluginTabAuthGrants(overrides.scopes ?? ["operator.read"]);
   if (!grant) {
     throw new Error("Expected scoped Control UI grant");
   }
@@ -220,6 +220,31 @@ afterEach(() => {
 beforeAll(async () => {
   // Compile the real Control UI owner during setup, before the HTTP request deadline starts.
   await import("./control-ui.js");
+});
+
+it("discovers only active repository sources without browser assets or custom UI activation", async () => {
+  const registry = createEmptyPluginRegistry();
+  const source = {
+    id: "repositories",
+    label: "Example repositories",
+    searchMethod: "example.search",
+  };
+  const record = createPluginRecord({ id: "repository-example", repositorySources: [source] });
+  registry.plugins.push(
+    record,
+    createPluginRecord({ id: "disabled-source", enabled: false, repositorySources: [source] }),
+    createPluginRecord({ id: "failed-source", status: "error", repositorySources: [source] }),
+  );
+  setActivePluginRegistry(registry);
+  const catalog = await listControlUiPluginCatalog();
+  expect(catalog.plugins).toEqual([]);
+  expect(catalog.repositorySources).toEqual([{ ...source, pluginId: "repository-example" }]);
+  expect(catalog.diagnostics).toEqual([]);
+
+  record.enabled = false;
+  const disabled = await listControlUiPluginCatalog();
+  expect(disabled.repositorySources).toEqual([]);
+  expect(disabled.revision).not.toBe(catalog.revision);
 });
 
 it("omits settings-only presentations from activation while keeping ordinary plugins", async () => {
@@ -688,9 +713,13 @@ it("serves profile-bound cookie assets with a replaced profile catalog", async (
   });
 });
 
-it.each(["auth rotation", "response closure"] as const)(
-  "refuses asset disclosure after %s during profile preparation",
-  async (invalidation) => {
+it.each([
+  ["auth rotation", "operator.read"],
+  ["response closure", "operator.read"],
+  ["auth rotation", "operator.sessions.read"],
+] as const)(
+  "refuses asset disclosure after %s during profile preparation with %s",
+  async (invalidation, scope) => {
     await withOpenClawTestState({ prefix: "native-ui-profile-authority-" }, async () => {
       await withConfig(async () => {
         activateFixture();
@@ -710,7 +739,7 @@ it.each(["auth rotation", "response closure"] as const)(
         let currentAuth = AUTH_TOKEN;
         const request = createRequest({
           path: entry.entryUrl,
-          headers: { cookie: cookieForGrant({ profileId: profile.id }) },
+          headers: { cookie: cookieForGrant({ profileId: profile.id, scopes: [scope] }) },
         });
         const response = makeMockHttpResponse();
         const operation = handleControlUiPluginAssetRequest(request, response.res, {
@@ -848,51 +877,55 @@ it("refuses reloads past 64 MiB without evicting advertised assets", async () =>
   expect((await reloadControlUiPluginCatalog("native-ui")).plugins).toEqual(first.plugins);
 });
 
-it("requires owner-bound read grants and never serves source files, maps, or escaped paths", async () => {
-  const fixture = activateFixture();
-  fixture.write("source.ts", "private source");
-  fixture.write("index.js.map", "private sourcemap");
-  fixture.write(".secret.js", "private hidden file");
-  const entry = (await listControlUiPluginCatalog()).plugins[0]!;
-  const prefix = entry.entryUrl.slice(0, -"index.js".length);
-  expect(listControlUiPluginTabAuthGrants(["operator.approvals"])).toEqual([]);
-  expect(authorizeOperatorScopesForMethod("plugins.controlUi.list", ["operator.read"])).toEqual({
-    allowed: true,
-  });
-  expect(authorizeOperatorScopesForMethod("plugins.controlUi.reload", ["operator.write"])).toEqual({
-    allowed: false,
-    missingScope: "operator.admin",
-  });
-  await withAssetServer(async (server) => {
-    const cookie = cookieForGrant();
-    const unauthorizedHeaders: Record<string, string>[] = [
-      {},
-      { cookie: cookieForGrant({ pluginId: "another-owner" }) },
-      { cookie: cookieForGrant({ generation: "stale-generation" }) },
-    ];
-    const read = (url: string) => fetchAsset(server, url, { headers: { cookie } });
-    for (const headers of unauthorizedHeaders) {
-      expectUncached(await fetchAsset(server, entry.entryUrl, { headers }), 401);
-    }
-    await expectStatus(
-      fetchAsset(server, entry.entryUrl, { authorization: "Bearer test-token" }),
-      200,
-    );
-    for (const invalidRevision of ["latest", "", "0".repeat(64)]) {
-      expectUncached(await read(entry.entryUrl.replace(entry.revision, invalidRevision)), 404);
-    }
-    for (const suffix of [
-      "source.ts",
-      "index.js.map",
-      ".secret.js",
-      "%2e%2e%2fserver.js",
-      "%252e%252e/server.js",
-      "missing.js",
-    ]) {
-      expectUncached(await read(prefix + suffix), 404, suffix);
-    }
-  });
-});
+it.each(["operator.read", "operator.sessions.read"])(
+  "requires owner-bound %s grants and never serves source files, maps, or escaped paths",
+  async (scope) => {
+    const fixture = activateFixture();
+    fixture.write("source.ts", "private source");
+    fixture.write("index.js.map", "private sourcemap");
+    fixture.write(".secret.js", "private hidden file");
+    const entry = (await listControlUiPluginCatalog()).plugins[0]!;
+    const prefix = entry.entryUrl.slice(0, -"index.js".length);
+    expect(listControlUiPluginTabAuthGrants(["operator.approvals"])).toEqual([]);
+    expect(listControlUiPluginTabAuthGrants([scope])[0]?.scopes).toEqual([scope]);
+    expect(
+      authorizeOperatorScopesForMethod("plugins.controlUi.reload", ["operator.write"]),
+    ).toEqual({
+      allowed: false,
+      missingScope: "operator.admin",
+    });
+    await withAssetServer(async (server) => {
+      const cookie = cookieForGrant({ scopes: [scope] });
+      const unauthorizedHeaders: Record<string, string>[] = [
+        {},
+        { cookie: cookieForGrant({ pluginId: "another-owner", scopes: [scope] }) },
+        { cookie: cookieForGrant({ generation: "stale-generation", scopes: [scope] }) },
+      ];
+      const read = (url: string) => fetchAsset(server, url, { headers: { cookie } });
+      expectBody(await read(entry.entryUrl), firstSource);
+      for (const headers of unauthorizedHeaders) {
+        expectUncached(await fetchAsset(server, entry.entryUrl, { headers }), 401);
+      }
+      await expectStatus(
+        fetchAsset(server, entry.entryUrl, { authorization: "Bearer test-token" }),
+        200,
+      );
+      for (const invalidRevision of ["latest", "", "0".repeat(64)]) {
+        expectUncached(await read(entry.entryUrl.replace(entry.revision, invalidRevision)), 404);
+      }
+      for (const suffix of [
+        "source.ts",
+        "index.js.map",
+        ".secret.js",
+        "%2e%2e%2fserver.js",
+        "%252e%252e/server.js",
+        "missing.js",
+      ]) {
+        expectUncached(await read(prefix + suffix), 404, suffix);
+      }
+    });
+  },
+);
 
 it.each(["symlink", "hardlink"] as const)(
   "rejects %s browser files outside the allowed owner",

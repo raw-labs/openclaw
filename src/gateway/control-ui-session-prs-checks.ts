@@ -1,11 +1,10 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestCheck,
   ControlUiSessionPullRequestCheckDetails,
   ControlUiSessionPullRequestCheckStep,
-} from "./control-ui-contract.js";
+} from "../plugin-sdk/native-github-session-read.js";
+import { isRecord, readNonBlankString } from "../plugin-sdk/string-coerce-runtime.js";
 import { gitHubPublicApi, type ControlUiGitHubError } from "./github-public-api.js";
 
 const FAILING_CHECK_CONCLUSIONS = new Set([

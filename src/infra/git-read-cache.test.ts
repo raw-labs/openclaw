@@ -817,8 +817,7 @@ describe("typed Git read ownership", () => {
     const refresh = runGitReadOperation(operation, { refresh: true });
     await vi.waitFor(() => expect(gitRead).toHaveBeenCalledTimes(2));
     const refreshed = {
-      owner: "example",
-      repo: "repo",
+      originUrl: "https://github.com/example/repo",
       branch: "new",
       root: operation.input.root,
     };
@@ -904,7 +903,7 @@ describe("typed Git read ownership", () => {
     viewer.abort(new Error("retired"));
     await rejected;
     expect(owner?.aborted).toBe(false);
-    const current = { owner: "example", repo: "repo", branch: "current" };
+    const current = { originUrl: "https://github.com/example/repo", branch: "current" };
     held.resolve(current);
     await expect(runGitReadOperation(operation)).resolves.toEqual(current);
     expect(gitRead).toHaveBeenCalledOnce();
@@ -932,7 +931,7 @@ describe("typed Git read ownership", () => {
       held.resolve(null);
       await rejected;
       await retiring;
-      const current = { owner: "example", repo: "repo", branch: "reopened" };
+      const current = { originUrl: "https://github.com/example/repo", branch: "reopened" };
       gitRead.mockResolvedValueOnce(current);
       await expect(runGitReadOperation(operation)).resolves.toEqual(current);
       expect(gitRead).toHaveBeenCalledTimes(phase === "checkout.context" ? 2 : 1);

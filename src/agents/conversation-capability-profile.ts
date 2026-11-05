@@ -348,3 +348,23 @@ export function prepareDelegatedToolDenyFloor(
       : {}),
   };
 }
+
+/** Capture the requester and descendant snapshots before tools receive flattened policy. */
+export function prepareInheritedToolDenylists(
+  profile: ResolvedConversationCapabilityProfile,
+  ownerOnlyCoreToolDenylist: readonly string[],
+) {
+  const pluginToolDenylist = [...profile.policy.explicitToolDenylist];
+  const requesterToolDenylist = pluginToolDenylist.concat(
+    profile.policy.inheritedToolPolicy?.deny ?? [],
+    ownerOnlyCoreToolDenylist,
+  );
+  return {
+    pluginToolDenylist,
+    requesterToolDenylist,
+    inheritedToolDenylist: requesterToolDenylist.concat(
+      profile.policy.inheritedToolPolicyForSpawn?.deny ?? [],
+    ),
+    delegatedToolDenyFloor: prepareDelegatedToolDenyFloor(profile, ownerOnlyCoreToolDenylist),
+  };
+}

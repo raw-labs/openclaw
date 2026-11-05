@@ -46,7 +46,10 @@ function holdGitContext(context = testGitContext) {
     if (operation.type === "checkout.context") {
       entered.resolve();
       await release.promise;
-      return context;
+      return {
+        originUrl: `https://github.com/${context.owner}/${context.repo}`,
+        branch: context.branch,
+      };
     }
     throw new Error("Unexpected held-context Git operation");
   });

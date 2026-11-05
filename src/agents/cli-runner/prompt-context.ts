@@ -235,6 +235,7 @@ export async function prepareCliSystemPrompt(
     [
       prepareActiveNodeContext(params.requesterProfileId),
       resolveSessionGitCoauthorPrompt({
+        registry: preparedModelRuntime?.pluginRegistry,
         config: params.config,
         agentId: params.agentId,
         sessionKey: params.sessionKey,

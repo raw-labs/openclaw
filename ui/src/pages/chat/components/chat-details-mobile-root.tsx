@@ -83,6 +83,7 @@ export type ChatDetailsMobileRootProps = {
   pullRequests?: ChatPullRequestMobileCollectionProps & { summary: ChatDetailsMobileEntry };
   /** Native publication/recovery can exist without any attached PR. */
   publication?: JSX.Element;
+  contributions?: JSX.Element;
   /** The publication entry presentation; opening review is navigation, never publication. */
   publicationEntry?: ChatDetailsMobileEntry;
   automations?: ChatDetailsMobileCollection<CronCompactJob["id"]>;
@@ -272,6 +273,7 @@ export function ChatDetailsMobileRoot(props: ChatDetailsMobileRootProps) {
           </Show>
         </RootGroup>
       </Show>
+      {props.contributions}
       <ChatLazyBoundary>
         <Show when={automationsTotal() > 0 || automationNotice.toArray().length > 0}>
           <RootGroup

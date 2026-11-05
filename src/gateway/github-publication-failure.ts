@@ -1,8 +1,11 @@
+import { GatewayErrorDetailCodes } from "@openclaw/gateway-protocol/gateway-error-details";
+import type { GitHubPublicationSelectionRejectedErrorDetails } from "@openclaw/gateway-protocol/gateway-error-details";
+import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/index.js";
 import {
-  GatewayErrorDetailCodes,
-  type GitHubPublicationSelectionRejectedErrorDetails,
-} from "../../packages/gateway-protocol/src/gateway-error-details.js";
-import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
+  RepositoryPublicationFailureError,
+  RepositoryPublicationAuthorityError,
+} from "./github-publication-errors.js";
+import { RepositoryPublicationCreditChangedError } from "./repository-publication-content-contract.js";
 
 type PublicationFailure = Pick<
   Extract<SessionGitHubPublicationResult, { status: "failed" }>,
@@ -17,15 +20,7 @@ const identityNextAction =
   "Reconnect My GitHub or System GitHub in Settings → Profile → GitHub connections (agent overrides: Agents → Tools), then request publication again.";
 
 /** An owner observed a definitive outcome; an unavailable probe is not this failure. */
-export class GitHubPublicationKnownFailure extends Error {
-  constructor(
-    message: string,
-    readonly failure: PublicationFailure,
-    readonly rejection?: GitHubPublicationSelectionRejectedErrorDetails,
-  ) {
-    super(message);
-  }
-}
+export class GitHubPublicationKnownFailure extends RepositoryPublicationFailureError {}
 
 export function rejectGitHubPublicationSelection(
   message: string,
@@ -48,16 +43,6 @@ export function rejectGitHubPublicationSelection(
     { code: "identity_changed", nextAction: identityNextAction },
     rejection,
   );
-}
-
-export class GitHubPublicationWorkspaceChangedError extends GitHubPublicationKnownFailure {
-  constructor(message: string) {
-    super(message, {
-      code: "workspace_changed",
-      nextAction:
-        "Inspect the reconciled workspace and any recorded GitHub effects, then request a new publication after reviewing the changes.",
-    });
-  }
 }
 
 /** The session worktree has a branch checked out other than the branch this session publishes. */
@@ -85,47 +70,6 @@ export class GitHubPublicationBranchChangedError extends GitHubPublicationKnownF
   }
 }
 
-/**
- * Classify a push whose head did not land. Git exiting on its own with a failure while the
- * remote still holds its pre-push head is a definitive rejection. Anything else (exit 0, a
- * killed or signalled push, or a moved remote) stays unconfirmed for recovery to settle.
- */
-export function gitHubPublicationPushFailure(
-  pushed: { code: number | null; signal: unknown; killed: boolean },
-  remoteUnchanged: boolean,
-  { login, pushRepository }: { login: string; pushRepository: string },
-): Error {
-  if (!remoteUnchanged || pushed.code === 0 || pushed.signal !== null || pushed.killed) {
-    return new Error(
-      pushed.code === 0 ? "GitHub push verification failed." : "GitHub push was rejected.",
-    );
-  }
-  return new GitHubPublicationKnownFailure(`GitHub rejected the push to ${pushRepository}.`, {
-    code: "push_rejected",
-    nextAction: `Nothing was pushed as @${login}. Give @${login} write access (or point the worktree's origin at a fork it owns) and check the repository's branch rules, then request publication again.`,
-  });
-}
-
-export class GitHubPublicationSessionChangedError extends GitHubPublicationKnownFailure {
-  constructor() {
-    super("GitHub publication session lifecycle changed.", {
-      code: "session_changed",
-      nextAction:
-        "Review any recorded GitHub effects, then request publication from the current session.",
-    });
-  }
-}
-
-export class GitHubPublicationRequesterUnavailableError extends GitHubPublicationKnownFailure {
-  constructor() {
-    super("The original GitHub publication requester is no longer authorized.", {
-      code: "identity_changed",
-      nextAction:
-        "Review any recorded or unconfirmed GitHub effects, then request publication again from an authorized session. Saved work and existing pull requests are retained.",
-    });
-  }
-}
-
 export class GitHubPublicationCreditChangedError extends GitHubPublicationKnownFailure {
   constructor() {
     super("GitHub publication contributor credit changed.", {
@@ -136,13 +80,10 @@ export class GitHubPublicationCreditChangedError extends GitHubPublicationKnownF
   }
 }
 
-export class GitHubPublicationWorkflowChangesError extends GitHubPublicationKnownFailure {
+/** An unavailable authenticated read does not establish a definitive write outcome. */
+export class GitHubPublicationObservationUnavailableError extends Error {
   constructor() {
-    super("Publishing GitHub workflow changes requires full operator write permission.", {
-      code: "github_rejected",
-      nextAction:
-        "OpenClaw requires the requester's full operator write authority for these workflow changes; this is not a GitHub token scope failure. Your saved changes are intact. Ask a maintainer with full write access to publish, or remove only unintended workflow edits after reviewing the accepted diff.",
-    });
+    super("GitHub publication remote branch could not be verified.");
   }
 }
 
@@ -152,19 +93,28 @@ export class GitHubPublicationWorkflowChangesError extends GitHubPublicationKnow
  * and only select generic guidance.
  */
 export function resolveGitHubPublicationFailure(error: unknown): PublicationFailure {
-  if (error instanceof GitHubPublicationKnownFailure) {
+  if (
+    error instanceof GitHubPublicationKnownFailure ||
+    error instanceof RepositoryPublicationAuthorityError
+  ) {
     const reason = /[.!?]$/u.test(error.message) ? error.message : `${error.message}.`;
     return { code: error.failure.code, nextAction: `${reason} ${error.failure.nextAction}` };
   }
+  if (error instanceof RepositoryPublicationCreditChangedError) {
+    return new GitHubPublicationCreditChangedError().failure;
+  }
+  if (error instanceof RepositoryPublicationFailureError) {
+    return error.failure;
+  }
   const message = error instanceof Error ? error.message : "";
-  if (message.includes("publication workspace base")) {
+  if (message.toLowerCase().includes("publication workspace base")) {
     return {
       code: "unavailable",
       nextAction:
         "The pull request base or its Git history could not be verified. Check repository read access, connectivity, and local Git objects before retrying publication.",
     };
   }
-  if (message.includes("publication remote branch could not be verified")) {
+  if (message.toLowerCase().includes("publication remote branch could not be verified")) {
     return {
       code: "unavailable",
       nextAction:
@@ -218,3 +168,17 @@ export function resolveGitHubPublicationFailure(error: unknown): PublicationFail
   }
   return { code: "unavailable", nextAction: "Retry after the Gateway and GitHub are available." };
 }
+
+export function isDefinitiveGitHubPublicationFailure(error: unknown): boolean {
+  return (
+    error instanceof RepositoryPublicationFailureError ||
+    error instanceof RepositoryPublicationCreditChangedError ||
+    error instanceof RepositoryPublicationAuthorityError
+  );
+}
+
+export { RepositoryPublicationRequesterUnavailableError as GitHubPublicationRequesterUnavailableError } from "./repository-publication-errors.js";
+export {
+  RepositoryPublicationWorkspaceChangedError as GitHubPublicationWorkspaceChangedError,
+  RepositoryPublicationSessionChangedError as GitHubPublicationSessionChangedError,
+} from "./github-publication-errors.js";

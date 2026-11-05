@@ -23,6 +23,7 @@ import type {
 } from "./capability-provider.types.js";
 import type { CliBackendPlugin } from "./cli-backend.types.js";
 import type { PluginConversationBindingResolvedEvent } from "./conversation-binding.types.js";
+import type { PluginDashboardDataBindingV1 } from "./dashboard-data-binding.types.js";
 import type { PluginGatewayAccessPolicy } from "./gateway-access-policy.types.js";
 import type {
   PluginHookHandlerMap,
@@ -280,6 +281,12 @@ export type OpenClawPluginApi = {
     handler: (opts: GatewayRequestHandlerOptions) => unknown,
     opts?: {
       scope?: OperatorScope;
+      startup?: "available" | "unavailable-until-sidecars";
+      controlPlaneWrite?: boolean;
+      /** Omit internal transport methods from client discovery without changing authorization. */
+      advertise?: boolean;
+      description?: string;
+      since?: string;
       profileAccess?: "independent" | "required";
       /** Require a top-level sessionKey (and optional agentId) naming an existing session. */
       sessionAccess?: import("../gateway/methods/descriptor.js").GatewayMethodSessionAccess;
@@ -294,7 +301,8 @@ export type OpenClawPluginApi = {
   ) => void;
   /** Add a plugin-owned lifetime requirement to authenticated person admission. */
   registerGatewayAccessPolicy: (policy: PluginGatewayAccessPolicy) => void;
-  /** Register a sandboxed board widget source kind owned by this plugin. */
+  /** Bind scoped-grant and preflight policy to an existing manifest dashboard declaration. */
+  registerDashboardDataBinding: (definition: PluginDashboardDataBindingV1) => void;
   /** Register a read-only external-session catalog with optional native adoption actions. */
   registerSessionCatalog: (provider: SessionCatalogProvider) => void;
   registerCli: (
@@ -314,6 +322,13 @@ export type OpenClawPluginApi = {
   registerReload: (registration: OpenClawPluginReloadRegistration) => void;
   registerNodeHostCommand: (command: OpenClawPluginNodeHostCommand) => void;
   registerNodeInvokePolicy: (policy: OpenClawPluginNodeInvokePolicy) => void;
+  registerRepositorySource: (
+    source: import("./repository-source-types.js").RepositorySourceV1,
+  ) => void;
+  /** Prepare nonsecret process facts and scoped local launch adapters for this plugin. */
+  registerExecutionEnvironment: (
+    provider: import("./execution-environment-types.js").ExecutionEnvironmentProviderV1,
+  ) => void;
   registerSecurityAuditCollector: (collector: OpenClawPluginSecurityAuditCollector) => void;
   registerService: {
     (service: OpenClawPluginService): void;

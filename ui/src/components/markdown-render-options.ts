@@ -1,4 +1,16 @@
 import type { HumanMention } from "@openclaw/gateway-protocol";
+import type { StateCore } from "markdown-it";
+import type { ControlUiTextReferenceSnapshot } from "../../../src/plugin-sdk/control-ui.js";
+
+export type MarkdownTextReferenceSnapshot = ControlUiTextReferenceSnapshot & {
+  identity: number;
+  render(state: StateCore, providers: readonly ControlUiTextReferenceSnapshot[]): void;
+};
+
+export type MarkdownTextReferences = Readonly<{
+  key: string;
+  snapshots: readonly MarkdownTextReferenceSnapshot[];
+}>;
 
 export type MarkdownHumanMentionToken = { marker: string; profileId: string; label: string };
 
@@ -10,6 +22,7 @@ export type MarkdownRenderOptions = {
   codeBlockChrome?: "copy" | "none";
   codeBlockInteraction?: "interactive" | "static";
   fileLinks?: boolean;
+  textReferences?: MarkdownTextReferences;
   /** Selection cues accept query-bearing references without resolving or reading them. */
   documentFileLinks?: boolean | "select";
   humanMentions?: readonly HumanMention[];
@@ -22,10 +35,11 @@ export type MarkdownRenderOptions = {
   tableInteractions?: "enabled" | "none";
 };
 
-export type MarkdownRenderEnv = Required<MarkdownRenderOptions> & {
-  streamingOpenFence?: boolean;
-  humanMentionTokens?: readonly MarkdownHumanMentionToken[];
-};
+export type MarkdownRenderEnv = Required<Omit<MarkdownRenderOptions, "textReferences">> &
+  Pick<MarkdownRenderOptions, "textReferences"> & {
+    streamingOpenFence?: boolean;
+    humanMentionTokens?: readonly MarkdownHumanMentionToken[];
+  };
 
 export function normalizeMarkdownRenderOptions(
   options: MarkdownRenderOptions = {},
@@ -35,6 +49,7 @@ export function normalizeMarkdownRenderOptions(
     codeBlockChrome: options.codeBlockChrome ?? "copy",
     codeBlockInteraction: options.codeBlockInteraction ?? "static",
     fileLinks: options.fileLinks ?? false,
+    textReferences: options.textReferences,
     documentFileLinks: options.documentFileLinks ?? false,
     humanMentions: options.humanMentions ?? [],
     interactiveImages: options.interactiveImages ?? false,
@@ -45,4 +60,8 @@ export function normalizeMarkdownRenderOptions(
     sessionLinks: options.sessionLinks ?? false,
     tableInteractions: options.tableInteractions ?? "none",
   };
+}
+
+export function markdownRenderKey(options: MarkdownRenderEnv, locale: string): string {
+  return `${locale}\0${options.assistantTranscriptRoleHeaders}\0${options.codeBlockChrome}\0${options.codeBlockInteraction}\0${options.fileLinks}\0${options.documentFileLinks}\0${options.textReferences?.key ?? ""}\0${options.interactiveImages}\0${options.linkFavicons}\0${options.progressBars}\0${options.mode}\0${options.remoteImages}\0${options.sessionLinks}\0${options.tableInteractions}\0${JSON.stringify(options.humanMentionTokens ?? [])}`;
 }

@@ -179,6 +179,16 @@ Export `defineControlUiPlugin({ id, activate(host) })` from the browser entry.
 Its id must match the plugin manifest. Register contributions through
 `host.ui`; each registration returns a disposer.
 
+For browser operation IDs, import `generateUUID` from
+`openclaw/plugin-sdk/control-ui`. It uses Web Crypto and reports an error when
+secure UUID generation is unavailable.
+
+Session-only readers can load the native browser catalog and its scoped assets,
+and report activation for their live Control UI connection. Their grants retain
+the session scope. Each contributed backend operation keeps its own authorization;
+catalog reload, cross-client activation status, and custom Gateway tabs retain
+their existing broader permissions.
+
 | Registration                            | Host placement                                                                                                                          |
 | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `registerPage` and `registerNavigation` | Plugin-owned routes and sidebar destinations.                                                                                           |
@@ -652,6 +662,165 @@ The dev server serves the validated generated JavaScript and CSS without runtime
 plugin activation. Restart the dev server after editing plugin presentation
 sources to rebuild their immutable generation.
 
+### Opt in to additional browser capabilities
+
+Existing `defineControlUiPlugin` entries keep their original activation contract
+and `host.apiVersion === 1`. Their host, Settings, and header-accessory types do
+not acquire new required members or placements.
+
+Use `defineControlUiPluginV2` for the additional request, presentation, session,
+and text-reference capabilities:
+
+```typescript
+import { defineControlUiPluginV2 } from "openclaw/plugin-sdk/control-ui";
+
+export default defineControlUiPluginV2({
+  apiVersion: 2,
+  id: "example",
+  activate(host) {
+    // ControlUiHostV2: host.capabilitiesVersion is 2.
+    return host.requests.subscribe(() => host.ui.invalidate());
+  },
+});
+```
+
+Both entry versions use the same host ownership and activation lifecycle. The
+V2 module explicitly requests the expanded contract; it does not select another
+Gateway transport or grant additional permissions. Its page, panel, widget,
+replacement, and session-accessory registrations supply a view-scoped V2 host
+through `ControlUiViewV2`. Named `ControlUiPageV2`, `ControlUiPanelV2`,
+`ControlUiWidgetV2`, and `ControlUiReplacementV2` types are available for extracted
+contribution definitions. Ordinary legacy views retain `ControlUiView` and their
+original context shape.
+
+### Contributed Profile and Agent Settings
+
+A native plugin can declare additional views in the existing Profile connections
+or Agent tools slots. Give every contribution a plugin-local `id`:
+
+```json
+{
+  "section": "profile",
+  "panel": "connections",
+  "id": "account",
+  "requiredMethods": ["example.account.status"],
+  "search": { "label": "Example account", "hash": "#example-account", "aliases": "connection" }
+}
+```
+
+For Agent tools, use `section: "agents"` and `panel: "tools"`. Export matching
+`ControlUiContributedSettingsView` entries from the browser module's `settingsViews`.
+These views require current catalog admission; disabling their plugin or replacing
+its revision retires mounted views and their assets. Memory/channel setup retains
+its existing packaged-presentation behavior. All views must match their declared
+owner and placements; duplicate or missing renderers are rejected.
+
+Contributed views receive `ControlUiSettingsContextV2`, without a Memory engine.
+`ControlUiContributionSettingsPlacement` names these new slots;
+`ControlUiSettingsPlacement` retains the original Memory/channel union for
+existing plugin code. `ControlUiSettingsComponentsV2` adds controls and richer
+section/row presentation without widening the legacy component input contracts.
+Snapshots include authenticated profile, permissions, selected agent, locale,
+connection epoch, and config availability. Profile views do not remount just because
+the selected Settings agent changes. Client, identity, permissions, route, or method
+catalog replacement retires authority; a same-client reconnect preserves drafts but
+rejects earlier replies. `request` accepts a cancellation signal.
+Native details rows, disclosures, and section-help mounts keep their open state and overlay cleanup in the host while plugins supply their content.
+
+Use `readConfig(path)` to read the existing config owner, and
+`runConfigMutation` to delegate serialization and refresh to that same owner. Its
+admitted client can settle accepted work after the view retires.
+`projectOwner({ read, subscribe })` projects a Settings owner in the host's
+reactive runtime. Self-contained plugin bundles have their own runtime: subscribe
+to the plain owner and invalidate a plugin-local reactive read instead of relying
+on the host projection to track plugin computations. Keep authoritative state in
+the plain owner and unsubscribe when the view retires. Dispose host projections
+with their owner; the Settings lifetime also retires them automatically.
+The host does not create a second config cache or grant new backend write permissions.
+Accepted configuration work can settle and clean up after its view closes; new
+view callbacks cannot dispatch after retirement. Shared controls include secret
+inputs, segmented choices, icons, confirmation, copying, locale formatting and
+bounded navigation. Contributions do not replace native account or Agent tools
+views.
+
+### Scoped requests, presentation, and observed actions
+
+The V2 host's `requests` capability adapts the existing Gateway transport. Capture a request handle
+for work that must reject after its connection, authenticated handshake, or plugin
+lifetime changes. `createSetSync` delegates subscription batching, acknowledgements
+and retries to the native lifecycle; detach it when its observation ends. Multiple
+observers share the physical connection observation while retaining their own
+authority scopes. Scope
+and method checks are presentation facts, never a substitute for Gateway
+authorization at dispatch.
+
+Cron inventory readers are available from
+`@openclaw/gateway-protocol/cron-list-page-validation`. This narrow entrypoint
+shares page validation without loading the protocol's schema runtime in a browser.
+
+The optional `host.presentation` capability mounts existing native controls:
+menus, icons, toggles, activity pills, lazy/error states, tooltips, clipped text and marquees.
+It also supplies locale, safe-URL, clipboard and notification services. The optional
+`host.native` capability supplies native diff and disclosure-overlay primitives.
+Dispose mounted handles when their container ends; activation/view retirement also
+revokes retained handles. `presentation.translate` is public-catalog lookup and
+interpolation owned by global i18n, so retained translations remain usable after
+view or activation retirement. Catalog registration, subscriptions, native controls,
+and all request or mutation capabilities retain their lifetime checks.
+`presentation.mountLinkPreviews` wraps plugin content with the native link-preview
+owner. Supply existing snapshot metadata as `previewSeeds` to render useful previews
+while enrichment is pending; the host retains connection, reader admission, cache,
+and teardown ownership. Seeds are display facts and never grant reader access.
+`host.navigation.openExternal` opens only allowed URLs in an isolated new tab.
+
+Session actions can provide `observe(target, changed)`. Visible native session
+menus own that interest and call its disposer on close, withdrawal, or plugin
+retirement. Notify when the action's `resolve` result changes. Optional `icon`,
+`shortcut`, and `opensExternal` metadata use the existing menu presentation;
+execution still checks current registration and action availability.
+
+### Session accessories and retained operations
+
+V2 `host.ui.registerAccessory` accepts `ControlUiSessionAccessory` contributions
+for session headers, context strips, Environment content (`session-environment`), rows, hovercards, activity, summaries, and
+mobile Details root/pages/activity. The original `ControlUiAccessory` remains a
+header-only contract. Slots are additive: registering an accessory does not
+replace native GitHub controls or other contributions.
+
+Session props carry the specific session and agent identity, current presentation
+facts, and the host's navigation/focus callbacks for that placement. Use
+`onPresenceChange` when asynchronous content appears or disappears; the host can
+hide an empty strip without destroying the contribution that is waiting for data.
+Use `onContentChange` around asynchronous layout changes and `registerControls`
+for controls participating in the surface's keyboard traversal. Mobile content
+uses the existing Details history rather than owning a competing navigation stack.
+
+`host.sessions.attachOperation(row, factory)` uses the existing session owner to
+retain an admitted operation after its last pane closes. The factory returns a
+binding with `detach`, and its owner supplies guarded requests, `reserve`,
+`release`, and current-authority checks. Idle unbound operations are released;
+accepted work survives presentation changes only while its plugin, connection,
+and session authority remain current. Plugin retirement or session deletion ends
+that custody. This does not create another scheduler or durable operation store.
+
+### Text references
+
+V2 `host.ui.registerTextReferenceProvider` adds prose references to transcript and
+file Markdown. A provider names an admitted reader with `reader: { pluginId, id }`,
+captures an immutable `snapshot(context)`, and resolves text ranges to URLs from
+those captured facts.
+Ranges address UTF-16 offsets in a prose run; code and existing links are excluded.
+Native GitHub references retain priority, so a contribution does not rewrite
+existing native links.
+
+The snapshot's `key` identifies its facts for rendering caches. Publish a new
+snapshot object whenever those facts change, even when the key stays the same.
+An optional `observe` callback can notify the host to capture new facts. The
+existing link-reader owner admits presentation and handles opening; this API does
+not authorize remote reads or transfer another plugin's reader ownership. Both
+the provider registration and the declared reader must remain active. A provider
+may name another plugin's reader without taking ownership of it.
+
 ### Bundle boundaries
 
 The build emits a JavaScript entry, optional CSS, and JavaScript chunks for lazy
@@ -781,3 +950,14 @@ available immediately while other plugins are still initializing.
 
 For the underlying manifest fields, see [Plugin manifest](/plugins/manifest).
 For install, update, and removal, see [Manage plugins](/plugins/manage-plugins).
+
+A V2 `session-row` accessory may use `presentation: "badge"` with a synchronous
+`resolve(target)` and optional scoped `observe(target, changed)`. Resolve returns
+`{ status: "pending" }` while facts are unavailable, or `{ status: "ready", badge }`
+with native icon, label, count, fixed tone, and plain state facts. Ready without a
+badge explicitly clears it. Pending retains only that current producer's previously
+captured facts for the same session, target facts, and live registration; withdrawal removes them. The host uses that
+same projection for live badges and the existing principal-scoped sidebar snapshot;
+cached facts run no plugin code and supply no action or RPC authority. Registration
+withdrawal and the current catalog retire the live producer, while the existing
+snapshot owner retains scope, deletion, expiry, and handoff policy.

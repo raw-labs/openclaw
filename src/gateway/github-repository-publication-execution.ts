@@ -1,28 +1,26 @@
 import type { SessionGitHubPublicationResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
 import { encodeGitHubPublicationRequester } from "../state/github-publication-requester.js";
+import type { PersonalGitHubSessionActionV2 } from "./github-personal-publication.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./github-publication-errors.js";
 import {
-  bindPersonalGitHubPublicationSelection,
-  preparePersonalGitHubPublicationSelection,
-  type PersonalGitHubSessionActionV2,
-} from "./github-personal-publication.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
+  bindPersonalPublisher,
+  preparePersonalPublisher,
+  assertPublicationChangePermission as assertGitHubPublicationWorkflowChangesAllowed,
+} from "./github-publication-policy.js";
 import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
-import {
-  isGitHubPublicationRequesterV2,
-  restoreGitHubPublicationRequester,
-  type GitHubPublicationRequesterPolicyV2,
-} from "./github-publication-requester.js";
+import { isGitHubPublicationRequesterV2 } from "./github-publication-requester-capability.js";
+import type { GitHubPublicationRequesterPolicyV2 } from "./github-publication-requester.js";
 import {
   bindRepositoryGitHubPublicationCheckpointAsync,
   claimRepositoryGitHubPublicationAsync,
-  type GitHubPublicationTransitionAuthority,
-  type RepositoryGitHubPublicationExecutionAsync,
 } from "./github-publication-store-async.js";
-import { assertGitHubPublicationWorkflowChangesAllowed } from "./github-publication-workflows.js";
-import { executeRepositoryGitHubPublication } from "./github-repository-publication-executor.js";
+import type {
+  GitHubPublicationTransitionAuthority,
+  RepositoryGitHubPublicationExecutionAsync,
+} from "./github-publication-store-async.js";
+import { executeRepositoryPublication } from "./github-repository-publication-dispatch.js";
 import {
   observeRepositoryGitHubPublication,
   settleDeniedRepositoryGitHubPublication,
@@ -34,8 +32,10 @@ import {
   prepareReceiptOwner,
   type RepositoryDiskPublicationSource,
 } from "./github-repository-publication-workspace.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
 
 export function createRepositoryGitHubPublicationExecution(params: {
+  provider: RepositoryPublicationProvider;
   instanceId: string;
   disk?: RepositoryDiskPublicationSource;
   active: Map<string, string>;
@@ -46,6 +46,13 @@ export function createRepositoryGitHubPublicationExecution(params: {
     selector: Parameters<GitHubPublicationRequesterPolicyV2["prepareSource"]>[0],
   ) => ReturnType<GitHubPublicationRequesterPolicyV2["prepareSource"]>;
 }) {
+  const { provider } = params;
+  const bindPersonalGitHubPublicationSelection = (
+    ...args: Parameters<typeof bindPersonalPublisher> extends [unknown, ...infer Rest]
+      ? Rest
+      : never
+  ) => bindPersonalPublisher(provider, ...args);
+  const preparePersonalGitHubPublicationSelection = preparePersonalPublisher;
   const { instanceId, active, getCommittedRuntimeConfig, prepareSource } = params;
   return async (
     initial: RepositoryGitHubPublicationRow,
@@ -86,7 +93,7 @@ export function createRepositoryGitHubPublicationExecution(params: {
     let releaseRequester: (() => void) | undefined;
     const getRequester = () => {
       if (!requester) {
-        throw new GitHubPublicationRequesterUnavailableError();
+        throw new RepositoryPublicationRequesterUnavailableError();
       }
       return requester;
     };
@@ -138,7 +145,9 @@ export function createRepositoryGitHubPublicationExecution(params: {
         ) {
           requester = context.requester;
         } else {
-          const restored = await restoreGitHubPublicationRequester(
+          const restored = await (
+            await import("./github-publication-requester.js")
+          ).restoreGitHubPublicationRequester(
             row.requester_authority_json,
             { sessionKey: row.session_key, agentId: row.agent_id },
             getCommittedRuntimeConfig,
@@ -151,6 +160,7 @@ export function createRepositoryGitHubPublicationExecution(params: {
       if (row.owner_profile_id === null && row.head_commit) {
         const ownedExecution = await claimExecution();
         const observed = await observeRepositoryGitHubPublication({
+          provider,
           execution: ownedExecution,
           assertCustody,
           beforeRetry: true,
@@ -183,7 +193,10 @@ export function createRepositoryGitHubPublicationExecution(params: {
           }
           assertExecution();
           const actor = action ? undefined : getRequester().snapshot.actor;
-          return await executeRepositoryGitHubPublication({
+          return await executeRepositoryPublication({
+            provider,
+            config: getCommittedRuntimeConfig(),
+            source: assertReceiptOwner(row, preparedOwner).workspace,
             execution: await claimExecution(),
             requesterProfileId:
               action?.owner ?? (actor?.kind === "operator" ? actor.profileId : undefined),
@@ -203,18 +216,8 @@ export function createRepositoryGitHubPublicationExecution(params: {
             },
             ...(bound
               ? {
-                  identity: {
-                    prepare: () =>
-                      preparePersonalGitHubPublicationSelection(bound, assertExecution),
-                    isCurrent: (identity: PreparedGitHubPublicationIdentity) => {
-                      assertExecution();
-                      return (
-                        identity.source === "personal" &&
-                        identity.profileId === bound.profileId &&
-                        identity.account.accountId === row.identity_account_id
-                      );
-                    },
-                  },
+                  publisher: async () =>
+                    (await preparePersonalGitHubPublicationSelection(bound, assertExecution)).lease,
                 }
               : {}),
           });
@@ -225,9 +228,10 @@ export function createRepositoryGitHubPublicationExecution(params: {
     } catch (error) {
       if (
         row.owner_profile_id === null &&
-        error instanceof GitHubPublicationRequesterUnavailableError
+        error instanceof RepositoryPublicationRequesterUnavailableError
       ) {
         return await settleDeniedRepositoryGitHubPublication({
+          provider,
           execution: await claimExecution(),
           assertCustody,
           error,

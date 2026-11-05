@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { ok, type Result } from "@openclaw/normalization-core/result";
+import { err, ok, type Result } from "@openclaw/normalization-core/result";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   ErrorCodes,
@@ -7,6 +7,7 @@ import {
   type ErrorShape,
   type SessionsCreateParams,
 } from "../../../packages/gateway-protocol/src/index.js";
+import { resolvePreparedWorktreeBase } from "../../agents/worktrees/base-ref.js";
 import { patchSessionEntryCore } from "../../config/sessions/session-accessor.js";
 import { withSessionActorStorage } from "../../config/sessions/session-actor-storage-acquisition.js";
 import { readSessionEntryReadOnlyInWorker } from "../../config/sessions/session-entry-read-runtime.js";
@@ -22,9 +23,17 @@ import { assertAgentRunLifecycleGenerationCurrent } from "../../infra/agent-even
 import { emitAgentRunStatusEvent } from "../../infra/agent-run-status-events.js";
 import { toErrorObject } from "../../infra/errors.js";
 import { KeyedAsyncQueue } from "../../plugin-sdk/keyed-async-queue.js";
+import {
+  normalizePluginRepositoryUrl,
+  resolvePluginRepositorySource,
+} from "../../plugins/repository-sources.js";
+import { withProjectCheckoutLifecycle } from "../../projects/project-checkout.js";
 import { materializeProjectClone, refreshProjectClone } from "../../projects/project-clone.js";
 import { parseConfiguredProjectGitUrl } from "../../projects/project-git-url.runtime.js";
-import { resolveProjectDirectory } from "../../projects/project-registry.js";
+import {
+  resolveProjectDirectory,
+  resolveProjectRegistry,
+} from "../../projects/project-registry.js";
 import {
   getRpcSourceIdentity,
   getRpcSourceLifecycleGeneration,
@@ -64,6 +73,34 @@ const workspacePreparations = new KeyedAsyncQueue();
 
 type RepositorySource = NonNullable<SessionsCreateParams["repository"]>;
 
+export function resolveSessionCreateProjectSelection(
+  params: SessionsCreateParams,
+): Result<ReturnType<typeof resolvePluginRepositorySource> | undefined, ErrorShape> {
+  const selectionError = validateSessionWorktreeSelection(params);
+  if (selectionError) {
+    return err(selectionError);
+  }
+  if (!params.repositorySource) {
+    return ok(undefined);
+  }
+  const url = params.repository?.url ?? params.projectGitUrl;
+  if (!url) {
+    return invalidSessionRequest("repositorySource requires projectGitUrl or repository.");
+  }
+  try {
+    const source = resolvePluginRepositorySource(params.repositorySource, url);
+    if (params.repository) {
+      params.repository.url = source.url;
+    }
+    if (params.projectGitUrl) {
+      params.projectGitUrl = source.url;
+    }
+    return ok(source);
+  } catch (error) {
+    return invalidSessionRequest(error instanceof Error ? error.message : String(error));
+  }
+}
+
 export function resolveSessionRepositoryCreation(
   params: SessionsCreateParams,
   hasInitialTurn: boolean,
@@ -71,7 +108,7 @@ export function resolveSessionRepositoryCreation(
   if (!params.repository) {
     return ok(undefined);
   }
-  const url = normalizeSessionProjectGitUrl(params.repository.url);
+  const url = normalizeSessionProjectGitUrl(params.repository.url, params.repositorySource);
   const ref = params.repository.ref?.trim();
   if (!url || (ref !== undefined && (!ref || ref.startsWith("-") || /\s|\0/u.test(ref)))) {
     return invalidSessionRequest(
@@ -172,9 +209,7 @@ export function prepareSessionRepositoryWorkspace(
   };
 }
 
-export function validateSessionWorktreeSelection(
-  params: SessionsCreateParams,
-): ErrorShape | undefined {
+function validateSessionWorktreeSelection(params: SessionsCreateParams): ErrorShape | undefined {
   if (
     params.worktreeSource === "empty" &&
     (params.worktree !== true ||
@@ -210,7 +245,13 @@ export function validateSessionWorktreeSelection(
   return undefined;
 }
 
-export function normalizeSessionProjectGitUrl(value: unknown): string | undefined {
+export function normalizeSessionProjectGitUrl(
+  value: unknown,
+  sourceId?: string,
+): string | undefined {
+  if (sourceId) {
+    return normalizePluginRepositoryUrl(value);
+  }
   return typeof value === "string" && value.length <= 2048
     ? parseConfiguredProjectGitUrl(value)?.url
     : undefined;
@@ -222,6 +263,7 @@ export function validateSessionProjectPreparation(params: {
   gitUrl?: string;
   hasInitialTurn: boolean;
   projectId?: string;
+  repositorySourceId?: string;
 }): ErrorShape | undefined {
   if (!params.gitUrl) {
     return params.projectId && (params.cwd || params.execNode)
@@ -231,7 +273,7 @@ export function validateSessionProjectPreparation(params: {
         )
       : undefined;
   }
-  if (!normalizeSessionProjectGitUrl(params.gitUrl)) {
+  if (!normalizeSessionProjectGitUrl(params.gitUrl, params.repositorySourceId)) {
     return errorShape(
       ErrorCodes.INVALID_REQUEST,
       "Use a GitHub HTTPS or git@github.com repository URL. Local paths and file URLs are not accepted.",
@@ -411,12 +453,16 @@ export async function prepareSessionWorkspaceForRun(params: {
           current.lifecycleRevision !== entry.lifecycleRevision ||
           current.projectId !== saved.projectId ||
           current.pendingProjectGitUrl !== saved.pendingProjectGitUrl ||
+          current.repositorySourceId !== saved.repositorySourceId ||
           !isDeepStrictEqual(current.pendingWorktree, pending)
         ) {
           throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);
         }
       };
-      const gitUrl = normalizeSessionProjectGitUrl(saved.pendingProjectGitUrl);
+      const gitUrl = normalizeSessionProjectGitUrl(
+        saved.pendingProjectGitUrl,
+        saved.repositorySourceId,
+      );
       if (
         Object.hasOwn(saved, "pendingProjectGitUrl") &&
         (!gitUrl || gitUrl !== saved.pendingProjectGitUrl)
@@ -429,9 +475,14 @@ export async function prepareSessionWorkspaceForRun(params: {
         delete entry.pendingWorktree;
         return;
       }
-      const configuredToken = gitUrl ? githubApiToken(process.env, cfg) : undefined;
+      const selectedSource =
+        gitUrl && saved.repositorySourceId
+          ? resolvePluginRepositorySource(saved.repositorySourceId, gitUrl)
+          : undefined;
+      const configuredToken =
+        gitUrl && !selectedSource ? githubApiToken(process.env, cfg) : undefined;
       const projectIdentity =
-        gitUrl && !configuredToken
+        gitUrl && !selectedSource && !configuredToken
           ? await prepareGatewayProjectGitHubIdentity({
               agentId,
               assertActive: assertRunOwnership,
@@ -440,12 +491,22 @@ export async function prepareSessionWorkspaceForRun(params: {
             })
           : undefined;
       const projectToken = configuredToken ?? projectIdentity?.token;
-      const assertProjectCurrent = () => {
+      const assertNativeProjectCurrent = () => {
         assertRunOwnership();
         if (metadata) {
           assertSavedWorkspaceIntent(metadata.readCurrent());
         }
         projectIdentity?.assertSelected();
+        selectedSource?.assertCurrent();
+      };
+      const preparedSource = await selectedSource?.prepare({
+        agentId,
+        signal,
+        assertCurrent: assertNativeProjectCurrent,
+      });
+      const assertProjectCurrent = () => {
+        assertNativeProjectCurrent();
+        preparedSource?.assertCurrent();
       };
       const cloneOptions = {
         signal,
@@ -453,9 +514,11 @@ export async function prepareSessionWorkspaceForRun(params: {
         assertCurrent: assertProjectCurrent,
         startRun: projectIdentity?.start,
       };
-      const project = gitUrl
-        ? await materializeProjectClone({ cfg, gitUrl }, cloneOptions)
-        : undefined;
+      const nativeProject =
+        !preparedSource && gitUrl
+          ? await materializeProjectClone({ cfg, gitUrl }, cloneOptions)
+          : undefined;
+      const project = preparedSource?.project ?? nativeProject;
       projectIdentity?.assertSelected();
       assertRunOwnership();
       const directory = project
@@ -488,24 +551,76 @@ export async function prepareSessionWorkspaceForRun(params: {
         sessionRoot: root.value.sessionRoot,
       };
       if (pending) {
-        if (pending.baseRef && !pending.baseCommit) {
-          let resolved = await resolveSessionWorktreeBase(directory, pending.baseRef, signal);
+        if (!pending.baseCommit && (pending.baseRef || preparedSource)) {
+          let selectedRef = pending.baseRef;
+          let resolved = selectedRef
+            ? await resolveSessionWorktreeBase(directory, selectedRef, signal, assertProjectCurrent)
+            : undefined;
           if (
-            !resolved.ok &&
-            resolved.error.code === ErrorCodes.INVALID_REQUEST &&
-            project?.source === "cloned"
+            !resolved ||
+            (!resolved.ok &&
+              resolved.error.code === ErrorCodes.INVALID_REQUEST &&
+              project?.source === "cloned")
           ) {
-            await refreshProjectClone(project, cloneOptions);
-            projectIdentity?.assertSelected();
-            assertRunOwnership();
-            resolved = await resolveSessionWorktreeBase(directory, pending.baseRef, signal);
+            if (preparedSource) {
+              const base = await preparedSource.resolveBase(selectedRef);
+              assertProjectCurrent();
+              const commit = selectedRef
+                ? await resolveSessionWorktreeBase(
+                    directory,
+                    base.commit,
+                    signal,
+                    assertProjectCurrent,
+                  )
+                : ok<string, ErrorShape>(
+                    await withProjectCheckoutLifecycle(directory, { signal }, async (lease) => {
+                      const assertCurrent = () => {
+                        lease.assertOwned();
+                        assertProjectCurrent();
+                      };
+                      const current = await resolveProjectRegistry(cfg, preparedSource.project.id);
+                      const currentRoot =
+                        current?.source === "workspace"
+                          ? await resolveProjectDirectory(current.repoRoot)
+                          : current?.repoRoot;
+                      assertCurrent();
+                      if (
+                        !current ||
+                        currentRoot !== directory ||
+                        current.source !== preparedSource.project.source
+                      ) {
+                        throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);
+                      }
+                      return await resolvePreparedWorktreeBase(
+                        directory,
+                        base,
+                        lease.signal,
+                        assertCurrent,
+                      );
+                    }),
+                  );
+              selectedRef ??= base.ref;
+              resolved = commit;
+            } else if (nativeProject) {
+              await refreshProjectClone(nativeProject, cloneOptions);
+              assertProjectCurrent();
+              resolved = await resolveSessionWorktreeBase(
+                directory,
+                pending.baseRef!,
+                signal,
+                assertProjectCurrent,
+              );
+            }
           }
-          if (!resolved.ok) {
-            throw new Error(resolved.error.message);
+          assertProjectCurrent();
+          if (!resolved?.ok) {
+            throw new Error(
+              resolved?.error.message ?? "Repository base is unavailable; reselect the repository.",
+            );
           }
           // Accept once, before setup can fail: retries keep the commit while the
           // original ref remains publication metadata, never a fallback selection.
-          const next = { ...pending, baseCommit: resolved.value };
+          const next = { ...pending, baseRef: selectedRef, baseCommit: resolved.value };
           const updated = await patchSessionEntryCore(
             target,
             (current) => {

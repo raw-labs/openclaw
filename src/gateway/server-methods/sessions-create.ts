@@ -60,10 +60,10 @@ import {
 } from "./session-create-initial-turn.js";
 import {
   normalizeSessionProjectGitUrl,
+  resolveSessionCreateProjectSelection,
   prepareSessionRepositoryWorkspace,
   resolveSessionRepositoryCreation,
   validateSessionProjectPreparation,
-  validateSessionWorktreeSelection,
 } from "./session-create-project.js";
 import {
   assertRequiredWorkerSessionCreateCurrent,
@@ -114,6 +114,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       return respond(false, undefined, uploadError);
     }
     const p = structuredClone(params);
+    const repositorySelection = resolveSessionCreateProjectSelection(p);
+    if (!repositorySelection.ok) {
+      respond(false, undefined, repositorySelection.error);
+      return;
+    }
     const requiredWorker = prepareRequiredWorkerSessionCreate(p, context.getRuntimeConfig());
     if (requiredWorker.error) {
       return respond(false, undefined, requiredWorker.error);
@@ -126,10 +131,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       ? { ...client.internal.operatorRoleActor }
       : undefined;
     const emptyWorkspace = p.worktreeSource === "empty";
-    const worktreeSelectionError = validateSessionWorktreeSelection(p);
-    if (worktreeSelectionError) {
-      return respond(false, undefined, worktreeSelectionError);
-    }
     const parentSessionKey = normalizeOptionalString(p.parentSessionKey);
     const creation = resolveOperatorSessionCreation(client, { allowTrustedHint: true });
     if (p.surface && creation.via !== "operator") {
@@ -191,6 +192,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     // that committed session under its retained request and session authority.
     const deviceFolderAuthority: { assertCurrent?: () => void } = {};
     const commitGuard = () => {
+      repositorySelection.value?.assertCurrent();
       assertSessionCreateCurrent();
       if (agentCreated) {
         toolRequester?.assertCurrent?.();
@@ -310,13 +312,13 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     let requestedCwd = normalizeOptionalString(p.cwd);
     const requestedExecNode = normalizeOptionalString(p.execNode);
     const requestedProjectId = normalizeOptionalString(p.projectId);
-    const requestedProjectGitUrl = p.projectGitUrl;
     const projectPreparationError = validateSessionProjectPreparation({
       cwd: requestedCwd,
       execNode: requestedExecNode,
-      gitUrl: requestedProjectGitUrl,
+      gitUrl: p.projectGitUrl,
       hasInitialTurn,
       projectId: requestedProjectId,
+      repositorySourceId: p.repositorySource,
     });
     if (projectPreparationError) {
       respond(false, undefined, projectPreparationError);
@@ -442,7 +444,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         !emptyWorkspace &&
         !projectRoot &&
         !requestedCwd &&
-        !requestedProjectGitUrl &&
+        !p.projectGitUrl &&
         spawnRequesterSessionKey &&
         spawnRequesterSessionKey === parentSessionKey &&
         sessionCreation.actor?.type === "agent" &&
@@ -453,7 +455,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           target: lifecycleTarget,
           workspace: emptyWorkspace ? { kind: "empty" } : (projectRoot ?? requestedCwd),
           inheritParentKey: inheritParentWorktree ? spawnRequesterSessionKey : undefined,
-          projectGitUrl: requestedProjectGitUrl,
+          projectGitUrl: p.projectGitUrl,
           name: requestedWorktreeName,
           baseRef: worktreeBaseRef,
           deferWorktree,
@@ -509,7 +511,8 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       fastMode: p.fastMode,
       projectId: requestedProjectId,
       deviceFolder,
-      pendingProjectGitUrl: normalizeSessionProjectGitUrl(requestedProjectGitUrl),
+      pendingProjectGitUrl: normalizeSessionProjectGitUrl(p.projectGitUrl, p.repositorySource),
+      repositorySourceId: repositorySelection.value?.id,
       incognito: p.incognito,
       ...(client?.connect ? { requestingOperatorScopes: clientScopes } : {}),
       ...(requestingOperatorProfileId ? { requestingOperatorProfileId } : {}),
@@ -593,7 +596,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         await prepareRequiredWorkerCreatedSession({
           requiredProfile,
           pendingWorktree: Boolean(preparedWorktree?.pendingWorktree),
-          requestedProjectGitUrl,
+          requestedProjectGitUrl: p.projectGitUrl,
           prepare: context.workerPlacementDispatchService?.withRequiredSession,
           session,
           assertCurrent: assertSessionCreateCurrent,
@@ -671,9 +674,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
           branch: preparedWorktree.worktree.branch,
         }
       : undefined;
-    const responseEntry = sessionEntryForkedFromParent(created.entry)
-      ? { ...created.entry, forkedFromParent: true as const }
-      : created.entry;
     const runStarted =
       !created.resetExisting &&
       isFreshChatSendStarted({
@@ -686,7 +686,9 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       ok: true,
       key: created.key,
       sessionId: created.entry.sessionId,
-      entry: responseEntry,
+      entry: sessionEntryForkedFromParent(created.entry)
+        ? { ...created.entry, forkedFromParent: true as const }
+        : created.entry,
       runStarted,
       publicRead,
       ...(!created.resetExisting && runPayload ? runPayload : {}),
@@ -695,15 +697,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       ...(createdWorktree ? { worktree: createdWorktree } : {}),
     });
     diagnostics?.mark("handlerExit");
-    for (const reason of [
-      created.resetExisting ? "new" : "create",
-      ...(runStarted ? ["send"] : []),
-    ]) {
-      emitSessionsChanged(context, {
-        sessionKey: created.key,
-        agentId: created.agentId,
-        reason,
-      });
+    const sessionChange = { sessionKey: created.key, agentId: created.agentId };
+    const reason = created.resetExisting ? "new" : "create";
+    emitSessionsChanged(context, { ...sessionChange, reason });
+    if (runStarted) {
+      emitSessionsChanged(context, { ...sessionChange, reason: "send" });
     }
   }),
 };

@@ -4,22 +4,22 @@ import { formatErrorMessage } from "../infra/errors.js";
 import type { RepositoryGitHubPublicationRow } from "../state/github-publication-read.types.js";
 import { decodeGitHubPublicationRequester } from "../state/github-publication-requester.js";
 import { readGitHubPublicationInWorker } from "../state/github-publication-worker.js";
-import { executeExistingOpenClawStateRead } from "../state/openclaw-state-db-readonly.js";
 import { OpenClawStateLeaseAcquisitionError } from "../state/openclaw-state-lease-error.js";
-import { createGitHubPublicationExecutionIdentity } from "./github-publication-execution-identity.js";
-import { GitHubPublicationRequesterUnavailableError } from "./github-publication-failure.js";
+import { RepositoryPublicationRequesterUnavailableError } from "./github-publication-errors.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
-import { reconcileGitHubPublicationPullRequest } from "./github-publication-pull-requests.js";
-import { projectGitHubPublicationResult } from "./github-publication-receipt.js";
+import { createExecutionPublisher } from "./github-publication-policy.js";
+import { readRepositoryPublicationPullRequestUrls } from "./github-publication-reads.js";
+import { projectGitHubPublicationResult, requestFacts } from "./github-publication-receipt.js";
 import type { GitHubPublicationRecoveryBackoff } from "./github-publication-recovery.js";
-import { restoreGitHubPublicationRequester } from "./github-publication-requester.js";
 import {
-  listRepositoryGitHubPublicationsAsync,
-  deferRepositoryGitHubPublicationClaimsAsync,
   bindRepositoryGitHubPublicationCheckpointAsync,
+  deferRepositoryGitHubPublicationClaimsAsync,
   failStaleRepositoryGitHubPublicationAsync,
-  type GitHubPublicationTransitionAuthority,
-  type RepositoryGitHubPublicationExecutionAsync,
+  listRepositoryGitHubPublicationsAsync,
+} from "./github-publication-store-async.js";
+import type {
+  GitHubPublicationTransitionAuthority,
+  RepositoryGitHubPublicationExecutionAsync,
 } from "./github-publication-store-async.js";
 import {
   assertReceiptOwner,
@@ -29,6 +29,7 @@ import {
   resolveReceiptOwner,
 } from "./github-repository-publication-workspace.js";
 import { matchesRepositoryGitHubPublicationClaim } from "./github-repository-publication.kernel.js";
+import type { RepositoryPublicationProvider } from "./repository-publication-contract.js";
 import type {
   WorkerSessionPlacementStore,
   WorkerSessionTurnClaim,
@@ -36,6 +37,7 @@ import type {
 import { SessionWorkspaceReservationBusyError } from "./worker-environments/placement-workspace-reservation.kernel.js";
 
 export async function observeRepositoryGitHubPublication(params: {
+  provider: RepositoryPublicationProvider;
   execution: RepositoryGitHubPublicationExecutionAsync;
   assertCustody: () => void;
   beforeRetry?: boolean;
@@ -80,8 +82,9 @@ export async function observeRepositoryGitHubPublication(params: {
     using _ = { [Symbol.dispose]: () => preparedOwner.release() };
 
     assertCustody();
-    const { assertCurrent, refreshIdentity } = createGitHubPublicationExecutionIdentity({
+    const { assertCurrent, refreshIdentity } = createExecutionPublisher({
       row,
+      provider: params.provider,
       validateAuthority: () => {
         assertCustody();
         return execution.ownsExecution();
@@ -95,22 +98,39 @@ export async function observeRepositoryGitHubPublication(params: {
       assertCurrent();
       const knownPullRequestUrls = await readKnownRepositoryGitHubPublicationPullRequestUrls(row);
       assertCurrent();
-      url = await reconcileGitHubPublicationPullRequest({
-        requestId: row.request_id,
-        pushRepository: row.push_repository,
-        repository: row.repository,
-        pushOwner: row.push_repository.split("/")[0]!,
-        branch: row.branch,
-        baseBranch: row.base_branch,
+      const workspace = assertReceiptOwner(row, preparedOwner).workspace;
+      const publisher = await refreshIdentity();
+      const target = await params.provider.prepareTarget({
+        originUrl: workspace.url,
+        branch: workspace.branch,
+        baseRef: row.base_branch,
+        publisher,
+        assertCurrent,
+        repositoryOnly: true,
+        recorded: {
+          pushRepository: row.push_repository,
+          repository: row.repository,
+          baseBranch: row.base_branch,
+        },
+      });
+      if (
+        target.repository !== row.repository ||
+        target.pushRepository !== row.push_repository ||
+        target.baseBranch !== row.base_branch ||
+        target.branch !== row.branch
+      ) {
+        throw new Error("Publication original target is unavailable.");
+      }
+      url = await params.provider.reconcile({
+        target,
+        request: requestFacts(row),
+        publisher,
         headCommit: row.head_commit,
         workspaceTree: row.workspace_tree,
         parentCommit: row.previous_head_commit ?? row.source_head_commit,
-        marker: `<!-- openclaw-publication:${row.request_id} -->`,
         knownPullRequestUrls,
         beforeRetry: params.beforeRetry,
-        refreshIdentity,
         assertCurrent,
-        // Older writers could overwrite a prior PR phase with a ref observation.
         pushOnly:
           requester && row.last_effect === "push"
             ? row.effect_state === "observed" && row.pushed_head_commit === row.head_commit
@@ -142,9 +162,10 @@ export async function observeRepositoryGitHubPublication(params: {
 }
 
 export async function settleDeniedRepositoryGitHubPublication(params: {
+  provider: RepositoryPublicationProvider;
   execution: RepositoryGitHubPublicationExecutionAsync;
   assertCustody: () => void;
-  error: GitHubPublicationRequesterUnavailableError;
+  error: RepositoryPublicationRequesterUnavailableError;
 }): Promise<SessionGitHubPublicationResult> {
   const observed = await observeRepositoryGitHubPublication(params);
   return projectGitHubPublicationResult(
@@ -160,6 +181,7 @@ export async function settleDeniedRepositoryGitHubPublication(params: {
 }
 
 export function createRepositoryGitHubPublicationRecovery(params: {
+  provider: RepositoryPublicationProvider;
   placements: WorkerSessionPlacementStore;
   recovery?: GitHubPublicationRecoveryBackoff;
   getCommittedRuntimeConfig: () => OpenClawConfig;
@@ -194,7 +216,9 @@ export function createRepositoryGitHubPublicationRecovery(params: {
       for (const row of selected) {
         try {
           await placements.prepareWorkspaceResultClaim(claim);
-          const requester = await restoreGitHubPublicationRequester(
+          const requester = await (
+            await import("./github-publication-requester.js")
+          ).restoreGitHubPublicationRequester(
             row.requester_authority_json,
             { sessionKey: row.session_key, agentId: row.agent_id },
             params.getCommittedRuntimeConfig,
@@ -245,7 +269,7 @@ export function createRepositoryGitHubPublicationRecovery(params: {
             requester.release();
           }
         } catch (error) {
-          if (!(error instanceof GitHubPublicationRequesterUnavailableError)) {
+          if (!(error instanceof RepositoryPublicationRequesterUnavailableError)) {
             throw error;
           }
           // The accepted-result processor settles this request under its own
@@ -370,19 +394,16 @@ async function readKnownRepositoryGitHubPublicationPullRequestUrls(
     identity_account_id,
     pull_request_url,
   } = row;
-  const result = await executeExistingOpenClawStateRead(
+  const result = await readRepositoryPublicationPullRequestUrls(
     {},
     {
-      type: "githubRepository.knownPullRequestUrls",
-      input: {
-        workspace_id,
-        push_repository,
-        repository,
-        branch,
-        base_branch,
-        identity_account_id,
-        pull_request_url,
-      },
+      workspace_id,
+      push_repository,
+      repository,
+      branch,
+      base_branch,
+      identity_account_id,
+      pull_request_url,
     },
     { current: true },
   );

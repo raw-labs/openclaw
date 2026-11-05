@@ -7,15 +7,23 @@ import { createDeferredCore } from "../../shared/deferred.js";
 import { prepareUserGitHubConnection } from "../../state/user-github-connections.js";
 import { prepareUserProfileCatalog } from "../../state/user-profile-list.js";
 import { ensureProfileForEmail } from "../../state/user-profiles.js";
+import { createTestGatewayScheduler } from "../../test-utils/gateway-scheduler-clock.js";
 import { withOpenClawTestState } from "../../test-utils/openclaw-test-state.js";
+import {
+  createRepositorySessionReadHost,
+  type RepositorySessionPresentation,
+} from "../control-ui-session-pr-runtime.js";
 import {
   createPersonalGitHubOAuthLifecycle,
   type PersonalGitHubAction,
 } from "../github-personal-oauth.js";
 import { personalGitHubStatusAsync as personalGitHubStatus } from "../github-personal-status.js";
-import * as publicationAvailability from "../github-publication-availability.js";
+import * as publicationIdentity from "../github-publication-identity.js";
+import { createGitHubPublicationProvider } from "../github-publication-provider.js";
 import { handleGatewayRequest } from "../server-methods.js";
 import { gatewayConnect, gatewayProfile } from "../server/client-fixtures.test-support.js";
+import { getSessionRowProjection } from "../session-row-projection-access.js";
+import { initializeSessionReadContext } from "./sessions-read-cache.test-support.js";
 import type { GatewayClient, GatewayRequestContext } from "./types.js";
 
 export const sessionKey = "agent:main:publication-read";
@@ -27,10 +35,9 @@ export const publisherIdentity = () => ({
   account: { accountId: publisher.accountId, login: publisher.login, avatarUrl: null },
 });
 export function mockPublicationIdentity() {
-  vi.spyOn(
-    publicationAvailability,
-    "prepareCurrentGitHubPublicationOptionsIdentity",
-  ).mockResolvedValue(publisherIdentity());
+  vi.spyOn(publicationIdentity, "prepareCurrentGitHubPublicationOptionsIdentity").mockResolvedValue(
+    publisherIdentity(),
+  );
 }
 export const receipt = {
   result: {
@@ -130,6 +137,7 @@ export async function withReadFixture(
     scopes?: string[];
     others?: "none" | "view";
     foreign?: boolean;
+    projection?: boolean;
   } = {},
 ) {
   await withOpenClawTestState({ scenario: "minimal" }, async (state) => {
@@ -168,11 +176,15 @@ export async function withReadFixture(
       },
     );
     const fixture = createFixture(profile, options.scopes);
+    if (options.projection !== false) {
+      await initializeSessionReadContext(fixture.context);
+    }
     const profileCatalog = await prepareUserProfileCatalog();
     try {
       await run(fixture);
     } finally {
       await fixture.personalLifecycle.stop();
+      await fixture.readScheduler.stop();
       profileCatalog.release();
     }
   });
@@ -194,7 +206,16 @@ function createFixture(
     );
   }
   let connected = true;
+  const readScheduler = createTestGatewayScheduler();
+  const provider = createGitHubPublicationProvider({
+    signal: readScheduler.signal,
+    assertCurrent: () => readScheduler.signal.throwIfAborted(),
+    getConfig: getRuntimeConfig,
+    refreshIdentity: async () => {},
+    refreshPersonal: async () => {},
+  });
   const publication = {
+    supportsOrigin: provider.supportsOrigin,
     sharedStatus: vi.fn().mockResolvedValue(receipt),
     latestShared: vi.fn().mockResolvedValue(receipt),
     personalStatusAsync: vi.fn(),
@@ -209,7 +230,12 @@ function createFixture(
     await prepareUserGitHubConnection(action.owner);
     return personalGitHubStatus(action);
   });
-  const pullRequests = { subscribe: vi.fn(), unsubscribe: vi.fn(), read: vi.fn(), stop: vi.fn() };
+  const pullRequests = {
+    subscribe: vi.fn(),
+    unsubscribe: vi.fn(),
+    read: vi.fn<RepositorySessionPresentation["read"]>(),
+    stop: vi.fn(async () => {}),
+  };
   // Only these services belong to the read handler; the authorization helpers stay real.
   const context = {
     getRuntimeConfig,
@@ -224,6 +250,26 @@ function createFixture(
       },
     },
   } as unknown as GatewayRequestContext;
+  const readHost = createRepositorySessionReadHost({
+    signal: readScheduler.signal,
+    getRuntimeConfig,
+    getSessionRowProjection: () => getSessionRowProjection(context),
+    getClient: (connId) => (connected && connId === client.connId ? client : undefined),
+    resolveGatewayContext: () => context,
+    broadcastToConnIds: vi.fn(),
+  });
+  context.repositorySessions = readHost;
+  const reads = readHost.bindService(readScheduler.signal, () =>
+    readScheduler.signal.throwIfAborted(),
+  );
+  reads.installPresentation({
+    ...pullRequests,
+    checks: vi.fn<RepositorySessionPresentation["checks"]>(),
+    replace: vi.fn(async () => {}),
+    readPrepared: () => undefined,
+    knownMergedHeads: async () => [],
+    pollNow: async () => {},
+  });
   const invoke = async (
     method: "sessions.github.options" | "sessions.github.status",
     params: Record<string, unknown>,
@@ -253,6 +299,7 @@ function createFixture(
     ...publication,
     personalStatus: publication.personalStatusAsync,
     personalLifecycle,
+    readScheduler,
     personalConnectionStatus,
     requestForSession: publication.requestForSessionV2,
     pullRequests,

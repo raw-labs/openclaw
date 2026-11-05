@@ -21,7 +21,6 @@ import {
 import { BoardValidationError } from "../../boards/board-layout.js";
 import { appendBoardEventNotice } from "../../boards/board-notices.js";
 import type { BoardSessionTarget, BoardStore } from "../../boards/board-store.js";
-import { GITHUB_ACTIONS_GRANT_PREFIX } from "../../boards/github-actions-capability.js";
 import { readCanvasDocumentHtmlSource } from "../../canvas/documents.js";
 import { buildWidgetDocument } from "../../canvas/wrap.js";
 import { acquireSessionActorStorage } from "../../config/sessions/session-actor-storage-acquisition.js";
@@ -31,6 +30,7 @@ import { isIncognitoSessionKey } from "../../routing/session-key.js";
 import { operatorScopeSatisfied } from "../../shared/operator-scope-compat.js";
 import {
   boardDataBindingCapability,
+  prepareBoardDataBindingGrants,
   captureBoardCapabilityAuthority,
   assertBoardCapabilityParamsSize,
   captureBoardRequestAuthority,
@@ -330,26 +330,16 @@ export function createBoardHandlers(store: BoardStore): GatewayRequestHandlers {
             content: materializedContent,
             ...(declared ? { declared } : {}),
           };
-          let identity:
-            | Awaited<
-                ReturnType<typeof import("../github-actions-read.js").prepareBoardGitHubIdentity>
-              >
-            | undefined;
-          if (
-            content.kind === "html" &&
-            declared?.tools?.some((tool) => tool.startsWith(GITHUB_ACTIONS_GRANT_PREFIX))
-          ) {
-            const { prepareBoardGitHubIdentity } = await import("../github-actions-read.js");
-            identity = await prepareBoardGitHubIdentity(context, {
-              ...authority,
-              boardSession,
-            });
-          }
+          const bindingAdmission = await prepareBoardDataBindingGrants(
+            content.kind === "html" ? (declared?.tools ?? []) : [],
+            invocation,
+            { ...authority, boardSession },
+          );
           const putWidget = () =>
             store.putWidget(boardParams, {
               ...(resolveMcpAppInteraction ? { resolveMcpAppInteraction } : {}),
               assertCurrent: composeSessionSourceAssertion(
-                [identity?.assertSelected ?? authority.assertActive],
+                [bindingAdmission.assertCurrent],
                 (assertSources) => {
                   assertSources();
                   const cfg = context.getRuntimeConfig();
@@ -368,7 +358,7 @@ export function createBoardHandlers(store: BoardStore): GatewayRequestHandlers {
               ),
             });
           const putAndApprove = async () => {
-            let snapshot = identity ? await identity.start(putWidget) : await putWidget();
+            let snapshot = await bindingAdmission.start(putWidget);
             authority.assertActive();
             const widget = snapshot.widgets.find(
               (candidate) => candidate.name === snapshot.resolvedWidgetName,
@@ -615,11 +605,16 @@ export function createBoardHandlers(store: BoardStore): GatewayRequestHandlers {
         const { params: boardParams, respond } = invocation;
         const bindingParams = boardParams.params ?? {};
         assertBoardCapabilityParamsSize(bindingParams, "data binding");
+        const requestAuthority = captureBoardRequestAuthority(invocation);
         const authority = captureBoardCapabilityAuthority(
           store,
           boardParams.ticket,
           invocation,
-          boardDataBindingCapability(boardParams.bindingId, bindingParams),
+          boardDataBindingCapability(
+            boardParams.bindingId,
+            bindingParams,
+            requestAuthority.pluginRegistry,
+          ),
         );
         await readBoardDataBinding(
           boardParams.bindingId,

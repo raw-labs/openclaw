@@ -18,8 +18,9 @@ import { setRuntimeConfigSnapshot } from "../../config/config.js";
 import { replaceSessionEntrySync } from "../../config/sessions/session-accessor.js";
 import type { InternalSessionEntry } from "../../config/sessions/types.js";
 import { captureGatewayAuthPolicy } from "../../gateway/auth-policy.js";
-import * as publicationIdentity from "../../gateway/github-publication-availability.js";
-import * as publicationTransport from "../../gateway/github-publication-git-transport.js";
+import * as publicationIdentity from "../../gateway/github-publication-identity.js";
+import { createNativeGitHubPublicationProvider } from "../../gateway/github-publication-provider.js";
+import * as publicationTransport from "../../gateway/github-publication-remote.js";
 import { createGitHubPublicationCoordinator } from "../../gateway/github-publication.js";
 import { captureGatewayOperatorRunAuthority } from "../../gateway/operator-run-authority.js";
 import { cronHandlers } from "../../gateway/server-methods/cron.js";
@@ -402,6 +403,11 @@ it.each([
 
   // Publication creation/storage and actual GitHub credentials are outside this regression.
   const coordinator = createGitHubPublicationCoordinator({
+    provider: createNativeGitHubPublicationProvider({
+      signal: new AbortController().signal,
+      assertCurrent() {},
+      getConfig: () => config,
+    }),
     placements: createWorkerSessionPlacementStore(),
     getCommittedRuntimeConfig: () => config,
   });
@@ -419,7 +425,7 @@ it.each([
   let reads = 0;
   const writes: unknown[] = [];
   const github = vi
-    .spyOn(publicationTransport, "runPublicationCommand")
+    .spyOn(publicationTransport, "runGitHubPublicationCommand")
     .mockImplementation(async (argv, options) => {
       options?.beforeRun?.();
       if (selfRemoving) {

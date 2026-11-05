@@ -398,8 +398,10 @@ describe.skipIf(!hasBrowserLayout)("openclaw-board-view browser layout", () => {
     expect(document.activeElement).toBe(remove);
     const bounds = panel.getBoundingClientRect();
     const row = remove.getBoundingClientRect();
-    expect(row.top).toBeGreaterThanOrEqual(bounds.top);
-    expect(row.bottom).toBeLessThanOrEqual(bounds.bottom);
+    // Native scrolling quantizes offsets; visibility is bounded by rendered pixel edges.
+    const pixel = (edge: number) => Math.round(edge * window.devicePixelRatio);
+    expect(pixel(row.top)).toBeGreaterThanOrEqual(pixel(bounds.top));
+    expect(pixel(row.bottom)).toBeLessThanOrEqual(pixel(bounds.bottom));
     expect(panel.scrollTop).toBeGreaterThan(0);
 
     await userEvent.keyboard("{Enter}");

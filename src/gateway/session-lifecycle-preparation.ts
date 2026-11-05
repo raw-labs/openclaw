@@ -330,6 +330,7 @@ export function projectPreparedSessionWorkspace(
   params: {
     projectId?: string;
     pendingProjectGitUrl?: string;
+    repositorySourceId?: string;
     pendingWorktree?: SessionEntry["pendingWorktree"];
     spawnedCwd?: string;
     preparedLifecycle?: PreparedGatewaySessionLifecycle;
@@ -344,6 +345,9 @@ export function projectPreparedSessionWorkspace(
   return {
     ...(createdNewEntry && projectId ? { projectId } : {}),
     ...(createdNewEntry && pendingProjectGitUrl ? { pendingProjectGitUrl } : {}),
+    ...(createdNewEntry && params.repositorySourceId
+      ? { repositorySourceId: params.repositorySourceId }
+      : {}),
     ...(createdNewEntry && pendingWorktree ? { pendingWorktree } : {}),
     // Creation owns cwd adoption; public patching does not grant this authority.
     ...(spawnedCwd ? { spawnedCwd } : {}),

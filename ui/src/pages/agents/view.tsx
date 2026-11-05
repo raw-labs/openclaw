@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import {
   action,
   createMemo,
@@ -63,6 +64,7 @@ export type AgentsProps = Omit<
   AgentsPageView,
   "config" | "overview" | "onOpenMemoryImport" | "onOpenMemorySettings"
 > & {
+  renderToolsSettings?: () => JSX.Element;
   config: Pick<
     AgentsPageView["config"],
     | "configForm"
@@ -320,6 +322,7 @@ export function Agents(props: AgentsProps) {
                             </Match>
                             <Match when={props.readData().agentsPanel === "tools"}>
                               <AgentTools
+                                renderSettings={props.renderToolsSettings}
                                 {...props.tools}
                                 {...configActions()}
                                 readData={props.readData}

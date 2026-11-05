@@ -11,6 +11,7 @@ import {
   markdownFileLinkFromKeyboardEvent,
   type MarkdownFileLinkTarget,
 } from "../../../components/markdown-file-links.ts";
+import type { MarkdownRenderOptions } from "../../../components/markdown-render-options.ts";
 import {
   markdownSessionLinkFromEvent,
   markdownSessionLinkFromKeyboardEvent,
@@ -105,6 +106,7 @@ export type SidebarPanelProps = {
   canvasPluginSurfaceUrl?: string | null;
   embedSandboxMode?: EmbedSandboxMode;
   allowExternalEmbedUrls?: boolean;
+  textReferences?: MarkdownRenderOptions["textReferences"];
   embedded?: boolean;
   attachmentRuntime: AttachmentSidebarRuntime;
   attachmentDownload?: AttachmentDownload;
@@ -547,6 +549,7 @@ export function SidebarPanel(props: SidebarPanelProps) {
                           content: toSanitizedMarkdownHtml(content().content, {
                             codeBlockInteraction: "interactive",
                             fileLinks: true,
+                            textReferences: props.textReferences,
                             interactiveImages: props.onOpenImage !== undefined,
                             sessionLinks: true,
                           }),

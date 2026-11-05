@@ -1,15 +1,15 @@
 import { randomUUID } from "node:crypto";
 import {
+  readCanonicalCronListPage,
+  resolveCronListPageNextOffset,
+} from "@openclaw/gateway-protocol/cron-list-page-validation";
+import {
   resolveExpiresAtMsFromDurationMs,
   timestampMsToIsoString,
 } from "@openclaw/normalization-core/number-coercion";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { CronServiceContract } from "../cron/service-contract.js";
-import {
-  readCanonicalCronListPage,
-  resolveCronListPageNextOffset,
-} from "../cron/service/list-page-validation.js";
 import type { CronJob, CronJobCreate } from "../cron/types.js";
 import { formatErrorMessage } from "../infra/errors.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";

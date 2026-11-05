@@ -1,16 +1,35 @@
 import type { PluginControlUiDiagnostic } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import type {
-  ControlUiAction,
+  ControlUiActionV2 as ControlUiAction,
   ControlUiAccessory,
+  ControlUiSessionAccessory,
+  ControlUiSessionBadgeAccessory,
   ControlUiDisposer,
-  ControlUiHost,
+  ControlUiHostV2 as ControlUiHost,
   ControlUiNavigationItem,
-  ControlUiPage,
-  ControlUiPanel,
-  ControlUiReplacement,
+  ControlUiPageV2 as ControlUiPage,
+  ControlUiPanelV2 as ControlUiPanel,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurface,
-  ControlUiWidget,
+  ControlUiTextReferenceProvider,
+  ControlUiWidgetV2 as ControlUiWidget,
 } from "../../../src/plugin-sdk/control-ui.js";
+
+export type ControlUiActionInvocation = Omit<Parameters<ControlUiAction["run"]>[0], "host"> & {
+  isCurrent?: () => boolean;
+};
+
+/** Activation prepares the view-scoping operation; consumers retain no scoping runtime import. */
+export type PreparedControlUiHost = ControlUiHost & {
+  projectTextReferences: typeof import("./control-ui-text-references.solid.ts").createTextReferenceProjection;
+  scopeView(signal: AbortSignal, isCurrent?: () => boolean): ControlUiHost;
+  invokeAction(
+    action: ControlUiAction,
+    registrationSignal: AbortSignal,
+    params: ControlUiActionInvocation,
+    retry: string,
+  ): Promise<void>;
+};
 
 export type ControlUiRegistration<T> = {
   key: `${string}/${string}`;
@@ -18,7 +37,7 @@ export type ControlUiRegistration<T> = {
   /** Host-admitted passive SVG data URL from the owning plugin manifest. */
   panelIcon?: string;
   value: T;
-  host: ControlUiHost;
+  host: PreparedControlUiHost;
   signal: AbortSignal;
 };
 
@@ -27,7 +46,8 @@ export type ControlUiContributions = {
   navigation: ControlUiNavigationItem;
   panels: ControlUiPanel;
   actions: ControlUiAction;
-  accessories: ControlUiAccessory;
+  accessories: ControlUiAccessory | ControlUiSessionAccessory | ControlUiSessionBadgeAccessory;
+  textReferences: ControlUiTextReferenceProvider;
   widgets: ControlUiWidget;
   inlineViews: Parameters<ControlUiHost["ui"]["registerInlineView"]>[0];
   replacements: ControlUiReplacement;
@@ -36,24 +56,32 @@ export type ControlUiContributions = {
 // Application consumers use the registry contract; construction and activation
 // ownership stay in the runtime without a dependency back through app context.
 export type ControlUiPluginCapability = {
+  readonly settingsContributions: readonly import("./control-ui-metadata.ts").ControlUiSettingsContribution[];
   loadSettingsView: {
     (
-      placement: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView["placement"],
+      placement:
+        | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView["placement"]
+        | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiContributedSettingsView["placement"],
       signal: AbortSignal,
+      pluginId?: string,
     ): Promise<{
-      view: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView;
+      view:
+        | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiSettingsView
+        | import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiContributedSettingsView;
       signal: AbortSignal;
       dispose: () => void;
     }>;
     (
       placement: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView["placement"],
       signal: AbortSignal,
+      pluginId?: string,
     ): Promise<{
       view: import("../../../src/plugin-sdk/control-ui-settings.js").ControlUiChannelSettingsView;
       signal: AbortSignal;
       dispose: () => void;
     }>;
   };
+  readonly repositorySources: readonly import("./control-ui-metadata.ts").ControlUiRepositorySourceContribution[];
   readonly errors: readonly PluginControlUiDiagnostic[];
   readonly hasPlugins: boolean;
   /** Advances before notifications, including plugin-owned presentation mutations. */

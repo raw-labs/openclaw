@@ -2,7 +2,7 @@ import type { SandboxFsBridge } from "./fs-bridge.types.js";
 import type { SandboxContext } from "./types.js";
 
 /** Managed workspaces prepare in place; an unbound local Docker or Podman sandbox adopts one. */
-export function canPrepareGitHubPullRequest(
+export function canPrepareRepositoryWorkspace(
   sandbox: SandboxContext | null | undefined,
 ): sandbox is SandboxContext {
   return Boolean(
@@ -15,7 +15,7 @@ export function canPrepareGitHubPullRequest(
   );
 }
 
-export function canRefreshGitHubPublicationBase(
+export function canRefreshWorkspacePublicationBase(
   sandbox: SandboxContext | null | undefined,
 ): sandbox is SandboxContext {
   return Boolean(
@@ -26,7 +26,7 @@ export function canRefreshGitHubPublicationBase(
   );
 }
 
-export function canUploadGitHubPublicationEvidence(
+export function canReadWorkspaceArtifactSource(
   sandbox: SandboxContext | null | undefined,
 ): sandbox is SandboxContext & {
   fsBridge: SandboxFsBridge & Required<Pick<SandboxFsBridge, "readFileWithSource">>;

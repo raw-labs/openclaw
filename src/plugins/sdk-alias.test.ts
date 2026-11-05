@@ -17,7 +17,12 @@ import {
   resolvePluginRuntimeModulePathWithDiagnostics,
   type PluginSdkResolutionPreference,
 } from "./sdk-alias.js";
-import { createPluginSdkAliasFixtureFactory, writePluginEntry } from "./sdk-alias.test-fixtures.js";
+import {
+  createPluginSdkAliasFixtureFactory,
+  writePluginEntry,
+  writeWorkspacePackageEntry,
+  writeWorkspacePackageExports,
+} from "./sdk-alias.test-fixtures.js";
 import {
   cleanupTrackedTempDirs,
   makeTrackedTempDir,
@@ -134,46 +139,6 @@ function writePluginSdkSubpathArtifacts(root: string, subpaths: readonly string[
       }
     }
   }
-}
-
-function writeWorkspacePackageEntry(params: {
-  root: string;
-  packageDir: string;
-  srcFile: string;
-  distFile: string;
-}) {
-  const srcFile = path.join(params.root, "packages", params.packageDir, "src", params.srcFile);
-  const distFile = path.join(params.root, "packages", params.packageDir, "dist", params.distFile);
-  mkdirSafeDir(path.dirname(srcFile));
-  mkdirSafeDir(path.dirname(distFile));
-  writeFile(srcFile, "export {};\n");
-  writeFile(distFile, "export {};\n");
-  return { srcFile, distFile };
-}
-
-function writeWorkspacePackageExports(
-  root: string,
-  packageDir: string,
-  subpaths: readonly string[],
-) {
-  mkdirSafeDir(path.join(root, "packages", packageDir));
-  writeFile(
-    path.join(root, "packages", packageDir, "package.json"),
-    JSON.stringify(
-      {
-        name: `@openclaw/${packageDir}`,
-        exports: Object.fromEntries(
-          subpaths.map((subpath) => {
-            const exportKey = subpath ? `./${subpath}` : ".";
-            const distFile = `./dist/${subpath || "index"}.mjs`;
-            return [exportKey, { import: distFile, default: distFile }];
-          }),
-        ),
-      },
-      null,
-      2,
-    ),
-  );
 }
 
 type WorkspaceAliasFixture = readonly [
@@ -948,10 +913,12 @@ describe("plugin sdk alias helpers", () => {
     ]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["gateway-client"],
+      ["gateway-client/browser"],
       ["gateway-client/timeouts"],
       ["gateway-client/websocket-data"],
       ["gateway-protocol"],
       ["gateway-protocol/schema"],
+      ["gateway-protocol/session-row-deltas"],
       ["gateway-protocol/frame-guards"],
       ["gateway-protocol/gateway-error-details"],
       ["gateway-protocol/restart-unavailable"],
@@ -999,6 +966,8 @@ describe("plugin sdk alias helpers", () => {
     writeWorkspacePackageExports(fixture.root, "normalization-core", ["record-coerce"]);
     const workspaceAliases = writeWorkspaceAliasFixtures(fixture.root, [
       ["gateway-client/readiness"],
+      ["gateway-client/browser"],
+      ["gateway-protocol/session-row-deltas"],
       ["gateway-protocol/connect-error-details"],
       ["gateway-protocol/frame-guards"],
       ["gateway-protocol/gateway-error-details"],

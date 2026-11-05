@@ -1,13 +1,12 @@
-import { isRecord } from "@openclaw/normalization-core/record-coerce";
-import { readNonBlankString } from "@openclaw/normalization-core/string-coerce";
 import { resolveGitHubHost } from "../agents/github-host-runtime.js";
 import type { PreparedGitHubPublicationIdentity } from "../agents/github-tool-identity.js";
 import type { SessionGitHubPullRequestBinding } from "../config/sessions/types.js";
+import { isRecord, readNonBlankString } from "../plugin-sdk/string-coerce-runtime.js";
 import { GitHubPublicationKnownFailure } from "./github-publication-failure.js";
 import {
+  requireGitHubPublicationCommand,
   githubPublicationApiArgs,
-  requirePublicationCommand,
-} from "./github-publication-git-transport.js";
+} from "./github-publication-remote.js";
 
 export type PublishedGitHubPullRequest = { url: string; number: number; pushRepository: string };
 
@@ -31,7 +30,7 @@ async function readGitHubPublicationApi(
 ) {
   const identity = await params.refreshIdentity();
   params.assertCurrent();
-  const raw = await requirePublicationCommand(
+  const raw = await requireGitHubPublicationCommand(
     [
       ...githubPublicationApiArgs(
         endpoint,
@@ -40,7 +39,7 @@ async function readGitHubPublicationApi(
       ),
       ...args,
     ],
-    { env: identity.env },
+    { env: identity.env, beforeRun: params.assertCurrent },
   );
   return { identity, raw };
 }

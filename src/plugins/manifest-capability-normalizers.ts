@@ -7,6 +7,8 @@ import {
   normalizeOptionalTrimmedStringList,
   normalizeTrimmedStringList,
 } from "../../packages/normalization-core/src/string-normalization.js";
+import { TOOL_POLICY_GROUP_IDS } from "../agents/tool-catalog.js";
+import { parseConfigPath } from "../config/config-paths.js";
 import { isBlockedObjectKey } from "../infra/prototype-keys.js";
 import {
   PLUGIN_MANIFEST_CONTRACT_KEYS,
@@ -424,8 +426,13 @@ export function normalizePluginToolMetadata(
   return normalizeNamedMetadataRecord(value, (rawMetadata) => {
     const providerMetadata = normalizeCapabilityProviderMetadataEntry(rawMetadata);
     const profiles = normalizeTrimmedStringList(rawMetadata.profiles).filter(isPluginToolProfile);
+    const declaredPolicyGroups = normalizeTrimmedStringList(rawMetadata.policyGroups);
+    const policyGroups = TOOL_POLICY_GROUP_IDS.filter((group) =>
+      declaredPolicyGroups.includes(group),
+    );
     const metadata = {
       ...providerMetadata,
+      ...(policyGroups.length > 0 ? { policyGroups } : {}),
       ...(rawMetadata.optional === true ? { optional: true } : {}),
       ...(profiles.length > 0 ? { profiles } : {}),
       ...(rawMetadata.replaySafe === true ? { replaySafe: true } : {}),
@@ -475,6 +482,12 @@ export function normalizeManifestConfigContracts(
   if (!isRecord(value)) {
     return undefined;
   }
+  const agentConfigMaps = normalizeTrimmedStringList(value.agentConfigMaps).flatMap((raw) => {
+    const parsed = parseConfigPath(raw);
+    return parsed.ok && parsed.path.every((segment) => /^[A-Za-z0-9_$-]+$/u.test(segment))
+      ? [parsed.path.join(".")]
+      : [];
+  });
   const compatibilityMigrationPaths = normalizeTrimmedStringList(value.compatibilityMigrationPaths);
   const compatibilityRuntimePaths = normalizeTrimmedStringList(value.compatibilityRuntimePaths);
   const rawSecretInputs = isRecord(value.secretInputs) ? value.secretInputs : undefined;
@@ -502,6 +515,9 @@ export function normalizeManifestConfigContracts(
           path: pathLocal,
           ...(expected ? { expected } : {}),
           ...(ownerKind ? { ownerKind } : {}),
+          ...(entry.executionEnvironment === "exclude"
+            ? { executionEnvironment: "exclude" as const }
+            : {}),
         };
       })
     : undefined;
@@ -514,6 +530,7 @@ export function normalizeManifestConfigContracts(
       } satisfies PluginManifestSecretInputContracts)
     : undefined;
   const configContracts = {
+    ...(agentConfigMaps.length > 0 ? { agentConfigMaps } : {}),
     ...(compatibilityMigrationPaths.length > 0 ? { compatibilityMigrationPaths } : {}),
     ...(compatibilityRuntimePaths.length > 0 ? { compatibilityRuntimePaths } : {}),
     ...(dangerousFlags ? { dangerousFlags } : {}),

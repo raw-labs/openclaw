@@ -28,8 +28,10 @@ import {
   type CatalogRowControls,
   catalogSessionActivity,
   catalogSessionRowsByKey,
+  catalogRowFocusControl,
   type SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
+import { CatalogSessionIndicators } from "./app-sidebar-session-indicators.tsx";
 import type { SessionCatalogGroupsParams } from "./app-sidebar-session-render-types.ts";
 import { renderRecentSession as RecentSession } from "./app-sidebar-session-row-render.tsx";
 import { renderSidebarSessionSectionHeader as SessionSectionHeader } from "./app-sidebar-session-section-header.tsx";
@@ -37,19 +39,7 @@ import { hasProviderBrandIcon } from "./provider-icon-data.ts";
 import { Icon } from "./solid/icon.tsx";
 import { renderNewSessionLink as NewSessionLink } from "./solid/new-session-link.tsx";
 import { ProviderBrandIcon } from "./solid/provider-icon.tsx";
-import {
-  SessionGlyph,
-  SessionRowBadges,
-  sessionRunVisibility,
-} from "./solid/session-presentation.tsx";
-const CATALOG_CONTROLS = [
-  ["link", ".sidebar-recent-session__link"],
-  ["children", "[data-child-session-toggle]"],
-  ["pin", "[data-sidebar-session-pin]"],
-  ["archive", "[data-sidebar-session-archive]"],
-  ["menu", "[data-sidebar-session-menu]"],
-  ["catalogMenu", "[data-catalog-session-menu]"],
-] as const;
+import { SessionGlyph, sessionRunVisibility } from "./solid/session-presentation.tsx";
 const CATALOG_SESSION_GROUP_LIMIT = 5;
 export function renderSessionCatalogGroups(params: SessionCatalogGroupsParams) {
   // Adopted rows use canonical local labels and title snapshots; native catalog
@@ -145,21 +135,14 @@ function renderCatalogHostGroup(
       previousFocus,
     ) => {
       const stop = params.host.sessionProjection.mountCatalogRow(key());
-      const active = previousFocus instanceof HTMLElement ? previousFocus : null;
-      const activeRow = active?.closest<HTMLElement>("[data-session-key]");
-      const control = CATALOG_CONTROLS.find(([, selector]) => active?.matches(selector))?.[0];
-      const restoreFocus =
-        control !== undefined &&
-        (activeRow?.dataset.catalogSessionKey === identityKey() ||
-          activeRow?.dataset.sessionKey === identityKey() ||
-          activeRow?.dataset.sessionKey === key());
+      const control = catalogRowFocusControl(previousFocus, identityKey(), key());
       if (menuOpen()) {
         params.host.sidebarMenus.catalogMenu.retargetTrigger(
           catalogKey(),
           controls.catalogMenu ?? controls.link,
         );
       }
-      if (restoreFocus && control) {
+      if (control) {
         queueMicrotask(() => {
           if (element.isConnected && document.activeElement === document.body) {
             const focusTarget = controls[control];
@@ -261,9 +244,14 @@ function renderCatalogHostGroup(
             <span class="sidebar-recent-session__text">
               <span class="sidebar-recent-session__title-row"> {marqueeLabel} </span>
               <span class="sidebar-recent-session__details">
-                <span class="sidebar-recent-session__details-endcap">
-                  {<SessionRowBadges pullRequest={readSession().pullRequest} />}
-                </span>
+                <CatalogSessionIndicators
+                  plugins={params.host.sessionDataContext?.plugins}
+                  sessionKey={key()}
+                  agentId={params.snapshot.newSessionAgentId}
+                  artifact={readSession().pullRequest}
+                  nativeBadges={{ pullRequest: readSession().pullRequest }}
+                  onChange={() => params.host.sessionData.requestSessionDataUpdate()}
+                />
               </span>
             </span>
           </a>

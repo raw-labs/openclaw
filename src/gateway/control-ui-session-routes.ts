@@ -126,7 +126,7 @@ export function createControlUiSessionRoutes(options: {
         const { PUBLIC_SESSION_CONTENT_SECURITY_POLICY, servePublicSessionRepresentation } =
           await (publicSessionModule ??= import("./control-ui-public-session.runtime.js"));
         const card = {
-          pullRequests: options.getGatewayRequestContext?.()?.controlUiSessionPullRequests,
+          pullRequests: options.getGatewayRequestContext?.()?.repositorySessions?.presentation,
           render: async (cardInput: Parameters<PublicSessionCardRenderer["render"]>[0]) => {
             renderer ??= import("./control-ui-public-session-card.js").then((module) =>
               module.createPublicSessionCardRenderer(),

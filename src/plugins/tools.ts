@@ -1,6 +1,5 @@
 /** Builds agent tools registered by plugins, preserving plugin scope around callbacks and descriptors. */
 import { isRecord, isStringArray } from "@openclaw/normalization-core/record-coerce";
-import { compileGlobPatterns, matchesAnyGlobPattern } from "../agents/glob-pattern.js";
 import { normalizeToolPolicyName } from "../agents/tool-policy.js";
 import type { AnyAgentTool } from "../agents/tools/common.js";
 import { captureAgentWorkspaceReadiness } from "../agents/workspace-readiness.js";
@@ -24,7 +23,13 @@ import {
   loadManifestContractSnapshot,
 } from "./manifest-contract-eligibility.js";
 import type { PluginManifestRecord } from "./manifest-registry.js";
-import { hasManifestToolAvailability } from "./manifest-tool-availability.js";
+import {
+  denylistBlocksName,
+  denylistBlocksPlugin,
+  normalizeDenylist,
+  hasManifestToolAvailability,
+  manifestToolAllowed,
+} from "./manifest-tool-availability.js";
 import { getPluginInstance } from "./plugin-instance-scope.js";
 import type { PluginMetadataManifestView } from "./plugin-metadata-snapshot.types.js";
 import { capturePluginLifecycleAuthority } from "./registry-lifecycle.js";
@@ -53,28 +58,6 @@ import {
 } from "./tool-inspection-state.js";
 import { setPluginToolMeta } from "./tool-metadata.js";
 import type { OpenClawPluginToolContext } from "./types.js";
-
-function normalizeDenylist(list?: string[]) {
-  return compileGlobPatterns({
-    raw: list,
-    normalize: normalizeToolPolicyName,
-  });
-}
-
-function denylistBlocksName(name: string, denylist: ReturnType<typeof normalizeDenylist>): boolean {
-  const normalized = normalizeToolPolicyName(name);
-  return normalized ? matchesAnyGlobPattern(normalized, denylist) : false;
-}
-
-function denylistBlocksPlugin(params: {
-  pluginId: string;
-  denylist: ReturnType<typeof normalizeDenylist>;
-}): boolean {
-  return (
-    denylistBlocksName(params.pluginId, params.denylist) ||
-    matchesAnyGlobPattern("group:plugins", params.denylist)
-  );
-}
 
 type PreparedPluginToolRuntime = {
   loadContext?: ReturnType<typeof resolvePluginRuntimeLoadContext>;
@@ -148,7 +131,7 @@ function resolvePluginToolLoadState(params: {
       (name) =>
         (allowsPlugin ||
           (allowlist.includesDefaults && plugin.toolMetadata?.[name]?.optional !== true) ||
-          allowlist.allowsTool(plugin.id, name)) &&
+          manifestToolAllowed(allowlist, plugin, plugin.id, name)) &&
         !denylistBlocksName(name, denylist),
     );
     if (
@@ -571,7 +554,9 @@ function* resolvePluginToolsFromRegistry(
         (!entry.optional && allowlist.includesDefaults) ||
         (allowlist.size > 0 &&
           (allowlistNames.length === 0 ||
-            allowlistNames.some((name) => allowlist.allowsTool(entry.pluginId, name))));
+            allowlistNames.some((name) =>
+              manifestToolAllowed(allowlist, manifestPlugin, entry.pluginId, name),
+            )));
       if (!matchesAllowlist) {
         continue;
       }
@@ -589,6 +574,7 @@ function* resolvePluginToolsFromRegistry(
         entry,
         registry: owner.registry,
         context: params.context,
+        manifestToolMetadata: manifestPlugin?.toolMetadata,
         assertInvocationCurrent: params.assertInvocationCurrent,
         ownerContinuation: params.ownerContinuation,
         bindExecutionCapabilities: params.bindExecutionCapabilities,
@@ -644,7 +630,7 @@ function* resolvePluginToolsFromRegistry(
         if (
           manifestPlugin &&
           ((manifestPlugin.toolMetadata?.[toolName]?.optional === true &&
-            !allowlist.allowsTool(entry.pluginId, toolName)) ||
+            !manifestToolAllowed(allowlist, manifestPlugin, entry.pluginId, toolName)) ||
             (selectedManifestToolNames &&
               manifestContractToolNames?.has(normalizedToolName) &&
               !selectedManifestToolNames.has(normalizedToolName)) ||
@@ -660,7 +646,8 @@ function* resolvePluginToolsFromRegistry(
         }
         if (
           denylistBlocksName(toolName, denylist) ||
-          (entry.optional && !allowlist.allowsTool(entry.pluginId, toolName)) ||
+          (entry.optional &&
+            !manifestToolAllowed(allowlist, manifestPlugin, entry.pluginId, toolName)) ||
           // Factories may return other declared tools, so check the actual name as well.
           (restrictConversationRead &&
             isHostRestrictedConversationReadTool({ pluginId: entry.pluginId, toolName }))
@@ -726,6 +713,7 @@ function* resolvePluginToolsFromRegistry(
         pluginToolOwnersByName.set(normalizedToolName, entry.pluginId);
         const metadata = manifestPlugin?.toolMetadata?.[name];
         setPluginToolMeta(tool, {
+          policyGroups: metadata?.policyGroups,
           pluginId: entry.pluginId,
           ...(manifestPlugin?.kind ? { kind: manifestPlugin.kind } : {}),
           optional: entry.optional || metadata?.optional === true,

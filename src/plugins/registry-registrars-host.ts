@@ -1,4 +1,5 @@
 import { isOperatorScope, type OperatorScope } from "../gateway/operator-scopes.js";
+import { createPluginDashboardDataBindingRegistrar } from "./dashboard-capabilities.js";
 import { publishPluginSessionSchedulerJobs } from "./host-hook-runtime.js";
 import {
   isPluginJsonValue,
@@ -477,6 +478,7 @@ export function createHostRegistrars(state: PluginRegistryState) {
     registerTrustedToolPolicy,
     registerToolMetadata,
     registerControlUiDescriptor,
+    registerDashboardDataBinding: createPluginDashboardDataBindingRegistrar(),
     registerRuntimeLifecycle,
     registerAgentEventSubscription,
     registerSessionSchedulerJob,

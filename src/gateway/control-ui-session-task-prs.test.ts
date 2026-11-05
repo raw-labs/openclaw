@@ -24,9 +24,8 @@ import { staleReceiptsOnlyCell } from "./control-ui-session-pr-prepared-read.js"
 import {
   createControlUiSessionPrRead,
   prepareControlUiSessionPrServiceTarget,
-  receiptsOnlyTargetIdentity,
   type ControlUiSessionPrTarget,
-} from "./control-ui-session-pr-read.js";
+} from "./control-ui-session-pr-target.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 import { prepareTaskPublicationSessions } from "./control-ui-session-task-prs.js";
 import { prepareGatewayRecipientProfile } from "./expected-profile.js";
@@ -94,6 +93,11 @@ function snapshots(socket = fixture.socket): ControlUiSessionPullRequestSnapshot
 }
 const latest = () => snapshots().at(-1);
 const taskNumbers = () => latest()?.taskPullRequests?.map((pr) => pr.number);
+async function taskSessionKeys(target: ControlUiSessionPrTarget | undefined) {
+  const publications = await target?.read?.readTaskPublications({});
+  return publications?.receipts.map((publication) => publication.session.sessionKey).toSorted();
+}
+
 function closedPull(number: number) {
   return pullListItem({
     number,
@@ -126,19 +130,15 @@ it("reuses unchanged watcher currency and retires it on owner publications", asy
   const f = fixture;
   const child = "agent:main:currency-child";
   await f.seed(child, f.other.id, { parentSessionKey: sessionKey });
+  receipt(sessionKey, 1);
+  receipt(child, 2);
   const projection = getSessionRowProjection(f.context)!;
-  const read = createControlUiSessionPrRead({
-    client: f.client,
-    sessionKey,
-    getRuntimeConfig: f.context.getRuntimeConfig,
-    getSessionRowProjection: () => projection,
-    isCurrentClient: () => !f.client.invalidated,
-  })!;
+  const read = createControlUiSessionPrRead(
+    f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
+    f.context.getRuntimeConfig,
+  )!;
   const target = (await read())!;
-  expect(target.taskReceipts?.sessions.map((session) => session.sessionKey)).toEqual([
-    child,
-    sessionKey,
-  ]);
+  expect(await taskSessionKeys(target)).toEqual([child, sessionKey]);
   target.assertCurrent!();
   const captures = vi.spyOn(projection, "capture");
   const sharing = vi.spyOn(projection, "sharingTargetState");
@@ -189,15 +189,12 @@ it("reuses unchanged watcher currency and retires it on owner publications", asy
           repairHint: "Wait for admission",
         },
       ]);
-      expect(() => target.assertCurrent!()).toThrow("Session pull-request target changed");
+      expect(() => target.assertCurrent!()).toThrow(/target changed/);
       expect(await read()).toBeUndefined();
     } finally {
       recordAgentDatabaseAdmissions(admissions);
     }
-    expect((await read())?.taskReceipts?.sessions.map((session) => session.sessionKey)).toEqual([
-      child,
-      sessionKey,
-    ]);
+    expect(await taskSessionKeys(await read())).toEqual([child, sessionKey]);
 
     await f.seed(child, f.other.id, {
       parentSessionKey: sessionKey,
@@ -206,15 +203,13 @@ it("reuses unchanged watcher currency and retires it on owner publications", asy
     await projection.ensureMaterialized();
     expect(() => target.assertCurrent!()).toThrow("Task pull-request audience changed");
     const narrowed = (await read())!;
-    expect(narrowed.taskReceipts?.sessions.map((session) => session.sessionKey)).toEqual([
-      sessionKey,
-    ]);
+    expect(await taskSessionKeys(narrowed)).toEqual([sessionKey]);
 
     // Publishing the same config object still advances the owner's revision.
     const cfg = f.context.getRuntimeConfig();
     cfg.gateway!.roles!.definitions.reader!.scopes = [];
     setRuntimeConfigSnapshot(cfg);
-    expect(() => narrowed.assertCurrent!()).toThrow("Session pull-request target changed");
+    expect(() => narrowed.assertCurrent!()).toThrow(/target changed/);
     expect(await read()).toBeUndefined();
   } finally {
     captures.mockRestore();
@@ -227,17 +222,16 @@ it("prepares creator aliases once per task audience validation", async () => {
     await fixture.seed(`agent:main:foreign-${index}`, fixture.other.id, {
       parentSessionKey: sessionKey,
     });
+    receipt(`agent:main:foreign-${index}`, index + 1);
   }
+  receipt(sessionKey, 5);
   const projection = getSessionRowProjection(fixture.context)!;
-  const read = createControlUiSessionPrRead({
-    client: fixture.client,
-    sessionKey,
-    getRuntimeConfig: fixture.context.getRuntimeConfig,
-    getSessionRowProjection: () => projection,
-    isCurrentClient: () => true,
-  })!;
+  const read = createControlUiSessionPrRead(
+    fixture.sessionReads.createViewerRead(fixture.client.connId!, { sessionKey }),
+    fixture.context.getRuntimeConfig,
+  )!;
   const target = (await read())!;
-  expect(target.taskReceipts?.sessions).toHaveLength(5);
+  expect(await taskSessionKeys(target)).toHaveLength(5);
   await fixture.seed("agent:main:unrelated", fixture.profile.id);
   await projection.ensureMaterialized();
   const aliases = vi.spyOn(profileReads, "readResidentUserProfileAliases");
@@ -251,13 +245,13 @@ it("prepares creator aliases once per task audience validation", async () => {
   await projection.ensureMaterialized();
   expect(() => target.assertCurrent!()).toThrow("Task pull-request audience changed");
   const narrowed = (await read())!;
-  expect(narrowed.taskReceipts?.sessions).toHaveLength(4);
+  expect(await taskSessionKeys(narrowed)).toHaveLength(4);
 
   // A later validation must prepare fresh aliases, even when the viewer ID is unchanged.
   mergeProfiles(fixture.other.id, fixture.profile.id);
   prepareGatewayRecipientProfile(fixture.client);
   expect(() => narrowed.assertCurrent!()).toThrow("Task pull-request audience changed");
-  expect((await read())?.taskReceipts?.sessions).toHaveLength(5);
+  expect(await taskSessionKeys(await read())).toHaveLength(5);
 });
 
 it("shares lineage work across audiences without sharing visibility or stale descendants", async () => {
@@ -482,7 +476,8 @@ it("projects three descendant receipts without mixing the parent's current branc
   });
   expect(taskNumbers()?.toSorted((a, b) => a - b)).toEqual([1, 2, 3]);
   const sharedTarget = await prepareControlUiSessionPrServiceTarget(
-    () => getSessionRowProjection(fixture.context),
+    fixture.sessionReads,
+    fixture.context.getRuntimeConfig,
     { sessionKey, agentId: "main" },
   );
   expect(sharedTarget).toBeDefined();
@@ -739,7 +734,7 @@ it("reloads a stale passive cell once per verified state, even when its cache mi
     cacheLifetime: new AbortController(),
     snapshot: { pullRequests: [], rateLimited: false, status: "ready" as const, taskPullRequests },
   });
-  const passiveKey = receiptsOnlyTargetIdentity(target.identity);
+  const passiveKey = '["session","receipts-only"]';
   const passiveCell = cell([{ ...pullRequest("open"), pullRequest: undefined }]);
   passiveCell.target = { ...target, identity: passiveKey, taskReceiptsOnly: true };
   const keyStates = new Map([[passiveKey, passiveCell]]);

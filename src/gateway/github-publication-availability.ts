@@ -1,18 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
-import type {
-  GitHubPublicationPublisher,
-  SessionGitHubReadinessResult,
-} from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
-import {
-  matchesPreparedGitHubPublicationIdentity,
-  prepareGitHubPublicationIdentity,
-  prepareGitHubPublicationOptionsIdentity,
-  type PreparedGitHubPublicationIdentity,
-} from "../agents/github-tool-identity.js";
-import type { AgentRunSessionTarget } from "../agents/run-session-target.types.js";
+import type { SessionGitHubReadinessResult } from "../../packages/gateway-protocol/src/schema/session-github-publication.js";
 import { managedWorktrees } from "../agents/worktrees/service.js";
 import type { ManagedWorktreeRecord } from "../agents/worktrees/types.js";
-import { getRuntimeConfig } from "../config/config.js";
+import { readRuntimeConfig as getRuntimeConfig } from "../config/runtime-snapshot.js";
 import { retainPreparedSessionEntryPredicate } from "../config/sessions/session-accessor.sqlite-entry-cache-publication-state.js";
 import {
   captureSessionActorStorageOwner,
@@ -23,23 +13,18 @@ import type { CapturedSessionEntryReadSource } from "../config/sessions/session-
 import type { SessionEntrySnapshotField } from "../config/sessions/session-entry-snapshot-values.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { createStaleWhileRevalidateCache } from "../infra/stale-while-revalidate-cache.js";
-import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { isArtifactPreservingStateRead } from "../state/artifact-preserving-state-reads.js";
 import { prepareGitHubPublicationSessionLifecycle } from "../state/github-publication-session-lifecycles.js";
 import { OPENCLAW_AGENT_SCHEMA_VERSION } from "../state/openclaw-agent-db-contract.js";
 import { prepareOpenClawAgentDatabaseRegistrySnapshotRead } from "../state/openclaw-agent-db-registry-listing.js";
 import { registerOpenClawAgentDatabaseReadCandidateResource } from "../state/openclaw-agent-db-resources.js";
 import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
-import {
-  getSessionRepositoryWorkspaceStore,
-  type PreparedRepositoryWorkspace,
-} from "../state/session-repository-workspaces.js";
-import { requestCurrentGitHubOAuthRefresh } from "./github-oauth-lifecycle.js";
+import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
+import type { PreparedRepositoryWorkspace } from "../state/session-repository-workspaces.publication.js";
 import {
   GitHubPublicationWorkspaceChangedError,
+  GitHubPublicationSessionBranchMismatchError,
   GitHubPublicationSessionChangedError,
-  rejectGitHubPublicationSelection,
-  type GitHubPublicationPreparation,
 } from "./github-publication-failure.js";
 import { GitHubPublicationRecoveryPendingError } from "./github-publication-git-index.js";
 import type {
@@ -52,92 +37,26 @@ import {
   type ExpectedWorktree,
   type PublicationSessionOwner,
 } from "./github-publication-worktree-owner.js";
-import { parseGitHubRemoteUrl } from "./github-remote.js";
 import { resolveSessionStoreIdentity } from "./session-store-key.js";
 import { findCanonicalStoreMatch } from "./session-utils-store-selection.js";
 import { loadGatewaySessionEntryReadOnlyInWorker } from "./session-utils-store-worker.js";
 
 // Discovery is best effort for 15 seconds; publication resolves the current Git repository again.
-const repositoryTargets = createStaleWhileRevalidateCache<boolean>({
+const repositoryOrigins = createStaleWhileRevalidateCache<string>({
   maxEntries: 256,
   maxPending: Number.POSITIVE_INFINITY,
   ttlMs: 15_000,
-  cacheable: (supported) => supported,
 });
 
-function publicationConfigSnapshot() {
-  const active = getActiveSecretsRuntimeConfigSnapshot();
-  if (active) {
-    return active;
-  }
-  const config = getRuntimeConfig();
-  return { config, sourceConfig: config };
-}
-
-export function assertExpectedSharedGitHubPublisher(
-  expected: GitHubPublicationPublisher | undefined,
-  actual: GitHubPublicationPublisher,
-  preparation?: GitHubPublicationPreparation,
-): void {
-  if (
-    actual.source === "personal" ||
-    (expected &&
-      (expected.source !== actual.source ||
-        expected.accountId !== actual.accountId ||
-        expected.login.toLowerCase() !== actual.login.toLowerCase()))
-  ) {
-    rejectGitHubPublicationSelection(
-      "GitHub publication identity changed; review the current shared account and try again.",
-      preparation,
-    );
-  }
-}
-
-export function currentGitHubPublicationConfig() {
-  return publicationConfigSnapshot().config;
-}
-
-export async function prepareCurrentGitHubPublicationIdentity(
-  agentId: string,
-  assertCurrent?: () => void,
-): Promise<PreparedGitHubPublicationIdentity> {
-  assertCurrent?.();
-  await requestCurrentGitHubOAuthRefresh(agentId);
-  assertCurrent?.();
-  const snapshot = publicationConfigSnapshot();
-  return await prepareGitHubPublicationIdentity({
-    config: snapshot.config,
-    sourceConfig: snapshot.sourceConfig,
-    agentId,
-    assertCurrent,
-  });
-}
-
-export async function prepareCurrentGitHubPublicationOptionsIdentity(
-  agentId: string,
-  assertCurrent?: () => void,
-) {
-  assertCurrent?.();
-  await requestCurrentGitHubOAuthRefresh(agentId);
-  assertCurrent?.();
-  const snapshot = publicationConfigSnapshot();
-  return await prepareGitHubPublicationOptionsIdentity({
-    config: snapshot.config,
-    sourceConfig: snapshot.sourceConfig,
-    agentId,
-    assertCurrent,
-  });
-}
-
-export function matchesCurrentGitHubPublicationIdentity(params: {
-  agentId: string;
-  identity: PreparedGitHubPublicationIdentity;
-}): boolean {
-  return matchesPreparedGitHubPublicationIdentity({
-    config: currentGitHubPublicationConfig(),
-    ...params,
-  });
-}
+export type RepositoryPublicationSessionTarget = {
+  agentId?: string;
+  sessionKey?: string;
+  sessionId?: string;
+  storePath?: string;
+  expectedLifecycleRevision?: string;
+  expectedWriterRunId?: string;
+};
+export type { PublicationSessionIdentity } from "./github-publication-session.types.js";
 
 /** The selected publication metadata is invalidated by the session writer's receipts. */
 export async function prepareGitHubPublicationSession(
@@ -146,7 +65,7 @@ export async function prepareGitHubPublicationSession(
     agentId?: string;
     cfg?: OpenClawConfig;
     assertCurrent?: () => void;
-    target?: AgentRunSessionTarget;
+    target?: RepositoryPublicationSessionTarget;
     fields?: readonly (keyof NonNullable<PublicationSessionRead["entry"]>)[];
     /** Saved snapshots a consumer compares; stored reads omit them by default. */
     projection?: readonly SessionEntrySnapshotField[];
@@ -346,7 +265,7 @@ function resolveGitHubPublicationWorkspaceOwner(
 export async function prepareGitHubPublicationWorkspaceOwner(
   params: PublicationSessionIdentity,
   options: {
-    sessionTarget?: AgentRunSessionTarget;
+    sessionTarget?: RepositoryPublicationSessionTarget;
     assertCurrent?: () => void;
     allowExistingPullRequest?: boolean;
   } = {},
@@ -464,24 +383,6 @@ export async function hasGitHubPublicationRepositoryWorkspace(params: Publicatio
   return prepared.initial.kind === "repository";
 }
 
-export function sameGitHubPublicationWorkspace(
-  first: Awaited<ReturnType<typeof prepareGitHubPublicationWorkspaceOwner>>["initial"],
-  current: Awaited<ReturnType<typeof prepareGitHubPublicationWorkspaceOwner>>["initial"],
-): boolean {
-  if (first.loaded.entry?.lifecycleRevision !== current.loaded.entry?.lifecycleRevision) {
-    return false;
-  }
-  return first.kind === "repository"
-    ? current.kind === "repository" &&
-        current.workspace.workspaceId === first.workspace.workspaceId &&
-        current.workspace.url === first.workspace.url &&
-        current.workspace.branch === first.workspace.branch
-    : current.kind === "worktree" &&
-        current.worktree.id === first.worktree.id &&
-        current.worktree.repoFingerprint === first.worktree.repoFingerprint &&
-        current.worktree.branch === first.worktree.branch;
-}
-
 async function localGitHubPublicationSessionIdentity(row: {
   request_id: string;
   identity_source: string;
@@ -568,13 +469,6 @@ export async function prepareGitHubPublicationRepositoryIdentity(params: {
   return repositoryIdentity;
 }
 
-function isSupportedGitHubOrigin(originUrl: string): boolean {
-  const remote = parseGitHubRemoteUrl(originUrl);
-  return Boolean(
-    remote && /^[A-Za-z0-9_.-]+$/u.test(remote.owner) && /^[A-Za-z0-9_.-]+$/u.test(remote.repo),
-  );
-}
-
 type QualifiedPublicationSource = {
   custody: SessionGitHubReadinessResult["custody"];
   target: SessionGitHubReadinessResult["target"];
@@ -589,7 +483,7 @@ export async function qualifyGitHubPublicationSource(
   session: PublicationSessionIdentity,
   assertCurrent: () => void,
   readSession: () => PublicationSessionRead,
-  options: { readMode?: "existing-only" } = {},
+  options: { readMode?: "existing-only"; supportsOrigin: (originUrl: string) => boolean },
 ): Promise<PublicationSourceQualification> {
   const checkSession = () => {
     assertCurrent();
@@ -623,17 +517,19 @@ export async function qualifyGitHubPublicationSource(
         return resolveGitHubPublicationWorkspaceOwner(session, prepared, readSession);
       };
       const owner = current();
+      const supportsOrigin = options.supportsOrigin(owner.workspace.url);
       return {
         ok: true,
         custody: { kind: "qualified", source: "repository" },
-        target: isSupportedGitHubOrigin(owner.workspace.url)
+        target: supportsOrigin
           ? { kind: "supported", basis: "repository-url", freshness: "observed" }
           : { kind: "unsupported" },
         assertCurrent: () => {
           const latest = current();
           if (
             latest.workspace.workspaceId !== workspaceId ||
-            latest.workspace.revision !== owner.workspace.revision
+            latest.workspace.revision !== owner.workspace.revision ||
+            options.supportsOrigin(owner.workspace.url) !== supportsOrigin
           ) {
             throw new GitHubPublicationWorkspaceChangedError(
               "GitHub publication session repository owner changed.",
@@ -682,7 +578,7 @@ export async function qualifyGitHubPublicationSource(
     const { repoRoot, repoFingerprint } = owner.worktree;
     const key = JSON.stringify([context.admission.identity.key, repoRoot, repoFingerprint]);
     let observed = false;
-    const target = await repositoryTargets.read(
+    const target = await repositoryOrigins.read(
       key,
       async () => {
         const repository = await prepareGitHubPublicationRepositoryIdentity({
@@ -690,22 +586,33 @@ export async function qualifyGitHubPublicationSource(
           assertCurrent: () => context.admission.assertCurrent(),
         });
         observed = true;
-        return isSupportedGitHubOrigin(repository.originUrl);
+        return repository.originUrl;
       },
       { allowStale: false },
     );
     check();
+    const supportsOrigin = options.supportsOrigin(target.value);
+    if (!supportsOrigin) {
+      repositoryOrigins.deleteValue(target.value);
+    }
     return {
       ok: true,
       custody: { kind: "qualified", source: "worktree" },
-      target: target.value
+      target: supportsOrigin
         ? {
             kind: "supported",
             basis: "registered-repository",
             freshness: observed ? "observed" : "cached",
           }
         : { kind: "unsupported" },
-      assertCurrent: check,
+      assertCurrent: () => {
+        check();
+        if (options.supportsOrigin(target.value) !== supportsOrigin) {
+          throw new GitHubPublicationWorkspaceChangedError(
+            "Publication provider target support changed.",
+          );
+        }
+      },
     };
   } catch (cause) {
     // Authority failure is never a successful observation of an unavailable source.
@@ -721,3 +628,48 @@ export async function qualifyGitHubPublicationSource(
     };
   }
 }
+
+/** Resolve local branch and origin under the admitted publication checkout owner. */
+export async function readRepositoryPublicationTargetFacts(params: {
+  worktree: ManagedWorktreeRecord;
+  assertCurrent: () => void;
+}): Promise<{ originUrl: string; branch: string; baseRef: string }> {
+  const identity = await prepareGitHubPublicationRepositoryIdentity(params);
+  params.assertCurrent();
+  const { requirePublicationCommand } = await import("./github-publication-git-transport.js");
+  const branch = await requirePublicationCommand(
+    ["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
+    { cwd: params.worktree.path, beforeRun: params.assertCurrent },
+  );
+  params.assertCurrent();
+  if (branch !== params.worktree.branch) {
+    throw new GitHubPublicationSessionBranchMismatchError({
+      session: params.worktree.branch,
+      checkedOut: branch,
+    });
+  }
+  return { originUrl: identity.originUrl, branch, baseRef: params.worktree.baseRef };
+}
+
+export function readAcceptedRepositoryPublicationWorktree(row: {
+  requestId: string;
+  kind: "shared" | "personal";
+  sessionId: string;
+  sessionKey: string;
+  agentId: string;
+  worktreeId: string;
+  repositoryFingerprint: string;
+  branch: string;
+}) {
+  return readLocalGitHubPublicationWorktreeOwner({
+    request_id: row.requestId,
+    identity_source: row.kind,
+    session_id: row.sessionId,
+    session_key: row.sessionKey,
+    agent_id: row.agentId,
+    worktree_id: row.worktreeId,
+    repository_fingerprint: row.repositoryFingerprint,
+    branch: row.branch,
+  });
+}
+export { currentGitHubPublicationConfig } from "./github-publication-identity.js";

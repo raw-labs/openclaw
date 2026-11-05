@@ -1,5 +1,5 @@
 import type { SchemaContract } from "../../packages/gateway-protocol/src/schema-contract.js";
-import { dispatchGatewayMethodInProcessRaw } from "../gateway/server-plugins.js";
+import { dispatchGatewayMethodInProcessRaw } from "../gateway/server-plugin-in-process-dispatch.js";
 import { getPluginRuntimeGatewayRequestScope } from "../plugins/runtime/gateway-request-scope.js";
 
 /** Error envelope returned by in-process Gateway method dispatch. */
@@ -48,4 +48,20 @@ export async function dispatchGatewayMethod(
     ...(options?.expectFinal !== undefined ? { expectFinal: options.expectFinal } : {}),
     ...(options?.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
   });
+}
+
+export { resolveAgentIdOrRespondError } from "../gateway/server-methods/agent-id-shared.js";
+export {
+  defineValidatedGatewayHandler,
+  defineValidatedGatewayMethod,
+} from "../gateway/server-methods/validation.js";
+
+/** Borrow the active plugin tool invocation without exposing raw caller authority. */
+export async function captureGatewayAgentToolInvocation(
+  ...args: Parameters<
+    typeof import("../gateway/agent-tool-request-invocation.js").captureGatewayAgentToolInvocation
+  >
+) {
+  const runtime = await import("../gateway/agent-tool-request-invocation.js");
+  return runtime.captureGatewayAgentToolInvocation(...args);
 }

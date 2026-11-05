@@ -1,8 +1,10 @@
 import type { BoardGetParams } from "@openclaw/gateway-protocol";
-import type { ControlUiAction, ControlUiSession } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiActionV2 as ControlUiAction,
+  ControlUiSession,
+} from "../../../src/plugin-sdk/control-ui.js";
 import type { PluginSessionMenuAction } from "../components/session-menu-solid.tsx";
 import type { ControlUiPluginCapability } from "./control-ui-capability.ts";
-import { scopeControlUiHost } from "./control-ui-scope.ts";
 
 export function pluginSessionMenuActions(
   runtime: ControlUiPluginCapability,
@@ -25,6 +27,9 @@ export function pluginSessionMenuActions(
                 id: entry.key,
                 label: state?.label ?? entry.value.label,
                 disabled: state?.disabled,
+                icon: entry.value.icon,
+                shortcut: entry.value.shortcut,
+                opensExternal: entry.value.opensExternal,
               },
             ];
       } catch (error) {
@@ -59,29 +64,5 @@ export async function runControlUiPluginAction(
   if (!entry) {
     throw new Error(`This plugin action is no longer active. ${retry}`);
   }
-  const signal = AbortSignal.any([params.signal, entry.signal]);
-  const check = () => {
-    signal.throwIfAborted();
-    if (params.isCurrent?.() === false) {
-      throw new Error("This plugin UI view has ended.");
-    }
-  };
-  check();
-  const context = {
-    sessionKey: params.sessionKey,
-    agentId: params.agentId ?? params.session?.agentId,
-    session: params.session ? structuredClone(params.session) : undefined,
-  };
-  const state = entry.value.resolve?.(context);
-  // A resolver can synchronously withdraw its registration or remove the view.
-  check();
-  if (state?.hidden || state?.disabled) {
-    throw new Error(`This plugin action is currently unavailable. ${retry}`);
-  }
-  await entry.value.run({
-    ...context,
-    host: scopeControlUiHost(entry.host, signal, params.isCurrent),
-    signal,
-  });
-  check();
+  return entry.host.invokeAction(entry.value, entry.signal, params, retry);
 }

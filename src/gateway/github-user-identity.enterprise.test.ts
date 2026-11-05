@@ -26,7 +26,7 @@ import {
   withOpenClawTestState,
   type OpenClawTestState,
 } from "../test-utils/openclaw-test-state.js";
-import { prepareGitHubPublicationContent } from "./github-publication-content.js";
+import { prepareGitHubPublicationContent } from "./github-publication-content.test-support.js";
 import { createAuthenticatedGitHubIdentitySync } from "./github-user-identity.js";
 import { createControlUiRequestOptions } from "./server-methods/control-ui-request.test-support.js";
 import { identifiedClient } from "./server-methods/sessions-sharing.test-support.js";

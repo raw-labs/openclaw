@@ -8,14 +8,14 @@ import {
 import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import { closeOpenClawAgentDatabaseByPathAsync } from "../state/openclaw-agent-db.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
-import type { ControlUiSessionPrReadContext } from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
 import { createTestControlUiSessionPrSubscriptions } from "./control-ui-session-pr-subscriptions.test-support.js";
+import type { ControlUiSessionPrReadContext } from "./control-ui-session-pr-target.js";
 import {
   loadControlUiSessionPullRequests,
   readKnownSessionBranchMergedHeads,
 } from "./control-ui-session-prs.js";
 import {
+  withTestSessionPrRead,
   createSessionPullRequestsFixture,
   githubJson,
   pullListItem,
@@ -24,6 +24,7 @@ import {
 } from "./control-ui-session-prs.test-support.js";
 import { gitHubPublicApi } from "./github-public-api.js";
 import { isGitHubPublicationSuperseded } from "./github-publication-relevance.js";
+import { loadGatewaySessionEntryReadOnlyAsync } from "./session-utils-store.js";
 
 const { prepareRead, load } = createSessionPullRequestsFixture();
 let owner: ReturnType<typeof createTestControlUiSessionPrSubscriptions> | undefined;
@@ -280,8 +281,8 @@ it.for(["publication first", "display first", "refresh queued", "head changed"])
     const snapshot = {
       repository: "openclaw/openclaw",
       branch: testGitContext.branch,
-      source_head_commit: head,
-      workspace_tree: tree,
+      sourceHeadCommit: head,
+      workspaceTree: tree,
     };
     expect(
       await isGitHubPublicationSuperseded(snapshot, async () => ({
@@ -291,7 +292,7 @@ it.for(["publication first", "display first", "refresh queued", "head changed"])
     ).toBe(true);
     expect(
       await isGitHubPublicationSuperseded(
-        { ...snapshot, workspace_tree: "c".repeat(40) },
+        { ...snapshot, workspaceTree: "c".repeat(40) },
         async () => ({ pullRequests: candidates.pullRequests, assertCurrent: current }),
       ),
     ).toBe(false);
@@ -358,8 +359,7 @@ it("reads known merged heads without network access only for the same live sessi
   vi.stubGlobal("fetch", network);
   const expected = [{ sha: head, baseRef: "main", mergeCommitSha }];
   let releasedRead: ControlUiSessionPrReadContext | undefined;
-  await withControlUiSessionPrSource(target.readSource, async (assertCurrent, sourceIdentity) => {
-    const read = { target, sourceIdentity, assertCurrent };
+  await withTestSessionPrRead(target, async (read) => {
     releasedRead = read;
     const known = readKnownSessionBranchMergedHeads(testGitContext, read);
     expect(known).toEqual(expected);
@@ -381,23 +381,23 @@ it("reads known merged heads without network access only for the same live sessi
   );
 
   // Identical session rows at the same path do not inherit a retired physical source's cache.
-  await closeOpenClawAgentDatabaseByPathAsync(target.readSource.path);
-  const replacement = `${target.readSource.path}.replacement`;
-  await fs.copyFile(target.readSource.path, replacement);
-  await fs.rename(replacement, target.readSource.path);
+  const { readSource } = await loadGatewaySessionEntryReadOnlyAsync(sessionKey, {
+    agentId: "main",
+  });
+  if (!readSource) {
+    throw new Error("Missing fixture source");
+  }
+  await closeOpenClawAgentDatabaseByPathAsync(readSource.path);
+  const replacement = `${readSource.path}.replacement`;
+  await fs.copyFile(readSource.path, replacement);
+  await fs.rename(replacement, readSource.path);
   const reopened = await resolve();
   if (!reopened) {
     throw new Error("Missing reopened fixture target");
   }
   expect(reopened.identity).toBe(target.identity);
-  await withControlUiSessionPrSource(reopened.readSource, async (assertCurrent, sourceIdentity) => {
-    expect(
-      readKnownSessionBranchMergedHeads(testGitContext, {
-        target: reopened,
-        sourceIdentity,
-        assertCurrent,
-      }),
-    ).toEqual([]);
+  await withTestSessionPrRead(reopened, async (read) => {
+    expect(readKnownSessionBranchMergedHeads(testGitContext, read)).toEqual([]);
   });
   expect(network).not.toHaveBeenCalled();
   expect(fetchImpl).toHaveBeenCalledOnce();

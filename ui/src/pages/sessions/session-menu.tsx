@@ -28,7 +28,7 @@ import {
   canCopySessionMarkdown,
   runSessionNavigationAction,
 } from "../../lib/sessions/session-menu-navigation.ts";
-import { pluginSessionMenuActions } from "../../plugins/control-ui-actions.ts";
+import { createSessionMenuActionsProjection } from "../../plugins/control-ui-action-observation.solid.ts";
 import type { SessionsPageMutationResult } from "./mutation-runner.ts";
 
 type SessionsPageMenuAction = Exclude<SessionMenuAction, { kind: "snooze" | "wake" }>;
@@ -52,6 +52,10 @@ export function SessionManagementMenu(props: SessionsPageMenuProps) {
   // The menu stays usable while optional destinations resolve for this opening.
   const work = createMemo(() => props.work, { loadingValue: null });
   const visibleWork = () => (isPending(work) ? null : work());
+  const pluginActions = createSessionMenuActionsProjection(() => ({
+    runtime: props.context.plugins,
+    session: props.row,
+  }));
   const state = createMemo(() => {
     const context = props.context;
     const row = props.row;
@@ -108,7 +112,6 @@ export function SessionManagementMenu(props: SessionsPageMenuProps) {
         (!cloudWorkerStopAction.blocksActiveRun || row.hasActiveRun !== true) &&
         isGatewayMethodAdvertised(gateway, cloudWorkerStopAction.method) === true,
       ),
-      pluginActions: pluginSessionMenuActions(context.plugins, row),
     };
   });
   return (
@@ -131,7 +134,7 @@ export function SessionManagementMenu(props: SessionsPageMenuProps) {
         groups={props.groups}
         currentOwner={props.row.owner?.actor ?? null}
         work={visibleWork()}
-        pluginActions={state().pluginActions}
+        pluginActions={pluginActions()}
         onClose={() => props.onClose()}
         onAction={(action: SessionMenuAction) => {
           // Snooze controls belong to the sidebar; the page retains its existing action contract.

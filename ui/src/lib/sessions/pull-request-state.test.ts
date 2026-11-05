@@ -8,7 +8,7 @@ import { interrupted as personalReview } from "../../pages/chat/chat-github-publ
 import { createTestGatewayClient } from "../../test-helpers/gateway-client.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import {
-  GitHubPublicationOwner,
+  githubPublicationOperationFactory,
   type GitHubPublicationOptions,
 } from "./github-publication-owner.ts";
 import { sessionRequest } from "./hydration-family.test-support.ts";
@@ -143,7 +143,11 @@ function publicationHarness(responses?: {
   });
   const attach = (session = row("publication")) => {
     let changed = createDeferred();
-    const binding = sessions.githubPublication.attach(session, GitHubPublicationOwner)!;
+    const binding = sessions.retainedOperations.attach(
+      session,
+      githubPublicationOperationFactory,
+      "openclaw-native",
+    )!;
     binding.subscribe(() => {
       const previous = changed;
       changed = createDeferred();

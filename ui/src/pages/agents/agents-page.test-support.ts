@@ -10,6 +10,7 @@ import { createAgentCapability } from "../../lib/agents/index.ts";
 import { createChannelCapability } from "../../lib/channels/index.ts";
 import { invalidateChatMetadataStore } from "../../lib/chat/chat-metadata-cache.ts";
 import { createInitialConfigState } from "../../lib/config/config-state-model.ts";
+import { ControlUiPluginRuntime } from "../../plugins/control-ui-runtime.ts";
 import { createApplicationGatewaySnapshot } from "../../test-helpers/application-context-fixtures.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
@@ -72,6 +73,7 @@ export function completeContext(context: ApplicationContext) {
     acquireChannels: () => channels,
     config: context.config ?? { current: { assistantIdentity: {} }, subscribe },
     navigation: context.navigation ?? { snapshot: { pinnedAgentIds: [] }, subscribe },
+    plugins: context.plugins ?? new ControlUiPluginRuntime(() => context),
     router: context.router ?? {
       getState: () => ({ matches: [{ routeId: "agents" }], pendingMatches: [] }),
     },

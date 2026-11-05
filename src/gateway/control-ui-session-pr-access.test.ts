@@ -33,19 +33,19 @@ import {
   readerChanges,
   sessionKey,
   snapshot,
+  withDefaultLoader,
   type Load,
 } from "./control-ui-session-pr-access.test-support.js";
 import * as checkDetails from "./control-ui-session-pr-check-details.js";
 import {
-  createControlUiSessionPrRead,
-  prepareControlUiSessionPrServiceTarget,
-} from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
-import { createControlUiSessionPullRequestSubscriptions } from "./control-ui-session-pr-subscriptions.js";
-import {
   createTestSessionPrReadSource,
+  createTestControlUiSessionPrSubscriptions as createControlUiSessionPullRequestSubscriptions,
   spyOnSessionPrLoader,
 } from "./control-ui-session-pr-subscriptions.test-support.js";
+import {
+  createControlUiSessionPrRead,
+  prepareControlUiSessionPrServiceTarget,
+} from "./control-ui-session-pr-target.js";
 import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
 import type { OperatorScope } from "./operator-scopes.js";
 import { handleGatewayRequest } from "./server-methods.js";
@@ -94,8 +94,6 @@ async function withFixture(
   }
 }
 
-type Fixture = Awaited<ReturnType<typeof createFixture>>;
-
 function holdLoad<T>() {
   const entered = createDeferredCore();
   const held = createDeferredCore<T>();
@@ -126,26 +124,6 @@ function closedPull(number?: number) {
     head: {},
     base: { ref: "main", repo: { name: "publication", owner: { login: "synthetic" } } },
   });
-}
-
-async function withDefaultLoader(provider: typeof fetch, run: (f: Fixture) => Promise<void>) {
-  try {
-    await withOpenClawTestState({ scenario: "minimal" }, async () => {
-      vi.stubEnv("GH_TOKEN", "");
-      vi.stubEnv("GITHUB_TOKEN", "");
-      vi.stubGlobal("fetch", provider);
-      const f = await createFixture("operator.read", true);
-      try {
-        await run(f);
-      } finally {
-        await f.close();
-      }
-    });
-  } finally {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
-  }
 }
 
 function frames(socket: ReturnType<typeof createGatewayWsTestSocket>) {
@@ -186,7 +164,8 @@ describe.skipIf(process.platform === "win32" || Boolean(process.versions.bun))(
       await runWithSpawnBroker(ownerBroker, () =>
         withFixture("operator.read", async (f) => {
           const target = await prepareControlUiSessionPrServiceTarget(
-            () => getSessionRowProjection(f.context),
+            f.sessionReads,
+            f.context.getRuntimeConfig,
             { sessionKey, agentId: "main" },
           );
           if (!target || target.source === null) {
@@ -718,13 +697,10 @@ it.each(["local", "repository"] as const)(
       const repositories = getSessionRepositoryWorkspaceStore();
       const repository = source === "repository" ? await f.seedRepository() : undefined;
       await f.subscribe();
-      const read = createControlUiSessionPrRead({
-        client: f.client,
-        sessionKey,
-        getRuntimeConfig: f.context.getRuntimeConfig,
-        getSessionRowProjection: () => getSessionRowProjection(f.context),
-        isCurrentClient: () => !f.client.invalidated,
-      })!;
+      const read = createControlUiSessionPrRead(
+        f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
+        f.context.getRuntimeConfig,
+      )!;
       const target = await read();
       expect(target).toBeDefined();
       const sorts = vi.spyOn(f.client.connect.scopes!, "toSorted");
@@ -805,13 +781,10 @@ it.each(["remove", "replace"] as const)(
   async (change) => {
     await withFixture("operator.admin", async (f) => {
       f.client.connect.scopes = ["operator.read", "operator.write", "operator.read"];
-      const read = createControlUiSessionPrRead({
-        client: f.client,
-        sessionKey,
-        getRuntimeConfig: f.context.getRuntimeConfig,
-        getSessionRowProjection: () => getSessionRowProjection(f.context),
-        isCurrentClient: () => !f.client.invalidated,
-      })!;
+      const read = createControlUiSessionPrRead(
+        f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
+        f.context.getRuntimeConfig,
+      )!;
       const target = await read();
       expect(target).toBeDefined();
       expect(f.client.connect.scopes).toEqual(["operator.read", "operator.write", "operator.read"]);
@@ -824,7 +797,7 @@ it.each(["remove", "replace"] as const)(
       } else {
         f.client.connect.scopes[0] = "operator.admin";
       }
-      expect(() => target!.assertCurrent!()).toThrow("Session pull-request target changed");
+      expect(() => target!.assertCurrent!()).toThrow(/target changed/);
       expect(await read()).toBeUndefined();
     });
   },
@@ -844,13 +817,10 @@ it("keeps warm default-loader SQL constant as readers join without a native row 
     await f.subscriptions.pollNow();
     const preparation = vi.spyOn(getSessionRowProjection(f.context)!, "withPreparedExactRows");
     try {
-      const read = createControlUiSessionPrRead({
-        client: f.client,
-        sessionKey,
-        getRuntimeConfig: f.context.getRuntimeConfig,
-        getSessionRowProjection: () => getSessionRowProjection(f.context),
-        isCurrentClient: () => !f.client.invalidated,
-      });
+      const read = createControlUiSessionPrRead(
+        f.sessionReads.createViewerRead(f.client.connId!, { sessionKey }),
+        f.context.getRuntimeConfig,
+      );
       expect(await read?.()).toMatchObject({ sessionId: f.sessionId });
       expect(preparation).toHaveBeenCalledTimes(1);
       preparation.mockClear();
@@ -892,11 +862,15 @@ it("keeps warm default-loader SQL constant as readers join without a native row 
 });
 
 it("checks physical source once per load while every assertion observes owner retirement", async () => {
-  await withFixture("operator.admin", async () => {
+  await withFixture("operator.admin", async (f) => {
     const source = await sessionSource(sessionKey);
+    const read = await f.sessionReads.createViewerRead(f.client.connId!, { sessionKey })?.();
+    if (!read) {
+      throw new Error("Fixture reader was not admitted");
+    }
     const identities = vi.spyOn(databaseIdentity, "readDatabasePathIdentitySync");
     try {
-      await withControlUiSessionPrSource(source, async (assertCurrent) => {
+      const load = read.withSource(async ({ assertCurrent }) => {
         const captured = identities.mock.calls.length;
         expect(captured).toBeGreaterThan(0);
         for (let index = 0; index < 20; index++) {
@@ -905,8 +879,9 @@ it("checks physical source once per load while every assertion observes owner re
         expect(identities).toHaveBeenCalledTimes(captured);
         expect(captured).toBe(1);
         await closeOpenClawAgentDatabaseByPathAsync(source.path);
-        expect(assertCurrent).toThrow("Session PR source changed or closed");
+        expect(assertCurrent).toThrow(/source changed or closed/);
       });
+      await expect(load).rejects.toThrow(/source changed or closed/);
     } finally {
       identities.mockRestore();
     }
@@ -1030,3 +1005,31 @@ it.each(["concurrency limit", "earlier refresh", "refresh timer", "publication"]
     });
   },
 );
+
+it("withdraws the managed presentation and drains active transport on service stop", async () => {
+  const entered = createDeferredCore();
+  const released = createDeferredCore<Response>();
+  let transportSignal: AbortSignal | null | undefined;
+  const provider = vi.fn<typeof fetch>(async (_input, init) => {
+    transportSignal = init?.signal;
+    entered.resolve();
+    // The external provider is synthetic; the real request owner must cancel it.
+    return await released.promise;
+  });
+  await withDefaultLoader(provider, async (f) => {
+    await f.seedRepository();
+    await f.subscribe();
+    await entered.promise;
+    const presentation = f.readHost.presentation;
+    expect(presentation).toBeDefined();
+    await f.services.stop();
+    expect(f.readHost.presentation).toBeUndefined();
+    expect(transportSignal?.aborted).toBe(true);
+    released.resolve(githubJson([closedPull()]));
+    await presentation!.pollNow();
+    await f.clock.advanceBy(60_000);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(frames(f.socket)).toEqual([]);
+    expect(() => f.sessionReads.assertCurrent()).toThrow();
+  });
+});

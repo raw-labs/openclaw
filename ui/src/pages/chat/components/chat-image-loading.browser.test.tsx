@@ -393,6 +393,10 @@ describe.runIf(browserMode)("chat image loading geometry", () => {
     async ({ count, viewport, tile }) => {
       const { page } = await import("vitest/browser");
       await page.viewport(viewport, 812);
+      // Static tile geometry excludes the hover zoom retained across browser files.
+      await page.elementLocator(document.body).hover({
+        position: { x: window.innerWidth - 1, y: window.innerHeight - 1 },
+      });
       const container = mount(Math.min(700, viewport - 32));
       const ready = createDeferred();
       vi.stubGlobal(

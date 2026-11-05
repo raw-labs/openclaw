@@ -1,16 +1,19 @@
-import { expectDefined } from "@openclaw/normalization-core/expect";
 import { afterEach, expect, it, vi } from "vitest";
 import { getRuntimeConfig } from "../config/io.js";
 import { setRuntimeConfigSnapshot } from "../config/runtime-snapshot.js";
+import { sessionChanges } from "../sessions/session-row-changes.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { getSessionRepositoryWorkspaceStore } from "../state/session-repository-workspaces.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import { createFixture, sessionKey } from "./control-ui-session-pr-access.test-support.js";
-import { createControlUiSessionPrRead } from "./control-ui-session-pr-read.js";
-import { withControlUiSessionPrSource } from "./control-ui-session-pr-source.js";
+import { createControlUiSessionPrRead } from "./control-ui-session-pr-target.js";
 import { loadControlUiSessionPullRequests } from "./control-ui-session-prs.js";
-import { githubJson, pullListItem, requestUrl } from "./control-ui-session-prs.test-support.js";
-import { getSessionRowProjection } from "./session-row-projection-access.js";
+import {
+  withTestSessionPrRead,
+  githubJson,
+  pullListItem,
+  requestUrl,
+} from "./control-ui-session-prs.test-support.js";
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
 async function withReader(run: (fixture: Fixture) => Promise<void>) {
@@ -59,6 +62,31 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+it("forwards invalidated facts even when the row itself is unchanged", async () => {
+  await withReader(async (f) => {
+    const changed = vi.fn();
+    const stop = f.sessionReads.subscribeChanges(changed);
+    try {
+      sessionChanges.emit({ sessionKey, facts: { kind: "unchanged" } });
+      expect(changed).not.toHaveBeenCalled();
+      sessionChanges.emit({
+        sessionKey,
+        facts: { kind: "unchanged" },
+        factsInvalidated: true,
+      });
+      expect(changed).toHaveBeenCalledExactlyOnceWith({
+        kind: "session",
+        sessionKey,
+        agentId: undefined,
+        removed: false,
+        lineageChanged: true,
+      });
+    } finally {
+      stop();
+    }
+  });
+});
+
 it.each([false, true])(
   "keeps a coalesced branch refresh after its first reader retires (forced=%s)",
   async (forced) => {
@@ -75,27 +103,21 @@ it.each([false, true])(
         const secondReader = f.addReader("second-publication-reader");
         const targets = await Promise.all(
           [f.client, secondReader.client].map(async (client) => {
-            const capture = createControlUiSessionPrRead({
-              client,
-              sessionKey,
+            const capture = createControlUiSessionPrRead(
+              f.sessionReads.createViewerRead(client.connId!, { sessionKey }),
               getRuntimeConfig,
-              getSessionRowProjection: () => getSessionRowProjection(f.context),
-              isCurrentClient: () => !client.invalidated,
-            });
-            return expectDefined(await capture?.(), "Fixture reader was not admitted");
+            );
+            const target = await capture?.();
+            if (!target) {
+              throw new Error("Fixture reader was not admitted");
+            }
+            return target;
           }),
         );
         const load = (target: (typeof targets)[number], refresh = false) =>
-          withControlUiSessionPrSource(target.readSource, (assertSource, sourceIdentity) => {
-            const assertCurrent = () => {
-              assertSource();
-              target.assertCurrent?.();
-            };
-            return loadControlUiSessionPullRequests(
-              { sessionKey, refresh },
-              { read: { target, sourceIdentity, assertCurrent } },
-            );
-          });
+          withTestSessionPrRead(target, (read) =>
+            loadControlUiSessionPullRequests({ sessionKey, refresh }, { read }),
+          );
         const first = load(targets[0]!);
         const rejected = expect(first).rejects.toThrow("target changed");
         await started.promise;

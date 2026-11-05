@@ -37,8 +37,10 @@ import {
   openOpenClawStateDatabase,
   type OpenClawStateDatabase,
 } from "../state/openclaw-state-db.js";
+import { captureOpenClawStateWorkerContext } from "../state/openclaw-state-worker-context.js";
 import { ensureCanonicalUserProfileForEmail } from "../state/user-profile-writes.js";
-import { currentGitHubPublicationConfig } from "./github-publication-availability.js";
+import { currentGitHubPublicationConfig } from "./github-publication-identity.js";
+import { createGitHubPublicationProvider } from "./github-publication-provider.js";
 import {
   prepareGitHubPublicationRequesterV2,
   type GitHubPublicationRequesterV2,
@@ -80,7 +82,8 @@ vi.mock("../agents/github-tool-identity.js", async (importOriginal) => {
   };
 });
 
-vi.mock("./github-oauth-lifecycle.js", () => ({
+vi.mock("./github-oauth-lifecycle.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./github-oauth-lifecycle.js")>()),
   requestCurrentGitHubOAuthRefresh: mocks.refreshIdentity,
   requestCurrentPersonalGitHubRefresh: mocks.refreshIdentity,
 }));
@@ -155,6 +158,11 @@ vi.mock("./session-utils-store-worker.js", async (importOriginal) => {
 
 vi.mock("../process/exec.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../process/exec.js")>()),
+  runCommandBuffered: mocks.runCommand,
+}));
+
+vi.mock("openclaw/plugin-sdk/process-runtime", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("openclaw/plugin-sdk/process-runtime")>()),
   runCommandBuffered: mocks.runCommand,
 }));
 
@@ -233,15 +241,41 @@ function withSystemRequesterFixture(coordinator: ReturnType<typeof createCoordin
   });
 }
 
-type PublicationFixtureOptions<T> = Omit<T, "getCommittedRuntimeConfig"> & {
+type PublicationFixtureOptions<T> = Omit<
+  T,
+  "getCommittedRuntimeConfig" | "provider" | "formatReport" | "context" | "signal"
+> & {
   getCommittedRuntimeConfig?: () => OpenClawConfig;
 };
+
+function createTestPublicationProvider(
+  getConfig = currentGitHubPublicationConfig,
+  controller = new AbortController(),
+) {
+  onTestFinished(() => controller.abort());
+  return createGitHubPublicationProvider({
+    signal: controller.signal,
+    assertCurrent: () => controller.signal.throwIfAborted(),
+    getConfig,
+    refreshIdentity: mocks.refreshIdentity,
+    refreshPersonal: mocks.refreshIdentity,
+  });
+}
 
 export function createTestGitHubPublicationRuntime({
   getCommittedRuntimeConfig = currentGitHubPublicationConfig,
   ...params
 }: PublicationFixtureOptions<Parameters<typeof createRuntime>[0]>) {
-  const runtime = createRuntime({ ...params, getCommittedRuntimeConfig });
+  const controller = new AbortController();
+  const provider = createTestPublicationProvider(getCommittedRuntimeConfig, controller);
+  const runtime = createRuntime({
+    ...params,
+    getCommittedRuntimeConfig,
+    provider,
+    formatReport: provider.formatReport,
+    context: captureOpenClawStateWorkerContext(),
+    signal: controller.signal,
+  });
   onTestFinished(() => runtime.close());
   return { ...runtime, coordinator: withSystemRequesterFixture(runtime.coordinator) };
 }
@@ -254,7 +288,13 @@ export function createTestGitHubPublicationCoordinator(
     placements: createWorkerSessionPlacementStore({ database: openOpenClawStateDatabase() }),
   },
 ) {
-  return withSystemRequesterFixture(createCoordinator({ ...params, getCommittedRuntimeConfig }));
+  const provider = createTestPublicationProvider(getCommittedRuntimeConfig);
+  return Object.assign(
+    withSystemRequesterFixture(
+      createCoordinator({ ...params, getCommittedRuntimeConfig, provider }),
+    ),
+    { provider },
+  );
 }
 
 export const SESSION_KEY = "agent:main:dashboard:publication";
@@ -441,7 +481,13 @@ export async function withPublicationWorktreeSqlBoundary<T>(
 
 export let root: string;
 export let commands: string[][];
-export let commandCalls: Array<{ argv: string[]; input?: string }>;
+export let commandCalls: Array<{
+  argv: string[];
+  input?: string;
+  hooksPath?: string;
+  authorizationTarget?: string;
+  credentialHelperDisabled?: boolean;
+}>;
 let sessionCreation: ReturnType<typeof buildSessionCreationStamp> | undefined;
 let realWorktree = false;
 
@@ -591,11 +637,12 @@ export function installGitHubPublicationTestHarness(
     mocks.matchesIdentity.mockReturnValue(true);
     mocks.prepareIdentity.mockResolvedValue({
       source: "system-configured",
+      host: "github.com",
       profileId: "ghp_11111111111111111111111111111111",
       account: { accountId: 42, login: "roboclaw-bot", avatarUrl: null },
       env: {
         GH_CONFIG_DIR: "/private/github-profile",
-        GH_TOKEN: undefined,
+        GH_TOKEN: "synthetic-publication-credential",
         GITHUB_TOKEN: undefined,
       },
     });
@@ -668,6 +715,7 @@ export function installGitHubPublicationTestHarness(
 export async function createRealPublicationWorkspace(
   interruptAt?: "push" | "observe" | "index" | "create",
   sessionKey = SESSION_KEY,
+  options: { linkedWorktree?: boolean } = {},
 ) {
   const { createRealPublicationWorkspace: createWorkspace } =
     await import("./github-publication-git.test-support.js");
@@ -679,5 +727,6 @@ export async function createRealPublicationWorkspace(
     mocks,
     commandResult,
     interruptAt,
+    linkedWorktree: options.linkedWorktree,
   });
 }

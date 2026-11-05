@@ -13,6 +13,8 @@ export type CronCreatorToolAllowlistEntry =
       /** Canonical policy name persisted into toolsAllow caps. */
       name: string;
       pluginId?: string;
+      /** Manifest-owned groups used when resolving an explicit automation cap. */
+      policyGroups?: readonly string[];
       /** Runtime-specific alias the creator surface presented for this tool. */
       aliasName?: string;
       /** Runtime owner that supplied exec; required for process-bearing stream writes. */
