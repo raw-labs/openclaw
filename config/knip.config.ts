@@ -1179,6 +1179,10 @@ const config = {
     "src/auto-reply/reply/request-native-subagent.ts": ["exports"],
     // Scheduled-command tests exercise registry replacement and persisted-job validation at the owner.
     "src/gateway/plugin-command-scheduled-run.ts": ["exports"],
+    // delegated-tool-policy and sessions-spawn visible tests build the real inherited deny floor.
+    "src/agents/conversation-capability-profile.ts": ["exports"],
+    // control-ui-runtime tests exercise synchronous menu notifications and observer retirement.
+    "ui/src/plugins/control-ui-action-observation.solid.ts": ["exports"],
     // Diagnostic fixtures reset owner-private state; the full-tree audit checks these consumers.
     "src/logging/diagnostic-memory.ts": ["exports"],
     "src/logging/diagnostic-phase.ts": ["exports"],

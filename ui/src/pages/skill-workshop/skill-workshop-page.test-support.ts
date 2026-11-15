@@ -1,6 +1,7 @@
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
 import type { GatewayBrowserClient } from "../../api/gateway.ts";
 import type { ApplicationContext, ApplicationGatewaySnapshot } from "../../app/context.ts";
+import { ControlUiPluginRuntime } from "../../plugins/control-ui-runtime.ts";
 import { createApplicationGatewaySnapshot } from "../../test-helpers/application-context-fixtures.ts";
 import { gatewayHelloForMethods } from "../../test-helpers/gateway-methods.ts";
 
@@ -52,7 +53,7 @@ export function createContext(
   const subscribe = () => () => undefined;
   const selectionListeners = new Set<() => void>();
   const selectionState = { selectedId: "research" };
-  return {
+  const context = {
     basePath: "",
     gateway: { snapshot, subscribe },
     config: {
@@ -92,4 +93,7 @@ export function createContext(
       }),
     },
   } as unknown as ApplicationContext;
+  const plugins = new ControlUiPluginRuntime(() => context);
+  onTestFinished(() => plugins.dispose());
+  return Object.assign(context, { plugins });
 }

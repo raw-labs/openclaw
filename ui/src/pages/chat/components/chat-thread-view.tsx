@@ -1,4 +1,13 @@
-import { Loading, Show, lazy, createMemo, createSignal, onSettled, useContext } from "solid-js";
+import {
+  Loading,
+  Show,
+  lazy,
+  createMemo,
+  createSignal,
+  merge,
+  onSettled,
+  useContext,
+} from "solid-js";
 import { handleMarkdownCodeBlockClick } from "../../../components/markdown-code-blocks.ts";
 import {
   linkReaderPrefetchRef as createLinkReaderPrefetchRef,
@@ -22,12 +31,14 @@ import {
   anchorFromNavigationEvent,
   shouldHandleNavigationClick,
 } from "../../../lib/navigation-click.ts";
+import { useOptionalApplication } from "../../../lib/reactive/context.ts";
 import { elementRef } from "../../../lib/reactive/element-ref.ts";
 import { registerEnglishCatalog, t } from "../../../lib/reactive/i18n.ts";
 import { listen } from "../../../lib/reactive/listener.ts";
 import { createParkedProjection } from "../../../lib/reactive/parked-projection.ts";
 import { projectOwner, projectSource } from "../../../lib/reactive/projection.ts";
 import { createTimeout } from "../../../lib/reactive/timers.ts";
+import { createTextReferenceProjection } from "../../../plugins/control-ui-text-reference-projection.ts";
 import { TemplateCreatorReview } from "../../templates/creator-review.tsx";
 import { usePanePresentation } from "../chat-pane-presentation.ts";
 import {
@@ -172,6 +183,18 @@ export function ChatThread(input: ChatThreadInput) {
 
 function ChatThreadContent(input: ChatThreadInput & { presented: boolean }) {
   const mobile = useContext(ChatConversationMobile);
+  const application = useOptionalApplication();
+  const textReferences = createTextReferenceProjection(() => ({
+    context: input.props.applicationContext ?? application,
+    session: {
+      sessionKey: input.props.sessionKey,
+      agentId: input.props.currentAgentId ?? input.props.fullMessageAgentId,
+    },
+    presented:
+      typeof input.props.transcriptVisible === "object"
+        ? input.props.transcriptVisible.isPresented()
+        : input.props.transcriptVisible !== false,
+  }));
   // Admission stays with the transcript; all overlay lifetime work loads on intent.
   const [templateIntent, setTemplateIntent] = createSignal<TemplateReference | null>(null);
   function handleTemplateReference(event: Event) {
@@ -255,7 +278,17 @@ function ChatThreadContent(input: ChatThreadInput & { presented: boolean }) {
   const current = createMemo(() => {
     const searchState = search().read();
     const { session } = presentation();
-    const projection = projectChatTranscript(input.props, session, searchState);
+    const projection = projectChatTranscript(
+      // Keep live stream getters subscribed by their leaf renderer, outside row projection.
+      merge(input.props, {
+        textReferences:
+          input.props.applicationContext || application
+            ? textReferences()
+            : input.props.textReferences,
+      }),
+      session,
+      searchState,
+    );
     expansionVersions();
     // Empty shells establish the baseline for first-submission animation.
     if (projection.isEmpty || projection.showLoadingSkeleton) {

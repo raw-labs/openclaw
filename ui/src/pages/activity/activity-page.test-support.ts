@@ -6,6 +6,7 @@ import type { GatewaySessionRow, SessionsListResult } from "../../api/types.ts";
 import type { ApplicationContext } from "../../app/context.ts";
 import { loadSettings } from "../../app/settings.ts";
 import { ApplicationProvider } from "../../lib/reactive/context.ts";
+import { ControlUiPluginRuntime } from "../../plugins/control-ui-runtime.ts";
 import { createApplicationGateway } from "../../test-helpers/application-context-fixtures.ts";
 import { mountSolid } from "../../test-helpers/mount-solid.ts";
 import { flush } from "../../test-helpers/solid-settle.ts";
@@ -35,7 +36,6 @@ class UnavailableActivityCapabilities {
   sidebarAttention!: never;
   runtimeConfig!: never;
   placementStartup!: never;
-  plugins!: never;
   assistantDock!: never;
   overlays!: never;
   navigation!: never;
@@ -51,7 +51,7 @@ export function createActivityContext(
   capabilities: Pick<ApplicationContext, "sessions" | "agents" | "agentIdentity">,
   basePath = "",
 ): ApplicationContext {
-  const context = Object.assign(new UnavailableActivityCapabilities(), {
+  const context: ApplicationContext = Object.assign(new UnavailableActivityCapabilities(), {
     gateway: source,
     ...capabilities,
     basePath,
@@ -63,6 +63,7 @@ export function createActivityContext(
     preload: vi.fn(async () => {}),
     nativeDeviceSettings: null,
     nativeNotifications: null,
+    plugins: new ControlUiPluginRuntime(() => context),
   });
   // Unsupported fields are runtime markers; the proxy always throws before returning them.
   return new Proxy(context, {

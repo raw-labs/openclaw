@@ -34,6 +34,7 @@ export function createConnectedContext(
   const eventListeners = new Set<(event: GatewayEvent) => void>();
   const subscribe = () => () => undefined;
   const baseContext = {
+    plugins: { settingsContributions: [], subscribe },
     router: {
       subscribe(listener: () => void) {
         routeListeners.add(listener);

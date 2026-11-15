@@ -277,7 +277,10 @@ export function messageMarkdownRenderOptions(
   role: string,
   preparation: Pick<ChatMessageRenderPreparation, "displayMarkdown" | "humanMentions">,
   markdown: string | null,
-  opts: Pick<GroupedMessageOptions, "onOpenImage" | "fetchLinkFavicon" | "isStreaming">,
+  opts: Pick<
+    GroupedMessageOptions,
+    "onOpenImage" | "fetchLinkFavicon" | "isStreaming" | "textReferences"
+  >,
 ): MarkdownRenderOptions {
   return {
     assistantTranscriptRoleHeaders: role === "assistant",
@@ -285,6 +288,7 @@ export function messageMarkdownRenderOptions(
     codeBlockInteraction:
       role === "assistant" ? "interactive" : role === "user" ? "wrap" : "static",
     fileLinks: true,
+    textReferences: role === "assistant" ? opts.textReferences : undefined,
     humanMentions: markdown === preparation.displayMarkdown ? preparation.humanMentions : undefined,
     interactiveImages: opts.onOpenImage !== undefined,
     sessionLinks: true,

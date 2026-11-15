@@ -70,6 +70,7 @@ export type {
   OpenClawPluginHookOptions,
   OpenClawPluginToolContext,
   OpenClawPluginToolFactory,
+  OpenClawPluginToolGateway,
   OpenClawPluginToolOptions,
 } from "./tool-types.js";
 export type {

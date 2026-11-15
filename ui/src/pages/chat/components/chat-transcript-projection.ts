@@ -451,6 +451,7 @@ export function projectChatTranscript(
     props.allowExternalEmbedUrls ?? false,
     props.fetchLinkFavicon,
     props.pluginToolIcons,
+    props.textReferences?.key ?? "",
     threadContextWindow,
     Boolean(props.onSetReply),
     props.messageReactions,

@@ -45,6 +45,8 @@ export type BackgroundPayloadsCommitParams = {
   expectedGeneration: { sessionId: string; lifecycleRevision: string | undefined };
   /** The payloads that were shown; the stored row is their transcript projection. */
   payloads: readonly ReplyPayload[];
+  /** Keep a same-execution display mirror out of subsequent model requests. */
+  modelAlreadyRecorded?: boolean;
   idempotencyKey: string;
   provenance?: BackgroundSessionResultProvenance;
   config: OpenClawConfig;
@@ -76,6 +78,7 @@ export async function commitBackgroundPayloadsToSession(
       sessionKey: params.sessionKey,
       expectedGeneration: params.expectedGeneration,
       text,
+      modelAlreadyRecorded: params.modelAlreadyRecorded,
       prepareDisplayContent: async () => {
         preparedContent = await buildResultDisplayContent({
           agentId: params.agentId,

@@ -4,6 +4,7 @@ import { setActiveNodeContexts } from "../../infra/active-node-context.js";
 import { resetAgentRunRegistryForTest } from "../../infra/agent-run-registry.js";
 import { withInstallationTarget } from "../../infra/installation-target-context.js";
 import * as gatewayCliShim from "../../infra/openclaw-cli-shim.js";
+import { createExecutionEnvironmentFixture } from "../../plugins/execution-environment.test-support.js";
 import { createAdmittedRunOperatorAuthority } from "../admitted-run-context.js";
 import { createAdmittedHostCapabilityTestFixture } from "./host-capability.test-support.js";
 
@@ -14,6 +15,38 @@ afterEach(() => {
 });
 
 describe("prepared harness tool environment", () => {
+  it("projects registered maps through the admitted host and retires them with their plugin", async () => {
+    const fixture = createExecutionEnvironmentFixture({
+      id: "native-runtime",
+      prepare: () => ({
+        credentialScrubEnv: { EXAMPLE_CREDENTIAL: "" },
+        localIdentityEnv: { EXAMPLE_IDENTITY: "agent" },
+        excludedStoreNames: [],
+        wrapLocalLaunch: (argv) => ["example-launch", ...argv],
+      }),
+    });
+    const host = await fixture.run(() =>
+      createAdmittedHostCapabilityTestFixture({
+        runId: "plugin-environment",
+        agentId: "main",
+        sessionKey: "agent:main:plugin-environment",
+        config: {},
+      }),
+    );
+    try {
+      expect(host.hostCapabilities.preparedEnvironment?.()).toMatchObject({
+        credentialScrubEnv: { EXAMPLE_CREDENTIAL: "" },
+        localIdentityEnv: { EXAMPLE_IDENTITY: "agent" },
+        managedLocalIdentity: false,
+        hostExecutionRequired: true,
+      });
+      await fixture.instance.dispose();
+      expect(() => host.hostCapabilities.preparedEnvironment?.()).toThrow("reloaded or disabled");
+    } finally {
+      host.closeHost();
+      host.closeAdmission();
+    }
+  });
   it("keeps host context reads current and closure-bound", async () => {
     vi.stubEnv("GH_TOKEN", "");
     vi.stubEnv("GITHUB_TOKEN", "");

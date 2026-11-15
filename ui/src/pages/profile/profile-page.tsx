@@ -50,6 +50,7 @@ import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import "../../styles/profile.css";
 import { projectOwner } from "../../lib/reactive/projection.ts";
 import { uploadsEnabled } from "../../lib/uploads.ts";
+import { ControlUiSettingsSlot } from "../../plugins/control-ui-settings-slot.solid.tsx";
 import { PROFILE_SETTINGS_TARGET_IDS } from "../config/settings-targets.ts";
 import { DiscordIdentity } from "./discord-identity.tsx";
 import { ModelAccounts } from "./model-accounts.tsx";
@@ -555,6 +556,7 @@ export function ProfilePage() {
               }
             />
             <GitHubConnections />
+            <ControlUiSettingsSlot placement={{ section: "profile", panel: "connections" }} />
             <ProfileAttribution
               getView={view}
               canEdit={latest(canWrite)}

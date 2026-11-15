@@ -9,6 +9,7 @@ import type { PluginOrigin } from "../plugins/plugin-origin.types.js";
 import { formatConcreteConfigPath } from "../shared/dot-path.js";
 import {
   collectCanonicalSecretInputAssignment as collectSecretInputAssignment,
+  collectSecretExecutionEnvironmentExclusion,
   type ResolverContext,
   type SecretDefaults,
 } from "./runtime-shared.js";
@@ -33,6 +34,8 @@ export function collectPluginConfigAssignments(params: {
   context: ResolverContext;
   /** Optional installed plugin roots; missing IDs are treated as stale inactive config. */
   loadablePluginOrigins?: ReadonlyMap<string, PluginOrigin>;
+  /** Standalone CLI already resolved config values but still prepares child-execution exclusions. */
+  mode?: "assignments" | "execution-exclusions";
 }): void {
   const entries = params.config.plugins?.entries;
   if (!isRecord(entries) || Object.keys(entries).length === 0) {
@@ -95,7 +98,16 @@ export function collectPluginConfigAssignments(params: {
       })) {
         const relativePath = match.path.startsWith("[") ? match.path : `.${match.path}`;
         const fullPath = `${pluginConfigPath}${relativePath}`;
-        if (seenPaths.has(fullPath)) {
+        if (secretPath.executionEnvironment === "exclude") {
+          // Exclusion is an authored credential boundary, independent of plugin admission.
+          collectSecretExecutionEnvironmentExclusion({
+            value: match.value,
+            path: fullPath,
+            defaults: params.defaults,
+            context: params.context,
+          });
+        }
+        if (params.mode === "execution-exclusions" || seenPaths.has(fullPath)) {
           continue;
         }
         seenPaths.add(fullPath);

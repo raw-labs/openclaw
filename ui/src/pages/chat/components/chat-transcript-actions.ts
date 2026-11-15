@@ -152,5 +152,6 @@ export function createTranscriptMessageOptions(
     allowExternalEmbedUrls: props.allowExternalEmbedUrls ?? false,
     fetchLinkFavicon: props.fetchLinkFavicon,
     pluginToolIcons: props.pluginToolIcons,
+    textReferences: props.textReferences,
   };
 }

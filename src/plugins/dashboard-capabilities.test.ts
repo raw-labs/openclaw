@@ -9,6 +9,7 @@ import {
   useNoBundledPlugins,
   writePlugin,
 } from "./loader.test-fixtures.js";
+import { getPluginInstance } from "./plugin-instance-scope.js";
 
 afterEach(resetPluginLoaderTestStateForTest);
 afterAll(cleanupPluginLoaderFixturesForTest);
@@ -33,17 +34,29 @@ type Capability = readonly [
   options?: {
     scope?: "operator.read" | "operator.write";
     registeredMethod?: string;
+    paramShape?: object;
+    runtime?: string;
   },
 ];
 
-function writeDashboardPlugin(id: string, [kind, capabilityId, method, options = {}]: Capability) {
-  const dashboard = { [kind]: [{ id: capabilityId, method, description: "Fixture capability" }] };
-  const scope = options.scope ?? (kind === "dataBindings" ? "operator.read" : "operator.write");
+function writeDashboardPlugin(id: string, ...capabilities: Capability[]): TempPlugin {
+  const dashboard: Record<string, object[]> = {};
+  const registrations = capabilities.map(([kind, capabilityId, method, options = {}]) => {
+    (dashboard[kind] ??= []).push({
+      id: capabilityId,
+      method,
+      description: "Fixture capability",
+      ...(options.paramShape && { paramShape: options.paramShape }),
+    });
+    const scope = options.scope ?? (kind === "dataBindings" ? "operator.read" : "operator.write");
+    return `api.registerGatewayMethod(${JSON.stringify(options.registeredMethod ?? method)},
+      ({ respond }) => respond(true, { ok: true }), { scope: ${JSON.stringify(scope)} });
+      ${options.runtime ?? ""}`;
+  });
   const plugin = writePlugin({
     id,
     filename: "dashboard.cjs",
-    registration: `api.registerGatewayMethod(${JSON.stringify(options.registeredMethod ?? method)},
-      ({ respond }) => respond(true, { ok: true }), { scope: ${JSON.stringify(scope)} });`,
+    registration: registrations.join("\n"),
   });
   const manifestPath = path.join(plugin.dir, "openclaw.plugin.json");
   const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as Record<string, unknown>;
@@ -102,4 +115,41 @@ it("keeps dotted plugin owners and literal escape markers distinct", () => {
     method: "b.write",
   });
   expect(registry.dashboardDataBindings.has("a%252Eb.c")).toBe(true);
+});
+
+it("keeps prepared binding authority callbacks owned by the registering plugin", async () => {
+  const plugin = writeDashboardPlugin("scoped", [
+    "dataBindings",
+    "cards",
+    "scoped.cards",
+    {
+      runtime: `api.registerDashboardDataBinding({
+      apiVersion: 1,
+      id: "cards",
+      resolveGrant(params) { return "scoped.cards:" + params.project; },
+      async prepare(host) {
+        host.assertCurrent();
+        return {
+          assertCurrent() { host.assertCurrent(); },
+          async start(run) { host.assertCurrent(); return await run(); },
+        };
+      },
+    });`,
+    },
+  ]);
+  const registry = loadFixture(plugin);
+  const record = registry.plugins.find((entry) => entry.id === plugin.id)!;
+  const runtime = registry.dashboardDataBindings.get("scoped.cards")!.runtime!;
+  const prepared = await runtime.prepare({
+    agentId: "main",
+    getConfig: () => ({}),
+    getSourceConfig: () => ({}),
+    cacheScope: {},
+    assertCurrent() {},
+    useCurrent: async <T>(start: () => T): Promise<Awaited<T>> => await start(),
+    trackExecution: async <T>(run: () => T | Promise<T>): Promise<Awaited<T>> => await run(),
+  });
+  expect(await prepared.start(() => "started")).toBe("started");
+  await getPluginInstance(record)!.dispose();
+  expect(() => prepared.assertCurrent()).toThrow();
 });

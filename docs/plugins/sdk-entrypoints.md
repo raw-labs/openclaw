@@ -32,6 +32,27 @@ without adding imports from Gateway internals.
   [Provider Plugins](/plugins/sdk-provider-plugins) for step-by-step guides.
 </Tip>
 
+The `execution-environment` entrypoint exposes optional preparation contracts
+consumed by host exec, agent harnesses, and supported sandbox backends. See
+[Execution environment registration](/plugins/sdk-execution-environments).
+
+The `repository-sources` entrypoint exposes repository preparation and bounded
+checkout contracts. Plugins declare discovery metadata and register their source;
+the existing picker, session creation, and cloud workspace owners consume it.
+See [Repository sources](/plugins/sdk-repository-sources).
+
+The `dashboard` entrypoint exposes a declared data binding with Board-owned
+grant preparation and the persisted legacy grant grammar.
+
+A plugin tool's optional `context.gateway` capability calls only that plugin's
+registered Gateway methods. The host retains request authority and accepted
+handoff custody; plugins do not receive an administrative Gateway client.
+Read-only `clientCaps` records the invoking client's capabilities. It supports
+tool presentation; existing host guards still authorize dispatch. A handoff that
+needs the invoking user after the turn yields can set `retainRequester: true`; the
+existing host continuation captures that selection while current and revalidates
+its retained authority. The plugin cannot supply a replacement identity.
+
 ## Where each section moved
 
 Every section of the single-page version now lives on this page or on one of
@@ -588,6 +609,8 @@ generic environment sanitization and `assertCurrent` synchronously immediately
 before a process effect. The lease and invocation own its lifetime; saved copies
 do not survive release or cancellation. Use `redactOutput` at diagnostic egress.
 This capability is host-local and is never a wire environment override.
+
+`process-runtime` exports `gitMaintenanceEnvironment` and `appendGitConfig` so plugin transports can preserve the host Git maintenance policy while adding command-specific configuration.
 
 `process-runtime` exports `createBoundedLineFramer` for bounded LF-delimited byte
 streams. It preserves incomplete lines and leaves CR handling to the consumer.

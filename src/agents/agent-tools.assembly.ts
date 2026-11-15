@@ -33,7 +33,10 @@ import {
   projectAgentToolsExecPolicy,
 } from "./agent-tools.execution-policy.js";
 import { finalizeAgentTools } from "./agent-tools.finalize.js";
-import { captureChildToolAllowlist } from "./agent-tools.inheritance.js";
+import {
+  captureChildToolAllowlist,
+  type InheritedToolPolicyDefinition,
+} from "./agent-tools.inheritance.js";
 import {
   assertMemoryFlushPersistenceToolAvailable,
   projectMemoryFlushTools,
@@ -54,7 +57,7 @@ import { resolveAutomationsRunScope } from "./automations-run-scope.js";
 import { registerOneShotExecScopeCleanup } from "./bash-process-control.js";
 import { resolveProcessToolScopeKey } from "./bash-process-scope.js";
 import {
-  prepareDelegatedToolDenyFloor,
+  prepareInheritedToolDenylists,
   resolveConversationCapabilityProfile,
 } from "./conversation-capability-profile.js";
 import { isConversationToolAllowed } from "./conversation-tool-policy-pipeline.js";
@@ -328,15 +331,7 @@ export function* assembleOpenClawCodingTools(
     runtimePluginToolGrant,
   );
   // Owner-only tools stay listed; descendants and captured allowlists cannot inherit them.
-  const pluginToolDenylist = [...capabilityProfile.policy.explicitToolDenylist];
-  const requesterToolDenylist = pluginToolDenylist.concat(
-    capabilityProfile.policy.inheritedToolPolicy?.deny ?? [],
-    ownerOnlyCoreToolDenylist,
-  );
-  const inheritedToolDenylist = requesterToolDenylist.concat(
-    capabilityProfile.policy.inheritedToolPolicyForSpawn?.deny ?? [],
-  );
-  const delegatedToolDenyFloor = prepareDelegatedToolDenyFloor(
+  const inheritedDenies = prepareInheritedToolDenylists(
     capabilityProfile,
     ownerOnlyCoreToolDenylist,
   );
@@ -348,8 +343,11 @@ export function* assembleOpenClawCodingTools(
     accountId: options?.agentAccountId,
     channel: resolveGatewayMessageChannel(options?.messageChannel ?? options?.messageProvider),
   });
+  const inheritedToolDefinitions: InheritedToolPolicyDefinition[] = [];
   const pluginToolOptions = {
     ...options,
+    inheritToolPolicy: (definition: InheritedToolPolicyDefinition) =>
+      inheritedToolDefinitions.push(definition),
     listingClientCaps,
     agentSessionKey: options?.sessionKey,
     agentChannel: resolveGatewayMessageChannel(options?.messageChannel ?? options?.messageProvider),
@@ -365,7 +363,7 @@ export function* assembleOpenClawCodingTools(
     assertLocalBrowserLoopbackCurrent: browserLoopback?.assertCurrent,
     sandboxed: Boolean(sandbox),
     pluginToolAllowlist,
-    pluginToolDenylist,
+    pluginToolDenylist: inheritedDenies.pluginToolDenylist,
     // Only the grant's owner reaches tool construction; the grant itself stays in the allowlist.
     ...(runtimePluginToolGrant
       ? { runtimePluginToolOwnerId: runtimePluginToolGrant.pluginId }
@@ -489,9 +487,9 @@ export function* assembleOpenClawCodingTools(
             wrapBeforeToolCallHook: false,
             ...(cronSelfRemoveOnlyJobId ? { cronSelfRemoveOnlyJobId } : {}),
             inheritedToolAllowlist,
-            inheritedToolDenylist,
-            delegatedToolDenyFloor,
-            requesterToolDenylist,
+            inheritedToolDenylist: inheritedDenies.inheritedToolDenylist,
+            delegatedToolDenyFloor: inheritedDenies.delegatedToolDenyFloor,
+            requesterToolDenylist: inheritedDenies.requesterToolDenylist,
             readDelegationConfig: options?.config
               ? createRuntimeConfigReader(options.config)
               : undefined,
@@ -547,7 +545,7 @@ export function* assembleOpenClawCodingTools(
     config: options?.config,
     metadataSnapshot: options?.preparedModelRuntime?.metadataSnapshot,
     workspaceDir: workspaceRoot,
-    toolDenylist: pluginToolDenylist,
+    toolDenylist: inheritedDenies.pluginToolDenylist,
   });
   // A child's inherited restrictions are already in capabilityProfile, so it
   // goes through the same policy pipeline as a top-level turn.
@@ -591,6 +589,7 @@ export function* assembleOpenClawCodingTools(
     capabilityProfile,
     tools: exportedTools,
     inheritedToolAllowlist,
+    policyDefinitions: inheritedToolDefinitions,
     includeOpenClawTools,
     isMemoryFlushRun,
   });

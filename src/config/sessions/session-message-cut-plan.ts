@@ -224,6 +224,9 @@ export function planSessionMessageCut(
     ...(params.mode === "fork" && params.repositoryWorkspaceId
       ? { repositoryWorkspaceId: params.repositoryWorkspaceId }
       : {}),
+    ...(forked && currentEntry.repositorySourceId
+      ? { repositorySourceId: currentEntry.repositorySourceId }
+      : {}),
     ...(currentEntry.incognito === true || isIncognitoSessionKey(params.canonicalSourceKey)
       ? { incognito: true as const }
       : {}),

@@ -42,7 +42,7 @@ export function normalizeManifestControlUi(
     if (
       !Array.isArray(value.settingsViews) ||
       value.settingsViews.length === 0 ||
-      value.settingsViews.length > 2 + ownedChannels.size
+      value.settingsViews.length > 32
     ) {
       return err("controlUi.settingsViews must declare unique Settings placements");
     }
@@ -50,15 +50,60 @@ export function normalizeManifestControlUi(
       if (!isRecord(placement)) {
         return err("invalid Control UI Settings placement");
       }
+      const keys = Object.keys(placement).filter(
+        (key) => key !== "requiredMethods" && key !== "search",
+      );
+      if (
+        placement.requiredMethods !== undefined &&
+        (!Array.isArray(placement.requiredMethods) ||
+          placement.requiredMethods.length > 16 ||
+          placement.requiredMethods.some(
+            (method) => typeof method !== "string" || !method.trim() || method.length > 200,
+          ))
+      ) {
+        return err("Settings requiredMethods must name advertised Gateway methods");
+      }
+      if (
+        placement.search !== undefined &&
+        (!isRecord(placement.search) ||
+          Object.keys(placement.search).some(
+            (key) => !["label", "hash", "aliases"].includes(key),
+          ) ||
+          typeof placement.search.label !== "string" ||
+          !placement.search.label.trim() ||
+          placement.search.label.length > 200 ||
+          typeof placement.search.hash !== "string" ||
+          placement.search.hash.length > 200 ||
+          typeof placement.search.aliases !== "string" ||
+          placement.search.aliases.length > 1000)
+      ) {
+        return err("Settings search must name its label, hash, and search aliases");
+      }
       let normalized: ControlUiSettingsPlacement;
       if (
-        Object.keys(placement).length === 2 &&
+        keys.length === 2 &&
         placement.section === "memory" &&
         (placement.panel === "overview" || placement.panel === "memories")
       ) {
         normalized = { section: "memory", panel: placement.panel };
       } else if (
-        Object.keys(placement).length === 3 &&
+        keys.length === 3 &&
+        placement.section === "profile" &&
+        placement.panel === "connections" &&
+        typeof placement.id === "string" &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(placement.id)
+      ) {
+        normalized = { id: placement.id, section: "profile", panel: "connections" };
+      } else if (
+        keys.length === 3 &&
+        placement.section === "agents" &&
+        placement.panel === "tools" &&
+        typeof placement.id === "string" &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(placement.id)
+      ) {
+        normalized = { id: placement.id, section: "agents", panel: "tools" };
+      } else if (
+        keys.length === 3 &&
         placement.section === "channels" &&
         placement.panel === "detail" &&
         typeof placement.channelId === "string" &&
@@ -67,14 +112,26 @@ export function normalizeManifestControlUi(
       ) {
         normalized = { section: "channels", panel: "detail", channelId: placement.channelId };
       } else {
-        return err("Control UI Settings placement must name Memory or an owned channel detail");
+        return err("Control UI Settings placement must name a supported Settings destination");
       }
-      const key = JSON.stringify(normalized);
+      const key = "id" in normalized ? normalized.id : JSON.stringify(normalized);
       if (placements.has(key)) {
         return err("controlUi.settingsViews must declare unique Settings placements");
       }
       placements.add(key);
-      settingsViews.push(normalized);
+      settingsViews.push({
+        ...normalized,
+        ...(placement.requiredMethods ? { requiredMethods: [...placement.requiredMethods] } : {}),
+        ...(isRecord(placement.search)
+          ? {
+              search: {
+                label: String(placement.search.label),
+                hash: String(placement.search.hash),
+                aliases: String(placement.search.aliases),
+              },
+            }
+          : {}),
+      });
     }
   }
   if (value.activation === "settings-only" && !value.settingsViews) {

@@ -6,11 +6,10 @@ import {
 import {
   CORE_BOARD_DATA_BINDING_IDS,
   CORE_BOARD_HOST_CAPABILITY_IDS,
+  LEGACY_BOARD_DATA_BINDING_IDS,
 } from "../boards/board-host-capability-ids.js";
-import {
-  GITHUB_ACTIONS_AUTHOR_GUIDANCE,
-  GITHUB_ACTIONS_GRANT_PREFIX,
-} from "../boards/github-actions-capability.js";
+import { GITHUB_ACTIONS_AUTHOR_GUIDANCE } from "../boards/github-actions-capability.js";
+import { getPluginInstance } from "./plugin-instance-scope.js";
 import type {
   PluginDashboardActionVerbRegistration,
   PluginDashboardDataBindingRegistration,
@@ -94,7 +93,7 @@ export function registerPluginDashboardCapabilities(params: {
   const dataBindings: PluginDashboardDataBindingRegistration[] = [];
   const actionVerbs: PluginDashboardActionVerbRegistration[] = [];
   const capabilityIds = new Set<string>();
-  const claimCapabilityId = (capabilityId: string): void => {
+  const claimCapabilityId = (capabilityId: string, legacyAlias = false): void => {
     if (
       capabilityIds.has(capabilityId) ||
       params.registry.dashboardDataBindings.has(capabilityId) ||
@@ -104,7 +103,8 @@ export function registerPluginDashboardCapabilities(params: {
     }
     if (
       (CORE_BOARD_HOST_CAPABILITY_IDS as readonly string[]).includes(capabilityId) ||
-      capabilityId.startsWith(GITHUB_ACTIONS_GRANT_PREFIX) ||
+      (!legacyAlias &&
+        (LEGACY_BOARD_DATA_BINDING_IDS as readonly string[]).includes(capabilityId)) ||
       capabilityId.startsWith(BOARD_CRON_TRIGGER_PREFIX)
     ) {
       fail(params.record.id, `capability id ${JSON.stringify(capabilityId)} is reserved by core`);
@@ -113,16 +113,27 @@ export function registerPluginDashboardCapabilities(params: {
   };
 
   for (const declaration of dashboard.dataBindings ?? []) {
-    const capabilityId = buildCapabilityId({
-      pluginId: params.record.id,
-      localId: declaration.id,
-      maxLength: BOARD_DATA_BINDING_ID_MAX_LENGTH,
-    });
-    claimCapabilityId(capabilityId);
+    if (declaration.legacyId && params.record.origin !== "bundled") {
+      fail(params.record.id, "legacy binding ids are reserved for bundled capability cutovers");
+    }
+    const capabilityId =
+      declaration.legacyId ??
+      buildCapabilityId({
+        pluginId: params.record.id,
+        localId: declaration.id,
+        maxLength: BOARD_DATA_BINDING_ID_MAX_LENGTH,
+      });
+    if (capabilityId.length > BOARD_DATA_BINDING_ID_MAX_LENGTH) {
+      fail(params.record.id, "legacy binding id exceeds maximum length");
+    }
+    claimCapabilityId(capabilityId, Boolean(declaration.legacyId));
     dataBindings.push({
       ...declaration,
       pluginId: params.record.id,
       capabilityId,
+      ...(params.record.dashboardDataBindingRuntimes?.has(declaration.id)
+        ? { runtime: params.record.dashboardDataBindingRuntimes.get(declaration.id) }
+        : {}),
       handler: requireOwnedMethod({
         pluginId: params.record.id,
         method: declaration.method,
@@ -201,4 +212,28 @@ export function describeDashboardCapabilities(registry: PluginRegistry | null | 
     text += `\n${omitted} plugin capabilities omitted; see the active plugins' dashboard documentation.`;
   }
   return text;
+}
+
+/** Attach callbacks to a declaration; final admission publishes them atomically with its handler. */
+export function createPluginDashboardDataBindingRegistrar() {
+  return (
+    record: PluginRecord,
+    definition: import("./dashboard-data-binding.types.js").PluginDashboardDataBindingV1,
+  ) => {
+    if (
+      definition.apiVersion !== 1 ||
+      !record.dashboard?.dataBindings?.some((entry) => entry.id === definition.id) ||
+      typeof definition.resolveGrant !== "function" ||
+      typeof definition.prepare !== "function"
+    ) {
+      throw new Error(`invalid manifest dashboard binding runtime: ${record.id}.${definition.id}`);
+    }
+    const definitions = (record.dashboardDataBindingRuntimes ??= new Map());
+    if (definitions.has(definition.id)) {
+      throw new Error(`duplicate dashboard binding runtime: ${record.id}.${definition.id}`);
+    }
+    // Preflight returns retained authority callbacks, not ordinary data.
+    getPluginInstance(record)?.admitFactory(definition.prepare, ["assertCurrent", "start"]);
+    definitions.set(definition.id, definition);
+  };
 }

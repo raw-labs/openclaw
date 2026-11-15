@@ -4,6 +4,11 @@ import { expect, expectTypeOf, it, vi } from "vitest";
 import { createDeferred } from "../../test/helpers/promise.js";
 import { createOperationalRunInstanceRef } from "../agents/admitted-run-context.js";
 import {
+  captureChildToolAllowlist,
+  type InheritedToolPolicyDefinition,
+} from "../agents/agent-tools.inheritance.js";
+import { resolveConversationCapabilityProfile } from "../agents/conversation-capability-profile.js";
+import {
   captureGatewayToolCallerAssertion,
   withGatewayToolCallerIdentity,
 } from "../agents/tools/gateway-caller-context.js";
@@ -396,5 +401,73 @@ it.each(["allowed", "owner-close", "run-close", "plugin-close"] as const)(
       expect(() => tool.prepareArguments?.({})).toThrow(/closed|no longer active/);
     }
     expect(effect).toHaveBeenCalledTimes(mode === "allowed" ? 1 : 0);
+  },
+);
+
+it("rejects an authored yield-shaped result after its invocation closes", async () => {
+  let current = true;
+  const registration = register(
+    {
+      contextVersion: 2,
+      create: () => ({
+        ...probe(() => {}),
+        async execute() {
+          current = false;
+          return { content: [], details: { status: "started", async: true, yielded: true } };
+        },
+      }),
+    },
+    { assertInvocationCurrent: () => assert(current, "run closed") },
+  );
+  await expect(registration.tool().execute("authored-yield", {})).rejects.toThrow("run closed");
+});
+
+it("limits child policy declarations to the current plugin registration", () => {
+  const inherited = vi.fn();
+  const f = register(() => null, { context: { inheritToolPolicy: inherited } });
+  const declaration = probe(() => {});
+  f.context.inheritToolPolicy?.(declaration);
+  expect(inherited).toHaveBeenCalledOnce();
+  expect(inherited.mock.calls[0]?.[0]).toMatchObject(declaration);
+  expect(() => f.context.inheritToolPolicy?.({ ...declaration, name: "another_tool" })).toThrow(
+    "undeclared tool",
+  );
+  markPluginRegistryRetired(f.registry);
+  expect(() => f.context.inheritToolPolicy?.(declaration)).toThrow("no longer active");
+  expect(inherited).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ["manifest group", "group:sessions", undefined, true],
+  ["explicit denial", "group:sessions", ["probe"], false],
+  ["forged group", "group:runtime", undefined, false],
+] as const)(
+  "inherits unavailable plugin tools through %s policy",
+  (_label, group, deny, permitted) => {
+    const definitions: InheritedToolPolicyDefinition[] = [];
+    const f = register(() => null, {
+      manifestToolMetadata: { probe: { policyGroups: ["group:sessions"] } },
+      context: { inheritToolPolicy: (definition) => definitions.push(definition) },
+    });
+    const definition = {
+      ...probe(() => {}),
+      pluginMetadata: { pluginId: "forged-owner", policyGroups: ["group:runtime"] },
+    };
+    f.context.inheritToolPolicy?.(definition);
+    expect(f.entry.factory(f.context)).toBeNull();
+    const config = { tools: { allow: [group], ...(deny ? { deny: [...deny] } : {}) } };
+    const inherited: string[] = [];
+    const extra: string[] = [];
+    captureChildToolAllowlist({
+      options: { config, additionalInheritedToolNamesRef: extra },
+      capabilityProfile: resolveConversationCapabilityProfile({ config }),
+      tools: [],
+      inheritedToolAllowlist: inherited,
+      policyDefinitions: definitions,
+      includeOpenClawTools: true,
+      isMemoryFlushRun: false,
+    });
+    expect(extra).toEqual(permitted ? ["probe"] : []);
+    expect(inherited).toEqual(permitted ? ["probe"] : []);
   },
 );

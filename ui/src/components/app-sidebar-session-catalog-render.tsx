@@ -28,6 +28,7 @@ import {
   catalogSessionActivity,
   type SidebarSessionCatalog,
 } from "./app-sidebar-session-catalogs.ts";
+import { CatalogSessionIndicators } from "./app-sidebar-session-indicators.tsx";
 import type { SessionCatalogGroupsParams } from "./app-sidebar-session-render-types.ts";
 import { renderSessionTree as SessionTree } from "./app-sidebar-session-row-render.tsx";
 import { renderSidebarSessionSectionHeader as SessionSectionHeader } from "./app-sidebar-session-section-header.tsx";
@@ -36,11 +37,7 @@ import { hasProviderBrandIcon } from "./provider-icon-data.ts";
 import { Icon } from "./solid/icon.tsx";
 import { renderNewSessionLink as NewSessionLink } from "./solid/new-session-link.tsx";
 import { ProviderBrandIcon } from "./solid/provider-icon.tsx";
-import {
-  SessionGlyph,
-  SessionRowBadges,
-  sessionRunVisibility,
-} from "./solid/session-presentation.tsx";
+import { SessionGlyph, sessionRunVisibility } from "./solid/session-presentation.tsx";
 export {
   memoizedSidebarCatalogRows,
   revealSidebarCatalogSelection,
@@ -224,9 +221,14 @@ function renderCatalogHostGroup(
             <span class="sidebar-recent-session__text">
               <span class="sidebar-recent-session__title-row"> {marqueeLabel} </span>
               <span class="sidebar-recent-session__details">
-                <span class="sidebar-recent-session__details-endcap">
-                  {<SessionRowBadges pullRequest={readSession().pullRequest} />}
-                </span>
+                <CatalogSessionIndicators
+                  plugins={params.host.sessionDataContext?.plugins}
+                  sessionKey={key()}
+                  agentId={params.snapshot.newSessionAgentId}
+                  artifact={readSession().pullRequest}
+                  nativeBadges={{ pullRequest: readSession().pullRequest }}
+                  onChange={() => params.host.sessionData.requestSessionDataUpdate()}
+                />
               </span>
             </span>
           </a>

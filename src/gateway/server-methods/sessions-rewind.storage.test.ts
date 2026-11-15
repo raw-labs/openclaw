@@ -447,6 +447,7 @@ it.each([
   { kind: "incognito", incognito: true, visibility: "draft" },
   { kind: "ordinary", incognito: false, visibility: "draft" },
   { kind: "repository", incognito: false },
+  { kind: "repository-plugin", incognito: false },
   { kind: "repository-changed", incognito: false },
   { kind: "local-project", incognito: false, visibility: "shared" },
 ])(
@@ -474,6 +475,9 @@ it.each([
       if (repository) {
         await upsertSessionEntryCore(sourceScope, {
           repositoryWorkspaceId: repository.workspaceId,
+          ...(kind === "repository-plugin"
+            ? { repositorySourceId: "example-scm/repositories" }
+            : {}),
         });
       }
       const projectRoot = `${testState.stateDir}/qa-writer`;
@@ -593,6 +597,7 @@ it.each([
         expect(child).toMatchObject(projectEntry);
       }
       if (repository) {
+        expect(child.repositorySourceId).toBe(sourceEntry.repositorySourceId);
         expect(child.repositoryWorkspaceId).toBeDefined();
         expect(child.repositoryWorkspaceId).not.toBe(repository.workspaceId);
         expect(await repositories.find(childScope)).toMatchObject({

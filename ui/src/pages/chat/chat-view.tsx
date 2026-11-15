@@ -18,9 +18,9 @@ import { t, registerEnglishCatalog } from "../../lib/reactive/i18n.ts";
 import { projectPresentation } from "../../lib/reactive/presentation.ts";
 import { orderSessionPullRequests } from "../../lib/session-pull-request-presentation.ts";
 import { scopedSessionArtifactKey } from "../../lib/sessions/session-key.ts";
-import { PluginSurface } from "../../plugins/control-ui-view.solid.tsx";
+import { PluginContributions } from "../../plugins/control-ui-contributions.solid.tsx";
+import { PluginSurface } from "../../plugins/control-ui-surfaces.solid.tsx";
 import { getChatHistoryLoadState } from "./chat-history-state.ts";
-import { loadChatPendingInputs } from "./chat-pending-inputs.ts";
 import { hasTerminalRunStatus, isChatRunWorking } from "./chat-run-working.ts";
 import { forwardChatWheelToTranscript } from "./chat-scroll-input.ts";
 import { listSubagents, projectProgressCardRuntime } from "./chat-subagent-wait.ts";
@@ -28,6 +28,7 @@ import { createChatViewFrame, type ChatProps, type ChatViewFrame } from "./chat-
 import {
   renderChatComposerNotices as ChatComposerNoticesView,
   renderChatTopbarNotices as ChatTopbarNotices,
+  ChatSavedInputNavigation,
 } from "./chat-view-notices.tsx";
 import type { ChatActivityPillsProps } from "./components/chat-activity-pills-types.ts";
 import { publicationOutsidePills } from "./components/chat-activity-pills-visibility.ts";
@@ -86,7 +87,12 @@ type ChatViewInput = {
 const SAVED_INPUT_HISTORY_HEIGHT_PX = 44;
 
 function ChatTranscript(input: ChatViewInput) {
-  const savedInputNavigation = <ChatSavedInputNavigation {...input} />;
+  const savedInputNavigation = (
+    <ChatSavedInputNavigation
+      pendingInputs={input.frame.pendingInputs}
+      historyState={input.props.historyState}
+    />
+  );
   const hasSavedInputNavigation = () =>
     input.frame.pendingInputs &&
     (input.frame.pendingInputs.page.nextBefore !== undefined ||
@@ -105,33 +111,6 @@ function ChatTranscript(input: ChatViewInput) {
           : undefined
       }
     />
-  );
-}
-
-function ChatSavedInputNavigation(input: ChatViewInput) {
-  const pendingInputs = () => input.frame.pendingInputs;
-  const pendingButton = (page: "earlier" | "latest") => (
-    <button
-      class="btn btn--sm"
-      type="button"
-      disabled={pendingInputs()?.loading}
-      onClick={() => {
-        if (input.props.historyState) {
-          void loadChatPendingInputs(
-            input.props.historyState,
-            page === "earlier" ? pendingInputs()?.page.nextBefore : undefined,
-          );
-        }
-      }}
-    >
-      {t(`chat.pendingInputs.${page}`)}
-    </button>
-  );
-  return (
-    <div class="chat-pending-inputs chat-pending-inputs--history">
-      <Show when={pendingInputs()?.page.nextBefore !== undefined}>{pendingButton("earlier")}</Show>
-      <Show when={pendingInputs()?.before !== undefined}>{pendingButton("latest")}</Show>
-    </div>
   );
 }
 
@@ -177,6 +156,15 @@ function ChatFooterContent(
         </div>
       </Show>
       <Show when={!input.props.detailsEnabled}>
+        <PluginContributions
+          kind="session-context"
+          sessionKey={input.props.sessionKey}
+          agentId={input.props.currentAgentId}
+          presented={input.presented}
+          facts={input.props.sessionHeaderFacts}
+          compact={false}
+          onOpenSessionDiff={input.props.onOpenSessionDiff}
+        />
         <ChatPullRequests
           pullRequests={input.activities?.pullRequests ? [] : (input.props.pullRequests ?? [])}
           gateway={input.props.pullRequestsGateway}
@@ -258,6 +246,14 @@ function ChatComposerView(input: ChatViewInput) {
               onOpen: destinations.onOpenProgress,
             }
           : undefined,
+      contributions: input.application
+        ? {
+            sessionKey: input.props.sessionKey,
+            agentId: input.props.currentAgentId,
+            facts: input.props.sessionHeaderFacts,
+            onOpenDetailsPage: destinations?.onOpenDetailsPage,
+          }
+        : undefined,
       pullRequests: destinations?.onOpenPullRequest
         ? {
             items: orderSessionPullRequests(input.props.pullRequests ?? []),

@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PluginControlUiDiagnostic } from "../../../packages/gateway-protocol/src/schema/plugins.js";
-import type { ControlUiAction } from "../../../src/plugin-sdk/control-ui.js";
+import type {
+  ControlUiAction,
+  ControlUiSessionAccessory,
+  ControlUiAccessoryProps,
+  ControlUiViewContextV2,
+} from "../../../src/plugin-sdk/control-ui.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
 import type { GatewaySessionRow } from "../api/types.ts";
@@ -254,6 +259,7 @@ async function mountActions(
   provider.append(element);
   document.body.append(provider);
   await element.updateComplete;
+  await vi.waitFor(() => expect(element.querySelector("button")).not.toBeNull());
   return {
     element,
     sessions,
@@ -393,6 +399,9 @@ describe("native plugin session actions", () => {
       throw new Error("Expected the pane's plugin action to run");
     }
     expect(invocation.session).toMatchObject({ key: "global", agentId: "main" });
+    expect("scopeView" in invocation.host).toBe(false);
+    expect("invokeAction" in invocation.host).toBe(false);
+    expect("projectTextReferences" in invocation.host).toBe(false);
     await invocation.host.request("fixture.current-owner");
 
     element.agentId = "writer";
@@ -525,6 +534,8 @@ describe("native plugin session actions", () => {
     expect(invocation.signal.aborted).toBe(true);
 
     element.remove();
+    // The bridge preserves same-turn reparenting; publish after its committed disconnect.
+    await element.updateComplete;
     sessions.patchRowLocal(sessionKey, { label: "Detached", hasActiveRun: true });
     await element.updateComplete;
     expect(retained.textContent?.trim()).toBe("Review Resumed");
@@ -576,4 +587,103 @@ describe("native plugin session actions", () => {
     await Promise.resolve();
     expect(invocation.signal.aborted).toBe(true);
   });
+});
+
+it("mounts new accessory slots and fences retained navigation and facts after their target retires", async () => {
+  const client = { request: vi.fn(async () => ({})) } as unknown as GatewayBrowserClient;
+  const { gateway } = createGatewayHarness(client);
+  const abort = new AbortController();
+  const contexts: ControlUiViewContextV2<ControlUiAccessoryProps>[] = [];
+  const accessory: ControlUiSessionAccessory = {
+    id: "review",
+    placement: "session-mobile-root",
+    mount(container, context) {
+      contexts.push(context);
+      const button = document.createElement("button");
+      button.textContent = "Review contribution";
+      container.append(button);
+      context.props.registerControls?.(() => [button]);
+      context.props.onPresenceChange?.(true);
+      return { dispose: () => container.replaceChildren(), update: (next) => contexts.push(next) };
+    },
+  };
+  const listeners = new Set<() => void>();
+  let registered = true;
+  const plugins = {
+    selectedReplacement: () => undefined,
+    registrations: (kind: string) =>
+      registered && kind === "accessories"
+        ? [
+            {
+              key: "fixture/review",
+              pluginId: "fixture",
+              host,
+              signal: abort.signal,
+              value: accessory,
+            },
+          ]
+        : [],
+    subscribe: (notify: () => void) => {
+      listeners.add(notify);
+      return () => listeners.delete(notify);
+    },
+    reportError: vi.fn(),
+    isCurrent: () => !abort.signal.aborted,
+  } as unknown as ControlUiPluginRuntime;
+  const context = { plugins, gateway } as unknown as ApplicationContext;
+  const host = createControlUiPluginHost(() => context, plugins, {
+    abort,
+    client,
+    descriptor: { pluginId: "fixture" },
+    disposers: new Set(),
+  } as Omit<ControlUiPluginOwner, "host">);
+  const provider = createApplicationContextProvider(context);
+  const slot = document.createElement("openclaw-plugin-contributions");
+  const open = vi.fn();
+  const stopControls = vi.fn();
+  const registerControls = vi.fn(() => stopControls);
+  slot.kind = "session-mobile-root";
+  slot.sessionKey = "agent:main:first";
+  slot.facts = {
+    participationBlocked: false,
+    hasActiveRun: false,
+    workspaceReady: true,
+    workspaceConflict: false,
+    readCurrent: () => ({
+      participationBlocked: false,
+      hasActiveRun: false,
+      workspaceReady: true,
+      workspaceConflict: false,
+    }),
+  };
+  slot.onOpenDetailsPage = open;
+  slot.registerControls = registerControls;
+  provider.append(slot);
+  document.body.append(provider);
+  await vi.waitFor(() => {
+    expect(slot.querySelector("button")?.textContent, slot.outerHTML).toBe("Review contribution");
+  });
+  const first = contexts[0]!;
+  first.props.onOpenDetailsPage?.({ id: "review", title: "Review" });
+  expect(open).toHaveBeenCalledWith("fixture", { id: "review", title: "Review" }, undefined);
+  expect(first.props.facts?.readCurrent?.()?.workspaceReady).toBe(true);
+  slot.presented = false;
+  first.props.onOpenDetailsPage?.({ id: "hidden", title: "Hidden" });
+  expect(open).toHaveBeenCalledTimes(1);
+  slot.sessionKey = "agent:main:second";
+  expect(() => first.props.onOpenDetailsPage?.({ id: "stale", title: "Stale" })).toThrow(
+    "view has ended",
+  );
+  expect(() => first.props.facts?.readCurrent?.()).toThrow("view has ended");
+  await slot.updateComplete;
+  expect(stopControls).toHaveBeenCalledOnce();
+  const absence = vi.fn();
+  slot.onPresenceChange = absence;
+  registered = false;
+  abort.abort();
+  listeners.forEach((notify) => notify());
+  await vi.waitFor(() => expect(absence).toHaveBeenLastCalledWith(false));
+  expect(slot.querySelector("button")).toBeNull();
+  provider.remove();
+  abort.abort();
 });

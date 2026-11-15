@@ -147,11 +147,14 @@ export function ShellSettingsSidebar(props: {
       schema: searchSchema(),
       value: currentConfigObject(context.runtimeConfig.state),
       uiHints: context.runtimeConfig.state.configUiHints,
+      advertisedMethods: gateway.hello?.features?.methods,
       identityAvailable: Boolean(gateway.selfUser),
       multipleProfiles: gateway.hello?.policy?.hasMultipleSessionSharingIdentities === true,
       basePath: context.basePath,
       canAdmin: props.sidebarProps.canAdmin,
       nativeDeviceSettings: context.nativeDeviceSettings,
+      settingsContributions: context.plugins.settingsContributions,
+      settingsAgentId: context.settingsAgentSelection.state.selectedId,
     };
   });
   const sidebarProps = createMemo<SettingsSidebarProps>(() => {

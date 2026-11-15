@@ -245,16 +245,15 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         });
     const messages = catalog ? this.history.catalogMessages : state.chatMessages;
     const publicationScope = this.captureConnectionScope();
-    const readPublicationRow = () => {
-      const row = selectedChatSessionRow(state);
-      return (
-        row && {
-          ...row,
-          agentId: row.agentId ?? resolveChatAgentId(state) ?? undefined,
-          archived: this.isCurrentSessionArchived(state),
-        }
-      );
-    };
+    const readPublicationRow = this.sessionRowReader(state);
+    const sessionHeaderFacts = this.captureSessionHeaderFacts(
+      state,
+      selectedSession,
+      readPublicationRow,
+      publicationScope,
+      sessionParticipationBlocked,
+      Boolean(workspaceConflict),
+    );
     synchronizeChatPanePublication({
       holder: this.publication,
       publications: this.context.sessions.githubPublication,
@@ -368,6 +367,7 @@ export class ChatPaneRuntime extends ChatPaneLayoutRender {
         participationBlocked: sessionParticipationBlocked,
       }),
       applicationContext: this.context,
+      sessionHeaderFacts,
       registerBrowserAnnotationFocus: this.registerBrowserAnnotationFocus,
       transcript: this.transcript,
       // Ends with cachedSessionStatePending(); live overflow keeps its entrance fade.

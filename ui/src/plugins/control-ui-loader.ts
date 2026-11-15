@@ -1,7 +1,9 @@
 import type {
   ControlUiDisposer,
   ControlUiPlugin,
+  ControlUiPluginV2,
   ControlUiSettingsView,
+  ControlUiContributedSettingsView,
   ControlUiChannelSettingsView,
 } from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
@@ -12,9 +14,8 @@ import { listen } from "../lib/reactive/listener.ts";
 import { controlUiPluginAssetUrls } from "./control-ui-assets.ts";
 import { createControlUiPluginHost } from "./control-ui-host.ts";
 import type { ControlUiPluginOwner, ControlUiPluginRuntime } from "./control-ui-runtime.ts";
-// Native views and contributions must be defined before activation can publish registrations.
+// Native views must be defined before activation can publish registrations.
 import "./control-ui-view.solid.tsx";
-import "./control-ui-contributions.solid.tsx";
 
 // Install action feedback before activation can publish buttons or menu entries.
 registerEnglishCatalog(registerPluginManagementEnglish);
@@ -48,7 +49,14 @@ export async function initializeControlUiPlugin(
   if (module.default?.id !== descriptor.pluginId || typeof module.default.activate !== "function") {
     throw new Error("Native UI entry must export its matching defineControlUiPlugin definition.");
   }
-  const stop = await module.default.activate(complete.host);
+  if (
+    module.default.apiVersion !== undefined &&
+    module.default.apiVersion !== 1 &&
+    module.default.apiVersion !== 2
+  ) {
+    throw new Error("This plugin UI requires an unsupported capability version.");
+  }
+  const stop = await module.default.activate(complete.host.scopeView(abort.signal));
   if (stop) {
     complete.disposers.add(stop);
   }
@@ -61,9 +69,13 @@ export async function initializeControlUiPlugin(
 }
 
 export type ControlUiPluginModule = {
-  default?: ControlUiPlugin;
+  default?: ControlUiPlugin | ControlUiPluginV2;
   pluginId?: string;
-  settingsViews?: readonly (ControlUiSettingsView | ControlUiChannelSettingsView)[];
+  settingsViews?: readonly (
+    | ControlUiSettingsView
+    | ControlUiContributedSettingsView
+    | ControlUiChannelSettingsView
+  )[];
 };
 
 /** Both activation and packaged Settings presentations share one asset loader. */

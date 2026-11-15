@@ -3,3 +3,4 @@ export { createDeferredCore as createDeferred } from "../shared/deferred.js";
 export { runInDetachedAsyncContext } from "../shared/detached-async-context.js";
 export { createPermitPool } from "../shared/permit-pool.js";
 export { runTasksWithConcurrency } from "../utils/run-with-concurrency.js";
+export { createRetainedCache } from "../infra/retained-cache.js";

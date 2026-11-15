@@ -2,17 +2,27 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { EventSessionRoutingPolicy } from "../infra/event-session-routing.js";
 import type { ExecAsk, ExecMode, ExecSecurity } from "../infra/exec-approvals.js";
 import type { ExecAutoReviewer, ExecAutoReviewTranscript } from "../infra/exec-auto-review.js";
+import type { ExecRequestOwner } from "../infra/exec-request-context.js";
 import type { SafeBinProfileFixture } from "../infra/exec-safe-bin-policy.js";
+import type { PreparedExecutionEnvironment } from "../plugins/execution-environment-types.js";
 import type { PluginHookChannelContext } from "../plugins/hook-types.js";
+import type { SpawnInitiation } from "../process/spawn-initiation.js";
+import type { SecretEgressSentinelBinding } from "../secrets/egress-proxy/proxy-server.js";
 import type { SecretStoreExecEnvironment } from "../secrets/store/secret-store.js";
+import type { DeliveryContext } from "../utils/delivery-context.shared.js";
 import type { OperationalRunInstanceRef } from "./admitted-run-context.js";
-import type { ExecApprovalFollowupOutcome } from "./bash-tools.exec-result.types.js";
+import type { ExecProcessOutcome } from "./bash-tools.exec-output.js";
+import type {
+  ExecApprovalFollowupOutcome,
+  ExecToolDetails,
+} from "./bash-tools.exec-result.types.js";
 import type { ExecToolRoutingDefaults } from "./bash-tools.exec-routing.types.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
 import type { EmbeddedFullAccessBlockedReason } from "./embedded-agent-runner/types.js";
 import type { ExecApprovalTransport } from "./exec-approval-transport.js";
 import type { ExecReviewerConfig } from "./exec-auto-reviewer.js";
 import type { PreparedGitHubToolEnvironment } from "./github-tool-identity.types.js";
+import type { AgentToolResult } from "./runtime/index.js";
 
 /** Restart notification policy captured only for a durable launch. */
 export type DurableExecOptions = { notifyOnExit: boolean; notifyOnExitEmptySuccess: boolean };
@@ -31,7 +41,8 @@ export type ExecToolDefaults = ExecToolRoutingDefaults & {
   reviewer?: ExecReviewerConfig;
   config?: OpenClawConfig;
   /** Host-prepared non-secret environment and store projection exclusions. */
-  preparedRunEnvironment?: PreparedGitHubToolEnvironment;
+  preparedRunEnvironment?: PreparedGitHubToolEnvironment &
+    PreparedExecutionEnvironment & { assertCurrent?: () => void };
   /** An explicit snapshot, including an empty one, replaces local store access. */
   preparedStoreEnvironment?: Readonly<SecretStoreExecEnvironment>;
   /** Host-prepared routing hint; remote workers have no Gateway session database. */
@@ -173,3 +184,58 @@ export function cloneExecElevatedDefaults(value: ExecElevatedDefaults): ExecElev
       : {}),
   };
 }
+
+export type ExecProcessStartOptions = {
+  command: string;
+  durable?: DurableExecOptions;
+  sessionId?: string;
+  approvalTransport?: ExecApprovalTransport;
+  // Execute this instead of `command` (which is kept for display/session/logging).
+  // Used to sanitize safeBins execution while preserving the original user input.
+  execCommand?: string;
+  workdir: string;
+  env: Record<string, string>;
+  secretEgressBindings?: readonly SecretEgressSentinelBinding[];
+  /** Host-selected managed profile; never inferred from the requested environment. */
+  githubProfileDir?: string;
+  wrapLocalLaunch?: (argv: readonly string[]) => readonly string[];
+  assertExecutionEnvironmentCurrent?: () => void;
+  transportCredentialScrubEnv?: Readonly<Record<string, string>>;
+  pathPrepend?: string[];
+  sandbox?: BashSandboxConfig;
+  containerWorkdir?: string | null;
+  usePty: boolean;
+  warnings: string[];
+  maxOutput: number;
+  pendingMaxOutput: number;
+  cleanupMs?: number;
+  notifyOnExit: boolean;
+  /** Start-time subagent identity resolved from the persisted spawn envelope. */
+  subagentSession?: boolean;
+  /** A one-shot run can await this command's exit only through sessions_yield. */
+  sessionsYieldAvailable?: boolean;
+  notifyOnExitEmptySuccess?: boolean;
+  requestOwners?: readonly ExecRequestOwner[];
+  scopeKey?: string;
+  sessionKey?: string;
+  agentId?: string;
+  /** Start-time routing policy for detached exec system events. */
+  eventRouting?: EventSessionRoutingPolicy;
+  notifyDeliveryContext?: DeliveryContext;
+  timeoutSec: number | null;
+  /** Whether exec may return a supervised session for later continuation. */
+  processContinuationAvailable?: boolean;
+  /** Explicit `background: true` service, handed off rather than stopped at one-shot exit. */
+  independentService?: boolean;
+  /** Cancels startup only; background process lifetime belongs to the supervisor. */
+  startupSignal?: AbortSignal;
+  onUpdate?: (partialResult: AgentToolResult<ExecToolDetails>) => void;
+  /** Runs after process finalization and before the exit wake is queued. */
+  onSettledBeforeNotify?: (outcome: ExecProcessOutcome) => void | Promise<void>;
+  /** Revalidates authorization after async preparation, immediately before each spawn attempt. */
+  beforeSpawn?: () => Promise<AgentToolResult<ExecToolDetails> | undefined>;
+  /** Rechecks host policy at the supervisor's final synchronous spawn boundary. */
+  assertCurrent?: () => void;
+  initiateSpawn?: SpawnInitiation;
+  releaseSpawn?: (reason?: "retry") => void;
+};

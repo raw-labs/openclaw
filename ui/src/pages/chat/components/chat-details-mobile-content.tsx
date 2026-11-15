@@ -1,3 +1,4 @@
+import type { JSX } from "@solidjs/web";
 import { Match, Show, Switch, createMemo, isPending, lazy, onSettled } from "solid-js";
 import { toSanitizedMarkdownHtml } from "../../../components/markdown.ts";
 import { StepMarker } from "../../../components/session-progress-card-content.tsx";
@@ -117,6 +118,7 @@ type ChatDetailsMobilePeopleContent = Omit<ChatMobilePeopleBodyProps, "sharingOp
 /** Only supplied mobile bodies belong here. Missing peer bodies stay with their owners. */
 export type ChatDetailsMobilePage =
   | { kind: "root"; content: ChatDetailsMobileRootContent }
+  | { kind: "contribution"; content: JSX.Element }
   | { kind: "people"; content: ChatDetailsMobilePeopleContent }
   | { kind: "task-progress"; content: ChatDetailsMobileProgressPreference }
   | { kind: "pull-requests"; content: ChatPullRequestMobileCollectionProps }
@@ -410,6 +412,9 @@ export function ChatDetailsMobileContent(props: ChatDetailsMobileContentProps) {
             onScrollPortRef={props.details.onScrollPortRef}
           />
         )}
+      </Match>
+      <Match when={props.page.kind === "contribution" && props.page}>
+        {(page) => page().content}
       </Match>
       <Match when={props.page.kind === "publication" && props.page}>
         {(page) => (

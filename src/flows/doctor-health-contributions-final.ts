@@ -7,6 +7,7 @@ import { hasActiveGatewayExecCredential } from "./doctor-gateway-exec-credential
 import {
   runBundledHealthFindingNote,
   runCoreHealthFindingNote,
+  runDeclaredPluginHealth,
 } from "./doctor-health-contribution-core.js";
 import {
   collectWriteConfigHealthFindings,
@@ -214,6 +215,10 @@ export function resolveFinalDoctorHealthContributions(params: {
     createDoctorHealthContribution("doctor:github-projects", "GitHub projects", {
       updateWork: { kind: "standalone" },
       run: runGitHubProjectHealth,
+    }),
+    createDoctorHealthContribution("doctor:plugin-health", "Plugin health", {
+      updateWork: { kind: "standalone" },
+      run: runDeclaredPluginHealth,
     }),
     createDoctorHealthContribution("doctor:browser", "Browser", {
       healthCheckIds: ["core/doctor/browser"],

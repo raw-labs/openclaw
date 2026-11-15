@@ -7,7 +7,7 @@ import { findMenuSearch, registerMenuShortcuts } from "../menu-shortcuts.ts";
 import { observeMenuSpacing } from "../menu-spacing.ts";
 import type { OverlayPlacement } from "../overlay-anchor.ts";
 import { createOverlay, type Overlay } from "../overlay-lifecycle.ts";
-import { containsComposed, registryFor } from "../overlay-registry.ts";
+import { containsComposed, findOverlayParent, registryFor } from "../overlay-registry.ts";
 import { Icon } from "./icon.tsx";
 import { focusMenuRow, MENU_FORM_CONTROL_SELECTOR } from "./menu-form-controls.ts";
 import { useMenuMachine, type MenuBinding, type MenuControls } from "./menu-machine.ts";
@@ -186,6 +186,7 @@ export function Menu(props: BranchProps): JSX.Element {
   const initialLazy = initialIdentity.lazy;
   const overlay = createOverlay(initialIdentity.id, initialIdentity.parent, {
     exclusiveGroup: "menu",
+    prepareOpen: () => overlay.setParent(initialIdentity.parent ?? findOverlayParent(trigger)),
     isValid: () =>
       (initialLazy && !control.bodyMounted()) ||
       registeredElements().some((element) =>

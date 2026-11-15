@@ -62,6 +62,7 @@ export function AgentTools(
       agentId: string;
       configForm: Record<string, unknown> | null;
       canReadConfig: boolean;
+      renderSettings?: () => JSX.Element;
     },
 ) {
   const toolGroups = new Map<
@@ -614,6 +615,9 @@ export function AgentTools(
         identity={params.githubIdentity}
         onOpenConnections={params.onOpenGitHubConnections}
       />
+      <Show when={params.renderSettings} keyed>
+        {(render) => render()}
+      </Show>
       <Show when={hasConfig() && (params.catalogRequest ?? params.agentId)} keyed>
         <Errored fallback={(_error) => <Catalog catalog={null} />}>
           <Loading

@@ -13,7 +13,9 @@ import {
   DEFAULT_BROWSER_EVALUATE_ENABLED,
   resolveBrowserConfig,
 } from "../../plugin-sdk/browser-profiles.js";
+import { getPluginRegistryForContext } from "../../plugins/runtime/gateway-request-scope.js";
 import { defaultRuntime } from "../../runtime.js";
+import { getActiveSecretsRuntimeConfigSnapshot } from "../../secrets/runtime-state.js";
 import { captureChannelReadAuthority } from "../../shared/channel-read-authority.js";
 import { createLazyRuntimeNamedExport } from "../../shared/lazy-runtime.js";
 import { prepareRemoteSkillConnections } from "../../skills/runtime/remote-skills.js";
@@ -25,6 +27,7 @@ import {
 } from "../admitted-run-context.js";
 import { resolveAgentConfig } from "../agent-scope-config.js";
 import type { ExecPolicyOverrides } from "../exec-defaults.js";
+import { prepareSandboxExecutionEnvironment } from "../execution-environment.js";
 import {
   resolveSubagentSessionAttachmentRootDir,
   SANDBOX_SUBAGENT_ATTACHMENTS_MOUNT,
@@ -43,6 +46,7 @@ import { SANDBOX_GITHUB_CONFIG_DIR } from "./constants.js";
 import { retainSandboxContainerUsage } from "./container-usage.js";
 import { resolveSandboxDockerUser } from "./docker-user.js";
 import { createSandboxFsBridge } from "./fs-bridge.js";
+import { sandboxGitHubExecutionEnvironment } from "./github-execution-environment.js";
 import { toSandboxProvisioningError } from "./provisioning-error.js";
 import { acquireSandboxRuntimeUse } from "./registry-lifecycle.js";
 import {
@@ -402,6 +406,22 @@ async function resolveSandboxContextWithAuthority(
                 };
               })()
             : undefined;
+          const secrets = getActiveSecretsRuntimeConfigSnapshot();
+          const executionEnvironment = await prepareSandboxExecutionEnvironment(
+            {
+              config: config ?? {},
+              sourceConfig: secrets?.sourceConfig,
+              agentId: runtime.agentId,
+              backend: cfg.backend,
+              scope: cfg.scope,
+              assertCurrent,
+            },
+            getPluginRegistryForContext(),
+            githubIdentity && githubMount
+              ? sandboxGitHubExecutionEnvironment(githubIdentity, githubMount)
+              : undefined,
+            secrets?.executionEnvironmentExclusions,
+          );
           phases.mark("attempt.setup.sandbox.layout");
           const {
             agentWorkspaceDir,
@@ -425,16 +445,15 @@ async function resolveSandboxContextWithAuthority(
             workspaceDir,
           });
           const resolvedCfg = docker === cfg.docker ? cfg : { ...cfg, docker };
-          const executionCfg = githubIdentity
+          const executionCfg = executionEnvironment
             ? {
                 ...resolvedCfg,
                 docker: {
                   ...docker,
                   env: {
                     ...docker.env,
-                    ...githubIdentity.credentialScrubEnv,
-                    ...githubIdentity.localIdentityEnv,
-                    GH_CONFIG_DIR: SANDBOX_GITHUB_CONFIG_DIR,
+                    ...executionEnvironment.credentialScrubEnv,
+                    ...executionEnvironment.localIdentityEnv,
                   },
                 },
               }
@@ -461,8 +480,8 @@ async function resolveSandboxContextWithAuthority(
                     return undefined;
                   }
                 })();
-          if (githubMount) {
-            (readOnlyResourceMounts ??= []).push(githubMount);
+          if (executionEnvironment?.readOnlyResourceMounts.length) {
+            (readOnlyResourceMounts ??= []).push(...executionEnvironment.readOnlyResourceMounts);
           }
           const gitBinDir = getGatewayAgentGitBinDir();
           if (gitBinDir && (cfg.backend === "docker" || cfg.backend === "podman")) {
@@ -499,6 +518,7 @@ async function resolveSandboxContextWithAuthority(
               operatorAuthority,
               githubIdentity,
               guard,
+              executionEnvironment,
             );
           };
 

@@ -3,6 +3,8 @@ import type { MarkdownFileLinkTarget } from "../../../components/markdown-file-l
 import { type EditorId, openEditor } from "../../../lib/editor-links.ts";
 import { isComposingKeyboardEvent } from "../../../lib/ime.ts";
 import { isSvgImageMediaPath } from "../../../lib/media-file-extension.ts";
+import { useOptionalApplication } from "../../../lib/reactive/context.ts";
+import { createTextReferenceProjection } from "../../../plugins/control-ui-text-reference-projection.ts";
 import type { createAttachmentDownload } from "./chat-attachment-download.ts";
 import type { createFileCopy } from "./chat-file-copy.ts";
 import type { FileReadingMode, FileViewControls } from "./chat-file-reader-controls.ts";
@@ -23,7 +25,7 @@ import {
   loadFileWrapPreference,
   saveFileWrapPreference,
 } from "./chat-sidebar-file-view.tsx";
-import type { ChatDetailPanelProps } from "./chat-sidebar-view-types.ts";
+import type { ChatDetailPanelProps, ChatDetailPanel } from "./chat-sidebar-view-types.ts";
 import type { FileEditorViewHandle } from "./file-editor-view.ts";
 
 type FilePresentationState = {
@@ -41,6 +43,18 @@ type FilePresentationState = {
   searchInput?: HTMLInputElement;
   searchToggle?: HTMLButtonElement | (() => HTMLButtonElement | undefined);
 };
+
+export function createFileTextReferences(props: ChatDetailPanelProps, host: ChatDetailPanel) {
+  const application = useOptionalApplication();
+  return createTextReferenceProjection(() => ({
+    context: application,
+    session: {
+      sessionKey: props.attachmentRuntime.sessionKey ?? "",
+      agentId: props.attachmentRuntime.agentId,
+    },
+    presented: Boolean(props.content && props.attachmentRuntime.sessionKey && host.isConnected),
+  }));
+}
 
 export function createFilePresentationState(mobile: boolean): FilePresentationState {
   return {
@@ -62,7 +76,6 @@ export function createFilePresentationActions(context: {
   props: ChatDetailPanelProps;
   presentation: FilePresentationState;
   htmlPreview: ReturnType<typeof createFileHtmlPreview>;
-  interact: (interaction: FileReaderInteraction) => void;
   fileCopy: ReturnType<typeof createFileCopy>;
   content: () => ChatDetailPanelContent | null;
   editor: () => FileEditorViewHandle | null;
@@ -74,6 +87,13 @@ export function createFilePresentationActions(context: {
   invalidate: () => void;
 }) {
   const { presentation } = context;
+  function interact(interaction: FileReaderInteraction) {
+    const content = context.content();
+    if (content?.kind === "file" || content?.kind === "image" || content?.kind === "attachment") {
+      context.props.onFileInteraction?.(content, interaction);
+    }
+  }
+
   function fileSearchMatches(): number[] {
     const content = context.content();
     return content?.kind === "file"
@@ -220,7 +240,7 @@ export function createFilePresentationActions(context: {
       event.target instanceof Element &&
       event.target.closest("a[href], a[data-file-path], a[data-session-key], [data-session-href]")
     ) {
-      context.interact("link");
+      interact("link");
     }
     handleSidebarClick(event, { ...context.props, onOpenWorkspaceFile: openWorkspaceFile });
   };
@@ -231,7 +251,7 @@ export function createFilePresentationActions(context: {
       event.target instanceof Element &&
       event.target.closest("a[data-file-path], a[data-session-key], [data-session-href]")
     ) {
-      context.interact("link");
+      interact("link");
     }
     if (
       event.key.toLowerCase() === "c" &&
@@ -245,7 +265,7 @@ export function createFilePresentationActions(context: {
     ) {
       event.preventDefault();
       event.stopPropagation();
-      context.interact("copy");
+      interact("copy");
       context.fileCopy.copy("contents");
       return;
     }
@@ -353,6 +373,7 @@ export function createFilePresentationActions(context: {
     context.htmlPreview.showSource();
   }
   return {
+    interact,
     syncFileEditor,
     restoreFileReadingPresentation,
     showRequestedReadingMode,
@@ -373,6 +394,7 @@ export function createFilePresentationActions(context: {
 }
 
 export function renderFilePanelPresentation(context: {
+  textReferences?: import("../../../components/markdown-render-options.ts").MarkdownTextReferences;
   fileAttachment?: import("./chat-file-session-attachment.ts").FileSessionAttachment;
   props: ChatDetailPanelProps;
   presentation: FilePresentationState;
@@ -465,6 +487,7 @@ export function renderFilePanelPresentation(context: {
               options: {
                 mode: "document",
                 remoteImages: false,
+                textReferences: context.textReferences,
                 codeBlockInteraction: "interactive",
                 fileLinks: true,
                 documentFileLinks: Boolean(content.sessionFileSource && content.path),
@@ -525,6 +548,7 @@ export function renderFilePanelPresentation(context: {
     canvasPluginSurfaceUrl: context.props.canvasPluginSurfaceUrl,
     embedSandboxMode: context.props.embedSandboxMode,
     allowExternalEmbedUrls: context.props.allowExternalEmbedUrls,
+    textReferences: context.textReferences,
     embedded: context.props.embedded,
     filePresentation: context.props.filePresentation ?? "desktop",
     fileBack: context.props.fileBack ?? undefined,

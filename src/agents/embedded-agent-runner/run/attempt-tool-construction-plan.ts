@@ -4,6 +4,7 @@ import {
   type CoreToolFactoryFamily,
   type OpenClawCodingToolConstructionPlan,
   listCoreToolFactoryDescriptors,
+  TOOL_POLICY_GROUP_IDS,
   resolveCoreToolFactoryFamily,
 } from "../../tool-catalog.js";
 import { createRuntimeToolMatcher } from "../../tool-policy-match.js";
@@ -48,7 +49,7 @@ export function applyEmbeddedAttemptToolsAllow<T extends { name: string }>(
   tools: T[],
   toolsAllow?: string[],
   options?: {
-    toolMeta?: (tool: T) => { pluginId: string } | undefined;
+    toolMeta?: (tool: T) => { pluginId: string; policyGroups?: readonly string[] } | undefined;
     toolAliases?: (tool: T) => readonly string[];
   },
 ): T[] {
@@ -140,10 +141,12 @@ function resolveCodingToolConstructionPlanForAllowlist(
       .filter(({ name }) => constructionMatchers.every((matches) => matches(name)))
       .map(({ family }) => family),
   );
-  // Only bundle-mcp is unambiguous; namespaced entries can belong to plugins.
-  const includePluginTools = normalized.some(
-    (name) => !resolveCoreToolFactoryFamily(name) && name !== "bundle-mcp",
-  );
+  // Plugin manifest tools can join existing groups; retain their construction
+  // path before expanding those groups into the static core members.
+  const includePluginTools =
+    constructionEntries.some((name) =>
+      TOOL_POLICY_GROUP_IDS.some((group) => group === normalizeToolPolicyName(name)),
+    ) || normalized.some((name) => !resolveCoreToolFactoryFamily(name) && name !== "bundle-mcp");
 
   return {
     includeBaseCodingTools: coreFamilies.has("base-coding"),

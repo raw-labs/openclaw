@@ -94,6 +94,10 @@ async function renderCatalog(props: Partial<PluginCatalogResultsProps>) {
 it("windows large catalogs without losing keyboard traversal, reordered cards, or resized rows", async () => {
   container.className = "content";
   Object.assign(container.style, { height: "500px", width: "1100px", overflow: "auto" });
+  // A retained pointer can lift one card while this measures static row gaps.
+  await page.elementLocator(document.body).hover({
+    position: { x: window.innerWidth - 1, y: window.innerHeight - 1 },
+  });
   const entries = Array.from({ length: 1_000 }, (_, index) =>
     plugin(`window-${String(index).padStart(4, "0")}`),
   );

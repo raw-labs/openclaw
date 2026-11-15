@@ -12,7 +12,10 @@ import {
 import { resolveAuthProfileDatabasePath } from "../agents/auth-profiles/sqlite.js";
 import type { AuthProfileStore } from "../agents/auth-profiles/types.js";
 import { resolveLegacyInheritedAuthAgentDir } from "../agents/legacy-inherited-auth-dir.js";
-import { cloneConfigWithResolutionFacts } from "../config/resolution-facts.js";
+import {
+  cloneConfigWithResolutionFacts,
+  serializeConfigResolutionFacts,
+} from "../config/resolution-facts.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import type { PluginManifestRegistry } from "../plugins/manifest-registry.js";
 import type { PluginOrigin } from "../plugins/plugin-origin.types.js";
@@ -143,6 +146,11 @@ export function canUseSecretsRuntimeFastPath(params: {
   sourceConfig: OpenClawConfig;
   authStores: Array<{ agentDir: string; store: AuthProfileStore }>;
 }): boolean {
+  // Config loading can substitute env shorthand while retaining its canonical ref provenance.
+  // Those snapshots still need the ordinary collector to classify declared credential surfaces.
+  if (serializeConfigResolutionFacts(params.sourceConfig)?.envSecretRefs.length) {
+    return false;
+  }
   if (hasRuntimeWebToolConfigSurface(params.sourceConfig)) {
     return false;
   }

@@ -15,6 +15,7 @@ import {
   type SidebarSnapshotScope,
 } from "../pages/chat/session-snapshot-prewarm.ts";
 import { SessionSnapshotStore } from "../pages/chat/session-snapshot-store.ts";
+import type { SessionBadgeCaptureContext } from "../plugins/control-ui-session-badges.ts";
 import { removeSidebarSnapshotSession } from "./sidebar-snapshot-data.ts";
 import { parseSidebarSnapshot, type SidebarSnapshotModel } from "./sidebar-snapshot-model.ts";
 
@@ -27,7 +28,10 @@ export function createSidebarSnapshot(host: {
     connectionBootstrap: { readonly foregroundReady: boolean };
   };
   expandedAgentId(): string;
-  captureSidebarSnapshot(): SidebarSnapshotModel | null;
+  captureSidebarSnapshot(
+    previous?: SidebarSnapshotModel,
+    badges?: SessionBadgeCaptureContext,
+  ): SidebarSnapshotModel | null;
   sidebarSnapshotSettled(): boolean;
   restoreSidebarSnapshot(model: SidebarSnapshotModel): void;
   releaseSidebarSnapshot(): void;
@@ -42,7 +46,11 @@ export function createSidebarSnapshot(host: {
   let revision = -1;
   let scope: SidebarSnapshotScope | null = null;
   let generation = 0;
-  let captured: { model: SidebarSnapshotModel; serialized: string } | null = null;
+  let captured: {
+    model: SidebarSnapshotModel;
+    serialized: string;
+    targets?: SessionBadgeCaptureContext["nextTargets"];
+  } | null = null;
   let retirement = Promise.resolve();
   let cleanup: Array<() => void> = [];
   let stopGateway: (() => void) | undefined;
@@ -94,7 +102,7 @@ export function createSidebarSnapshot(host: {
           if (captured && saved) {
             const model = removeSidebarSnapshotSession(captured.model, deleted);
             if (model !== captured.model) {
-              captured = { model, serialized: JSON.stringify(model) };
+              captured = { ...captured, model, serialized: JSON.stringify(model) };
             }
           } else {
             captured = null;
@@ -282,14 +290,19 @@ export function createSidebarSnapshot(host: {
       lastCapture = blocked ?? "missing-scope";
       return;
     }
-    const model = host.captureSidebarSnapshot();
+    const targets: SessionBadgeCaptureContext["nextTargets"] = new Map();
+    const model = host.captureSidebarSnapshot(captured?.model, {
+      previousTargets: captured?.targets,
+      nextTargets: targets,
+    });
     if (!model) {
       lastCapture = "model-unavailable";
       return;
     }
-    const next = { model, serialized: JSON.stringify(model) };
-    if (next.serialized === captured?.serialized) {
+    const next = { model, serialized: JSON.stringify(model), targets };
+    if (captured && next.serialized === captured.serialized) {
       // Retain a failed/in-flight write's phase when an unchanged capture is skipped.
+      captured.targets = targets;
       return;
     }
     captured = next;

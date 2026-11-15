@@ -55,6 +55,32 @@ export type OpenClawPluginToolAuthQuery = {
   credentialType?: "api_key" | "oauth" | "token";
 };
 
+/** Caller-bound access to the plugin's own Gateway methods; custody stays host-owned. */
+export type OpenClawPluginToolGateway = Readonly<{
+  agentId: string;
+  sessionKey: string;
+  /** Captured presentation hints; invocation authority is checked by the host at each effect. */
+  clientCaps: readonly string[];
+  call: <T = Record<string, unknown>>(
+    method: string,
+    params: Record<string, unknown>,
+    options?: { signal?: AbortSignal; timeoutMs?: number },
+  ) => Promise<T>;
+  /** Stable for a replay of this assistant turn and tool call. */
+  idempotencyKey: (toolCallId: string) => string;
+  /** Transfer an owned operation to the existing session owner and resume its result. */
+  handoff: (request: {
+    name: string;
+    method: string;
+    params: Record<string, unknown>;
+    signal?: AbortSignal;
+    fenceSuccessors?: true;
+    /** Keep the selected requester under the host continuation's live authority. */
+    retainRequester?: true;
+    formatResult: (payload: Record<string, unknown>) => string;
+  }) => Promise<Awaited<ReturnType<AnyAgentTool["execute"]>>>;
+}>;
+
 /** Trusted execution context passed to plugin-owned agent tool factories. */
 type OpenClawPluginToolContextBase = {
   config?: OpenClawConfig;
@@ -89,6 +115,8 @@ type OpenClawPluginToolContextBase = {
   backgroundRun?: { sourceSessionKey: string; ownerPluginId?: string };
   /** Out-of-band plugin-owned bindings attached by the current run initiator. */
   toolBindings?: Readonly<Record<string, unknown>>;
+  /** Describe a declared tool for child policy capture without making it callable here. */
+  inheritToolPolicy?: (definition: Pick<AnyAgentTool, "name" | "parameters">) => void;
   /** Host-prepared repository identities for project-aware tool behavior. */
   activeProjectKeys?: readonly string[];
   /** Trusted runtime-only authorization for one bounded cross-conversation recall pass. */
@@ -162,6 +190,8 @@ type OpenClawPluginToolContextBase = {
   sandbox?: OpenClawPluginToolSandbox;
   /** Model authorization scope; does not execute inference or grant tool permissions. */
   modelExecution?: OpenClawPluginToolModelExecution;
+  /** Version-2 factory capability; dispatch rechecks the current admitted caller and plugin. */
+  gateway?: OpenClawPluginToolGateway;
   /**
    * True for explicit one-shot local CLI runs that must release plugin-owned
    * process resources before the command exits.

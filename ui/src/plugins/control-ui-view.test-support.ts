@@ -1,21 +1,32 @@
-import { vi } from "vitest";
+import { onTestFinished, vi } from "vitest";
 import type {
-  ControlUiHost,
-  ControlUiReplacement,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurfaceProps,
-  ControlUiViewContext,
+  ControlUiViewContextV2 as ControlUiViewContext,
+  ControlUiViewV2,
 } from "../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationContext } from "../app/context.ts";
+import { createInitializationContext } from "../pages/chat/chat-application-context.test-support.ts";
+import { createTestControlUiPluginHost } from "../test-helpers/control-ui-plugin-host.ts";
+import {
+  createTestGatewayClient,
+  type GatewayRequestHandler,
+  type GatewayRequestMock,
+} from "../test-helpers/gateway-client.ts";
 
-export function createInertViewHost(signal: AbortSignal): ControlUiHost {
-  return {
-    signal,
-    sessions: {},
-    agents: {},
-    navigation: {},
-    ui: {},
-    components: {},
-  } as unknown as ControlUiHost;
+export function createInertViewHost(signal: AbortSignal, request?: GatewayRequestHandler) {
+  const abort = new AbortController();
+  const stop = () => abort.abort();
+  if (signal.aborted) {
+    stop();
+  } else {
+    signal.addEventListener("abort", stop, { once: true });
+  }
+  onTestFinished(() => signal.removeEventListener("abort", stop));
+  const context = createInitializationContext(
+    createTestGatewayClient(request ?? (async () => ({}))),
+  );
+  return createTestControlUiPluginHost(context, "fixture", abort);
 }
 
 type Surface = "workspace" | "composer";
@@ -39,8 +50,8 @@ export function composerProps(
 
 export function replacement<S extends Surface>(
   surface: S,
-  mount: ControlUiReplacement<S>["mount"],
-): ControlUiReplacement<S> {
+  mount: ControlUiViewV2<ControlUiSurfaceProps[S]>,
+) {
   return { id: "fixture", label: "Fixture", surface, mount };
 }
 
@@ -68,21 +79,17 @@ export function createViewRuntime(
   options: {
     pluginId?: string;
     key?: string;
-    request?: ReturnType<typeof vi.fn>;
+    request?: GatewayRequestMock;
     hostInvalidation?: boolean;
   } = {},
 ) {
   let selected = initial;
   const listeners = new Set<() => void>();
   const abort = new AbortController();
-  const request = options.request ?? vi.fn().mockResolvedValue({ ok: true });
+  const request = options.request ?? vi.fn<GatewayRequestHandler>().mockResolvedValue({ ok: true });
   const invalidate = () => listeners.forEach((listener) => listener());
-  // SAFETY: these fixtures exercise only view mounting and scoped host requests.
-  const host = {
-    ...createInertViewHost(abort.signal),
-    request,
-    ui: options.hostInvalidation === false ? {} : { invalidate },
-  };
+  const host = createInertViewHost(abort.signal, request);
+  host.ui.invalidate = options.hostInvalidation === false ? () => undefined : invalidate;
   const reportError = vi.fn();
   // SAFETY: the views read only this plugin capability, not other app owners.
   const context = {

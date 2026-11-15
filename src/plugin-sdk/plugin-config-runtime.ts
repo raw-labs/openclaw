@@ -8,6 +8,7 @@ import { freezeJsonSnapshot, isDeeplyFrozenPlainData } from "../shared/immutable
 export {
   createNormalizedPluginsConfig as normalizePluginsConfig,
   resolveEffectiveEnableState,
+  isBundledPluginEnabled,
 } from "../plugins/config-state.js";
 export { mergeDeep } from "../infra/deep-merge.js";
 

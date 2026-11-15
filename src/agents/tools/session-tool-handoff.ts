@@ -38,6 +38,10 @@ import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel-constants.
 import { createToolTurnHandoff } from "../agent-tools.abort.js";
 import { jsonResult, ToolInputError } from "./common.js";
 import { getGatewayToolCallerIdentity } from "./gateway-caller-context.js";
+import {
+  recordSessionToolHandoffAcceptance,
+  recordSessionToolHandoffYield,
+} from "./session-tool-handoff-settlement.js";
 import type { SessionsYieldCallback } from "./sessions-yield-tool.js";
 
 const log = createSubsystemLogger("agent/tool-handoff");
@@ -181,6 +185,7 @@ export async function handoffSessionTool(
     const handoffResult = jsonResult(handoffReceipt);
     const message = params.name + " handed off; resume with its result in this same conversation.";
     if (params.terminal) {
+      recordSessionToolHandoffYield();
       await params.onYield(message, undefined, undefined, {
         terminal: createToolTurnHandoff(
           getAgentToolExecutionContext()?.toolCall.id,
@@ -188,8 +193,10 @@ export async function handoffSessionTool(
         ),
       });
     } else if (params.yield === "conditional") {
+      recordSessionToolHandoffYield();
       await params.onYield(message, undefined, undefined, { conditional: true });
     } else if (params.yield !== "after_turn") {
+      recordSessionToolHandoffYield();
       await params.onYield(message);
     }
     const retained = continuation;
@@ -197,6 +204,28 @@ export async function handoffSessionTool(
     const enqueue = enqueueDeferred;
     const contextKey = "tool-handoff:" + randomUUID();
     let result: Record<string, unknown> | undefined;
+    let runFailed = false;
+    // Formatting is plugin work; delivery is host work. Cache the rendering so a
+    // retired or throwing formatter cannot also prevent the persisted notice.
+    let resultText: string | undefined;
+    const formatResult = () => {
+      if (resultText !== undefined || !result) {
+        return resultText;
+      }
+      try {
+        resultText = params.formatResult(result);
+      } catch {
+        // Only the formatter knows which payload fields are safe to disclose.
+        // Fall back to execution facts, never raw payloads or error reasons.
+        resultText =
+          (runFailed
+            ? "The handed-off operation ended with an error; effects may already have occurred. "
+            : "The handed-off operation returned a result. ") +
+          "Result details are unavailable because formatting could not complete. " +
+          "Check the existing operation state if needed; do not repeat the operation.";
+      }
+      return resultText;
+    };
     // Start from the context-free root: the yielded turn's caller identity, retired receipts and
     // aborted run signal must reach neither this work nor the resumed turn's tools. Every input is
     // captured above; no CLI child or prepared-generation borrow belongs to this work.
@@ -242,6 +271,7 @@ export async function handoffSessionTool(
                   destination.release();
                 }
               } catch (error) {
+                runFailed = true;
                 result = {
                   ok: false,
                   error: formatErrorMessage(error),
@@ -275,7 +305,7 @@ export async function handoffSessionTool(
               const eventText =
                 params.name +
                 " result: " +
-                params.formatResult(result) +
+                formatResult() +
                 "\nContinue the original task in this conversation. Do not repeat a completed operation.";
               // Retain the admitted Gateway, but let resume select the replacement plugin registry.
               const receipt = await enqueue(
@@ -325,10 +355,10 @@ export async function handoffSessionTool(
             expectedLifecycleRevision: target.lifecycleRevision ?? null,
             idempotencyKey: contextKey + ":undelivered",
             text:
-              `${params.name} could not continue this conversation automatically: ${reason}. ` +
+              `${params.name} could not continue this conversation automatically. ` +
               (result
-                ? `Its result: ${params.formatResult(result)}. Send a message to continue from it; do not repeat it.`
-                : "Send a message to retry."),
+                ? `Its result: ${formatResult()}. Send a message to continue from it; do not repeat it.`
+                : "Its execution outcome is unavailable. Check the existing operation state before continuing; do not repeat the operation."),
           }).catch((noticeError: unknown) => ({
             ok: false,
             reason: formatErrorMessage(noticeError),
@@ -343,6 +373,7 @@ export async function handoffSessionTool(
         }),
     );
     // The shared async-result receipt is also the yield owner's continuation evidence.
+    recordSessionToolHandoffAcceptance(handoffResult);
     return handoffResult;
   } catch (error) {
     handoffSettled.resolve(undefined);

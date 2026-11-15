@@ -9,14 +9,14 @@ import type {
 } from "../../../packages/gateway-protocol/src/schema/plugins.js";
 import { CONTROL_UI_PLUGIN_AUTH_GRANT_TTL_MS } from "../../../src/gateway/control-ui-plugin-frame-contract.js";
 import type {
-  ControlUiSettingsPlacement,
+  AnyControlUiSettingsPlacement as ControlUiSettingsPlacement,
   ControlUiChannelSettingsView,
   ControlUiSettingsView,
+  ControlUiContributedSettingsView,
 } from "../../../src/plugin-sdk/control-ui-settings.js";
 import type {
   ControlUiDisposer,
-  ControlUiHost,
-  ControlUiReplacement,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurface,
 } from "../../../src/plugin-sdk/control-ui.js";
 import type { GatewayBrowserClient } from "../api/gateway.ts";
@@ -33,10 +33,12 @@ import {
   ControlUiPluginAssetPreloads,
 } from "./control-ui-assets.ts";
 import type {
+  PreparedControlUiHost,
   ControlUiContributions,
   ControlUiPluginCapability,
   ControlUiRegistration,
 } from "./control-ui-capability.ts";
+import { repositorySources, type ControlUiSettingsContribution } from "./control-ui-metadata.ts";
 
 export type ControlUiPluginOwner = {
   descriptor: PluginControlUiModule;
@@ -51,7 +53,7 @@ export type ControlUiPluginOwner = {
     >;
   };
   selections: Map<ControlUiSurface, string | null>;
-  host: ControlUiHost;
+  host: PreparedControlUiHost;
 };
 
 const UI_CAPABILITY_BY_CONTRIBUTION = {
@@ -60,6 +62,7 @@ const UI_CAPABILITY_BY_CONTRIBUTION = {
   panels: "panel",
   actions: "action",
   accessories: "accessory",
+  textReferences: "link-reader",
   widgets: "widget",
   inlineViews: "inline",
   replacements: "replacement",
@@ -87,12 +90,38 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   private recoveryScope: string | undefined;
   private refreshGeneration = 0;
   private disposed = false;
-  private readonly settingsLifetimes = new Set<AbortController>();
+  private readonly settingsLifetimes = new Map<
+    AbortController,
+    { pluginId: string; revision: string; admitted: boolean }
+  >();
+  private catalog: readonly PluginControlUiModule[] = [];
+  private catalogClient: GatewayBrowserClient | null = null;
+  private catalogRepositorySources: NonNullable<PluginsControlUiCatalog["repositorySources"]> = [];
   private firstConnection = true;
   private diagnostics: PluginControlUiDiagnostic[] = [];
   private grantTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly getContext: () => ApplicationContext) {}
+
+  /** Catalog facts belong to the client that loaded them. */
+  private get catalogCurrent(): boolean {
+    return this.getContext().gateway.snapshot.client === this.catalogClient;
+  }
+
+  get settingsContributions(): ControlUiSettingsContribution[] {
+    const catalog = this.catalogCurrent ? this.catalog : [];
+    return catalog.flatMap((plugin) =>
+      (plugin.settingsViews ?? []).map((placement) => ({
+        pluginId: plugin.pluginId,
+        revision: plugin.revision,
+        placement,
+      })),
+    );
+  }
+
+  get repositorySources() {
+    return repositorySources(this.catalogCurrent ? this.catalogRepositorySources : []);
+  }
 
   get errors(): readonly PluginControlUiDiagnostic[] {
     // Warnings belong to live registrations, so ordinary catalog refreshes retain
@@ -115,19 +144,43 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
   }
 
   loadSettingsView(
-    placement: ControlUiSettingsView["placement"],
+    placement: ControlUiSettingsView["placement"] | ControlUiContributedSettingsView["placement"],
     signal: AbortSignal,
-  ): Promise<{ view: ControlUiSettingsView; signal: AbortSignal; dispose: () => void }>;
+    pluginId?: string,
+  ): Promise<{
+    view: ControlUiSettingsView | ControlUiContributedSettingsView;
+    signal: AbortSignal;
+    dispose: () => void;
+  }>;
   loadSettingsView(
     placement: ControlUiChannelSettingsView["placement"],
     signal: AbortSignal,
+    pluginId?: string,
   ): Promise<{ view: ControlUiChannelSettingsView; signal: AbortSignal; dispose: () => void }>;
-  async loadSettingsView(placement: ControlUiSettingsPlacement, signal: AbortSignal) {
+  loadSettingsView(
+    placement: ControlUiSettingsPlacement,
+    signal: AbortSignal,
+    pluginId?: string,
+  ): Promise<{
+    view: ControlUiSettingsView | ControlUiContributedSettingsView | ControlUiChannelSettingsView;
+    signal: AbortSignal;
+    dispose: () => void;
+  }>;
+  async loadSettingsView(
+    placement: ControlUiSettingsPlacement,
+    signal: AbortSignal,
+    pluginId?: string,
+  ) {
     const { loadPackagedSettingsView } = await import("./control-ui-settings-view.ts");
     if (this.disposed) {
       throw new Error("The plugin UI runtime has ended.");
     }
-    return loadPackagedSettingsView(placement, signal, this.settingsLifetimes);
+    const context = "id" in placement ? this.getContext() : undefined;
+    return loadPackagedSettingsView(placement, signal, this.settingsLifetimes, {
+      pluginId,
+      catalog: context?.gateway.snapshot.client === this.catalogClient ? this.catalog : [],
+      resourceBasePath: context?.resourceBasePath ?? "",
+    });
   }
 
   get hasPlugins(): boolean {
@@ -284,6 +337,15 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
         );
       }
       this.diagnostics = catalog.diagnostics;
+      this.catalog = catalog.plugins;
+      this.catalogRepositorySources = catalog.repositorySources ?? [];
+      this.catalogClient = client;
+      const live = new Set(catalog.plugins.map((p) => `${p.pluginId}\0${p.revision}`));
+      for (const [abort, owner] of this.settingsLifetimes) {
+        if (owner.admitted && !live.has(`${owner.pluginId}\0${owner.revision}`)) {
+          abort.abort();
+        }
+      }
       this.catalogStatus = "complete";
       const installed = new Set(catalog.plugins.map((plugin) => plugin.pluginId));
       this.loadingCatalog = installed;
@@ -412,6 +474,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
         actions: new Map(),
         replacements: new Map(),
         accessories: new Map(),
+        textReferences: new Map(),
         widgets: new Map(),
         inlineViews: new Map(),
       },
@@ -681,7 +744,7 @@ export class ControlUiPluginRuntime implements ControlUiPluginCapability {
 
   dispose(): void {
     this.disposed = true;
-    for (const owner of this.settingsLifetimes) {
+    for (const owner of this.settingsLifetimes.keys()) {
       owner.abort();
     }
     this.preloads.dispose();

@@ -12,7 +12,17 @@ import { controlUiPluginAssetUrls } from "./control-ui-assets.ts";
 import type { ControlUiPluginDistribution } from "./control-ui-distribution.ts";
 import { createControlUiPluginHost } from "./control-ui-host.ts";
 import * as controlUiLoader from "./control-ui-loader.ts";
-import { ControlUiPluginRuntime } from "./control-ui-runtime.ts";
+import {
+  assetPath,
+  catalog,
+  configForRuntime,
+  connectedContext,
+  diagnostic,
+  disposeTestRuntimes,
+  localGateway,
+  pluginDescriptor,
+  runtimeFor,
+} from "./control-ui-runtime.test-support.ts";
 
 vi.spyOn(controlUiLoader, "initializeControlUiPlugin").mockResolvedValue(undefined);
 const packaged = vi.hoisted(() => [] as ControlUiPluginDistribution[]);
@@ -22,9 +32,6 @@ vi.mock("./control-ui-distribution.ts", async (importOriginal) => ({
 }));
 
 const catalogMethods = ["plugins.controlUi.list", "plugins.controlUi.report"];
-const localGateway = () => location.origin.replace(/^http/u, "ws");
-const assetPath = (revision = "one", base = "") =>
-  `${base}/__openclaw__/plugins/control-ui/review/${revision}/`;
 const grants = (base = "") => [
   {
     pluginId: "review",
@@ -32,70 +39,12 @@ const grants = (base = "") => [
     path: `${base}/__openclaw__/plugins/control-ui/review/`,
   },
 ];
-const catalog = (plugins: PluginsControlUiCatalog["plugins"], revision = "catalog") => ({
-  plugins,
-  revision,
-  diagnostics: [],
-});
-const runtimes: ControlUiPluginRuntime[] = [];
-const runtimeFor = (context: ApplicationContext) => {
-  const runtime = new ControlUiPluginRuntime(() => context);
-  runtimes.push(runtime);
-  return runtime;
-};
 afterEach(() => {
-  for (const runtime of runtimes.splice(0)) {
-    runtime.dispose();
-  }
+  disposeTestRuntimes();
   packaged.length = 0;
   vi.mocked(controlUiLoader.initializeControlUiPlugin).mockReset().mockResolvedValue(undefined);
   vi.unstubAllGlobals();
 });
-const configForRuntime = (
-  refresh: () => Promise<
-    Pick<ApplicationContext["config"]["current"], "pluginAssetsRequireAuth" | "pluginFrameGrants">
-  > = async () => ({
-    pluginAssetsRequireAuth: false,
-    pluginFrameGrants: [],
-  }),
-  resourceBasePath = "",
-) => ({ ...createApplicationConfigCapability({ resourceBasePath }), refresh });
-function connectedContext(
-  client: { gatewayUrl: string; request: (method: string, params: unknown) => unknown } | undefined,
-  configuration:
-    | ReturnType<typeof configForRuntime>
-    | ApplicationContext["config"] = configForRuntime(),
-  resourceBasePath = "",
-  advertised = ["plugins.controlUi.list"],
-) {
-  // SAFETY: the runtime reads only these gateway and config services.
-  return {
-    resourceBasePath,
-    config: configuration,
-    gateway: {
-      snapshot: client
-        ? {
-            phase: "connected",
-            client,
-            hello: {
-              features: { methods: advertised },
-              auth: { role: "operator", scopes: ["operator.admin"] },
-            },
-          }
-        : { phase: "connecting" },
-      subscribe: () => () => undefined,
-      subscribeEvents: () => () => undefined,
-    },
-  } as unknown as ApplicationContext;
-}
-const pluginDescriptor = (revision = "one", entryUrl = "/review.js") => ({
-  pluginId: "review",
-  name: "Review",
-  revision,
-  entryUrl,
-  styles: [],
-});
-const diagnostic = (message: string, pluginId = "review") => ({ pluginId, message });
 const activationReport = (pluginId: string, error?: string) => ({
   pluginId,
   revision: "one",
@@ -126,10 +75,10 @@ function initializeWith(
   );
 }
 
-it("completes an unavailable catalog without requests or diagnostics for a limited connection", async () => {
+it("completes an unavailable catalog without requests or diagnostics without read authority", async () => {
   const request = vi.fn();
   const context = connectedContext(clientFor(request));
-  context.gateway.snapshot.hello!.auth!.scopes = ["operator.sessions.read"];
+  context.gateway.snapshot.hello!.auth!.scopes = [];
   const runtime = runtimeFor(context);
   runtime.start();
   await runtime.refresh();

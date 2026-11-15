@@ -1,6 +1,5 @@
 import { asNonNegativeFiniteNumber } from "@openclaw/normalization-core/number-coercion";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import type { ControlUiNavigationItem } from "../../../src/plugin-sdk/control-ui.js";
 import { isIncognitoSessionKey } from "../../../src/shared/incognito-session-key.js";
 import type { GatewayControlUiPluginTab } from "../api/gateway.ts";
 import type { GatewaySessionRow, SessionsListResult } from "../api/types.ts";
@@ -47,7 +46,7 @@ import {
   resolveUiSessionNavigationParentKey,
 } from "../lib/sessions/session-key.ts";
 import { pluginTabKey } from "../pages/plugin/route.tsx";
-import type { ControlUiRegistration } from "../plugins/control-ui-capability.ts";
+import type { ControlUiNavigationRegistration } from "../plugins/control-ui-capability.ts";
 import { sidebarPluginTabs } from "./app-sidebar-nav-menus.tsx";
 import {
   SIDEBAR_SESSION_NO_ATTENTION,
@@ -369,7 +368,7 @@ export function restoreSnapshotNavigation(model: SidebarSnapshotModel, selectedK
 export function buildReconciledSidebarZone(input: {
   sidebarEntries: readonly string[];
   rows: SidebarRecentSession[];
-  pluginNavigation: readonly ControlUiRegistration<ControlUiNavigationItem>[];
+  pluginNavigation: readonly ControlUiNavigationRegistration[];
   pluginTabs: readonly GatewayControlUiPluginTab[] | undefined;
   pendingPlugins?: Pick<SidebarSnapshotModel, "entries" | "plugins"> | null;
 }) {

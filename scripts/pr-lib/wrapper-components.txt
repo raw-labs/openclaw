@@ -1706,6 +1706,7 @@ src/plugins/manifest-record.ts
 src/plugins/manifest-registry-build.ts
 src/plugins/manifest-registry-installed.ts
 src/plugins/manifest-registry.ts
+src/plugins/manifest-repository-sources.ts
 src/plugins/manifest-setup-normalizers.ts
 src/plugins/manifest-theme-definitions.ts
 src/plugins/manifest-themes.ts
@@ -2675,6 +2676,7 @@ src/agents/tools/chat-history-text.ts
 src/agents/usage.ts
 src/auto-reply/reply/history.ts
 src/boards/board-capabilities.ts
+src/boards/board-errors.ts
 src/boards/board-layout.ts
 src/boards/board-report.ts
 src/boards/board-store.ts
@@ -2998,3 +3000,4 @@ src/config/sessions/session-context-seed.ts
 src/agents/code-mode-session-store-replay.ts
 src/config/sessions/session-transcript-maintenance-suffix.ts
 src/state/user-channel-authorization-reference.ts
+src/boards/legacy-github-actions-grant.ts

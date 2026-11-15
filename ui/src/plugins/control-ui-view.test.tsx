@@ -1,9 +1,9 @@
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
-  ControlUiReplacement,
+  ControlUiReplacementV2 as ControlUiReplacement,
   ControlUiSurfaceProps,
-  ControlUiViewContext,
+  ControlUiViewContextV2 as ControlUiViewContext,
 } from "../../../src/plugin-sdk/control-ui.js";
 import { createDeferred } from "../../../test/helpers/promise.js";
 import { ContentPresentation } from "../lib/solid/presentation.ts";
@@ -11,7 +11,8 @@ import { createApplicationContextProvider } from "../test-helpers/application-co
 import { mountSolid } from "../test-helpers/mount-solid.ts";
 import { createSolidApplicationContextProvider } from "../test-helpers/solid-application-context.tsx";
 import { flush } from "../test-helpers/solid-settle.ts";
-import { PluginSurface } from "./control-ui-view.solid.tsx";
+import { PluginSurface } from "./control-ui-surfaces.solid.tsx";
+import "./control-ui-view.solid.tsx";
 import {
   composerProps,
   createViewRuntime as createRuntime,
@@ -142,6 +143,7 @@ describe("native UI built-in delegation", () => {
         cleanup = () => mounted.provider.remove();
       } else {
         const mounted = mountSurface(batched);
+        await vi.waitFor(() => expect(pluginView(mounted.host)).not.toBeNull());
         view = pluginView(mounted.host);
         refresh = () => {
           mounted.update();

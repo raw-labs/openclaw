@@ -1,5 +1,6 @@
 import { assertPluginToolInvocationSourceCurrent } from "../agents/agent-tool-source-execution-guard.js";
 import type { PluginToolExecutionCapabilities } from "../agents/plugin-tool-execution.js";
+import type { PluginManifestRecord } from "./manifest-registry.js";
 import { assertMemoryAudienceSession } from "./memory-audience.js";
 import { resolveMemoryCapabilityRegistration } from "./memory-state.js";
 import { getPluginInstance } from "./plugin-instance-scope.js";
@@ -21,11 +22,13 @@ export function createPluginToolFactoryContext(params: {
   entry: PluginToolRegistration;
   registry: PluginRegistry;
   context: OpenClawPluginToolContext;
+  manifestToolMetadata?: PluginManifestRecord["toolMetadata"];
   assertInvocationCurrent?: () => void;
   ownerContinuation?: PluginToolOwnerContinuation;
   bindExecutionCapabilities?: (
     assertCurrent: () => void,
     signal?: AbortSignal,
+    gatewayMethods?: readonly string[],
   ) => PluginToolExecutionCapabilities;
 }): OpenClawPluginToolContext {
   const { entry, registry, context } = params;
@@ -58,10 +61,37 @@ export function createPluginToolFactoryContext(params: {
   };
   return {
     ...context,
+    inheritToolPolicy:
+      context.inheritToolPolicy &&
+      ((definition) => {
+        if (!authority?.()) {
+          throw new Error(`Plugin "${entry.pluginId}" tool runtime is no longer active.`);
+        }
+        if (
+          !entry.declaredNames?.has(definition.name) ||
+          (entry.names.length > 0 && !entry.names.includes(definition.name))
+        ) {
+          throw new Error(
+            `Plugin "${entry.pluginId}" cannot inherit undeclared tool "${definition.name}".`,
+          );
+        }
+        // Only admitted manifest metadata may grant group membership to an unavailable tool.
+        const inherited = {
+          ...definition,
+          pluginMetadata: {
+            pluginId: entry.pluginId,
+            policyGroups: params.manifestToolMetadata?.[definition.name]?.policyGroups,
+          },
+        };
+        context.inheritToolPolicy?.(inherited);
+      }),
     ...(entry.contextVersion === 2
       ? params.bindExecutionCapabilities?.(
           assertInvocationCurrent,
           record && getPluginInstance(record)?.lifecycle.signal,
+          registry.gatewayMethodDescriptors
+            .filter(({ owner }) => owner.kind === "plugin" && owner.pluginId === entry.pluginId)
+            .map(({ name }) => name),
         )
       : {}),
     ...(continuation

@@ -1,5 +1,4 @@
 import type { SessionCatalogPullRequestSummary } from "../../../../packages/gateway-protocol/src/schema/sessions-catalog.js";
-import { CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT } from "../../../../src/gateway/control-ui-contract.js";
 import { registerListener } from "../../../../src/shared/listeners.js";
 import type { SessionsListResult } from "../../api/types.ts";
 import { gatewayPresentationScope } from "../../app/gateway-presentation-scope.ts";
@@ -18,11 +17,11 @@ import {
 } from "./session-capability.ts";
 import { createSessionDeletions } from "./session-deletions.ts";
 import { createSessionEventSubscriptionOwner } from "./session-event-subscription.ts";
-import { createSessionGitHubPublication } from "./session-github-publication.ts";
 import { createSessionGroupCatalog } from "./session-group-catalog.ts";
 import { normalizeAgentId, parseAgentSessionKey } from "./session-key.ts";
 import { isPrimarySessionListQuery } from "./session-list-query.ts";
 import { createSessionMutations } from "./session-mutations.ts";
+import { createSessionOperations } from "./session-operations.ts";
 import { optimisticSessionRowFields } from "./session-pending-rows.ts";
 import { createSessionPermissionProjection } from "./session-permission-projection.ts";
 import { createSessionReconciliation } from "./session-reconciliation.ts";
@@ -113,7 +112,7 @@ export function createSessionCapability(
     };
     await (cacheOptions.connectionBootstrap?.run(key, run, { background: true }) ?? run());
   };
-  const githubPublication = createSessionGitHubPublication({
+  const publicationOperations = createSessionOperations({
     connection,
     snapshot: () => gateway.snapshot,
     deletionState: (row) => deletions.deletionState(row.key, row.agentId, row.sessionId),
@@ -159,7 +158,7 @@ export function createSessionCapability(
         reconnectListRevision = null;
       }
     }
-    githubPublication.observeRows(next.result?.sessions ?? [], next.agentId);
+    publicationOperations.observeRows(next.result?.sessions ?? [], next.agentId);
     notifySubscribers();
   };
 
@@ -214,7 +213,7 @@ export function createSessionCapability(
       }
       if (previousError !== null && error === null) {
         // Observer outages do not replay events; every held query must close the gap.
-        githubPublication.invalidate();
+        publicationOperations.invalidate();
         void roster.refreshAutomatic({
           ...roster.lastOptions(),
           backgroundHydrate: true,
@@ -265,7 +264,7 @@ export function createSessionCapability(
       return projected;
     },
     onCanonicalList(result, requestRevision, agentId, observed) {
-      githubPublication.observeRows(observed?.sessions ?? result?.sessions ?? [], agentId);
+      publicationOperations.observeRows(observed?.sessions ?? result?.sessions ?? [], agentId);
       mutations.settlePrepared(result);
       for (const row of observed?.sessions ?? []) {
         thinkingClaims.settle(row, requestRevision, agentId);
@@ -380,7 +379,7 @@ export function createSessionCapability(
       thinkingClaims,
       decorate: decorateRows,
       deletions,
-      githubPublication,
+      githubPublication: publicationOperations,
       roster,
     });
 
@@ -445,7 +444,7 @@ export function createSessionCapability(
     roster.observeGateway(next, connectionChanged);
     cacheLifecycle.synchronize(next);
     connectionClient = next.client;
-    githubPublication.observeRows([]);
+    publicationOperations.observeRows([]);
     if (connectionChanged) {
       if (identityChanged) {
         deletions.retireConnection(retainDeferredIntents);
@@ -538,8 +537,7 @@ export function createSessionCapability(
   });
 
   const stopEvents = gateway.subscribeEvents((event) => {
-    if (event.event === CONTROL_UI_SESSION_PULL_REQUESTS_CHANGED_EVENT) {
-      githubPublication.observePullRequests(event.payload);
+    if (publicationOperations.observeGatewayEvent(event.event, event.payload)) {
       return;
     }
     if (event.event === "config.changed" || event.event === "chat.metadata.changed") {
@@ -641,7 +639,8 @@ export function createSessionCapability(
     get canonicalListReady() {
       return canonicalListRevision > 0 && reconnectListRevision === null;
     },
-    githubPublication,
+    githubPublication: publicationOperations.githubPublication,
+    retainedOperations: publicationOperations.retainedOperations,
     get cachedRoutingDefaults() {
       return cacheLifecycle.routingDefaults;
     },
@@ -724,7 +723,7 @@ export function createSessionCapability(
     dispose() {
       retirePresentation();
       cacheLifecycle.dispose();
-      githubPublication.clear();
+      publicationOperations.clear();
       roster.dispose();
       dispose();
       connection.dispose();

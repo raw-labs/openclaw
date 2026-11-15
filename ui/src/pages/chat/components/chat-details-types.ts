@@ -4,6 +4,7 @@ import type {
   ControlUiSessionPullRequest,
   ControlUiSessionPullRequestSnapshot,
 } from "../../../../../src/gateway/control-ui-contract.js";
+import type { ControlUiSessionHeaderFacts } from "../../../../../src/plugin-sdk/control-ui.js";
 import type { ApplicationGateway } from "../../../app/gateway.ts";
 import type { GitHubPublicationView } from "../../../lib/sessions/github-publication-owner.ts";
 import type { DetailsSnapshotPatch } from "../chat-details-snapshot.ts";
@@ -91,6 +92,7 @@ export type ChatDetailsProps = ChatSessionProgressProps &
     | "personActivity"
     | "onScrollPortRef"
   > & {
+    sessionHeaderFacts?: ControlUiSessionHeaderFacts;
     cachedDetails?: ChatDetailsSnapshot;
     /** The session observation has accepted current facts; cached rows are display only. */
     sessionFactsReady?: boolean;

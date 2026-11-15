@@ -239,6 +239,7 @@ export async function settleSessionEventTurn(params: {
         lifecycleRevision: binding.lifecycleRevision,
       },
       payloads,
+      modelAlreadyRecorded: true,
       signal: params.signal,
       deliveryAttemptFence: {
         beforeAttempt: async () => {

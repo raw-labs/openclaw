@@ -1,0 +1,2 @@
+# Public SDK boundary regressions for repository sources and managed checkout, execution environment registration, caller-bound plugin tools, and Control UI V2 contributions. Native GitHub behavior is unchanged and adds no tests here.
+4150
