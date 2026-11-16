@@ -389,6 +389,5 @@
   "agent-sessions",
   "llm",
   "execution-environment",
-  "repository-sources",
-  "dashboard"
+  "repository-sources"
 ]

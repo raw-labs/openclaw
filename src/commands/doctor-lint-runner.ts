@@ -438,11 +438,15 @@ async function executeDoctorLint(
     runWithPluginStateSnapshot: stateView.runWithPluginStateSnapshot,
     updateReadiness: opts.updateReadiness,
   });
-  const declared = collectDeclaredPluginDoctorHealthChecks({
-    cfg,
-    cwd: ctx.cwd,
-    env: stateView.pluginMetadataEnv,
-  });
+  // Plugin-owned checks never gate an update; do not load their artifacts during the gate.
+  const declared =
+    opts.updateReadiness === undefined
+      ? collectDeclaredPluginDoctorHealthChecks({
+          cfg,
+          cwd: ctx.cwd,
+          env: stateView.pluginMetadataEnv,
+        })
+      : { checks: [], findings: [] };
   availabilityFindings.push(...declared.findings);
   const registeredExtensionChecks = listExtensionHealthChecksForDoctor(
     [],

@@ -23,7 +23,6 @@ import type {
 } from "./capability-provider.types.js";
 import type { CliBackendPlugin } from "./cli-backend.types.js";
 import type { PluginConversationBindingResolvedEvent } from "./conversation-binding.types.js";
-import type { PluginDashboardDataBindingV1 } from "./dashboard-data-binding.types.js";
 import type { PluginGatewayAccessPolicy } from "./gateway-access-policy.types.js";
 import type {
   PluginHookHandlerMap,
@@ -302,8 +301,7 @@ export type OpenClawPluginApi = {
   ) => void;
   /** Add a plugin-owned lifetime requirement to authenticated person admission. */
   registerGatewayAccessPolicy: (policy: PluginGatewayAccessPolicy) => void;
-  /** Bind scoped-grant and preflight policy to an existing manifest dashboard declaration. */
-  registerDashboardDataBinding: (definition: PluginDashboardDataBindingV1) => void;
+  /** Register a sandboxed board widget source kind owned by this plugin. */
   /** Register a read-only external-session catalog with optional native adoption actions. */
   registerSessionCatalog: (provider: SessionCatalogProvider) => void;
   registerCli: (

@@ -41,9 +41,6 @@ checkout contracts. Plugins declare discovery metadata and register their source
 the existing picker, session creation, and cloud workspace owners consume it.
 See [Repository sources](/plugins/sdk-repository-sources).
 
-The `dashboard` entrypoint exposes a declared data binding with Board-owned
-grant preparation.
-
 A plugin tool's optional `context.gateway` capability calls only that plugin's
 registered Gateway methods. The host retains request authority and accepted
 handoff custody; plugins do not receive an administrative Gateway client.

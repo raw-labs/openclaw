@@ -68,7 +68,6 @@ export const pluginApiDefaultHandlers = {
   registerTrustedToolPolicy: () => {},
   registerToolMetadata: () => {},
   registerControlUiDescriptor: () => {},
-  registerDashboardDataBinding: () => {},
   registerRuntimeLifecycle: () => {},
   registerAgentEventSubscription: () => {},
   emitAgentEvent: () => ({

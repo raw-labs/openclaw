@@ -63,6 +63,13 @@ export function createManagedProjectCheckoutV1(source: ManagedProjectSourceV1) {
       options: { signal: options.signal, timeoutMs: options.timeoutMs, assertCurrent },
     };
   };
+  // A source may operate only on managed clones whose saved origin it admits.
+  const assertOwnedProject = (project: ProjectRegistryRecord) => {
+    const admitted = project.originUrl ? source.resolveUrl(project.originUrl) : null;
+    if (project.source !== "cloned" || admitted?.url !== project.originUrl) {
+      throw new Error("This repository source does not manage the selected project.");
+    }
+  };
   return {
     async materialize(
       input: { gitUrl: string; name?: string; requiredCommit?: string },
@@ -82,12 +89,14 @@ export function createManagedProjectCheckoutV1(source: ManagedProjectSourceV1) {
       ref?: string,
       options: ManagedProjectOptions = {},
     ) {
+      assertOwnedProject(project);
       const admitted = invocation(options);
       const { resolveProjectCloneBase } = await import("../projects/project-clone.js");
       admitted.options.assertCurrent();
       return await resolveProjectCloneBase(project, ref, admitted.options, admitted.source);
     },
     async refresh(project: ProjectRegistryRecord, options: ManagedProjectOptions = {}) {
+      assertOwnedProject(project);
       const admitted = invocation(options);
       const { refreshProjectClone } = await import("../projects/project-clone.js");
       admitted.options.assertCurrent();

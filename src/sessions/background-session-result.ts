@@ -42,8 +42,6 @@ export async function commitBackgroundResultToSession(params: {
    */
   expectedLifecycleRevision?: string;
   text: string;
-  /** A visible mirror of output already recorded by this conversation's execution. */
-  modelAlreadyRecorded?: boolean;
   prepareDisplayContent?: () => Promise<readonly Record<string, unknown>[] | undefined>;
   onMessageCommitted?: SessionTranscriptTurnPersistOptions["onMessageCommitted"];
   idempotencyKey: string;
@@ -143,14 +141,9 @@ export async function commitBackgroundResultToSession(params: {
             stopReason: "stop",
             timestamp: Date.now(),
             idempotencyKey,
-            // Replaying a settled run's own mirror after the next user input can make
-            // that new request look answered. Independent background arrivals still wait
-            // for their normal placement at a model-request boundary.
-            ...(params.modelAlreadyRecorded
-              ? { excludeFromContext: true }
-              : isSessionControllerWorkActive(storePath, [sessionKey, sessionId], params.agentId)
-                ? { excludeFromContext: true, openclawModelPlacement: "pending" as const }
-                : {}),
+            ...(isSessionControllerWorkActive(storePath, [sessionKey, sessionId], params.agentId)
+              ? { excludeFromContext: true, openclawModelPlacement: "pending" as const }
+              : {}),
             ...(params.provenance ? { openclawAutomation: params.provenance } : {}),
           } satisfies SessionTranscriptAssistantMessage & {
             idempotencyKey: string;

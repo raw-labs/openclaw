@@ -25,9 +25,16 @@ export function createSessionOperations(
   const retainedOperations = {
     /** Plugin activation awaits this before a plugin host can attach operations. */
     prepare(): Promise<void> {
-      loading ??= import("./session-retained-operations.ts").then((module) => {
-        retained ??= module.createSessionRetainedOperations(host);
-      });
+      // A failed chunk load must not disable later plugin activations in this tab.
+      loading ??= import("./session-retained-operations.ts").then(
+        (module) => {
+          retained ??= module.createSessionRetainedOperations(host);
+        },
+        (error: unknown) => {
+          loading = undefined;
+          throw error;
+        },
+      );
       return loading;
     },
     attach<TBinding extends object>(
