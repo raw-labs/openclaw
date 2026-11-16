@@ -730,6 +730,8 @@ it("retires plugin operation effects with their activation while preserving pane
   const request = vi.fn(() => response.promise);
   const h = createGatewayHarness(createTestGatewayClient(request));
   const sessions = createTestSessionCapability(h.gateway);
+  // Plugin activation loads the operation owner before any host can attach.
+  await sessions.retainedOperations.prepare();
   const activation = createHost({
     ...subscriptions,
     gateway: h.gateway,

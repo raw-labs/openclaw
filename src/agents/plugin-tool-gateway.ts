@@ -99,6 +99,7 @@ export function preparePluginToolGatewayCapability(
           requestOwners,
           onYield: options?.onYield,
           senderIsOwner: options?.senderIsOwner,
+          withholdFailureReason: true,
           run: ({ assertCurrent, signal }) =>
             withGatewayToolCallerIdentity(
               { agentId: caller.agentId, sessionKey: caller.sessionKey },

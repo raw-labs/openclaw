@@ -69,6 +69,8 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
   let ownerChanged = false;
   let handle: ReturnType<ControlUiView<unknown>>;
   let viewContext: ControlUiViewContext<unknown> | undefined;
+  // Bridge writes made before a lazy mount settle afterward; mount already delivered them.
+  let updatePending = false;
   let disposed = false;
   let releasePresence: (() => void) | undefined;
   const defaultContainers = new Map<HTMLElement, () => void>();
@@ -117,6 +119,9 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
     host,
     ["props", "presented", "kind", "contributionKey", "surface", "mountDefaultView", "ownerSignal"],
     (key, before, after) => {
+      if (key === "props" || key === "presented") {
+        updatePending = true;
+      }
       if (key === "presented") {
         composerGeneration += 1;
         return;
@@ -157,6 +162,7 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
         ownerChanged = true;
         mountAbort?.abort();
       }
+      updatePending = true;
       scheduleSync();
     }),
   );
@@ -174,6 +180,7 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
         onContentChange,
         onPresenceChange,
         ...data
+        // SAFETY: accessory hosts render only the SDK accessory props contract.
       } = host.props as ControlUiAccessoryProps;
       // Ending this view retires its report; an unreported registration remains visible.
       releasePresence = onPresenceChange ? () => onPresenceChange(true) : undefined;
@@ -334,7 +341,10 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
       setAvailable(Boolean(next));
       setError("");
     }
-    update();
+    if (updatePending) {
+      updatePending = false;
+      update();
+    }
   }
   const mount = (container: HTMLElement) => {
     // Consume bridge writes that settled before the first mount, not a second vendor mount.
@@ -348,6 +358,7 @@ function PluginViewContent(props: PluginViewProps, host: PluginViewElement) {
       ? AbortSignal.any([abort.signal, host.ownerSignal])
       : abort.signal;
     mountAbort = abort;
+    updatePending = false;
     listen(registration.signal, "abort", unmount, { once: true, signal: abort.signal });
     try {
       viewContext = {

@@ -900,7 +900,6 @@
   "ui/src/lib/sessions/session-primary-windows.ts",
   "ui/src/lib/sessions/session-reconciliation.ts",
   "ui/src/lib/sessions/session-requests.ts",
-  "ui/src/lib/sessions/session-retained-operations.ts",
   "ui/src/lib/sessions/session-retry.ts",
   "ui/src/lib/sessions/session-roster-list-reader.ts",
   "ui/src/lib/sessions/session-roster-mutation-refresh.ts",

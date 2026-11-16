@@ -35,13 +35,17 @@ export async function initializeControlUiPlugin(
   const complete: ControlUiPluginOwner = Object.assign(owner, {
     host: createControlUiPluginHost(getContext, runtime, owner),
   });
-  const module = await loadControlUiPluginAssets(
-    descriptor.pluginId,
-    urls,
-    abort.signal,
-    (stop) => complete.disposers.add(stop),
-    styles,
-  );
+  // Plugin hosts can attach session operations during activation; load their owner first.
+  const [module] = await Promise.all([
+    loadControlUiPluginAssets(
+      descriptor.pluginId,
+      urls,
+      abort.signal,
+      (stop) => complete.disposers.add(stop),
+      styles,
+    ),
+    getContext().sessions.retainedOperations.prepare(),
+  ]);
   if (!runtime.isCurrent(owner)) {
     dispose();
     return undefined;

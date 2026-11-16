@@ -6,6 +6,10 @@ import { observeIntersection } from "../../lib/reactive/observers.ts";
 import { createScrollStateRef } from "../../lib/reactive/scroll-state.ts";
 import { iconData } from "../icon-data.ts";
 import { BrandIcon, Icon, type IconName } from "./icon.tsx";
+
+function isIconName(name: string): name is IconName {
+  return Object.hasOwn(iconData, name);
+}
 type Tone = "normal" | "muted" | "ok" | "warn" | "danger" | "purple";
 type Glyph = string;
 type Badge = { icon: Glyph; tone: Tone; label: string };
@@ -30,8 +34,8 @@ export function ActivityGlyph(props: { name: Glyph }) {
       name === "spinner" ||
       name === "github"
       ? undefined
-      : Object.hasOwn(iconData, name)
-        ? (name as IconName)
+      : isIconName(name)
+        ? name
         : "plug";
   };
   return (

@@ -239,6 +239,7 @@ vi.mock("../commands/doctor/shared/plugin-runtime-symlinks.js", () => ({
     mocks.collectStalePluginRuntimeSymlinkHealthFindings,
 }));
 
+// mock-isolation: bundled checks and declared plugin checks read live plugin manifests.
 vi.mock("./bundled-health-checks.js", () => ({
   registerBundledHealthChecks: mocks.registerBundledHealthChecks,
   collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),

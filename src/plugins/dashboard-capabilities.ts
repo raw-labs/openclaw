@@ -103,8 +103,7 @@ export function registerPluginDashboardCapabilities(params: {
     }
     if (
       (CORE_BOARD_HOST_CAPABILITY_IDS as readonly string[]).includes(capabilityId) ||
-      (!legacyAlias &&
-        (LEGACY_BOARD_DATA_BINDING_IDS as readonly string[]).includes(capabilityId)) ||
+      (!legacyAlias && LEGACY_BOARD_DATA_BINDING_IDS.some((id) => id === capabilityId)) ||
       capabilityId.startsWith(BOARD_CRON_TRIGGER_PREFIX)
     ) {
       fail(params.record.id, `capability id ${JSON.stringify(capabilityId)} is reserved by core`);

@@ -81,7 +81,10 @@ export type SessionCapability = Pick<
   } & {
     readonly githubPublication: Pick<ReturnType<typeof createSessionGitHubPublication>, "attach">;
     /** Plugin-contributed session operations; native GitHub publication keeps its own owner. */
-    readonly retainedOperations: Pick<ReturnType<typeof createSessionRetainedOperations>, "attach">;
+    readonly retainedOperations: {
+      prepare: () => Promise<void>;
+      attach: ReturnType<typeof createSessionRetainedOperations>["attach"];
+    };
     readonly state: SessionState;
     /** Broad observer outage, independent of query and operation errors. */
     readonly eventSubscriptionError: string | null;

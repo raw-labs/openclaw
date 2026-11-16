@@ -70,6 +70,11 @@ export async function handoffSessionTool(
     signal?: AbortSignal;
     /** The yielding turn was admitted as an owner; its resume keeps that decision. */
     senderIsOwner?: boolean;
+    /**
+     * Plugin-owned Gateway errors may echo request payloads; only host-owned
+     * operations disclose their delivery failure reason in the transcript.
+     */
+    withholdFailureReason?: true;
     formatResult: (payload: Record<string, unknown>) => string;
   },
 ) {
@@ -355,10 +360,13 @@ export async function handoffSessionTool(
             expectedLifecycleRevision: target.lifecycleRevision ?? null,
             idempotencyKey: contextKey + ":undelivered",
             text:
-              `${params.name} could not continue this conversation automatically. ` +
+              `${params.name} could not continue this conversation automatically` +
+              (params.withholdFailureReason ? ". " : `: ${reason}. `) +
               (result
                 ? `Its result: ${formatResult()}. Send a message to continue from it; do not repeat it.`
-                : "Its execution outcome is unavailable. Check the existing operation state before continuing; do not repeat the operation."),
+                : params.withholdFailureReason
+                  ? "Its execution outcome is unavailable. Check the existing operation state before continuing; do not repeat the operation."
+                  : "Send a message to retry."),
           }).catch((noticeError: unknown) => ({
             ok: false,
             reason: formatErrorMessage(noticeError),

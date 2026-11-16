@@ -20,8 +20,6 @@ const SESSION_READ_METHODS: ReadonlySet<string> = new Set([
   "models.list",
   "openclawId.status",
   "progressCard.get",
-  "plugins.controlUi.list",
-  "plugins.controlUi.report",
   "projects.list",
   "projects.checkoutOptions",
   "session.suggestions.list",

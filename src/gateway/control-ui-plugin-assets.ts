@@ -42,7 +42,7 @@ import {
   captureHttpRequestAuthority,
   type GatewayHttpRequestAuthOptions,
 } from "./http-request-authority.js";
-import { authorizeOperatorScopesForMethod } from "./method-scopes.js";
+import { authorizeOperatorScopesForRequiredScope, READ_SCOPE } from "./method-scopes.js";
 import { resolveSharedGatewaySessionGeneration } from "./server/ws-shared-generation.js";
 
 const log = createSubsystemLogger("gateway/control-ui");
@@ -444,20 +444,13 @@ export async function handleControlUiPluginAssetRequest(
     const grant = cookieAuth.requestAuth.controlUiPluginGrants?.find(
       (candidate) =>
         candidate.pluginId === pluginId &&
-        authorizeOperatorScopesForMethod("plugins.controlUi.list", candidate.scopes).allowed,
+        authorizeOperatorScopesForRequiredScope(READ_SCOPE, candidate.scopes).allowed,
     );
     if (!grant) {
       sendGatewayAuthFailure(res, { ok: false, reason: "unauthorized" });
       return true;
     }
-  } else if (
-    !(await authorizeControlUiReadRequestOrReply({
-      req,
-      res,
-      ...params,
-      requiredOperatorMethod: "plugins.controlUi.list",
-    }))
-  ) {
+  } else if (!(await authorizeControlUiReadRequestOrReply({ req, res, ...params }))) {
     return true;
   }
   if (!hasCurrentClientAuthority()) {

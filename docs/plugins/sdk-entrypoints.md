@@ -42,7 +42,7 @@ the existing picker, session creation, and cloud workspace owners consume it.
 See [Repository sources](/plugins/sdk-repository-sources).
 
 The `dashboard` entrypoint exposes a declared data binding with Board-owned
-grant preparation and the persisted legacy grant grammar.
+grant preparation.
 
 A plugin tool's optional `context.gateway` capability calls only that plugin's
 registered Gateway methods. The host retains request authority and accepted

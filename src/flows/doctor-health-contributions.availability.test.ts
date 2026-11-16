@@ -9,6 +9,7 @@ import {
 import { clearHealthChecksForTest } from "./health-check-registry.js";
 
 const registerBundledHealthChecks = vi.hoisted(() => vi.fn());
+// mock-isolation: bundled checks and declared plugin checks read live plugin manifests.
 vi.mock("./bundled-health-checks.js", () => ({
   registerBundledHealthChecks,
   collectDeclaredPluginDoctorHealthChecks: () => ({ checks: [], findings: [] }),

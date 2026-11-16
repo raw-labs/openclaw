@@ -5,6 +5,7 @@ import type { ResolvedConversationCapabilityProfile } from "./conversation-capab
 import { isConversationToolAllowed } from "./conversation-tool-policy-pipeline.js";
 import { applyGatewayToolPolicy } from "./gateway-tool-policy.js";
 import { hasRestrictiveAllowPolicy, replaceWithEffectiveToolAllowlist } from "./tool-policy.js";
+import { githubPublishToolDefinition } from "./tools/github-publish-tool.js";
 
 export type InheritedToolPolicyDefinition = Pick<AnyAgentTool, "name" | "parameters"> & {
   pluginMetadata?: { pluginId: string; policyGroups?: readonly string[] };
@@ -25,15 +26,21 @@ export function captureChildToolAllowlist(params: {
     capabilityProfile.policy.inheritancePolicies.some(hasRestrictiveAllowPolicy);
   const extraNames = options?.additionalInheritedToolNamesRef ?? [];
   extraNames.length = 0;
-  // Factories can describe tools unavailable in this workspace. Children still
-  // construct their own tools, constrained by this parent's policy ceiling.
+  // A parent may have no repository while its child receives a worktree, and
+  // plugin factories can describe tools unavailable in this workspace. Children
+  // still construct their own tools, constrained by this parent's policy ceiling.
+  const definitions: InheritedToolPolicyDefinition[] = [
+    ...(options?.githubPublicationAvailable === false ? [githubPublishToolDefinition] : []),
+    ...params.policyDefinitions,
+  ];
   if (
     (captureAllowlist || options?.additionalInheritedToolNamesRef) &&
     params.includeOpenClawTools &&
-    !params.isMemoryFlushRun
+    !params.isMemoryFlushRun &&
+    definitions.length > 0
   ) {
     const permitted = filterToolsByMessageProvider(
-      [...params.policyDefinitions],
+      definitions,
       options?.toolPolicyMessageProvider ?? options?.messageProvider,
     ).filter(({ name, pluginMetadata }) =>
       isConversationToolAllowed(capabilityProfile, name, pluginMetadata),

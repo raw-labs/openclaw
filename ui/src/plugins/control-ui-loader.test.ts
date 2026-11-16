@@ -22,6 +22,7 @@ it.each(["load", "error", "abort"] as const)(
     const context = {
       config: createApplicationConfigCapability({ resourceBasePath: "" }),
       resourceBasePath: "",
+      sessions: { retainedOperations: { prepare: async () => undefined } },
       gateway: {
         snapshot: {
           phase: "connected",

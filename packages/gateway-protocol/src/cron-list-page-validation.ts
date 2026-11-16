@@ -22,6 +22,7 @@ export function readCanonicalCronListPage<TJob = unknown>(
     throw new Error("cron.list returned an invalid inventory page");
   }
   const page = value;
+  // SAFETY: this reader checks page bounds only; the caller's TJob names its trusted job shape.
   const jobs = value.jobs as TJob[];
   const limit = typeof page.limit === "number" ? page.limit : 0;
   if (
@@ -38,6 +39,7 @@ export function readCanonicalCronListPage<TJob = unknown>(
   ) {
     throw new Error("cron.list returned an invalid inventory page");
   }
+  // SAFETY: every page field was checked above; jobs keep the caller's TJob contract.
   return page as CanonicalCronListPage<TJob>;
 }
 
