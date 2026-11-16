@@ -111,34 +111,22 @@ type BundledHealthCheckParams = {
   ) => Promise<T>;
 };
 
-function defineHealthCheckRegistration(
+type HealthCheckRegistration = {
+  /** Native registrations keep their own artifact; declared plugin checks skip this owner. */
+  pluginId?: string;
   register: (
     params: BundledHealthCheckParams,
     registerCheck: typeof registerHealthCheck,
-  ) => HealthFinding[] | void,
-  updateReadiness?: "post-plugin",
-  pluginId?: string,
-) {
-  // Owners retain callback and check identities when refreshing their registration state.
-  // Declare phase ownership before loading their implementation, then carry it onto each check.
-  const registerCheck = updateReadiness
-    ? (check: Parameters<typeof registerHealthCheck>[0]) =>
-        registerHealthCheck(Object.assign(check, { updateReadiness }))
-    : registerHealthCheck;
-  return {
-    pluginId,
-    updateReadiness,
-    register: (params: BundledHealthCheckParams) => register(params, registerCheck),
-  };
-}
+  ) => HealthFinding[] | void;
+};
 
-const HEALTH_CHECK_REGISTRATIONS = [
-  defineHealthCheckRegistration(registerMemoryCoreHealthChecks, "post-plugin"),
-  defineHealthCheckRegistration(registerPolicyHealthChecks),
-  defineHealthCheckRegistration(registerOpenAIHealthChecks, undefined, "openai"),
-  defineHealthCheckRegistration(registerCuaHealthChecks),
-  defineHealthCheckRegistration(registerSkillWorkshopHealthChecks),
-  defineHealthCheckRegistration(registerBundledWorkerProviderHealthChecks),
+const HEALTH_CHECK_REGISTRATIONS: readonly HealthCheckRegistration[] = [
+  { register: registerMemoryCoreHealthChecks },
+  { register: registerPolicyHealthChecks },
+  { pluginId: "openai", register: registerOpenAIHealthChecks },
+  { register: registerCuaHealthChecks },
+  { register: registerSkillWorkshopHealthChecks },
+  { register: registerBundledWorkerProviderHealthChecks },
 ];
 
 function loadMemoryCoreHealthApi(): BundledHealthApi {
@@ -182,17 +170,13 @@ export function resolveBundledHealthCheckPluginStateMode(
 export function registerBundledHealthChecks(
   params: BundledHealthCheckParams & { updateReadiness?: "post-plugin" },
 ): HealthFinding[] {
-  const findings: HealthFinding[] = [];
-  for (const registration of HEALTH_CHECK_REGISTRATIONS) {
-    if (
-      params.updateReadiness !== undefined &&
-      registration.updateReadiness !== params.updateReadiness
-    ) {
-      continue;
-    }
-    findings.push(...(registration.register(params) ?? []));
+  // Plugin-owned checks never gate an update; their findings surface after restart.
+  if (params.updateReadiness !== undefined) {
+    return [];
   }
-  return findings;
+  return HEALTH_CHECK_REGISTRATIONS.flatMap(
+    ({ register }) => register(params, registerHealthCheck) ?? [],
+  );
 }
 
 function registerMemoryCoreHealthChecks(

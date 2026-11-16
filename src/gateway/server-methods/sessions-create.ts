@@ -10,7 +10,7 @@ import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.j
 import { sessionEntryForkedFromParent } from "../../config/sessions/session-entry-lineage.js";
 import { resolveSessionPublicShare } from "../../config/sessions/session-public-share.js";
 import { formatErrorMessage } from "../../infra/errors.js";
-import { normalizeAgentId, parseAgentSessionKey } from "../../routing/session-key.js";
+import { normalizeAgentId } from "../../routing/session-key.js";
 import { assertPreparedSkillLibrarySelection } from "../../skills/library/selection.js";
 import { buildDashboardSessionTitleSource } from "../dashboard-session-title.js";
 import {
@@ -176,6 +176,13 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const cfg = getCurrentConfig();
     const sessionCreation = attributeAgentToolSessionCreation(preparedCreation, toolRequester);
     const authority = createAgentRuntimeAuthorityGuard(client, context, respond);
+    const handleAuthorityError = (error: unknown): undefined => {
+      if (error instanceof ModelAccountConnectAuthorityError) {
+        respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, error.message));
+        return undefined;
+      }
+      return authority.handleClosedError(error);
+    };
     const assertSessionCreateCurrent = Object.assign(
       bindGatewayDeviceRevocation(() => {
         requestAuthority.assertCurrent();
@@ -230,16 +237,9 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       respond(false, undefined, explicitlyRequestedAgent.error);
       return;
     }
-    const catalogRequestedKey = explicitlyRequestedKey ?? "global";
-    const catalogAgentId = catalogId
-      ? normalizeAgentId(
-          parseAgentSessionKey(catalogRequestedKey)?.agentId ?? explicitlyRequestedAgent.agentId,
-        )
+    const catalogTarget = catalogId
+      ? resolveRegisteredCatalogCreateTarget(catalogId, explicitlyRequestedAgent.agentId, cfg)
       : undefined;
-    const catalogTarget =
-      catalogId && catalogAgentId
-        ? resolveRegisteredCatalogCreateTarget(catalogId, catalogAgentId, cfg)
-        : undefined;
     if (catalogTarget && !catalogTarget.ok) {
       respond(
         false,
@@ -369,7 +369,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     }
     const deferWorktree =
       p.worktree === true && !emptyWorkspace && hasInitialTurn && !existingTargetEntry;
-    let sessionAgentId = catalogAgentId ?? explicitlyRequestedAgent.agentId;
+    const sessionAgentId = explicitlyRequestedAgent.agentId;
     if (repository) {
       // Mention validation and later creation must use the same real child target.
       sessionKey ??= buildDashboardSessionKey(sessionAgentId, { incognito: p.incognito });
@@ -382,7 +382,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
     const preparedRoot =
       repository || emptyWorkspace || deviceFolder || p.worktree === true
         ? undefined
-        : prepareSessionCreateFilesystemRoot({
+        : await prepareSessionCreateFilesystemRoot({
             cfg,
             enforceSandboxContainment: Boolean(sessionCwd && !requestedExecNode),
             requestedExecNode,
@@ -391,6 +391,11 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
             sessionKey,
             targetAgentId: sessionAgentId,
           });
+    try {
+      commitGuard();
+    } catch (error) {
+      return handleAuthorityError(error);
+    }
     if (preparedRoot && !preparedRoot.ok) {
       respond(false, undefined, preparedRoot.error);
       return;
@@ -436,7 +441,6 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
       }
       targetKey ??= buildDashboardSessionKey(agentId, { incognito: p.incognito });
       sessionKey = preservesUnspecifiedKey ? undefined : targetKey;
-      sessionAgentId = agentId;
       const inheritParentWorktree =
         !emptyWorkspace &&
         !projectRoot &&
@@ -651,11 +655,7 @@ export const sessionCreateHandlers: GatewayRequestHandlers = {
         respond(false, undefined, catalogWait.unavailable.error);
         return undefined;
       }
-      if (error instanceof ModelAccountConnectAuthorityError) {
-        respond(false, undefined, errorShape(ErrorCodes.FORBIDDEN, error.message));
-        return undefined;
-      }
-      return authority.handleClosedError(error);
+      return handleAuthorityError(error);
     });
     if (!created) {
       return;

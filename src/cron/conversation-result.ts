@@ -11,7 +11,7 @@ export type CronConversationResultParams = {
   agentId: string;
   jobId: string;
   runStartedAt: number;
-  conversation: { sessionKey: string; sessionId: string; lifecycleRevision?: string };
+  conversation: { sessionKey: string; lifecycleRevision?: string };
   payloads: ReplyPayload[];
   /** The execution already recorded this result in the destination's model history. */
   modelAlreadyRecorded?: boolean;
@@ -30,10 +30,7 @@ export async function commitCronConversationResult(
   const committed = await commitBackgroundPayloadsToSession({
     agentId: params.agentId,
     sessionKey: params.conversation.sessionKey,
-    expectedGeneration: {
-      sessionId: params.conversation.sessionId,
-      lifecycleRevision: params.conversation.lifecycleRevision,
-    },
+    expectedLifecycleRevision: params.conversation.lifecycleRevision,
     payloads: params.payloads,
     modelAlreadyRecorded: params.modelAlreadyRecorded,
     idempotencyKey: `cron-current-completion:${runId}`,

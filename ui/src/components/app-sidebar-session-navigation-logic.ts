@@ -9,6 +9,7 @@ import {
   SIDEBAR_NAV_ROUTES,
   type SidebarZoneEntry,
 } from "../app-navigation.ts";
+import { pluginTabKey } from "../app-route-paths.ts";
 import type { ApplicationContext } from "../app/context.ts";
 import { i18n } from "../i18n/index.ts";
 import { listSelectableAgents } from "../lib/agents/display.ts";
@@ -45,7 +46,6 @@ import {
   resolveUiSessionRowAgentId,
   resolveUiSessionNavigationParentKey,
 } from "../lib/sessions/session-key.ts";
-import { pluginTabKey } from "../pages/plugin/route.tsx";
 import type { ControlUiNavigationRegistration } from "../plugins/control-ui-capability.ts";
 import { sidebarPluginTabs } from "./app-sidebar-nav-menus.tsx";
 import {

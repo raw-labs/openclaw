@@ -4,8 +4,6 @@
  */
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 import { emitAgentEvent } from "../infra/agent-events.js";
-import { describeInterpreterInlineEval } from "../infra/command-analysis/inline-eval.js";
-import { detectInlineEvalInSegments } from "../infra/command-analysis/risks.js";
 import { lookupCronRunExecSource } from "../infra/cron-run-exec-source.js";
 import { emitTrustedSecurityEvent } from "../infra/diagnostic-events.js";
 import { ONE_SHOT_ALLOW_ALWAYS } from "../infra/exec-approvals-allow-always.js";
@@ -85,6 +83,7 @@ import {
   resolveExecHostApprovalContext,
   sendExecApprovalFollowupResult,
 } from "./bash-tools.exec-host-shared.js";
+import { inlineEvalFact, opaqueProgramAsk } from "./bash-tools.exec-interpreter-approval.js";
 import { createApprovalSlug, runExecProcess } from "./bash-tools.exec-runtime.js";
 import { abortable } from "./embedded-agent-runner/run/abortable.js";
 
@@ -214,8 +213,7 @@ export async function processGatewayAllowlist(
       },
     });
   }
-  const inlineEvalHit =
-    params.strictInlineEval === true ? detectInlineEvalInSegments(allowlistEval.segments) : null;
+  const inlineEvalHit = inlineEvalFact(params, allowlistEval);
   const allowAlwaysPersistence = await resolveAllowAlwaysPersistenceDecision({
     segments: allowlistEval.segments,
     cwd: params.workdir,
@@ -226,13 +224,6 @@ export async function processGatewayAllowlist(
     authorizationPlan: allowlistEval.authorizationPlan,
     runtimePayload: inlineEvalHit !== null,
   });
-  if (inlineEvalHit) {
-    params.warnings.push(
-      `Warning: strict inline-eval mode requires reviewer or explicit approval for ${describeInterpreterInlineEval(
-        inlineEvalHit,
-      )}.`,
-    );
-  }
   const exactCommandDurableApprovalSatisfied = hasExactCommandDurableExecApproval({
     allowlist: approvals.allowlist,
     commandText: params.command,
@@ -363,6 +354,9 @@ export async function processGatewayAllowlist(
   const timedOutFallbackRequiresHeredocApproval =
     hasHeredocSegment && fallbackAllowlistAuthorizationSatisfied;
   const requiresInlineEvalApproval = inlineEvalHit !== null;
+  const requiresOpaqueProgramApproval =
+    !durableApprovalSatisfied &&
+    (await opaqueProgramAsk(params, allowlistEval, hostSecurity, hostAsk));
   // Exact-command durable trust must bypass plan approval: allow-always here
   // persists an `=command:` grant for the raw command text, so unenforceability
   // is moot and re-prompting would make that grant permanently ineffective.
@@ -385,7 +379,8 @@ export async function processGatewayAllowlist(
     }) ||
     requiresAllowlistPlanApproval ||
     requiresHeredocApproval ||
-    requiresInlineEvalApproval;
+    requiresInlineEvalApproval ||
+    requiresOpaqueProgramApproval;
   const denyHeadlessApproval = (): ProcessGatewayAllowlistResult => {
     const text = params.approvalFollowupText
       ? `${params.approvalFollowupText}\nCommand: ${params.command}`
@@ -655,7 +650,7 @@ export async function processGatewayAllowlist(
             ? "heredoc"
             : autoReviewEnforcedCommand === undefined
               ? "execution-plan-miss"
-              : hasAllowlistMiss
+              : hasAllowlistMiss || requiresOpaqueProgramApproval
                 ? "allowlist-miss"
                 : "approval-required",
         analysis: {

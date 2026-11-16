@@ -47,6 +47,7 @@ import {
 } from "../../sessions/session-controller.rpc-sources.js";
 import { ensureSessionDiffBaseline } from "../../sessions/session-diff-baseline.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { captureOpenClawStateWorkerContext } from "../../state/openclaw-state-worker-context.js";
 import { githubApiToken } from "../github-public-api.js";
 import { ADMIN_SCOPE } from "../operator-scopes.js";
 import { projectRequesterForClient, resolveRequesterProject } from "../project-access.js";
@@ -524,31 +525,36 @@ export async function prepareSessionWorkspaceForRun(params: {
                   assertProjectCurrent,
                 )
               : ok<string, ErrorShape>(
-                  await withProjectCheckoutLifecycle(directory, { signal }, async (lease) => {
-                    const assertCurrent = () => {
-                      lease.assertOwned();
-                      assertProjectCurrent();
-                    };
-                    const current = await resolveProjectRegistry(cfg, preparedSource.project.id);
-                    const currentRoot =
-                      current?.source === "workspace"
-                        ? await resolveProjectDirectory(current.repoRoot)
-                        : current?.repoRoot;
-                    assertCurrent();
-                    if (
-                      !current ||
-                      currentRoot !== directory ||
-                      current.source !== preparedSource.project.source
-                    ) {
-                      throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);
-                    }
-                    return await resolvePreparedWorktreeBase(
-                      directory,
-                      base,
-                      lease.signal,
-                      assertCurrent,
-                    );
-                  }),
+                  await withProjectCheckoutLifecycle(
+                    directory,
+                    { context: captureOpenClawStateWorkerContext(), signal },
+                    async (lease) => {
+                      const assertCurrent = () => {
+                        lease.assertCurrent();
+                        assertProjectCurrent();
+                      };
+                      const current = await resolveProjectRegistry(cfg, preparedSource.project.id);
+                      const currentRoot =
+                        current?.source === "workspace"
+                          ? await resolveProjectDirectory(current.repoRoot)
+                          : current?.repoRoot;
+                      await lease.assertOwned();
+                      assertCurrent();
+                      if (
+                        !current ||
+                        currentRoot !== directory ||
+                        current.source !== preparedSource.project.source
+                      ) {
+                        throw new Error(SESSION_PROJECT_OWNERSHIP_ERROR);
+                      }
+                      return await resolvePreparedWorktreeBase(
+                        directory,
+                        base,
+                        lease.signal,
+                        assertCurrent,
+                      );
+                    },
+                  ),
                 );
             selectedRef ??= base.ref;
             resolved = commit;

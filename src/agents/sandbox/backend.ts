@@ -36,6 +36,7 @@ import {
   resolveSshRuntimePaths,
   sshSandboxBackendManager,
 } from "./ssh-backend.js";
+import { assertSandboxStateOwnerPathCurrent } from "./state-owner-path.js";
 
 export type {
   CreateSandboxBackendParams,
@@ -206,6 +207,7 @@ export async function createSandboxBackend(
       preparedParams,
       operatorAuthority,
       githubIdentity,
+      guard,
       executionEnvironment,
     );
   }
@@ -214,8 +216,19 @@ export async function createSandboxBackend(
       preparedParams,
       operatorAuthority,
       githubIdentity,
+      guard,
       executionEnvironment,
     );
+  }
+  // Published backend callbacks retain synchronous path authority at their own effects.
+  let assertRuntimeCurrent = params.assertRuntimeCurrent;
+  if (guard?.stateOwnerPath && factory !== createSshSandboxBackend) {
+    const stateOwnerPath = guard.stateOwnerPath;
+    assertRuntimeCurrent = () => {
+      assertSandboxStateOwnerPathCurrent(stateOwnerPath);
+      params.assertRuntimeCurrent?.();
+    };
+    preparedParams = { ...preparedParams, assertRuntimeCurrent };
   }
   const reserveRuntimeId = resolveSandboxBackendRegistration(params.cfg.backend)?.reserveRuntimeId;
   using phases = observeDiagnosticsTimelinePhases("attempt.setup.sandbox.backend.factory");
@@ -230,16 +243,20 @@ export async function createSandboxBackend(
     configLabelKind: backend.configLabelKind ?? "Image",
   });
   if (!reserveRuntimeId) {
-    const backend = await factory(preparedParams);
+    assertRuntimeCurrent?.();
+    const backend =
+      factory === createSshSandboxBackend
+        ? await createSshSandboxBackend(preparedParams, guard)
+        : await factory(preparedParams);
     phases.mark("attempt.setup.sandbox.backend.registry_publish");
     await updateRegistry(toEntry(backend), {
       ...guard,
-      beforeLegacyApply: params.assertRuntimeCurrent,
+      beforeLegacyApply: assertRuntimeCurrent,
     });
     return backend;
   }
   for (let attempt = 0; ; attempt++) {
-    params.assertRuntimeCurrent?.();
+    assertRuntimeCurrent?.();
     phases.mark("attempt.setup.sandbox.backend.reservation");
     const reservation = await reserveSandboxRegistryEntry(
       {
@@ -251,14 +268,14 @@ export async function createSandboxBackend(
         image: params.cfg.docker.image,
         workspaceDir: params.workspaceDir,
       },
-      { ...guard, beforeLegacyApply: params.assertRuntimeCurrent },
+      { ...guard, beforeLegacyApply: assertRuntimeCurrent },
     );
     try {
       phases.mark("attempt.setup.sandbox.backend.registry_lock_wait");
       return await withSandboxRegistryEntryLock(reservation, async () => {
         phases.mark("attempt.setup.sandbox.backend.factory");
         const assertCurrent = () => {
-          params.assertRuntimeCurrent?.();
+          assertRuntimeCurrent?.();
           assertSandboxRegistryEntryCurrent(reservation);
         };
         try {
@@ -278,7 +295,7 @@ export async function createSandboxBackend(
           await completeSandboxRegistryReservation(
             { ...reservation, ...toEntry(backend), createdAtMs: reservation.createdAtMs },
             false,
-            { ...guard, beforeLegacyApply: params.assertRuntimeCurrent },
+            { ...guard, beforeLegacyApply: assertRuntimeCurrent },
           );
           return backend;
         } catch (error) {
@@ -289,7 +306,7 @@ export async function createSandboxBackend(
             phases.mark("attempt.setup.sandbox.backend.reservation_retire");
             await completeSandboxRegistryReservation(reservation, true, {
               ...guard,
-              beforeLegacyApply: params.assertRuntimeCurrent,
+              beforeLegacyApply: assertRuntimeCurrent,
             });
           }
           throw error;

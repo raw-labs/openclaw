@@ -1,7 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { composeSessionSourceAssertion } from "../../config/sessions/session-source-authority.js";
 import { racePromiseWithAbortSignal } from "../../infra/abort-signal.js";
-import { normalizeGitPathForFilesystem, requireGitCommandOutput } from "../../infra/git-exec.js";
+import { requireGitCommandOutput } from "../../infra/git-exec.js";
 import { pruneMapToMaxSize } from "../../infra/map-size.js";
 import { pathEntryExists } from "../../infra/path-existence.js";
 import { redactSensitiveText } from "../../logging/redact.js";
@@ -16,7 +17,7 @@ import { fetchRemoteDefault } from "./base-fetch.js";
 import type { ResolvedWorktreeBase } from "./base-ref.types.js";
 import { estimateWorktreeGitBytes } from "./capacity.js";
 import { hasWorktreeUnknownOutcome } from "./errors.js";
-import { commandError, listGitWorktrees, requireGit, runGit } from "./git.js";
+import { commandError, listGitWorktrees, requireGit, requireGitPath, runGit } from "./git.js";
 import { fastForwardLocalDefault } from "./local-default.js";
 import { timeWorktreePreparationPhase } from "./preparation-timing.js";
 import type { CreateManagedWorktreeParams, WorktreeWaitBudget } from "./types.js";
@@ -147,18 +148,19 @@ export async function resolveWorktreeBase(
   }
   const options = {
     signal,
-    beforeRun: () => {
-      signal?.throwIfAborted();
-      assertCurrent?.();
-    },
+    beforeRun: composeSessionSourceAssertion(
+      assertCurrent ? [assertCurrent] : [],
+      (assertSource) => {
+        signal?.throwIfAborted();
+        assertSource();
+      },
+    ),
     env: { GIT_NO_LAZY_FETCH: "1", GIT_TERMINAL_PROMPT: "0" },
   };
   const commonDir = await fs.realpath(
     path.resolve(
       repoRoot,
-      normalizeGitPathForFilesystem(
-        await requireGit(repoRoot, ["rev-parse", "--git-common-dir"], options),
-      ),
+      await requireGitPath(repoRoot, ["rev-parse", "--git-common-dir"], options),
     ),
   );
   const checkout = await fs.realpath(repoRoot);
@@ -185,9 +187,7 @@ export async function resolvePreparedWorktreeBase(
     const commonDir = await fs.realpath(
       path.resolve(
         repoRoot,
-        normalizeGitPathForFilesystem(
-          await requireGit(repoRoot, ["rev-parse", "--git-common-dir"], options),
-        ),
+        await requireGitPath(repoRoot, ["rev-parse", "--git-common-dir"], options),
       ),
     );
     const warning = await fastForwardLocalDefault(
@@ -237,18 +237,21 @@ export async function withWorktreeBasePreparation<T>(
     let waiting: ReturnType<typeof startWorktreeWait> | undefined;
     const options = {
       signal,
-      beforeRun: () => {
-        try {
-          if (!active) {
-            throw new Error("Worktree base preparation is closed");
+      beforeRun: composeSessionSourceAssertion(
+        assertCurrent ? [assertCurrent] : [],
+        (assertSource) => {
+          try {
+            if (!active) {
+              throw new Error("Worktree base preparation is closed");
+            }
+            options.signal?.throwIfAborted();
+            assertSource();
+          } catch (error) {
+            retirement = { error };
+            throw error;
           }
-          options.signal?.throwIfAborted();
-          assertCurrent?.();
-        } catch (error) {
-          retirement = { error };
-          throw error;
-        }
-      },
+        },
+      ),
       env: { GIT_NO_LAZY_FETCH: "1", GIT_TERMINAL_PROMPT: "0" },
     };
     const settled = (attempt: RemoteDefaultAttempt, pending: RemoteDefaultAttempt["pending"]) =>

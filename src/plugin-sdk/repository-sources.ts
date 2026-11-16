@@ -29,6 +29,7 @@ export type {
   ManagedProjectOptions,
   ManagedProjectSourceV1,
   ManagedProjectBaseV1,
+  ManagedProjectTransportOptions,
 } from "../projects/managed-project-source.js";
 
 /** Keep checkout leases, storage, and registration with the existing host custodian. */

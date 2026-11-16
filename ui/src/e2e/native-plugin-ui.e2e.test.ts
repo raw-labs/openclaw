@@ -543,7 +543,7 @@ suite.define(() => {
           Number.parseFloat(getComputedStyle(element).borderTopLeftRadius),
         ),
       ).toBeGreaterThan(0);
-      await selectView(page, "Transcript", "ui-fixture/failing-transcript");
+      await selectView(page, "Chat", "ui-fixture/failing-transcript");
       const transcriptError = page
         .getByRole("alert")
         .filter({ hasText: "Fixture transcript failed" });

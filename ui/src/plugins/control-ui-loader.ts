@@ -35,7 +35,9 @@ export async function initializeControlUiPlugin(
   const complete: ControlUiPluginOwner = Object.assign(owner, {
     host: createControlUiPluginHost(getContext, runtime, owner),
   });
-  // Plugin hosts can attach session operations during activation; load their owner first.
+  // Plugin hosts can attach session operations during activation. Request their owner before
+  // any asset so an unavailable owner fails before a plugin import starts; both are awaited.
+  const operationsReady = getContext().sessions.retainedOperations.prepare();
   const [module] = await Promise.all([
     loadControlUiPluginAssets(
       descriptor.pluginId,
@@ -44,7 +46,7 @@ export async function initializeControlUiPlugin(
       (stop) => complete.disposers.add(stop),
       styles,
     ),
-    getContext().sessions.retainedOperations.prepare(),
+    operationsReady,
   ]);
   if (!runtime.isCurrent(owner)) {
     dispose();

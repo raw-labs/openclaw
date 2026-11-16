@@ -126,6 +126,7 @@ it.each(["docker", "podman"] as const)(
       backendParams({ cfg: resolveSandboxConfigForAgent(createConfig(engine, false)) }),
       undefined,
       undefined,
+      undefined,
       environment,
     );
     const spec = await backend.buildExecSpec({
@@ -159,6 +160,7 @@ it("scrubs exclusion-only container and transport environments without a provide
   );
   const backend = await createDockerSandboxBackend(
     backendParams(),
+    undefined,
     undefined,
     undefined,
     environment,
