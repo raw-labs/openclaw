@@ -1,7 +1,10 @@
 export { createBoundedLineFramer } from "../process/bounded-line-framer.js";
 export { stripGatewayAllocatorEnv } from "../process/child-env.js";
 export { SUPERVISOR_HINT_ENV_VARS } from "../infra/supervisor-markers.js";
-export { resolveNodeRuntimeExecutable } from "../infra/node-runtime-executable.js";
+export {
+  resolveNodeRuntimeExecutable,
+  resolveNodeRuntimeExecutableAsync,
+} from "../infra/node-runtime-executable.js";
 export { resolveLaunchableNodePath } from "../infra/stable-node-path.js";
 export { splitCommandArgs } from "../utils/shell-argv.js";
 export {
@@ -62,3 +65,17 @@ export {
   readDarwinProcessCommandLine,
   type DarwinProcess,
 } from "../process/darwin-process-inspection.js";
+
+// Repository-source transports run Git with the host's bounded runner, cancellation and
+// managed-checkout maintenance policy; the transport keeps authentication and remote policy.
+export {
+  executeGitCommand,
+  requireGitCommandOutput,
+  type GitCommandOptions,
+} from "../infra/git-exec.js";
+export type { GitOperationStarter } from "../infra/git-network-retry.js";
+export {
+  configureProjectCheckoutMaintenance,
+  projectCheckoutGitEnvironment,
+  runProjectGitCommand,
+} from "../projects/project-checkout-maintenance.js";

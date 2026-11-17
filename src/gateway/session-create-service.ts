@@ -74,7 +74,7 @@ import {
   resolveSessionCreateTrustedOwners,
   validateFreshSessionConstraints,
   validateSessionCreateTarget,
-  withInitialAssistantTranscript,
+  withInitialSessionTranscript,
 } from "./session-create-initial-assistant.js";
 import { buildDashboardSessionKey, resolveSessionCreateTargetKey } from "./session-create-key.js";
 import { buildSessionCreateLifecycleTargets } from "./session-create-lifecycle-targets.js";
@@ -84,6 +84,7 @@ import {
   prepareSessionCreateDefaultAccount,
   prepareSessionCreateModelSelection,
   projectSessionCreateSpawnModelSelection,
+  projectSessionCreateCatalogModelSelection,
   resolveSessionCreateModelInputError,
 } from "./session-create-model-selection.js";
 import { tryResetGatewaySessionForCreation } from "./session-create-reset.js";
@@ -810,21 +811,16 @@ async function createGatewaySessionInScope(
           ...projectPreparedSessionWorkspace(existingEntry, {
             projectId,
             pendingProjectGitUrl,
+            repositorySourceId: params.repositorySourceId,
             pendingWorktree,
             spawnedCwd,
             preparedLifecycle,
           }),
-          ...(catalogResolvedModel && catalogAgentRuntime
-            ? {
-                providerOverride: catalogResolvedModel.provider,
-                modelOverride: catalogResolvedModel.model,
-                modelOverrideSource: "user" as const,
-                modelOverrideRouteResolution: "resolved" as const,
-                agentRuntimeOverride: catalogAgentRuntime,
-                modelSelectionLocked: true,
-                pluginOwnerId: catalogPluginOwnerId,
-              }
-            : {}),
+          ...projectSessionCreateCatalogModelSelection({
+            model: catalogResolvedModel,
+            agentRuntime: catalogAgentRuntime,
+            pluginOwnerId: catalogPluginOwnerId,
+          }),
           ...(params.deviceFolder ? { deviceFolder: { ...params.deviceFolder } } : {}),
           ...(execNode ? { execHost: "node", execNode, ...(execCwd ? { execCwd } : {}) } : {}),
           ...(createdNewEntry &&
@@ -962,12 +958,10 @@ async function createGatewaySessionInScope(
           entry.publicShare = prepareSessionPublicShareGrant(entry, target.canonicalKey);
         }
         if (params.fork !== true) {
-          return withInitialAssistantTranscript(
-            patched,
-            entry,
-            params.initialAssistantMessage,
-            runtimeCwd,
-          );
+          return withInitialSessionTranscript(patched, entry, params, {
+            cwd: runtimeCwd,
+            isNew: createdNewEntry,
+          });
         }
         if (!canonicalParentSessionKey || !currentParentSessionEntry || !parentSessionTarget) {
           return unavailableSessionRequest("failed to resolve parent session for fork");

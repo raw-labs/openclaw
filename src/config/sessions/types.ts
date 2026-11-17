@@ -385,6 +385,8 @@ type SessionEntryCore = SessionEntryProvenance &
     projectId?: string;
     /** Durable cloud repository owner; never identifies a Gateway filesystem path. */
     repositoryWorkspaceId?: string;
+    /** Exact manifest-declared plugin/source selection; absence retains native repository behavior. */
+    repositorySourceId?: string;
     /** Explicit parent session linkage for dashboard-created child sessions. */
     parentSessionKey?: string;
     /** Exact parent incarnation captured when this child was created. */
@@ -728,6 +730,8 @@ export type InternalSessionEntryCore = SessionEntryCore & {
   /** Written only by committed graceful shutdown, consumed by the next startup. */
   resumeAfterRestart?: {
     queuedInputIds: string[];
+    /** Interrupted turn requester; revalidated before the replacement turn is admitted. */
+    operatorSource?: import("../../gateway/operator-run-recovery-source.codec.js").QueuedOperatorRecoverySource;
     /** Original per-input limits, restored only after current source revalidation. */
     queuedInputSources?: Record<
       string,
@@ -898,6 +902,9 @@ function mergeSessionEntryWithPolicy(
   }
   if (existing.repositoryWorkspaceId !== undefined) {
     next.repositoryWorkspaceId = existing.repositoryWorkspaceId;
+  }
+  if (existing.repositorySourceId !== undefined) {
+    next.repositorySourceId = existing.repositorySourceId;
   }
   if (existing.forkSource !== undefined) {
     next.forkSource = existing.forkSource;
