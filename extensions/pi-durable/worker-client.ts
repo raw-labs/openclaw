@@ -8,6 +8,7 @@ import type {
   Context,
   Message,
   Model,
+  ToolResultMessage,
 } from "openclaw/plugin-sdk/llm";
 import { resolveRuntimeWorkerUrl } from "openclaw/plugin-sdk/process-runtime";
 import type { SessionGeneration, WaitState } from "./notices.js";
@@ -80,7 +81,6 @@ type HostRequest =
       kind: "model";
       purpose: "generation" | "compaction";
       context: Context;
-      sessionId: string;
       reasoning?: Attempt["thinkLevel"];
       maxTokens?: number;
     }
@@ -89,6 +89,7 @@ type HostRequest =
   | { kind: "finalize"; answer: AssistantMessage }
   | { kind: "before-compaction"; messages: Message[] }
   | { kind: "after-compaction"; messages: Message[]; count: number }
+  | { kind: "tool-rejected"; assistant: AssistantMessage; result: ToolResultMessage }
   | { kind: "tool"; name: string; callId: string; args: Record<string, unknown> };
 type ModelProgress = (event: AssistantMessageEvent) => void;
 type HostCall = (request: HostRequest, progress: ModelProgress) => Promise<unknown>;

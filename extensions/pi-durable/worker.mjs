@@ -10,6 +10,7 @@ const {
   defineDoc,
   defineExtension,
   defineSignal,
+  defineTask,
   defineTool,
   GenerationTask,
   Harness,
@@ -35,6 +36,24 @@ const turn = defineDoc({
   version: 1,
   initial: () => ({}),
   checkpointWhen: () => false,
+});
+
+const finishYield = defineTask({
+  name: "openclaw.pi-yield",
+  version: 1,
+  initial: () => ({ phase: "finish" }),
+  phases: {
+    async finish(task, runtime, context) {
+      await runtime.commit(async (tx) => {
+        const data = await tx.doc(turn, runtime.conversationId);
+        data.yielded = task.input;
+        return {
+          status: "terminal",
+          outcome: { status: "completed", result: { terminate: true } },
+        };
+      }, context);
+    },
+  },
 });
 
 let nextRequestId = 0;
@@ -240,6 +259,30 @@ async function run() {
       command.action === "start" || command.action === "resume" || command.action === "compact"
         ? [
             hook(GenerationTask, {
+              async afterTools(assistantId, results, runtime, context) {
+                let yieldRequest;
+                for (const id of results) {
+                  const entry = await runtime.entry(id, context);
+                  const result = entry?.model?.[0];
+                  if (result?.role !== "toolResult") {
+                    continue;
+                  }
+                  if (!result.isError) {
+                    yieldRequest ??= result.details?.openclawYield;
+                  } else if (
+                    entry.data?.diagnostics?.some(({ code }) => code === "invalid_arguments")
+                  ) {
+                    // Native validation can settle a call before OpenClaw's tool executes.
+                    const assistant = (await runtime.entry(assistantId, context))?.model?.[0];
+                    if (assistant?.role === "assistant") {
+                      await requestHost({ kind: "tool-rejected", assistant, result });
+                    }
+                  }
+                }
+                if (yieldRequest) {
+                  return { tasks: [{ task: finishYield, input: yieldRequest }] };
+                }
+              },
               async onYield(answer) {
                 const reason = await requestHost({ kind: "finalize", answer });
                 return reason ? { continue: reason } : undefined;
@@ -257,7 +300,9 @@ async function run() {
             }),
           ]
         : [];
-    registry.install(defineExtension({ name: "openclaw-wait", tools, hooks }));
+    registry.install(
+      defineExtension({ name: "openclaw-wait", tools, hooks, tasks: [finishYield] }),
+    );
   };
   let model =
     command.action === "start" || command.action === "compact" ? command.model : undefined;
@@ -287,28 +332,36 @@ async function run() {
         getModel(provider, id) {
           return model?.provider === provider && model.id === id ? model : undefined;
         },
-        streamSimple(_model, context, { sessionId, reasoning }) {
+        streamSimple(_model, context, { reasoning }) {
           const stream = createAssistantMessageEventStream();
           void requestHost(
             {
               kind: "model",
               purpose: "generation",
               context: openClawContext(context),
-              sessionId,
               reasoning,
             },
             adaptModelProgress(stream),
           )
-            .then((message) => stream.end(message))
+            .then((message) => {
+              // Pi's overflow classifier reads text. Preserve OpenClaw's provider code
+              // even when the upstream error message uses different wording.
+              const errorMessage =
+                message.stopReason === "error" && message.errorCode === "context_length_exceeded"
+                  ? [message.errorCode, message.errorMessage].filter(Boolean).join(": ")
+                  : message.errorMessage;
+              stream.end(
+                errorMessage === message.errorMessage ? message : { ...message, errorMessage },
+              );
+            })
             .catch(() => stream.end(modelRequestError(model)));
           return stream;
         },
-        async completeSimple(_model, context, { sessionId, reasoning, maxTokens }) {
+        async completeSimple(_model, context, { reasoning, maxTokens }) {
           return await requestHost({
             kind: "model",
             purpose: "compaction",
             context: openClawContext(context),
-            sessionId,
             reasoning,
             maxTokens,
           }).catch(() => modelRequestError(model));
@@ -386,13 +439,13 @@ async function run() {
       const seed = command.checkpoint?.messages ?? command.seed;
       if (seed?.length && !record?.forkHistorySeeded && !record?.submissionId) {
         // Pi requires submission table reads to precede entry writes. Commit the
-        // fork history with its own marker so an interrupted startup can retry.
+        // initial history with its own marker so an interrupted startup can retry.
         await root.commit(async (tx) => {
           const data = await tx.doc(turn, root.id);
           for (const [index, message] of seed.entries()) {
             const checkpoint = index === 0 ? command.checkpoint : undefined;
             await tx.appendEntry(root.id, {
-              kind: checkpoint ? "openclaw.fork-checkpoint" : "openclaw.fork-history",
+              kind: checkpoint ? "openclaw.fork-checkpoint" : "openclaw.initial-history",
               ...(checkpoint
                 ? {
                     head: "self",
@@ -418,6 +471,7 @@ async function run() {
         delete data.taskId;
         delete data.parent;
         delete data.approvalId;
+        delete data.yielded;
         if (command.recovery) {
           data.recovery = command.recovery;
         } else {
@@ -587,6 +641,9 @@ async function run() {
       parent: record.parent,
     };
     if (settled.status === "done") {
+      if (record.yielded) {
+        return { ...receipt, wait: { state: "yielded", ...record.yielded } };
+      }
       const entry = await harness.commit((tx) => tx.entry(settled.answer), ctx);
       const assistant = entry?.model?.find((message) => message.role === "assistant");
       const text = assistant?.content

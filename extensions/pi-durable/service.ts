@@ -16,13 +16,24 @@ import {
 } from "openclaw/plugin-sdk/simple-completion-runtime";
 import { compactPiConversation } from "./compact.js";
 import { runForegroundPiTurn } from "./foreground-turn.js";
-import { preparePiForkHistory } from "./fork-history.js";
+import { preparePiInitialHistory } from "./fork-history.js";
 import { createPiModelPreview } from "./live-model.js";
 import { preparePiNodeWorkspace } from "./node-workspace.js";
-import { createPiDurableNoticePublisher, mirrorRecoveredPiAnswer, type Target } from "./notices.js";
+import {
+  capturePiParentGeneration,
+  createPiDurableNoticePublisher,
+  describePiSession,
+  mirrorRecoveredPiAnswer,
+  type Target,
+} from "./notices.js";
 import { answerPiSideQuestion, type SideQuestion } from "./side-question.js";
 import { createPiTurnLifecycle } from "./turn-lifecycle.js";
-import { invokeRecoveredPiGatewayTool, toolFailure, toolOutput } from "./turn-tools.js";
+import {
+  invokeRecoveredPiGatewayTool,
+  recordRecoveredPiToolRejection,
+  toolFailure,
+  toolOutput,
+} from "./turn-tools.js";
 import { runWorker, type PiStartCommand, type WorkerResult } from "./worker-client.js";
 
 export const TOOL = "pi_durable_wait";
@@ -92,25 +103,6 @@ export function createService(
     (await exists(id))
       ? await runWorker(database(id), { action: "status" }, scheduler.signal)
       : { wait: { state: "missing" } };
-  async function describeSession(agentId: string, sessionKey: string) {
-    const { session } = await api.runtime.gateway.request<{
-      session: {
-        parentSessionKey?: string;
-        forkSource?: { sessionKey: string; sessionId: string };
-      } | null;
-    }>("sessions.describe", { key: sessionKey, agentId });
-    return session;
-  }
-  async function parentGeneration(agentId: string, sessionKey: string) {
-    const parentKey = (await describeSession(agentId, sessionKey))?.parentSessionKey;
-    const parentAgent = parentKey && parseAgentSessionKey(parentKey)?.agentId;
-    return parentKey && parentAgent
-      ? await api.runtime.system.captureSessionGeneration({
-          sessionKey: parentKey,
-          agentId: parentAgent,
-        })
-      : undefined;
-  }
   const publishNotices = createPiDurableNoticePublisher(api);
   const schedule = (id: string, delayMs = 1000, noticeRetries = NOTICE_RETRIES) => {
     scheduler.schedule({
@@ -224,6 +216,14 @@ export function createService(
                       if (request.kind === "after-compaction") {
                         return await lifecycle.afterCompaction(request.messages, request.count);
                       }
+                      if (request.kind === "tool-rejected") {
+                        return await recordRecoveredPiToolRejection(
+                          api,
+                          current,
+                          recoveredRunId,
+                          request,
+                        );
+                      }
                       if (request.kind === "check-session" || request.kind === "tool") {
                         const name = request.kind === "tool" ? request.name : CHECK_TOOL;
                         const args = request.kind === "tool" ? request.args : {};
@@ -326,7 +326,7 @@ export function createService(
                                 }
                               : undefined,
                             options: {
-                              sessionId: request.sessionId,
+                              sessionId: current.target.sessionId,
                               maxTokens: request.maxTokens,
                               ...(request.purpose === "compaction"
                                 ? { cacheRetention: "none" }
@@ -542,7 +542,7 @@ export function createService(
       if (expected.sessionId !== sessionId) {
         throw new Error("The child session changed before the wait was admitted.");
       }
-      const parent = await parentGeneration(agentId, sessionKey);
+      const parent = await capturePiParentGeneration(api, agentId, sessionKey);
       if (!parent) {
         throw new Error("Pi Durable approval requires a current parent chat.");
       }
@@ -602,11 +602,13 @@ export function createService(
         }
         const delegatedTools: string[] = [];
         admissionBindings.add(delegatedTools);
-        const fork =
+        const history =
           previous.wait.state === "missing"
-            ? (await describeSession(agentId, sessionKey))?.forkSource
+            ? await preparePiInitialHistory(params, generation)
             : undefined;
-        const history = fork ? await preparePiForkHistory(params, generation) : undefined;
+        const fork = history?.nativeRunId
+          ? (await describePiSession(api, agentId, sessionKey))?.forkSource
+          : undefined;
         const sourceAgent =
           fork && history?.nativeRunId && parseAgentSessionKey(fork.sessionKey)?.agentId;
         const source =
@@ -665,7 +667,7 @@ export function createService(
                 throw new Error("Pi Durable turn admission changed conversation.");
               }
               const parent = toolNames.includes(TOOL)
-                ? await parentGeneration(agentId, sessionKey)
+                ? await capturePiParentGeneration(api, agentId, sessionKey)
                 : undefined;
               host.assertActive();
               const start = {

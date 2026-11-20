@@ -8,8 +8,8 @@ import type { SessionGeneration } from "./notices.js";
 
 type Attempt = Parameters<AgentHarnessV2["runAttempt"]>[0];
 
-/** Read the fork's own committed copy of the selected visible path. */
-export async function preparePiForkHistory(
+/** Seed a new Pi journal from the session’s committed path before its current input. */
+export async function preparePiInitialHistory(
   attempt: Attempt,
   generation: SessionGeneration,
 ): Promise<{ seed: Message[]; nativeRunId?: string }> {
@@ -18,12 +18,12 @@ export async function preparePiForkHistory(
   const page = await readSessionTranscriptVisibleMessageDelta({
     ...generation,
     start: "reset-window",
-    maxMessages: 160,
-    maxBytes: 256 * 1024,
+    maxMessages: 1024,
+    maxBytes: 1024 * 1024,
   });
   host.assertActive();
   if (page.kind !== "page") {
-    throw new Error("The committed fork history is unavailable.");
+    throw new Error("The committed session history is unavailable.");
   }
   const recorder = attempt.userTurnTranscriptRecorder;
   const pendingUserKey =
@@ -87,7 +87,7 @@ export async function preparePiForkHistory(
     }
   }
   if (page.hasMore) {
-    throw new Error("The selected fork exceeds Pi Durable's initial history allowance.");
+    throw new Error("The session exceeds Pi Durable's initial history allowance.");
   }
   return { seed, nativeRunId };
 }

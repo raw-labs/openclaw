@@ -174,6 +174,7 @@ export default definePluginEntry({
       async runAttempt(params) {
         const result = await requireService().start(params);
         const parked = result.wait.state === "waiting";
+        const yielded = result.wait.state === "yielded" ? result.wait : undefined;
         const text = parked
           ? `Pi Durable is waiting for approval. Use /approve durable:${PLUGIN_ID}:${result.id} allow-once or deny in the parent chat.`
           : result.wait.state === "completed"
@@ -183,7 +184,7 @@ export default definePluginEntry({
           terminal:
             result.wait.state === "cancelled"
               ? { kind: "aborted", source: "external" }
-              : text
+              : text || yielded
                 ? { kind: "ok" }
                 : {
                     kind: "failed",
@@ -200,8 +201,16 @@ export default definePluginEntry({
           finalPresentation: result.finalPresentation,
           lastAssistant: result.assistant,
           messagesSnapshot: result.assistant ? [result.assistant] : [],
-          runtimeContinuationStarted: parked || undefined,
-          toolMetas: [],
+          runtimeContinuationStarted: parked || Boolean(yielded) || undefined,
+          ...(yielded
+            ? {
+                yieldDetected: true,
+                yieldAcknowledgment: yielded.acknowledgment,
+                yieldMessageWaitRegistered: yielded.messageWaitRegistered,
+              }
+            : {}),
+          toolMetas: result.toolMetas,
+          ...(result.compactionCount ? { compactionCount: result.compactionCount } : {}),
           cloudCodeAssistFormatError: false,
           didSendViaMessagingTool: false,
           itemLifecycle: { activeCount: 0, completedCount: 0, startedCount: 0 },
@@ -212,7 +221,7 @@ export default definePluginEntry({
           sessionFileUsed: params.sessionFile,
           replayMetadata: {
             replaySafe: false,
-            hadPotentialSideEffects: parked || result.executedTools,
+            hadPotentialSideEffects: parked || result.toolMetas.length > 0,
           },
         };
       },

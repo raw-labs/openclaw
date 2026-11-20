@@ -98,6 +98,8 @@ it(
     const sideResults = new Map<string, string>();
     let summaryReachedChat = false;
     let summaryRequests = 0;
+    let overflowRequests = 0;
+    let overflowWrites = 0;
     let concurrentCompaction = false;
     let pendingGeneration = 0;
     let pendingSummaries = 0;
@@ -125,6 +127,38 @@ it(
           pendingSummaries--;
           writeOpenAiResponsesText(response, {
             text: "PI_INTERNAL_SUMMARY",
+            messageId: `msg_${id}`,
+            responseId: `resp_${id}`,
+          });
+          return;
+        }
+        if (requestText.includes("PI_CODED_OVERFLOW_WRITE")) {
+          overflowRequests++;
+          if (overflowRequests === 1) {
+            response.writeHead(400, { "content-type": "application/json" }).end(
+              JSON.stringify({
+                error: {
+                  type: "invalid_request_error",
+                  code: "context_length_exceeded",
+                  message: "This model's maximum context length was exceeded.",
+                },
+              }),
+            );
+            return;
+          }
+          if (!requestText.includes('"type":"function_call_output"')) {
+            overflowWrites++;
+            writeRestartToolCall(
+              response,
+              "pi-overflow-write",
+              "write",
+              { path: "pi-overflow.txt", content: "written once\n" },
+              Number(id),
+            );
+            return;
+          }
+          writeOpenAiResponsesText(response, {
+            text: "PI_OVERFLOW_RECOVERED",
             messageId: `msg_${id}`,
             responseId: `resp_${id}`,
           });
@@ -389,6 +423,7 @@ it(
             tools: {
               ...config.tools,
               allow: [
+                "write",
                 "session_status",
                 "pi_durable_wait",
                 "parity__show",
@@ -504,7 +539,14 @@ it(
           {
             model: childModelId,
             authorization: "Bearer test-token-placeholder",
-            tools: ["parity__show", "pi_durable_wait", "pi_proof_record_effect", "session_status"],
+            tools: [
+              "apply_patch",
+              "parity__show",
+              "pi_durable_wait",
+              "pi_proof_record_effect",
+              "session_status",
+              "write",
+            ],
             toolTranscript: [],
           },
         ]);
@@ -954,7 +996,6 @@ it(
           (await readdir(join(instance.stateDir, pluginId))).filter((name) =>
             name.endsWith(".sqlite"),
           );
-        const beforeReset = await readDatabases();
         const { runId: compactRunId } = await reopened.request<{ runId: string }>("chat.send", {
           sessionKey: manualChat,
           message: "/compact Preserve the context proof markers.",
@@ -981,6 +1022,40 @@ it(
         expect(
           instance.logs().split("Pi proof observed after compaction commit").length,
         ).toBeGreaterThan(2);
+        const overflowChat = `agent:main:dashboard:${randomUUID()}`;
+        await reopened.request("sessions.create", {
+          key: overflowChat,
+          agentId: "main",
+          model: `mock-openai/${childModelId}`,
+          agentRuntime: pluginId,
+        });
+        for (let turn = 1; turn <= 3; turn++) {
+          const { runId: historyRunId } = await reopened.request<{ runId: string }>("chat.send", {
+            sessionKey: overflowChat,
+            message: `Overflow history ${turn}\n${"Synthetic history for provider overflow. ".repeat(1300)}`,
+            idempotencyKey: randomUUID(),
+          });
+          await expect(
+            reopened.request("agent.wait", { runId: historyRunId, timeoutMs: 15_000 }),
+          ).resolves.toMatchObject({ status: "ok" });
+        }
+        const summariesBeforeOverflow = summaryRequests;
+        const { runId: overflowRunId } = await reopened.request<{ runId: string }>("chat.send", {
+          sessionKey: overflowChat,
+          message: "PI_CODED_OVERFLOW_WRITE",
+          idempotencyKey: randomUUID(),
+        });
+        await expect(
+          reopened.request("agent.wait", { runId: overflowRunId, timeoutMs: 15_000 }),
+        ).resolves.toMatchObject({ status: "ok" });
+        expect(summaryRequests).toBe(summariesBeforeOverflow + 1);
+        expect(overflowRequests).toBe(3);
+        expect(overflowWrites).toBe(1);
+        expect(await readFile(join(workspace, "pi-overflow.txt"), "utf8")).toBe("written once\n");
+        expect(
+          JSON.stringify(await reopened.request("chat.history", { sessionKey: overflowChat })),
+        ).toContain("PI_OVERFLOW_RECOVERED");
+        const beforeReset = await readDatabases();
         await reopened.request("sessions.reset", {
           key: longChat,
           agentId: "main",

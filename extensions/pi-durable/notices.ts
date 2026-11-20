@@ -5,6 +5,7 @@ import type {
   PluginServiceSessionWorkV1,
   PluginServiceSessionWorkContextV1,
 } from "openclaw/plugin-sdk/plugin-entry";
+import { parseAgentSessionKey } from "openclaw/plugin-sdk/routing";
 import { appendSessionTranscriptMessageByIdentityStrict } from "openclaw/plugin-sdk/session-transcript-runtime";
 import type { WorkerResult } from "./worker-client.js";
 
@@ -12,9 +13,44 @@ export type Target = Awaited<ReturnType<PluginServiceSessionWorkV1["admit"]>>["t
 export type SessionGeneration = NonNullable<
   Awaited<ReturnType<OpenClawPluginApi["runtime"]["system"]["captureSessionGeneration"]>>
 >;
+export type PiTurnYield = {
+  acknowledgment?: string;
+  messageWaitRegistered?: boolean;
+  resumesInPlace?: boolean;
+};
 export type WaitState =
   | { state: "missing" | "waiting" | "ready" | "failed" | "cancelled" | "occupied" }
+  | ({ state: "yielded" } & PiTurnYield)
   | { state: "completed"; result: { text: string } };
+
+export async function describePiSession(
+  api: OpenClawPluginApi,
+  agentId: string,
+  sessionKey: string,
+) {
+  const { session } = await api.runtime.gateway.request<{
+    session: {
+      parentSessionKey?: string;
+      forkSource?: { sessionKey: string; sessionId: string };
+    } | null;
+  }>("sessions.describe", { key: sessionKey, agentId });
+  return session;
+}
+
+export async function capturePiParentGeneration(
+  api: OpenClawPluginApi,
+  agentId: string,
+  sessionKey: string,
+) {
+  const parentKey = (await describePiSession(api, agentId, sessionKey))?.parentSessionKey;
+  const parentAgent = parentKey && parseAgentSessionKey(parentKey)?.agentId;
+  return parentKey && parentAgent
+    ? await api.runtime.system.captureSessionGeneration({
+        sessionKey: parentKey,
+        agentId: parentAgent,
+      })
+    : undefined;
+}
 
 export function createPiDurableNoticePublisher(api: OpenClawPluginApi) {
   const postNotice = async (

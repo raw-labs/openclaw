@@ -75,7 +75,7 @@ export async function compactPiConversation(
             request.context,
             {
               apiKey: params.resolvedApiKey,
-              sessionId: request.sessionId,
+              sessionId: params.sessionId,
               cacheRetention: "none",
               reasoning,
               maxTokens: request.maxTokens,

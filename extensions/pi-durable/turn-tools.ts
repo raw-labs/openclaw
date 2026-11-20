@@ -18,8 +18,14 @@ import {
   type AssistantMessage,
   type ToolResultMessage,
 } from "openclaw/plugin-sdk/llm";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { appendSessionTranscriptMessageByIdentityStrict } from "openclaw/plugin-sdk/session-transcript-runtime";
+import type {
+  OpenClawPluginApi,
+  PluginServiceSessionWorkContextV1,
+} from "openclaw/plugin-sdk/plugin-entry";
+import {
+  appendSessionTranscriptMessagesByIdentity,
+  publishSessionTranscriptUpdateByIdentity,
+} from "openclaw/plugin-sdk/session-transcript-runtime";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
 import type { SessionGeneration } from "./notices.js";
 
@@ -60,9 +66,100 @@ export async function invokeRecoveredPiGatewayTool(
   return receipt.output;
 }
 
+export function createPiToolExchangeRecorder(
+  generation: SessionGeneration,
+  runId: string,
+  config: Attempt["config"],
+  assertActive: () => void,
+  log: OpenClawPluginApi["logger"],
+) {
+  const { agentId, sessionId, sessionKey } = generation;
+  const identities = { agentId, sessionId, sessionKey, runId };
+  return async (
+    assistant: AssistantMessage | undefined,
+    result: ToolResultMessage,
+    args?: Record<string, unknown>,
+  ) => {
+    const { toolName, toolCallId } = result;
+    const call = assistant?.content.find(
+      (part) => part.type === "toolCall" && part.id === toolCallId && part.name === toolName,
+    );
+    if (!assistant || call?.type !== "toolCall") {
+      return;
+    }
+    const messages = [
+      {
+        ...assistant,
+        content: [{ ...call, arguments: args ?? call.arguments }],
+        usage: makeZeroUsageSnapshot(),
+      },
+      result,
+    ].flatMap((message) => {
+      const prepared = runAgentHarnessBeforeMessageWriteHook({ ...identities, message });
+      return prepared
+        ? [
+            {
+              runId,
+              beforeFreshMessageCommit: assertActive,
+              idempotencyLookup: "scan" as const,
+              message: {
+                ...prepared,
+                idempotencyKey: `pi-durable:tool:${runId}:${toolCallId}:${message.role}`,
+              },
+            },
+          ]
+        : [];
+    });
+    if (messages.length !== 2) {
+      return;
+    }
+    try {
+      const appended = await appendSessionTranscriptMessagesByIdentity({
+        ...generation,
+        config,
+        messages,
+      });
+      if (
+        isRecord(result.details) &&
+        result.details.mcpAppPreview &&
+        appended.some((row) => row.appended)
+      ) {
+        await publishSessionTranscriptUpdateByIdentity(generation);
+      }
+    } catch {
+      assertActive();
+      // The tool has already settled. A failed projection must not ask the model to retry it.
+      log.warn("Pi Durable could not record a tool exchange in the OpenClaw transcript.");
+    }
+  };
+}
+
+export async function recordRecoveredPiToolRejection(
+  api: OpenClawPluginApi,
+  current: PluginServiceSessionWorkContextV1,
+  runId: string,
+  rejection: { assistant: AssistantMessage; result: ToolResultMessage },
+) {
+  const generation = await api.runtime.system.captureSessionGeneration(current.target);
+  current.assertCurrent();
+  if (
+    generation?.sessionId !== current.target.sessionId ||
+    generation.lifecycleRevision !== (current.target.lifecycleRevision ?? null)
+  ) {
+    return;
+  }
+  await createPiToolExchangeRecorder(
+    generation,
+    runId,
+    api.runtime.config.current({ clone: true }),
+    current.assertCurrent,
+    api.logger,
+  )(rejection.assistant, rejection.result);
+}
+
 export function createPiTurnToolRunner(
   attempt: Attempt,
-  generation: SessionGeneration,
+  recordToolExchange: ReturnType<typeof createPiToolExchangeRecorder>,
   signal: AbortSignal,
   log: OpenClawPluginApi["logger"],
 ) {
@@ -73,26 +170,6 @@ export function createPiTurnToolRunner(
   const diagnostics = {
     label: "Pi Durable",
     log: { debug: (message: string) => log.debug?.(message) },
-  };
-  const recordAppMessage = async (
-    message: AssistantMessage | ToolResultMessage,
-    toolCallId: string,
-  ) => {
-    const prepared = runAgentHarnessBeforeMessageWriteHook({ ...identities, message });
-    if (prepared) {
-      await appendSessionTranscriptMessageByIdentityStrict({
-        ...generation,
-        config: attempt.config,
-        runId,
-        beforeFreshMessageCommit: host.assertActive,
-        idempotencyLookup: "scan",
-        updateMode: "inline",
-        message: {
-          ...prepared,
-          idempotencyKey: `pi-durable:app:${runId}:${toolCallId}:${message.role}`,
-        },
-      });
-    }
   };
   return async function execute(
     tool: Tool,
@@ -153,37 +230,32 @@ export function createPiTurnToolRunner(
         });
         host.assertActive();
         const output = result.content.filter(
-          (part) => part.type === "text" || part.type === "image",
+          (part): part is ToolResultMessage["content"][number] =>
+            part.type === "text" || part.type === "image",
         );
-        if (isRecord(observerResult.details) && observerResult.details.mcpAppPreview) {
-          const modelCall = assistant?.content.find(
-            (part) => part.type === "toolCall" && part.id === toolCallId && part.name === toolName,
-          );
-          if (assistant && modelCall?.type === "toolCall") {
-            // The normal App reconstruction path reads the exact call/result pair.
-            await recordAppMessage(
-              {
-                ...assistant,
-                content: [{ ...modelCall, arguments: executedArguments }],
-                usage: makeZeroUsageSnapshot(),
-              },
-              toolCallId,
-            );
-          }
-          const { mcpAppPreview, mcpServer, mcpTool, structuredContent } = observerResult.details;
-          await recordAppMessage(
-            {
-              role: "toolResult",
-              toolCallId,
-              toolName,
-              isError,
-              timestamp: Date.now(),
-              content: output,
-              details: { mcpAppPreview, mcpServer, mcpTool, structuredContent },
-            },
+        const app = observerResult.details;
+        await recordToolExchange(
+          assistant,
+          {
+            role: "toolResult",
             toolCallId,
-          );
-        }
+            toolName,
+            isError,
+            timestamp: Date.now(),
+            content: output,
+            ...(isRecord(app) && app.mcpAppPreview
+              ? {
+                  details: {
+                    mcpAppPreview: app.mcpAppPreview,
+                    mcpServer: app.mcpServer,
+                    mcpTool: app.mcpTool,
+                    structuredContent: app.structuredContent,
+                  },
+                }
+              : {}),
+          },
+          executedArguments,
+        );
         await emit({
           toolCallId,
           name: toolName,
@@ -214,6 +286,20 @@ export function createPiTurnToolRunner(
           error: message,
           startArgs: executedArguments,
         });
+        if (boundary.executionStarted) {
+          await recordToolExchange(
+            assistant,
+            {
+              role: "toolResult",
+              toolCallId,
+              toolName,
+              isError: true,
+              timestamp: Date.now(),
+              content: [{ type: "text", text: message }],
+            },
+            executedArguments,
+          );
+        }
         await emit({
           toolCallId,
           name: toolName,

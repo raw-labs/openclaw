@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { AgentHarnessV2 } from "openclaw/plugin-sdk/agent-harness";
 import {
   buildEmbeddedAttemptToolRunContext,
@@ -8,11 +9,11 @@ import { completeSimple, type AssistantMessage, type Message } from "openclaw/pl
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
 import { createPiModelPreview } from "./live-model.js";
 import { preparePiNodeWorkspace } from "./node-workspace.js";
-import { mirrorPiDurableAnswer, type SessionGeneration } from "./notices.js";
+import { mirrorPiDurableAnswer, type PiTurnYield, type SessionGeneration } from "./notices.js";
 import { piHookContext, preparePiPrompt } from "./prompt.js";
 import { attachPiSteering } from "./steering.js";
 import { createPiTurnLifecycle } from "./turn-lifecycle.js";
-import { createPiTurnToolRunner } from "./turn-tools.js";
+import { createPiToolExchangeRecorder, createPiTurnToolRunner } from "./turn-tools.js";
 import {
   piWorkerModel,
   runWorker,
@@ -67,6 +68,7 @@ export async function runForegroundPiTurn(options: {
   }
   using node = preparePiNodeWorkspace(api, attempt.sandbox, signal, host.assertActive);
   const params = node ? { ...attempt, sandbox: node.sandbox } : attempt;
+  const toolYield = new AsyncLocalStorage<{ recorded?: PiTurnYield }>();
   const regularTools = params.disableTools
     ? []
     : await host.createToolSurfaceAsync?.({
@@ -82,6 +84,19 @@ export async function runForegroundPiTurn(options: {
         modelProvider: params.provider,
         modelId: params.modelId,
         runId: params.runId,
+        onYield(_message, acknowledgment, messageWaitRegistered, handoff) {
+          if (handoff?.conditional || handoff?.terminal) {
+            throw new Error("This tool requires an immediate or conditional handoff.");
+          }
+          const current = toolYield.getStore();
+          if (current) {
+            current.recorded = {
+              ...(acknowledgment === undefined ? {} : { acknowledgment }),
+              ...(messageWaitRegistered === undefined ? {} : { messageWaitRegistered }),
+              ...(handoff?.resumesInPlace ? { resumesInPlace: true } : {}),
+            };
+          }
+        },
       });
   if (!regularTools) {
     throw new Error("OpenClaw could not prepare the Pi Durable tool surface.");
@@ -109,10 +124,18 @@ export async function runForegroundPiTurn(options: {
     ...(params.authProfileId ? { profileId: params.authProfileId } : {}),
   };
   const model = { ...piWorkerModel(params.model), id: route.modelId, provider: route.provider };
-  let executedTools = false;
+  const toolMetas: Awaited<ReturnType<AgentHarnessV2["runAttempt"]>>["toolMetas"] = [];
+  let compactionCount = 0;
   let latestAssistant: AssistantMessage | undefined;
   const nextPreview = createPiModelPreview(params, log);
-  const executeTool = createPiTurnToolRunner(params, generation, signal, log);
+  const recordToolExchange = createPiToolExchangeRecorder(
+    generation,
+    params.runId,
+    params.config,
+    host.assertActive,
+    log,
+  );
+  const executeTool = createPiTurnToolRunner(params, recordToolExchange, signal, log);
   const lifecycle = createPiTurnLifecycle({
     ctx: piHookContext(params, [...toolByName.keys()]),
     runId: params.runId,
@@ -158,7 +181,13 @@ export async function runForegroundPiTurn(options: {
         return await lifecycle.beforeCompaction(request.messages);
       }
       if (request.kind === "after-compaction") {
+        compactionCount++;
         return await lifecycle.afterCompaction(request.messages, request.count);
+      }
+      if (request.kind === "tool-rejected") {
+        const { toolName, toolCallId } = request.result;
+        toolMetas.push({ toolName, toolCallId, isError: true });
+        return await recordToolExchange(request.assistant, request.result);
       }
       if (request.kind === "admit") {
         const admission = toolByName.get(approvalTool);
@@ -185,8 +214,19 @@ export async function runForegroundPiTurn(options: {
             isError: true,
           };
         }
-        executedTools = true;
-        return await executeTool(tool, request.callId, request.args, latestAssistant);
+        const turnYield: { recorded?: PiTurnYield } = {};
+        const receipt: (typeof toolMetas)[number] = {
+          toolName: tool.name,
+          toolCallId: request.callId,
+        };
+        toolMetas.push(receipt);
+        const toolResult = await toolYield.run(turnYield, () =>
+          executeTool(tool, request.callId, request.args, latestAssistant),
+        );
+        receipt.isError = toolResult.isError;
+        return turnYield.recorded && !toolResult.isError
+          ? { ...toolResult, details: { openclawYield: turnYield.recorded } }
+          : toolResult;
       }
       if (request.kind !== "model") {
         throw new Error("A Pi Durable approval is required before checking the session.");
@@ -204,7 +244,7 @@ export async function runForegroundPiTurn(options: {
           request.context,
           {
             apiKey: params.resolvedApiKey,
-            sessionId: request.sessionId,
+            sessionId,
             maxTokens: request.maxTokens,
             ...(compaction ? { cacheRetention: "none" } : {}),
             reasoning:
@@ -251,13 +291,26 @@ export async function runForegroundPiTurn(options: {
   });
   const transcript = await mirrorPiDurableAnswer(params, generation, result);
   if (result.wait.state !== "waiting") {
-    await lifecycle.end(result.wait.state === "completed", result.assistant, {
-      completedTurnSource: transcript?.completedTurnSource,
-      foregroundPromptContext: buildEmbeddedForegroundPromptContext(
-        { ...params, agentId },
-        params.agentDir ?? resolveAgentDir(params.config ?? {}, agentId),
-      ),
-    });
+    await lifecycle.end(
+      result.wait.state === "completed" || result.wait.state === "yielded",
+      result.assistant,
+      {
+        completedTurnSource: transcript?.completedTurnSource,
+        foregroundPromptContext: buildEmbeddedForegroundPromptContext(
+          { ...params, agentId },
+          params.agentDir ?? resolveAgentDir(params.config ?? {}, agentId),
+        ),
+      },
+    );
   }
-  return { ...result, executedTools, transcript, finalPresentation: lifecycle.finalPresentation };
+  if (result.wait.state === "yielded" && !result.wait.resumesInPlace) {
+    params.replyOperation?.yield();
+  }
+  return {
+    ...result,
+    toolMetas,
+    compactionCount,
+    transcript,
+    finalPresentation: lifecycle.finalPresentation,
+  };
 }
