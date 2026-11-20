@@ -40,6 +40,7 @@ export function emitGatewaySessionEndPluginHook(params: {
   agentId: string;
   workspaceDir?: string;
   reason: PluginHookSessionEndReason;
+  lifecycleRevision?: string;
   archivedTranscripts?: ArchivedSessionTranscript[];
   nextSessionId?: string;
   nextSessionKey?: string;
@@ -110,7 +111,11 @@ export function emitGatewaySessionEndPluginHook(params: {
       : params.reason === "new"
         ? { available: false as const, reason: "no-stable-cutoff" as const }
         : { available: false as const, reason: "unsupported-source" as const });
-  const payload = buildSessionEndHookPayload({ ...hookParams, endedTranscript });
+  const payload = buildSessionEndHookPayload({
+    ...hookParams,
+    lifecycleRevision: params.lifecycleRevision,
+    endedTranscript,
+  });
   // Detached hooks outlive the emitting turn and must not retain its mutation ownership.
   void runWithSessionControllerCleanup(() =>
     runWithGatewayDetachedWorkContinuation(async () => {

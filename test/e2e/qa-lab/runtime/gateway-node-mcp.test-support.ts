@@ -313,7 +313,7 @@ export async function waitForProcessExit(pid: number): Promise<void> {
 }
 
 export async function approvePairing(
-  gateway: GatewayHandle,
+  gateway: Pick<GatewayHandle, "call" | "logs">,
   kind: "device" | "node",
   nodeId?: string,
 ): Promise<string> {
@@ -341,7 +341,7 @@ export async function approvePairing(
 }
 
 export async function readNode(
-  gateway: GatewayHandle,
+  gateway: Pick<GatewayHandle, "call">,
   nodeId: string,
 ): Promise<NodeRead | undefined> {
   const result = (await gateway.call("node.list", {})) as { nodes?: NodeRead[] };

@@ -93,6 +93,8 @@ export type ReplyDispatcherOptions = {
   deliverPrepared?: (plan: OutboundPayloadPlan, info: ReplyDispatchRuntimeInfo) => Promise<unknown>;
   /** The delivery callback admits custody before external I/O and owns failure settlement. */
   pendingFinalDeliveryAdmission?: "deliver";
+  /** @internal The local delivery owner writes the command input and reply. */
+  ownsCommandTranscript?: true;
   silentReplyContext?: {
     cfg?: OpenClawConfig;
     sessionKey?: string;
@@ -158,6 +160,8 @@ export type ReplyDispatcher = {
     options?: ReplyDispatchBeforeDeliverOptions,
   ) => void;
   supportsSettledReceipt?: true;
+  /** @internal The local delivery owner writes the command input and reply. */
+  ownsCommandTranscript?: true;
   waitForIdle: () => Promise<void | ReplyDispatchReceipt>;
   /** @deprecated Use settled delivery receipts; this retains admission-time counts. */
   getQueuedCounts: () => Record<ReplyDispatchKind, number>;

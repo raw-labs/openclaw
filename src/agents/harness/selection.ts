@@ -649,6 +649,7 @@ async function withoutInternalHarnessAuthority(
     attempt: params,
     requiredNodeCommands: harness.cloudPlacement?.devicePlacement?.requiredNodeCommands,
     nativeModelPolicySupport: harness.nativeModelPolicySupport,
+    hostMcpApps: harness.mcpAppRuntimeOwner === "host",
     pluginId:
       ownerPluginId ??
       (() => {

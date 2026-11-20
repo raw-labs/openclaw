@@ -683,7 +683,9 @@ it.each(dispatchCases)(
           sourceExistedAtRetirement = existsSync(workspaceDir);
           admission.close();
         }
-        return { sandbox: remoteSandbox, assertCurrent() {}, [Symbol.dispose]() {} };
+        const sandbox = remoteSandbox;
+        const workerAssigned = sandbox !== null;
+        return { sandbox, workerAssigned, assertCurrent() {}, [Symbol.dispose]() {} };
       });
       const sandboxProvider = { prepareSandbox: resolvePlacementSandbox };
       const restorePlacement = installSessionPlacementAdmissionProvider({

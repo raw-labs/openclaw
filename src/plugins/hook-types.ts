@@ -46,6 +46,10 @@ import type {
 import { MODEL_HOOK_METADATA, type ModelRequestHooks } from "./hook-model.types.js";
 import type { PluginHookReplyDispatchEvent } from "./hook-reply-dispatch-event.types.js";
 import type { PluginHookRunStoppedHandler } from "./hook-run-stopped.types.js";
+import type {
+  PluginHookSessionEndEvent,
+  PluginHookSessionStartEvent,
+} from "./hook-session-lifecycle.types.js";
 import type { PluginHookSkillChangedEvent, PluginHookSkillContext } from "./hook-skill.types.js";
 import type {
   PluginHookToolKind,
@@ -62,6 +66,11 @@ import type { SkillInstallSpecMetadata } from "./install-security-scan.types.js"
 import type { PluginHookSessionContext } from "./session-end-transcript.js";
 
 export type { PluginHookReplyDispatchEvent } from "./hook-reply-dispatch-event.types.js";
+export type {
+  PluginHookSessionEndEvent,
+  PluginHookSessionEndReason,
+  PluginHookSessionStartEvent,
+} from "./hook-session-lifecycle.types.js";
 
 export type {
   PluginHookAgentContext,
@@ -551,35 +560,6 @@ export type PluginHookBeforeMessageWriteEvent = {
 export type PluginHookBeforeMessageWriteResult = {
   block?: boolean;
   message?: AgentMessage;
-};
-
-export type PluginHookSessionStartEvent = {
-  sessionId: string;
-  sessionKey?: string;
-  resumedFrom?: string;
-};
-
-export type PluginHookSessionEndReason =
-  | "new"
-  | "reset"
-  | "idle"
-  | "daily"
-  | "compaction"
-  | "deleted"
-  | "shutdown"
-  | "restart"
-  | "unknown";
-
-export type PluginHookSessionEndEvent = {
-  sessionId: string;
-  sessionKey?: string;
-  messageCount: number;
-  durationMs?: number;
-  reason?: PluginHookSessionEndReason;
-  sessionFile?: string;
-  transcriptArchived?: boolean;
-  nextSessionId?: string;
-  nextSessionKey?: string;
 };
 
 type PluginHookSubagentContext = {

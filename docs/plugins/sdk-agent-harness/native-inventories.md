@@ -75,6 +75,12 @@ metadata only; the harness must still enforce its policy when executing a turn.
 
 ## Native MCP inventory
 
+A harness that uses Gateway-managed MCP connections can declare
+`mcpAppRuntimeOwner: "host"` and use its admitted `prepareHostMcpTools` capability
+to lease those same connections during a model turn. The Gateway uses its usual
+session authority for explicit App requests. Release the lease at turn exit and
+pass any prompt-hook tool restrictions to `restrictAppTools` before calling a tool.
+
 A harness that owns MCP connections outside OpenClaw's in-process MCP runtime
 can implement `loadMcpToolCatalog(params)`. The callback is used by read-only
 control surfaces such as the composer Tool access view. It receives the

@@ -1,4 +1,8 @@
-import { vi } from "vitest";
+import { expect, type Mock, type vi } from "vitest";
+
+export function expectCall(mock: Mock, fields: Record<string, unknown>, ...rest: unknown[]) {
+  expect(mock).toHaveBeenCalledWith(expect.objectContaining(fields), ...rest);
+}
 
 /** Asserts selected fields on a captured compaction record. */
 export { expectObjectFields as expectRecordFields } from "../../test-utils/mock-call-assertions.js";

@@ -250,6 +250,9 @@ In either mode, internal QA, research, coding, review, and test lanes use ordina
 <ParamField path="model" type="string">
   Override the sub-agent model. Invalid values are skipped and the sub-agent runs on the default model with a warning in the tool result.
 </ParamField>
+<ParamField path="agentRuntime" type="string">
+  Select an enabled agent harness for a local child with `visible: true`. The Gateway validates the harness against the child's model and account.
+</ParamField>
 <ParamField path="runTimeoutSeconds" type="integer">
   Override the configured run timeout for this child. Must be a non-negative integer; `0` disables the timeout. Applies to native, ACP, and visible sessions.
 </ParamField>

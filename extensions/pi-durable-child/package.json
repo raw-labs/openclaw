@@ -1,0 +1,36 @@
+{
+  "name": "@openclaw/pi-durable-child",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "build": {
+      "workerEntries": [
+        "./worker.mjs"
+      ],
+      "staticAssets": [
+        {
+          "source": "dist/pi-runtime.mjs",
+          "output": "dist/pi-runtime.mjs"
+        },
+        {
+          "source": "dist/pi-runtime.LICENSE",
+          "output": "dist/pi-runtime.LICENSE"
+        }
+      ]
+    },
+    "assetScripts": {
+      "build": "node build-runtime.mjs"
+    }
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  },
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "description": "Pi Durable agent harness for OpenClaw"
+}

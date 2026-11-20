@@ -3,6 +3,7 @@ import {
   createSessionResetBoundaryId,
   type SessionResetBoundaryRequest,
 } from "../../config/sessions/session-reset-boundary-event.js";
+import type { SessionEntry } from "../../config/sessions/types.js";
 import { createResetBoundaryTranscriptSource } from "../../gateway/session-end-transcript-reader.js";
 import type {
   PluginHookSessionEndEvent,
@@ -113,6 +114,7 @@ export function buildSessionEndHookPayload(
     event: {
       sessionId: params.sessionId,
       sessionKey: params.sessionKey,
+      ...(params.lifecycleRevision ? { lifecycleRevision: params.lifecycleRevision } : {}),
       messageCount: params.messageCount ?? 0,
       durationMs: params.durationMs,
       reason: params.reason,
@@ -127,7 +129,7 @@ export function buildSessionEndHookPayload(
 
 export function emitReplySessionEndHook(params: {
   hookRunner: HookRunner;
-  sessionId: string;
+  endedSession: Pick<SessionEntry, "sessionId" | "lifecycleRevision">;
   sessionKey: string;
   agentId: string;
   storePath: string;
@@ -135,22 +137,29 @@ export function emitReplySessionEndHook(params: {
   nextSessionId?: string;
   resetBoundaryId?: string;
 }): void {
+  const { hookRunner, endedSession, ...context } = params;
+  const { sessionId, lifecycleRevision } = endedSession;
   const endedTranscript = params.resetBoundaryId
     ? createResetBoundaryTranscriptSource(
         {
           agentId: params.agentId,
-          sessionId: params.sessionId,
+          sessionId,
           sessionKey: params.sessionKey,
           storePath: params.storePath,
         },
         params.resetBoundaryId,
       )
     : { available: false as const, reason: "unsupported-source" as const };
-  const payload = buildSessionEndHookPayload({ ...params, endedTranscript });
+  const payload = buildSessionEndHookPayload({
+    ...context,
+    sessionId,
+    lifecycleRevision,
+    endedTranscript,
+  });
   void runWithSessionControllerCleanup(() =>
     runWithGatewayDetachedWorkContinuation(async () => {
       await runOutsideStoreWriterContext(() =>
-        params.hookRunner.runSessionEnd(payload.event, payload.context),
+        hookRunner.runSessionEnd(payload.event, payload.context),
       );
     }, "hooks:session-end"),
   ).catch(() => {});

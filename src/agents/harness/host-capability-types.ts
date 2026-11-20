@@ -200,6 +200,15 @@ export type AgentHarnessHostCapabilities = Readonly<{
     options: AgentHarnessToolSurfaceOptions,
     bindingOptions?: AgentHarnessToolSurfaceBindingOptions,
   ) => Promise<AnyAgentTool[]>;
+  /** Borrows host-owned MCP tools and their App views for this admitted run. */
+  prepareHostMcpTools?: (reservedToolNames: readonly string[]) => Promise<
+    | {
+        tools: AnyAgentTool[];
+        restrictAppTools: (allow?: readonly string[]) => void;
+        [Symbol.asyncDispose]: () => Promise<void>;
+      }
+    | undefined
+  >;
   /** Core-owned byte binding for a native command approval, scoped to this admitted run. */
   prepareMutableFileApproval?: (request: { command: string; cwd?: string }) => Promise<
     | {

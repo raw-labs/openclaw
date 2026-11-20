@@ -55,6 +55,9 @@ import { AcceptedWorkspacePublicationIndeterminateError } from "./workspace-acce
 
 const loadWorkerTurnExecution = createLazyRuntimeModule(() => import("./worker-turn-execution.js"));
 const loadRemoteExecTurn = createLazyRuntimeModule(() => import("./workspace-result-finalize.js"));
+const loadRecoveredWorkerTurn = createLazyRuntimeModule(
+  () => import("./worker-turn-recovered-workspace.js"),
+);
 const loadRetainedWorkerTurn = createLazyRuntimeModule(() => import("./worker-turn-retained.js"));
 
 export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLauncherOptions) {
@@ -83,6 +86,10 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
         : undefined;
     },
     prepareSandbox: (params) => prepareWorkerTurnSandbox(options, params),
+    runRecoveredWorkspaceTurn: async (params, work) =>
+      await (
+        await loadRecoveredWorkerTurn()
+      ).runRecoveredWorkerWorkspaceTurn(options, params, work),
     executeLocalTurn: (claim, runLocal, assertCurrent) => {
       requiredAdmission.assertLocalAllowed();
       return executeLocalTurn({

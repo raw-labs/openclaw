@@ -1,0 +1,20 @@
+{
+  "id": "pi-durable-child",
+  "name": "Pi Durable child",
+  "description": "Durable agent conversations and restart-safe approvals with OpenClaw models and tools.",
+  "activation": {
+    "onStartup": true,
+    "onAgentHarnesses": ["pi-durable-child"]
+  },
+  "contracts": {
+    "tools": [
+      "pi_durable_wait"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "enabledByDefault": false
+}

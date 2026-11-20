@@ -61,6 +61,7 @@ const OPENAI_MODEL_CATALOG = normalizeModelCatalog(manifest.modelCatalog, {
 });
 const OPENAI_AGENT_RUNTIME_ID = "openclaw";
 const CODEX_AGENT_RUNTIME_ID = "codex";
+const PI_DURABLE_RUNTIME_ID = "pi-durable-child";
 const OPENCLAW_RUNTIME_COMPATIBLE_IDS = [OPENAI_AGENT_RUNTIME_ID] as const;
 const CODEX_RUNTIME_COMPATIBLE_IDS = [OPENAI_AGENT_RUNTIME_ID, CODEX_AGENT_RUNTIME_ID] as const;
 
@@ -177,7 +178,7 @@ function concreteBaseUrl(value: unknown, fallback: string): string {
   return normalizeOptionalString(value) ?? fallback;
 }
 
-function codexCanReproduceRoute(candidate: ProviderModelRouteCandidate): boolean {
+function isUnmodifiedOfficialResponsesRoute(candidate: ProviderModelRouteCandidate): boolean {
   if (candidate.requestTransportOverrides === "present") {
     return false;
   }
@@ -192,11 +193,11 @@ function withRuntimePolicy(
   candidate: ProviderModelRouteCandidate,
   modelId?: string,
 ): ProviderModelRouteCandidate {
-  const compatibleIds = codexCanReproduceRoute(candidate)
+  const compatibleIds = isUnmodifiedOfficialResponsesRoute(candidate)
     ? candidate.authRequirement === "api-key"
-      ? [...CODEX_RUNTIME_COMPATIBLE_IDS, "agentsapi"]
-      : CODEX_RUNTIME_COMPATIBLE_IDS
-    : OPENCLAW_RUNTIME_COMPATIBLE_IDS;
+      ? [...CODEX_RUNTIME_COMPATIBLE_IDS, "agentsapi", PI_DURABLE_RUNTIME_ID]
+      : [...CODEX_RUNTIME_COMPATIBLE_IDS, PI_DURABLE_RUNTIME_ID]
+    : [...OPENCLAW_RUNTIME_COMPATIBLE_IDS, PI_DURABLE_RUNTIME_ID];
   // Codex's native Code Mode emits custom tools, which pre-GPT-5 models reject.
   // model/list does not expose its tool_mode or freeform-tool capability.
   const requiresFunctionTools = OPENAI_PRE_GPT5_MODEL_ID_PATTERN.test(

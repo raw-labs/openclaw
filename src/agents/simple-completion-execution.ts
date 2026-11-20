@@ -56,6 +56,7 @@ type SimpleCompletionModelOptions = {
   headers?: Record<string, string>;
   sessionId?: string;
   maxTokens?: number;
+  cacheRetention?: SimpleStreamOptions["cacheRetention"];
   temperature?: number;
   serviceTier?: SimpleStreamOptions["serviceTier"];
   reasoning?: ThinkLevel;
@@ -70,6 +71,7 @@ type PreparedCompletionParams = {
   context: Parameters<typeof completeSimple>[1];
   cfg?: OpenClawConfig;
   options?: SimpleCompletionModelOptions;
+  onEvent?: Parameters<typeof completeSimple>[4];
 };
 
 export async function completeWithPreparedSimpleCompletionModel(
@@ -144,6 +146,7 @@ async function completePreparedModel(params: PreparedCompletionParams): Promise<
       params.context,
       completionOptions,
       params.assertCurrent,
+      params.onEvent,
     );
   }
   // The prepared completion boundary is shared by metadata and plugin requests.
@@ -182,6 +185,7 @@ async function completePreparedModel(params: PreparedCompletionParams): Promise<
         params.context,
         lifecycle.propagatedOptions,
         params.assertCurrent,
+        params.onEvent,
       ),
     );
     lifecycle.observer.observeFinalResult(lifecycle.eventBase, lifecycle.startedAt, result);

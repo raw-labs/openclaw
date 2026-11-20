@@ -55,6 +55,8 @@ export type SandboxFsBridgeContext = {
 export type SandboxBackendHandle = {
   id: SandboxBackendId;
   runtimeId: string;
+  /** Engine-issued identity that changes when a named runtime is replaced. */
+  physicalRuntimeId?: string;
   runtimeLabel: string;
   workdir: string;
   env?: Record<string, string>;

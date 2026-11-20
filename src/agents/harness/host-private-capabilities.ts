@@ -21,6 +21,7 @@ import type { AdmittedRunOperatorAuthority } from "../admitted-run-context.js";
 import type { CronScheduledToolProjectionRequest } from "../exec-tool-target-pinning.js";
 import type { ModelFallbackAvailability } from "../model-fallback.types.js";
 import type { AnyAgentTool } from "../tools/common.js";
+import { transferCoreTtsToolResultProvenance } from "../tools/tts-tool-result-provenance.js";
 import type { AgentHarnessHostCapabilities } from "./host-capability-types.js";
 
 /** Translation for current bundled sinks; this fact grants no input authority. */
@@ -648,11 +649,25 @@ export function resolveAgentHarnessScheduledToolProjectionCapability(params: {
 export function registerAgentHarnessTtsProvenanceTransferCapability(params: {
   hostCapabilities: AgentHarnessHostCapabilities;
   ownerPluginId: string;
-  transfer: AgentHarnessTtsProvenanceTransfer;
+  observed: WeakSet<object>;
+  operationalRunInstance: object;
+  assertActive: () => void;
 }): void {
   ttsProvenanceTransferCapabilities.set(params.hostCapabilities, {
     ownerPluginId: params.ownerPluginId,
-    transfer: params.transfer,
+    transfer(toolResult, attemptResult, eligibleMediaUrls) {
+      params.assertActive();
+      return typeof toolResult === "object" &&
+        toolResult !== null &&
+        params.observed.has(toolResult)
+        ? transferCoreTtsToolResultProvenance(
+            toolResult,
+            attemptResult,
+            eligibleMediaUrls,
+            params.operationalRunInstance,
+          )
+        : attemptResult;
+    },
   });
 }
 

@@ -58,6 +58,10 @@ export function createPluginServiceAutomationCapabilities(params: {
       };
       return (await loadSessionWork()).admit(input);
     },
+    async admitTurn({ id, source, toolNames }) {
+      const input = { id, source, toolNames: [...toolNames] };
+      return (await loadSessionWork()).admitTurn(input);
+    },
     run: async (id, work) => (await loadSessionWork()).run(id, work),
   };
   return { getCron, mcpEvents, sessionWork };

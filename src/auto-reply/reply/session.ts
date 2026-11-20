@@ -930,7 +930,7 @@ async function initSessionStateAttemptLocked(
         emitReplySessionEndHook({
           ...sessionTarget,
           hookRunner,
-          sessionId: previousSessionEntry.sessionId,
+          endedSession: previousSessionEntry,
           reason: previousSessionEndReason,
           nextSessionId: sessionId,
           resetBoundaryId: resetBoundary?.boundaryId,

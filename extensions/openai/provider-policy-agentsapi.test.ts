@@ -17,7 +17,11 @@ describe("Agents API provider routes", () => {
       }),
     ).toMatchObject({
       kind: "routes",
-      routes: [{ runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi"] } }],
+      routes: [
+        {
+          runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi", "pi-durable-child"] },
+        },
+      ],
     });
   });
 });

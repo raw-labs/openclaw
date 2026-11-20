@@ -48,23 +48,30 @@ vi.mock("../gateway/operator-invocation-authority.js", () => ({
   }),
 }));
 // mock-isolation: keep durable storage and original operator fixtures local to this host-boundary test.
-vi.mock("../gateway/operator-run-recovery.js", () => ({
-  restoreGatewayOperatorSource: async (params: { prepareCurrent: () => Promise<void> }) => {
-    if (state.restoreError) {
-      throw state.restoreError;
-    }
-    await params.prepareCurrent();
-    return {
-      authority: {
-        assertCurrent: state.assertCurrent,
-        scopes: ["operator.write"],
-        profileId: "alice",
-      },
-      authenticatedUserProfile: { profileId: "alice" },
-      release: state.release,
-    };
-  },
-}));
+vi.mock("../gateway/operator-run-recovery.js", async () => {
+  const { createAdmittedRunOperatorAuthority } = await import("../agents/admitted-run-context.js");
+  return {
+    restoreGatewayOperatorSource: async (params: { prepareCurrent: () => Promise<void> }) => {
+      if (state.restoreError) {
+        throw state.restoreError;
+      }
+      await params.prepareCurrent();
+      return {
+        authority: createAdmittedRunOperatorAuthority({
+          assertCurrent: state.assertCurrent,
+          scopes: ["operator.write"],
+          profileId: "alice",
+          modelPolicy: {
+            models: [{ provider: "fixture", model: "allowed" }],
+            allows: ({ provider, model }) => provider === "fixture" && model === "allowed",
+          },
+        }),
+        authenticatedUserProfile: { profileId: "alice" },
+        release: state.release,
+      };
+    },
+  };
+});
 // mock-isolation: keep durable storage and original operator fixtures local to this host-boundary test.
 vi.mock("../gateway/server-plugin-in-process-authority.js", () => ({
   resolveInProcessGatewayDispatch: () => ({ operatorSourceClient: {} }),
@@ -238,6 +245,27 @@ it("admits and reauthorizes an exact operation with its original tool ceiling", 
   expect(readPluginSessionWorkAuthority()).toBeUndefined();
   expect(() => escaped?.assertCurrent()).toThrow("borrow closed");
   expect(state.release).toHaveBeenCalled();
+});
+it("uses the restored operator's model policy and closes the borrow after execution", async () => {
+  const { service } = fixture();
+  await service.admit(input);
+  const denied = vi.fn();
+  let assertModelCurrent: (() => void) | undefined;
+  await service.run("job", async (borrow) => {
+    await expect(
+      borrow.withModelExecution({ provider: "fixture", model: "denied" }, denied),
+    ).rejects.toThrow("operator role cannot use this model");
+    await borrow.withModelExecution(
+      { provider: "fixture", model: "allowed" },
+      async (execution) => {
+        execution.assertCurrent();
+        assertModelCurrent = execution.assertCurrent;
+      },
+    );
+  });
+  expect(denied).not.toHaveBeenCalled();
+  expect(assertModelCurrent).toBeDefined();
+  expect(() => assertModelCurrent?.()).toThrow("borrow closed");
 });
 it("rejects reused IDs whose requested effects differ", async () => {
   const { service } = fixture();

@@ -161,6 +161,7 @@ async function createContainerSandboxBackend(
       const handle: SandboxBackendHandle = {
         id: boundEngine.id,
         runtimeId: containerName,
+        physicalRuntimeId: containerId,
         runtimeLabel: containerName,
         workdir: defaultWorkdir,
         env: configuredEnv,

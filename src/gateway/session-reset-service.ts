@@ -907,11 +907,11 @@ async function performPreparedGatewaySessionReset({
                   cfg,
                   sessionKey: resetSessionKey,
                   sessionId: mutation.previousSessionId,
+                  lifecycleRevision: mutation.previousEntry?.lifecycleRevision,
                   storePath,
                   sessionFile: mutation.previousSessionFile,
                   agentId: target.agentId,
                   reason: params.reason,
-                  archivedTranscripts: [],
                   nextSessionId: mutation.nextEntry.sessionId,
                   endedTranscript: resetBoundaryId
                     ? createResetBoundaryTranscriptSource(

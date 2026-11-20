@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
+import type { GatewayContextResolver } from "../../gateway/server-methods/types.js";
 import { nativePluginBindings } from "../../plugins/loader-runtime-load.js";
+import { bindGatewayContextResolver } from "../../plugins/runtime/gateway-request-scope.js";
 import {
   prepareSystemAgentRunAdmission,
   type AdmittedRunOperatorAuthority,
 } from "../admitted-run-context.js";
 import type { createAgentHarnessHostCapabilities } from "./host-capability.js";
+import { getRegisteredAgentHarness } from "./registry.js";
 import type {
   AgentHarnessSessionPreparationV1,
   AgentHarnessSessionRuntimeParamsV1,
@@ -13,6 +16,8 @@ import type {
 /** Admit native session setup through the same host authority owner, without a prompt, transcript or model attempt. */
 export async function prepareAgentHarnessSessionRuntime(params: {
   ownerPluginId: string;
+  runId?: string;
+  resolveGatewayContext?: GatewayContextResolver;
   nativeModelPolicySupport?: "exact";
   sourceAuthority?: AdmittedRunOperatorAuthority;
   input: Omit<
@@ -26,7 +31,7 @@ export async function prepareAgentHarnessSessionRuntime(params: {
   assertCurrent: () => void;
 }) {
   params.assertCurrent();
-  const operationId = "session-prepare:" + randomUUID();
+  const operationId = params.runId ?? "session-prepare:" + randomUUID();
   const admission = prepareSystemAgentRunAdmission(
     params.input.config,
     operationId,
@@ -43,6 +48,7 @@ export async function prepareAgentHarnessSessionRuntime(params: {
   try {
     const { createAgentHarnessHostCapabilities } = await import("./host-capability.js");
     const admittedRunContext = await admission.admit("plugin-harness");
+    bindGatewayContextResolver(admittedRunContext, params.resolveGatewayContext);
     params.assertCurrent();
     const authProfileStore =
       await nativePluginBindings.authStore.prepareAuthProfileStoreForModelRuntime(
@@ -58,6 +64,8 @@ export async function prepareAgentHarnessSessionRuntime(params: {
       attempt: { ...params.input, authProfileStore, runId: operationId, admittedRunContext },
       pluginId: params.ownerPluginId,
       nativeModelPolicySupport: params.nativeModelPolicySupport,
+      requiredNodeCommands: getRegisteredAgentHarness(params.ownerPluginId)?.harness.cloudPlacement
+        ?.devicePlacement?.requiredNodeCommands,
     });
     const owner = host;
     const preparation: AgentHarnessSessionPreparationV1 = {

@@ -26,6 +26,7 @@ import {
 import { loadSessionEntryForAdmission } from "../../config/sessions/session-accessor.sqlite-entry-admission.js";
 import * as sessionEntryReader from "../../config/sessions/session-entry-read-runtime.js";
 import { createEmptyPluginMetadataSnapshot } from "../../plugins/plugin-metadata-empty.test-support.js";
+import { prepareSessionWorkWorkspaceTools } from "../../plugins/service-session-work-workspace.js";
 import { withSessionTurn } from "../../sessions/session-controller.admission.js";
 import { isCompetingSessionControllerWorkActive } from "../../sessions/session-controller.lifecycle.js";
 import { createReplyOperation } from "../../sessions/session-controller.operation.js";
@@ -81,6 +82,28 @@ describe("worker turn launcher local placement", () => {
     sql.clear();
     expect(prepared.assertCurrent).toThrow("placement authority changed");
     sql.expectIdle();
+  });
+
+  it("refuses to resume host tools after a session moves to a worker", async () => {
+    using cleanup = new DisposableStack();
+    cleanup.defer(installSessionPlacementAdmissionProvider(localProvider));
+    const prepareRecoveredTools = () =>
+      prepareSessionWorkWorkspaceTools({
+        target: runIdentity("placement-recovery"),
+        route: { provider: "openai", model: "fixture" },
+        pluginId: "fixture",
+        authority: { profileId: "operator", scopes: ["operator.write"], assertCurrent() {} },
+        tools: ["read"],
+        config: {},
+        entry: { sessionId: fx.SESSION_ID, updatedAt: 1 },
+        signal: new AbortController().signal,
+        assertCurrent() {},
+      });
+    await expect(prepareRecoveredTools()).resolves.toBeUndefined();
+    await fx.seedActivePlacement("worker-turn");
+    await expect(prepareRecoveredTools()).rejects.toThrow(
+      "Recovered work requires a current worker placement turn claim",
+    );
   });
 
   it.each([

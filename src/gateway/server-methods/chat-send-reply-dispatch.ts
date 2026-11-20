@@ -615,6 +615,7 @@ export function createChatSendReplyDispatch(params: {
   };
   const dispatcherOptions: ReplyDispatcherOptions = {
     ...replyPipeline,
+    ownsCommandTranscript: true,
     onError: (err) => {
       logGateway.warn(`webchat dispatch failed: ${formatForLog(err)}`);
     },
