@@ -25,7 +25,6 @@ import { createPiTurnLifecycle } from "./turn-lifecycle.js";
 import { invokeRecoveredPiGatewayTool, toolFailure, toolOutput } from "./turn-tools.js";
 import { runWorker, type PiStartCommand, type WorkerResult } from "./worker-client.js";
 
-export const PLUGIN_ID = "pi-durable-child";
 export const TOOL = "pi_durable_wait";
 export const recoveryApproval = new AsyncLocalStorage<{
   target: Target;
@@ -309,7 +308,7 @@ export function createService(
                           execution.assertCurrent();
                           if (!beganInference && request.purpose === "generation") {
                             beganInference = true;
-                            api.logger.info(`Resuming Pi Durable child ${approvalId}`);
+                            api.logger.info(`Resuming Pi Durable turn ${approvalId}`);
                           }
                           lifecycle.modelInput(request.context, request.purpose);
                           const preview =
@@ -359,7 +358,7 @@ export function createService(
                 current.assertCurrent,
                 current.target,
               );
-              api.logger.info(`Pi Durable child ${approvalId} settled as ${result.wait.state}`);
+              api.logger.info(`Pi Durable turn ${approvalId} settled as ${result.wait.state}`);
               return posted;
             })
             .catch((error: unknown) => {
@@ -379,7 +378,7 @@ export function createService(
             return;
           }
           if (outcome.status === "unavailable") {
-            api.logger.warn(`Pi Durable child ${id}: ${outcome.reason}`);
+            api.logger.warn(`Pi Durable work ${id}: ${outcome.reason}`);
             if (outcome.retryAfterMs !== undefined) {
               schedule(id, outcome.retryAfterMs, noticeRetries);
             } else if (staged) {

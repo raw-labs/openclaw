@@ -23,7 +23,7 @@ import { writeOpenAiResponsesText } from "./helpers/openai-responses-sse.js";
 import { createOpenClawTestInstance } from "./helpers/openclaw-test-instance.js";
 import { runQaGatewayFixture } from "./helpers/qa-gateway-cleanup.js";
 
-const pluginId = "pi-durable-child";
+const pluginId = "pi-durable";
 
 async function holdModelAfterText(response: ServerResponse, id: string, delta: string) {
   response.writeHead(200, { "content-type": "text/event-stream" });
@@ -353,7 +353,7 @@ it(
         };
         config.agents!.defaults!.workspace = workspace;
         const instance = await createOpenClawTestInstance({
-          name: "pi-durable-child",
+          name: "pi-durable",
           config: {
             ...config,
             update: { checkOnStart: false },
@@ -495,7 +495,7 @@ it(
           instance.logs(),
         ).toMatchObject({ status: "ok" });
         const start = await first.request<{ id: string; state: string }>(
-          "pi-durable-child.status",
+          "pi-durable.status",
           target,
         );
         expect(start, JSON.stringify(childRequests)).toMatchObject({ state: "waiting" });
@@ -512,7 +512,7 @@ it(
         await crash();
 
         const second = await boot();
-        await expect(second.request("pi-durable-child.status", target)).resolves.toEqual({
+        await expect(second.request("pi-durable.status", target)).resolves.toEqual({
           id,
           state: "waiting",
         });
@@ -541,7 +541,7 @@ it(
             .join("\n"),
         ).toContain(approvalAcknowledgement);
         await crash();
-        expect(instance.logs()).not.toContain(`Resuming Pi Durable child ${id}`);
+        expect(instance.logs()).not.toContain(`Resuming Pi Durable turn ${id}`);
         expect(childRequests).toHaveLength(1);
 
         const streaming = await boot();
@@ -580,7 +580,7 @@ it(
         await vi.waitFor(
           async () => {
             expect(
-              await third.request("pi-durable-child.status", target),
+              await third.request("pi-durable.status", target),
               instance
                 .logs()
                 .split("\n")
@@ -594,7 +594,7 @@ it(
           },
           { timeout: 15_000, interval: 250 },
         );
-        expect(instance.logs().split(`Resuming Pi Durable child ${id}`)).toHaveLength(4);
+        expect(instance.logs().split(`Resuming Pi Durable turn ${id}`)).toHaveLength(4);
         expect(childRequests).toHaveLength(4);
         const resumed = childRequests[1]!;
         expect(resumed).toMatchObject({
@@ -660,7 +660,7 @@ it(
           async () => {
             expect(pendingPiInference).toBe("closed");
             await expect(
-              third.request("pi-durable-child.status", { sessionKey: direct, agentId: "main" }),
+              third.request("pi-durable.status", { sessionKey: direct, agentId: "main" }),
             ).resolves.toMatchObject({ state: "cancelled" });
           },
           { timeout: 10_000 },

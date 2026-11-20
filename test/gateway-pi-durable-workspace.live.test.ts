@@ -13,7 +13,7 @@ import { createOpenClawTestInstance } from "./helpers/openclaw-test-instance.js"
 import { runQaGatewayFixture } from "./helpers/qa-gateway-cleanup.js";
 
 const exec = promisify(execFile);
-const runtime = "pi-durable-child";
+const runtime = "pi-durable";
 const authState = process.env.OPENCLAW_LIVE_PI_DURABLE_AUTH_STATE;
 const model = process.env.OPENCLAW_LIVE_PI_DURABLE_MODEL;
 const image = process.env.OPENCLAW_LIVE_PI_DURABLE_SANDBOX_IMAGE;
@@ -254,7 +254,7 @@ it.skipIf(!isLiveTestEnabled() || !authState || !model || !(sshConfig || (image 
         await expect(
           second.request("agent.wait", { runId: approval, timeoutMs: 15_000 }),
         ).resolves.toMatchObject({ status: "ok" });
-        const wake = `Resuming Pi Durable child ${approvalId?.split(":").at(-1)}`;
+        const wake = `Resuming Pi Durable turn ${approvalId?.split(":").at(-1)}`;
         await crash();
         expect(instance.logs()).not.toContain(wake);
 

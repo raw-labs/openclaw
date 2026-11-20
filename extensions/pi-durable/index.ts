@@ -8,13 +8,15 @@ import type {
 import { createNativeSessionCommitFinalizer } from "openclaw/plugin-sdk/agent-harness-session-runtime";
 import { KeyedAsyncQueue } from "openclaw/plugin-sdk/keyed-async-queue";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+import { PLUGIN_ID } from "./identity.js";
 import { createPiNodeCommand, createPiNodeInvokePolicy, PI_NODE_COMMAND } from "./node-command.js";
-import { createService, PLUGIN_ID, recoveryApproval, TOOL, workId } from "./service.js";
+import { createService, recoveryApproval, TOOL, workId } from "./service.js";
 
 export default definePluginEntry({
   id: PLUGIN_ID,
-  name: "Pi Durable child",
-  description: "A detached Pi Durable wait resumed through current OpenClaw authority.",
+  name: "Pi Durable",
+  description:
+    "Durable agent conversations and restart-safe approvals with OpenClaw models and tools.",
   register(api) {
     api.registerNodeHostCommand(createPiNodeCommand());
     api.registerNodeInvokePolicy(createPiNodeInvokePolicy());
@@ -54,7 +56,7 @@ export default definePluginEntry({
     } as const;
 
     api.registerGatewayMethod(
-      "pi-durable-child.status",
+      `${PLUGIN_ID}.status`,
       async (options) => {
         const authority = options.sessionAccessAuthority;
         if (!authority) {
@@ -104,7 +106,7 @@ export default definePluginEntry({
       id: PLUGIN_ID,
       apiVersion: 3,
       async start({ stateDir, scheduler, sessionWork }) {
-        const directory = join(stateDir, "pi-durable-child");
+        const directory = join(stateDir, PLUGIN_ID);
         await mkdir(directory, { recursive: true, mode: 0o700 });
         scheduler.signal.throwIfAborted();
         run = createService(api, directory, scheduler, sessionWork, queues, admissionBindings);
@@ -226,7 +228,7 @@ export default definePluginEntry({
             catalogMode: "direct-only",
             label: "Park Pi Durable child",
             description:
-              "Wait for approval in a Pi Durable child. Create the child with sessions_spawn using visible=true and agentRuntime=pi-durable-child.",
+              "Wait for approval in a Pi Durable child. Create the child with sessions_spawn using visible=true and agentRuntime=pi-durable.",
             parameters: { type: "object", properties: {}, additionalProperties: false },
             async execute() {
               const { agentId, sessionKey, sessionId, runId } = context;

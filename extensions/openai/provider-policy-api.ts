@@ -61,7 +61,7 @@ const OPENAI_MODEL_CATALOG = normalizeModelCatalog(manifest.modelCatalog, {
 });
 const OPENAI_AGENT_RUNTIME_ID = "openclaw";
 const CODEX_AGENT_RUNTIME_ID = "codex";
-const PI_DURABLE_RUNTIME_ID = "pi-durable-child";
+const PI_DURABLE_RUNTIME_ID = "pi-durable";
 const OPENCLAW_RUNTIME_COMPATIBLE_IDS = [OPENAI_AGENT_RUNTIME_ID] as const;
 const CODEX_RUNTIME_COMPATIBLE_IDS = [OPENAI_AGENT_RUNTIME_ID, CODEX_AGENT_RUNTIME_ID] as const;
 

@@ -19,7 +19,7 @@ describe("Agents API provider routes", () => {
       kind: "routes",
       routes: [
         {
-          runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi", "pi-durable-child"] },
+          runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi", "pi-durable"] },
         },
       ],
     });

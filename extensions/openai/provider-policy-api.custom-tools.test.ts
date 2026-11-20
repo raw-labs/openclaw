@@ -29,8 +29,8 @@ describe("OpenAI custom-tool runtime capability", () => {
     }
     expect(result.routes[0]?.runtimePolicy?.compatibleIds).toEqual(
       supportsCustomTools
-        ? ["openclaw", "codex", "agentsapi", "pi-durable-child"]
-        : ["openclaw", "agentsapi", "pi-durable-child"],
+        ? ["openclaw", "codex", "agentsapi", "pi-durable"]
+        : ["openclaw", "agentsapi", "pi-durable"],
     );
   });
 

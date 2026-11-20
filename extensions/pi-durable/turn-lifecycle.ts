@@ -8,6 +8,7 @@ import {
   runAgentHarnessLlmOutputHook,
 } from "openclaw/plugin-sdk/agent-harness-runtime";
 import type { AssistantMessage, Context, Message } from "openclaw/plugin-sdk/llm";
+import { PLUGIN_ID } from "./identity.js";
 
 type HookCtx = Parameters<typeof runAgentHarnessLlmInputHook>[0]["ctx"];
 
@@ -69,7 +70,7 @@ export function createPiTurnLifecycle(params: {
         ctx,
         event: {
           ...identity,
-          harnessId: "pi-durable-child",
+          harnessId: PLUGIN_ID,
           prompt: params.prompt,
           assistantTexts: [textFromAnswer(answer)],
           lastAssistant: answer,

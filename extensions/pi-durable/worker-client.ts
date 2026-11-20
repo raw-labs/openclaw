@@ -114,8 +114,8 @@ export function runWorker(
         currentModuleUrl: import.meta.url,
         sourceWorkerName: "worker",
         sourceExtension: ".mjs",
-        distWorkerPath: "extensions/pi-durable-child/worker.js",
-        package: { name: "@openclaw/pi-durable-child", distWorkerPath: "worker.js" },
+        distWorkerPath: "extensions/pi-durable/worker.js",
+        package: { name: "@openclaw/pi-durable", distWorkerPath: "worker.js" },
       }),
       {
         execArgv: [],

@@ -3,6 +3,7 @@ import { isTranscriptOnlyOpenClawAssistantMessage } from "openclaw/plugin-sdk/ag
 import type { Message } from "openclaw/plugin-sdk/llm";
 import { readSessionTranscriptVisibleMessageDelta } from "openclaw/plugin-sdk/session-transcript-runtime";
 import { isRecord } from "openclaw/plugin-sdk/string-coerce-runtime";
+import { PLUGIN_ID } from "./identity.js";
 import type { SessionGeneration } from "./notices.js";
 
 type Attempt = Parameters<AgentHarnessV2["runAttempt"]>[0];
@@ -53,7 +54,7 @@ export async function preparePiForkHistory(
       if (
         isRecord(notice) &&
         notice.kind === "plugin-notice" &&
-        notice.pluginId === "pi-durable-child" &&
+        notice.pluginId === PLUGIN_ID &&
         notice.type === "completed" &&
         isRecord(notice.data) &&
         typeof notice.data.runId === "string"

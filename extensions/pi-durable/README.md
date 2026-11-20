@@ -4,13 +4,13 @@ Pi Durable is an opt-in OpenClaw agent runtime. OpenClaw selects and authenticat
 
 Pi Durable runs in Gateway-host workspaces and through OpenClaw’s sandbox tool surface. If the original caller has restart-recoverable OpenClaw authority, OpenClaw saves the prepared turn before starting Pi. A restart between that handoff and the first Pi commit recovers the original input. After a Pi commit, Pi’s journal owns replay. OpenClaw reauthorizes the caller and selected model after each restart.
 
-Enable the bundled `pi-durable-child` plugin and select `pi-durable-child` as the runtime for a session using a provider route authenticated by OpenClaw. You can also set `agents.defaults.models["<provider>/<model>"].agentRuntime.id` to `pi-durable-child` to use it by default for that model. Send `/stop` to cancel an active or parked turn. A cancelled approval stays closed across restarts, and the chat can take new turns. Use `/compact` to summarize eligible history in an idle Pi Durable chat. Use `/btw` for a tool-free side question based on saved conversation text. Reset and deletion retire the corresponding Pi conversation generation after the OpenClaw change commits.
+Enable the bundled `pi-durable` plugin and select `pi-durable` as the runtime for a session using a provider route authenticated by OpenClaw. You can also set `agents.defaults.models["<provider>/<model>"].agentRuntime.id` to `pi-durable` to use it by default for that model. Send `/stop` to cancel an active or parked turn. A cancelled approval stays closed across restarts, and the chat can take new turns. Use `/compact` to summarize eligible history in an idle Pi Durable chat. Use `/btw` for a tool-free side question based on saved conversation text. Reset and deletion retire the corresponding Pi conversation generation after the OpenClaw change commits.
 
 Use OpenClaw’s steer queue to add input to your active turn. Pi applies the input at the next eligible point between model and tool steps. The active turn can incorporate the new input into its reply.
 
 Fork at a message using OpenClaw’s normal chat controls. A Pi Durable fork starts a new journal from Pi’s model checkpoint at the last completed Pi answer before the branch point. The checkpoint carries model-visible tool calls and results and any context summary at that point. The branch falls back to visible text when the source checkpoint is unavailable. Approvals and in-flight work remain with the source session.
 
-In a Gateway chat, ask the parent to spawn a visible Pi Durable child for the task. The parent uses `sessions_spawn` with `visible: true`, `agentRuntime: "pi-durable-child"`, and `expectsCompletionMessage: false`. The durable child posts its own final result.
+In a Gateway chat, ask the parent to spawn a visible Pi Durable child for the task. The parent uses `sessions_spawn` with `visible: true`, `agentRuntime: "pi-durable"`, and `expectsCompletionMessage: false`. The durable child posts its own final result.
 
 A child can call `pi_durable_wait` once per turn when it needs a decision. The Pi worker exits while the call waits, so the parent can keep chatting. The parent chat receives a notice with the exact `/approve ... allow-once` and `/approve ... deny` commands. Send the command in that parent chat with the usual operator approval scope. The same approval ID works after a Gateway restart. The command acknowledges after Pi commits the decision.
 
@@ -52,7 +52,7 @@ upstream lockfile and checks the source archive digest before compiling.
 From the OpenClaw root:
 
 ```sh
-pnpm test:e2e:gateway test/gateway-pi-durable-child.e2e.test.ts test/gateway-pi-durable-node.e2e.test.ts --maxWorkers=1
+pnpm test:e2e:gateway test/gateway-pi-durable.e2e.test.ts test/gateway-pi-durable-node.e2e.test.ts --maxWorkers=1
 ```
 
 The test uses scripted provider servers and real Gateway processes. It kills the Gateway while the approval is parked, after the signal commits, during the recovered inference stream, and while a tool is executing. It also kills the Gateway during the first inference of an ordinary Pi chat, before an approval exists, and checks for one recovered reply. The recovered model request can retry after its Pi backoff. If a kill interrupts a tool after it starts, Pi records the uncertain outcome and gives it to the model without repeating the tool. The test checks that the parent can answer during recovery and that the interrupted preview stays out of committed chat history.
@@ -78,7 +78,7 @@ OPENCLAW_HOME="$pi_auth_root/home" \
 
 OPENCLAW_LIVE_PI_DURABLE_AUTH_STATE="$pi_auth_root/state" \
   OPENCLAW_LIVE_PI_DURABLE_MODEL=openai/gpt-5.6-luna \
-  pnpm test:live --no-quiet test/gateway-pi-durable-child.live.test.ts
+  pnpm test:live --no-quiet test/gateway-pi-durable.live.test.ts
 ```
 
 Choose a model available to the signed-in account. The live test creates a child through the Gateway with an idle parent, runs the child on the real model, and sends `/approve` in the parent after recovery. It kills its isolated Gateway before the first Pi worker starts, after Pi parks, after approval commits, and after the child answer commits. The kills after parking and answer commit happen before the respective notice writes. Extra restarts exercise repeat publication and check that each chat still has exactly one copy of each expected notice.

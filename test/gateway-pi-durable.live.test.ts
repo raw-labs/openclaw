@@ -10,7 +10,7 @@ import { connectRestartClient, restartEnv } from "./gateway-restart.test-support
 import { createOpenClawTestInstance } from "./helpers/openclaw-test-instance.js";
 import { runQaGatewayFixture } from "./helpers/qa-gateway-cleanup.js";
 
-const runtime = "pi-durable-child";
+const runtime = "pi-durable";
 const authState = process.env.OPENCLAW_LIVE_PI_DURABLE_AUTH_STATE;
 const model = process.env.OPENCLAW_LIVE_PI_DURABLE_MODEL;
 const enabled = isLiveTestEnabled() && Boolean(authState && model);
@@ -287,7 +287,7 @@ it.skipIf(!enabled)(
           session: { parentSessionKey: parent },
         });
         const target = { sessionKey: child, agentId: "main" };
-        await expect(second.request("pi-durable-child.status", target)).resolves.toEqual({
+        await expect(second.request("pi-durable.status", target)).resolves.toEqual({
           id,
           state: "waiting",
         });
@@ -297,7 +297,7 @@ it.skipIf(!enabled)(
         await vi.waitFor(() => expect(instance.logs().split(approvalReplay)).toHaveLength(3), {
           timeout: 25_000,
         });
-        await expect(review.request("pi-durable-child.status", target)).resolves.toMatchObject({
+        await expect(review.request("pi-durable.status", target)).resolves.toMatchObject({
           state: "waiting",
         });
         expect(await notices(review, parent, "approval")).toHaveLength(1);
@@ -309,7 +309,7 @@ it.skipIf(!enabled)(
         expect((await assistantTexts(review, unrelated)).join("\n")).toContain(
           "That approval is unavailable in the current chat",
         );
-        await expect(review.request("pi-durable-child.status", target)).resolves.toEqual({
+        await expect(review.request("pi-durable.status", target)).resolves.toEqual({
           id,
           state: "waiting",
         });
@@ -322,7 +322,7 @@ it.skipIf(!enabled)(
         expect(await notices(review, parent, "completed")).toHaveLength(0);
         expect(await notices(review, child, "completed")).toHaveLength(0);
         await crash();
-        const resumed = `Resuming Pi Durable child ${id}`;
+        const resumed = `Resuming Pi Durable turn ${id}`;
         expect(instance.logs()).not.toContain(resumed);
         console.log("Pi Durable live proof: approval committed before the second Gateway kill");
 
@@ -345,7 +345,7 @@ it.skipIf(!enabled)(
         const duringRecovery = await sendParent(recovered);
         await vi.waitFor(() => expectNotices(recovered), { timeout: 30_000, interval: 175 });
         await finishParent(recovered, duringRecovery);
-        await expect(recovered.request("pi-durable-child.status", target)).resolves.toEqual({
+        await expect(recovered.request("pi-durable.status", target)).resolves.toEqual({
           id,
           state: "completed",
           result: { text: approved },
@@ -356,7 +356,7 @@ it.skipIf(!enabled)(
           timeout: 25_000,
         });
         // Status joins the child's recovery after it starts the repeat writes.
-        await expect(restarted.request("pi-durable-child.status", target)).resolves.toMatchObject({
+        await expect(restarted.request("pi-durable.status", target)).resolves.toMatchObject({
           state: "completed",
         });
         await finishParent(restarted, await sendParent(restarted));
@@ -405,7 +405,7 @@ it.skipIf(!enabled)(
         );
         await expect(send(afterRestart, child, "/stop")).resolves.toMatchObject({ aborted: true });
         const afterStop = await restart();
-        await expect(afterStop.request("pi-durable-child.status", target)).resolves.toMatchObject({
+        await expect(afterStop.request("pi-durable.status", target)).resolves.toMatchObject({
           state: "cancelled",
         });
         const stale = await send(

@@ -33,7 +33,7 @@ import { writeOpenAiResponsesText } from "./helpers/openai-responses-sse.js";
 import { createOpenClawTestInstance } from "./helpers/openclaw-test-instance.js";
 import { runQaGatewayFixture } from "./helpers/qa-gateway-cleanup.js";
 
-const runtime = "pi-durable-child";
+const runtime = "pi-durable";
 const nodeCommand = "pi-durable.workspace.exec.v1";
 type Connection = Awaited<ReturnType<typeof connectRestartClient>>;
 
@@ -365,7 +365,7 @@ it
           second.request("agent.wait", { runId: approved, timeoutMs: 15_000 }),
         ).resolves.toMatchObject({ status: "ok" });
         await crash();
-        const wake = `Resuming Pi Durable child ${approval.split(":").at(-1)}`;
+        const wake = `Resuming Pi Durable turn ${approval.split(":").at(-1)}`;
         expect(instance.logs()).not.toContain(wake);
         await stopChild(node);
         node = undefined;

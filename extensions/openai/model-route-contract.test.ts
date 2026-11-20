@@ -125,13 +125,13 @@ describe("OpenAI billing route intent", () => {
           ...platformRoute,
           baseUrl: "https://api.openai.com/v1",
           requestTransportOverrides: "none",
-          runtimePolicy: { compatibleIds: ["openclaw", "pi-durable-child"] },
+          runtimePolicy: { compatibleIds: ["openclaw", "pi-durable"] },
         },
         {
           ...subscriptionRoute,
           baseUrl: "https://chatgpt.com/backend-api/codex",
           requestTransportOverrides: "none",
-          runtimePolicy: { compatibleIds: ["openclaw", "codex", "pi-durable-child"] },
+          runtimePolicy: { compatibleIds: ["openclaw", "codex", "pi-durable"] },
         },
       ],
     });

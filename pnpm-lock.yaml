@@ -2195,7 +2195,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
-  extensions/pi-durable-child:
+  extensions/pi-durable:
     devDependencies:
       openclaw:
         specifier: workspace:*

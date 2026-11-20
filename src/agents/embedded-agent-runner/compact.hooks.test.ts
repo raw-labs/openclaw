@@ -2480,7 +2480,7 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
         expect.objectContaining({
           preparedAuth: expect.objectContaining({ source: "harness" }),
           runtimePolicy: expect.objectContaining({
-            compatibleIds: ["openclaw", "codex", "pi-durable-child"],
+            compatibleIds: ["openclaw", "codex", "pi-durable"],
           }),
         }),
       ]),
