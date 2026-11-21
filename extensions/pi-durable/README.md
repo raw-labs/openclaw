@@ -10,6 +10,8 @@ Use OpenClaw’s steer queue to add input to your active turn. Pi applies the in
 
 Foreground tool calls and results appear in the OpenClaw transcript, including arguments rejected by Pi before execution. A successful `sessions_yield` ends the current turn after Pi commits its tool results. OpenClaw’s subagent lifecycle owns when child completion wakes the requester. If you select Pi Durable for an existing chat, its first journal starts with the committed visible text from that chat.
 
+Pi Durable keeps its journal in a separate SQLite file per OpenClaw session generation. The journal stores model context, compacted summaries, task checkpoints, and approval signals. OpenClaw’s per-agent SQLite store owns chat history and delivery. The harness budgets for the prepared system prompt and tools when configuring Pi’s recent-history target, within the selected model’s context window.
+
 Fork at a message using OpenClaw’s normal chat controls. A Pi Durable fork starts a new journal from Pi’s model checkpoint at the last completed Pi answer before the branch point. The checkpoint carries model-visible tool calls and results and any context summary at that point. The branch falls back to visible text when the source checkpoint is unavailable. Approvals and in-flight work remain with the source session.
 
 In a Gateway chat, ask the parent to spawn a visible Pi Durable child for the task. The parent uses `sessions_spawn` with `visible: true`, `agentRuntime: "pi-durable"`, and `expectsCompletionMessage: false`. The durable child posts its own final result.

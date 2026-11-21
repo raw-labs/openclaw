@@ -12,6 +12,7 @@ const {
   defineSignal,
   defineTask,
   defineTool,
+  estimateMessageTokens,
   GenerationTask,
   Harness,
   hook,
@@ -29,6 +30,9 @@ if (!port) {
 const ctx = BACKGROUND_CONTEXT;
 const { command, database } = workerData;
 const decision = defineSignal({ name: "openclaw.approval", version: 1, schema: bool() });
+const recentConversationTokens = 20_000;
+const maxReserveTokens = 16_384;
+const maxBackgroundTokens = 32_768;
 const turn = defineDoc({
   kind: "openclaw.pi-turn",
   scope: "conversation",
@@ -212,24 +216,21 @@ function modelRequestError(model) {
 
 async function run() {
   const registry = createRegistry();
-  let pendingCompaction;
+  const compactionStarts = new Map();
+  const committedCompactions = [];
+  let compactionObserver;
   let root;
-  const reportCompaction = async () => {
-    if (!pendingCompaction) {
-      return false;
-    }
-    const { head, messages } = await root.context(ctx);
-    if (head?.kind === "pi.compaction" && head.byTaskId === pendingCompaction.taskId) {
-      const { count } = pendingCompaction;
-      pendingCompaction = undefined;
+  const reportCompactions = async () => {
+    const committed = committedCompactions.splice(0);
+    for (const { at, count } of committed) {
+      const { messages } = await root.context(ctx, { at });
       await requestHost({
         kind: "after-compaction",
         count,
         messages: openClawContext({ messages }).messages,
       });
-      return true;
     }
-    return false;
+    return committed.length > 0;
   };
   const installTools = (descriptors) => {
     const tools =
@@ -282,6 +283,7 @@ async function run() {
                 if (yieldRequest) {
                   return { tasks: [{ task: finishYield, input: yieldRequest }] };
                 }
+                return undefined;
               },
               async onYield(answer) {
                 const reason = await requestHost({ kind: "finalize", answer });
@@ -290,8 +292,24 @@ async function run() {
             }),
             hook(CompactionTask, {
               async beforeCompact({ messages, entries }, api) {
-                await reportCompaction();
-                pendingCompaction = { taskId: api.taskId, count: entries.length };
+                compactionStarts.set(api.taskId, entries.length);
+                // Background and overflow tasks can overlap. Report from their
+                // committed entries even if a later compaction replaces the head.
+                compactionObserver ??= harness.observeCommits({
+                  advance({ changes }) {
+                    for (const { type, value } of changes) {
+                      if (type !== "entry" || value.kind !== "pi.compaction") {
+                        continue;
+                      }
+                      const count = compactionStarts.get(value.byTaskId);
+                      if (count !== undefined) {
+                        compactionStarts.delete(value.byTaskId);
+                        committedCompactions.push({ at: value.id, count });
+                      }
+                    }
+                  },
+                  end() {},
+                });
                 await requestHost({
                   kind: "before-compaction",
                   messages: openClawContext({ messages }).messages,
@@ -303,6 +321,7 @@ async function run() {
     registry.install(
       defineExtension({ name: "openclaw-wait", tools, hooks, tasks: [finishYield] }),
     );
+    return tools;
   };
   let model =
     command.action === "start" || command.action === "compact" ? command.model : undefined;
@@ -324,6 +343,7 @@ async function run() {
     }
   };
   const readOnly = command.action === "read-context" || command.action === "read-checkpoint";
+  const settings = { toolExecution: "sequential" };
   const harness = await Harness.open(
     await openNodeSqliteStorage(database),
     {
@@ -334,15 +354,18 @@ async function run() {
         },
         streamSimple(_model, context, { reasoning }) {
           const stream = createAssistantMessageEventStream();
-          void requestHost(
-            {
-              kind: "model",
-              purpose: "generation",
-              context: openClawContext(context),
-              reasoning,
-            },
-            adaptModelProgress(stream),
-          )
+          void reportCompactions()
+            .then(() =>
+              requestHost(
+                {
+                  kind: "model",
+                  purpose: "generation",
+                  context: openClawContext(context),
+                  reasoning,
+                },
+                adaptModelProgress(stream),
+              ),
+            )
             .then((message) => {
               // Pi's overflow classifier reads text. Preserve OpenClaw's provider code
               // even when the upstream error message uses different wording.
@@ -368,7 +391,7 @@ async function run() {
         },
       }),
       registry,
-      settings: { toolExecution: "sequential" },
+      settings,
       onWake: handleWake,
     },
     ctx,
@@ -420,13 +443,44 @@ async function run() {
       return { wait: { state: "missing" }, visibleContext: excerpts.toReversed().join("\n\n") };
     }
     record = await harness.snapshot(turn, root.id, ctx);
-    installTools(command.action === "start" ? command.tools : record?.tools);
+    const tools = installTools(command.action === "start" ? command.tools : record?.tools);
+    if (command.action === "resume") {
+      model = record?.model;
+    }
+    if (
+      model &&
+      (command.action === "start" || command.action === "resume" || command.action === "compact")
+    ) {
+      const instructions =
+        command.action === "start" ? command.instructions : (await root.agent(ctx)).instructions;
+      // Pi counts durable system entries in its cut-point budget. Leave room for
+      // the prompt and tool baseline so that budget can also retain recent turns.
+      const prefixTokens = estimateMessageTokens({
+        role: "system",
+        content: instructions ?? "",
+        toolsAdded: tools.map(({ name, description, parameters }) => ({
+          name,
+          description,
+          parameters,
+        })),
+      });
+      const contextWindow = Math.floor(model.contextWindow);
+      const reserveTokens = Math.min(maxReserveTokens, Math.floor(contextWindow / 4));
+      const inputTokens = contextWindow - reserveTokens;
+      const keepRecentTokens = Math.min(recentConversationTokens + prefixTokens, inputTokens);
+      settings.compaction = {
+        reserveTokens,
+        keepRecentTokens,
+        // Background compaction needs room between the retained tail and the blocking threshold.
+        backgroundTokens: Math.min(maxBackgroundTokens, inputTokens - keepRecentTokens),
+      };
+    }
     if (command.action === "compact") {
       await root.configure({ model: { provider: model.provider, modelId: model.id } }, ctx);
       driving = true;
       const task = await root.compact(command.instructions, ctx);
       await harness.waitForTask(task, ctx);
-      return { wait: { state: "missing" }, compacted: await reportCompaction() };
+      return { wait: { state: "missing" }, compacted: await reportCompactions() };
     }
     if (command.action === "start" && record?.runId !== command.runId) {
       if (record?.submissionId) {
@@ -509,9 +563,6 @@ async function run() {
           await (await harness.submission(item.id, ctx)).abort(ctx);
         }
       }
-    }
-    if (command.action === "resume") {
-      model = record?.model;
     }
     let signal;
     if (command.action === "signal" && record?.taskId) {
@@ -621,7 +672,7 @@ async function run() {
         harness.resume();
         handleWake(harness.wake());
         await idle;
-        await reportCompaction();
+        await reportCompactions();
       }
     }
     await closeInput?.();
@@ -668,6 +719,7 @@ async function run() {
   } finally {
     driving = false;
     clearTimeout(wakeTimer);
+    compactionObserver?.detach();
     await harness.close(ctx);
   }
 }

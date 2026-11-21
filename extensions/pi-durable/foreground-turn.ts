@@ -182,6 +182,7 @@ export async function runForegroundPiTurn(options: {
       }
       if (request.kind === "after-compaction") {
         compactionCount++;
+        host.reportContextAccounting?.({ kind: "compaction" });
         return await lifecycle.afterCompaction(request.messages, request.count);
       }
       if (request.kind === "tool-rejected") {
@@ -270,6 +271,13 @@ export async function runForegroundPiTurn(options: {
         lifecycle.modelOutput(message);
         if (!compaction) {
           latestAssistant = message;
+          if (
+            compactionCount > 0 &&
+            message.stopReason !== "error" &&
+            message.stopReason !== "aborted"
+          ) {
+            host.reportContextAccounting?.({ kind: "model", usage: message.usage });
+          }
         }
         host.reportOutputTokens?.(message.usage.output);
         return message;

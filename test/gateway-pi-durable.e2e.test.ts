@@ -50,6 +50,7 @@ it(
     const childModelId = "pi-child-proof";
     const extraModelId = "claude-haiku-4-5";
     let anthropicRequest: { apiKey: string | string[] | undefined; body: string } | undefined;
+    let anthropicSummaryRequests = 0;
     const anthropic = createServer((request, response) => {
       if (request.method !== "POST" || !request.url?.endsWith("/messages")) {
         response.writeHead(404).end();
@@ -61,6 +62,9 @@ it(
       });
       request.on("end", () => {
         anthropicRequest = { apiKey: request.headers["x-api-key"], body };
+        if (body.includes("You are a context summarization assistant.")) {
+          anthropicSummaryRequests++;
+        }
         const { response: wire } = providerResponse({
           api: "anthropic-messages",
           model: extraModelId,
@@ -100,6 +104,7 @@ it(
     let summaryRequests = 0;
     let overflowRequests = 0;
     let overflowWrites = 0;
+    let overflowRetryKeptHistory = false;
     let concurrentCompaction = false;
     let pendingGeneration = 0;
     let pendingSummaries = 0;
@@ -147,6 +152,7 @@ it(
             return;
           }
           if (!requestText.includes('"type":"function_call_output"')) {
+            overflowRetryKeptHistory = requestText.includes("PI_RECENT_OVERFLOW_HISTORY");
             overflowWrites++;
             writeRestartToolCall(
               response,
@@ -326,9 +332,14 @@ it(
                 return { content: [{ type: "text", text: "committed" }] };
               },
             }, { workspaceAccess: false });
-            api.on("before_prompt_build", (event) => event.prompt.includes("PI_OPEN_APP") ? {
-              prependContext: "PI_HOOK_PROOF", toolsAllow: ["parity__show", "parity__click"],
-            } : undefined);
+            api.on("before_prompt_build", (event) => {
+              if (event.prompt.includes("PI_OPEN_APP")) {
+                return { prependContext: "PI_HOOK_PROOF", toolsAllow: ["parity__show", "parity__click"] };
+              }
+              if (event.prompt.includes("PI_CODED_OVERFLOW_WRITE")) {
+                return { prependSystemContext: "Synthetic workspace policy. ".repeat(3500) };
+              }
+            });
             api.on("before_agent_finalize", (event) => event.lastAssistantMessage === "PI_FIRST_DRAFT" ? {
               action: "revise", retry: { instruction: "PI_REVISE_PROOF", maxAttempts: 1 },
             } : undefined);
@@ -379,6 +390,8 @@ it(
               id: extraModelId,
               name: extraModelId,
               api: "anthropic-messages",
+              contextWindow: 8192,
+              maxTokens: 1024,
             },
           ],
         };
@@ -1032,7 +1045,7 @@ it(
         for (let turn = 1; turn <= 3; turn++) {
           const { runId: historyRunId } = await reopened.request<{ runId: string }>("chat.send", {
             sessionKey: overflowChat,
-            message: `Overflow history ${turn}\n${"Synthetic history for provider overflow. ".repeat(1300)}`,
+            message: `Overflow history ${turn}\n${"Synthetic history for provider overflow. ".repeat(1300)}${turn === 3 ? "PI_RECENT_OVERFLOW_HISTORY" : ""}`,
             idempotencyKey: randomUUID(),
           });
           await expect(
@@ -1051,6 +1064,7 @@ it(
         expect(summaryRequests).toBe(summariesBeforeOverflow + 1);
         expect(overflowRequests).toBe(3);
         expect(overflowWrites).toBe(1);
+        expect(overflowRetryKeptHistory).toBe(true);
         expect(await readFile(join(workspace, "pi-overflow.txt"), "utf8")).toBe("written once\n");
         expect(
           JSON.stringify(await reopened.request("chat.history", { sessionKey: overflowChat })),
@@ -1090,6 +1104,19 @@ it(
           await reopened.request("chat.history", { sessionKey: altChat }),
         );
         expect(alternateHistory).toContain("ANTHROPIC_PI_REPLY");
+        const { runId: smallFollowupRunId } = await reopened.request<{ runId: string }>(
+          "chat.send",
+          {
+            sessionKey: altChat,
+            message: "PI_ANTHROPIC_FOLLOW_UP",
+            idempotencyKey: randomUUID(),
+          },
+        );
+        await expect(
+          reopened.request("agent.wait", { runId: smallFollowupRunId, timeoutMs: 15_000 }),
+        ).resolves.toMatchObject({ status: "ok" });
+        expect(anthropicSummaryRequests).toBe(0);
+        expect(anthropicRequest?.body).toContain("ANTHROPIC_PI_REPLY");
         const { runId: sideId } = await reopened.request<{ runId: string }>("chat.send", {
           sessionKey: altChat,
           message: "/btw PI_ANTHROPIC_SIDE_QUESTION",

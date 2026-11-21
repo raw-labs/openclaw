@@ -3,7 +3,7 @@ import type {
   ApprovalDecision,
   ApprovalTerminalReason,
 } from "../../../packages/gateway-protocol/src/schema/approvals.js";
-import type { ImageContent } from "../../../packages/llm-core/src/types.js";
+import type { ImageContent, Usage } from "../../../packages/llm-core/src/types.js";
 import type { AnyAgentTool } from "../tools/common.js";
 
 export type AgentHarnessContextMedia = {
@@ -110,6 +110,10 @@ export type AgentHarnessHostCapabilities = Readonly<{
     | undefined;
   /** Reports one completed model call's output tokens to this admitted run's live total. */
   reportOutputTokens?: (outputTokens: number) => void;
+  /** Reports native compaction commits and successful generation usage in context order. */
+  reportContextAccounting?: (
+    event: { kind: "compaction" } | { kind: "model"; usage: Usage },
+  ) => void;
   /** Adds native provenance only to this host's exact current admitted prompt. */
   annotateCurrentUserTurn?: (
     annotation: import("../../sessions/user-turn-transcript.types.js").UserTurnTranscriptAnnotation,

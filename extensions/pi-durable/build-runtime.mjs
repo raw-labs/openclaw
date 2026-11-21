@@ -60,6 +60,7 @@ if (!cached) {
       `
       export { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
       export { createAssistantMessageEventStream } from "@earendil-works/pi-ai/utils/event-stream";
+      export { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
       export { createModels } from "@earendil-works/pi-ai/models";
       export { CompactionTask, createRegistry, defineDoc, defineExtension, defineSignal, defineTask, defineTool, GenerationTask, Harness, hook, InboxDoc, LiveDoc } from "@earendil-works/pi-durable";
       export { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";

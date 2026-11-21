@@ -30,6 +30,7 @@ import { createOpenClawCodingToolsInternalAsync } from "../agent-tools.async.js"
 import { runBeforeToolCallHook } from "../agent-tools.before-tool-call.js";
 import { createOpenClawCodingToolsInternal } from "../agent-tools.js";
 import { log } from "../embedded-agent-runner/logger.js";
+import { bindNativeContextAccounting } from "../embedded-agent-runner/run/compaction-accounting-bridge.js";
 import type { EmbeddedRunAttemptInternalParams } from "../embedded-agent-runner/run/internal-params.js";
 import { runBestEffortCallback } from "../embedded-agent-subscribe.callback.js";
 import { createCronScheduledToolProjection } from "../exec-tool-target-pinning.js";
@@ -110,7 +111,7 @@ export function createAgentHarnessHostCapabilities(params: {
   const workSignal = getAsyncWorkSignal();
   const attemptSignal = attempt.abortSignal;
   const installationTarget = getInstallationTarget();
-  const { sessionKey, onAgentEvent } = attempt;
+  const { sessionKey, onAgentEvent, onContextAccountingEvent } = attempt;
   // Capture the selected harness declaration before plugin code can mutate it.
   // Full must not cover other commands merely because the same plugin owns them.
   const requiredNodeCommands = new Set(params.requiredNodeCommands);
@@ -483,6 +484,7 @@ export function createAgentHarnessHostCapabilities(params: {
         });
       }
     },
+    ...bindNativeContextAccounting(onContextAccountingEvent, assertActive.assertScopeCurrent),
     ...(annotateCurrentUserTurn ? { annotateCurrentUserTurn } : {}),
     ...media.capabilities,
     ...bindBoundedSeed(attempt, assertActive, withCaller, capabilityAbortController.signal, media),
