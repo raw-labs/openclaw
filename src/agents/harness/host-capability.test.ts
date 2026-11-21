@@ -339,6 +339,37 @@ describe("agent harness host capability", () => {
     }
   });
 
+  it("records native context accounting in order under the original host capability", async () => {
+    const onContextAccountingEvent = vi.fn();
+    const { attempt } = await admittedAttempt("run-native-compaction", {
+      onContextAccountingEvent,
+    });
+    const host = createAgentHarnessHostCapabilities({ attempt, pluginId: "codex" });
+    try {
+      const report = host.capabilities.reportContextAccounting!;
+      report({ kind: "compaction" });
+      report({
+        kind: "model",
+        usage: {
+          input: 120,
+          output: 20,
+          cacheRead: 80,
+          cacheWrite: 0,
+          totalTokens: 220,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+      });
+      expect(onContextAccountingEvent.mock.calls).toEqual([
+        [{ kind: "compaction", tokensAfter: undefined }],
+        [{ kind: "model", contextTokens: 220, successful: true }],
+      ]);
+      host.close();
+      expect(() => report({ kind: "compaction" })).toThrow("no longer active");
+    } finally {
+      host.close();
+    }
+  });
+
   it("overwrites plugin policy fields with the host snapshot and revokes lexically", async () => {
     const { attempt, admission } = await admittedAttempt();
     const authority = getAdmittedRunDelegatedAuthority(attempt.admittedRunContext);

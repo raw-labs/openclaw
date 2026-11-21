@@ -331,6 +331,13 @@ The capability is optional for compatibility with older hosts; when absent,
 live output-token reporting is unavailable. Keep last-response context
 snapshots and persisted billing usage separate from this live counter.
 
+When a native harness compacts its own context, use
+`params.hostCapabilities.reportContextAccounting` to report the committed
+compaction and subsequent successful generation usage in context order. A
+compaction marks the previous occupancy stale. A later generation can restore
+the occupancy using the provider's usage for the compacted context. Report
+generation usage only for conversation turns. The host owns session accounting.
+
 ## Agent-end side effects
 
 Native harnesses must await `runAgentEndSideEffectsAsync(...)` from

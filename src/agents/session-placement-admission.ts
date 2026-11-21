@@ -59,7 +59,25 @@ export type SessionPlacementSandboxParams = {
 };
 
 export type PreparedSessionPlacementSandbox = Disposable & {
+  /** A worker assignment can exist without an active remote-exec sandbox. */
+  workerAssigned: boolean;
   sandbox: SandboxContext | null;
+  assertCurrent: () => void;
+};
+
+export type RecoveredSessionPlacementTurn = {
+  target: {
+    sessionId: string;
+    sessionKey: string;
+    agentId: string;
+    storePath: string;
+    lifecycleRevision?: string;
+  };
+  config: OpenClawConfig;
+  workspaceDir: string;
+  runId: string;
+  runtimeId: string;
+  signal: AbortSignal;
   assertCurrent: () => void;
 };
 
@@ -77,6 +95,10 @@ export type SessionPlacementAdmissionProvider = {
     session: { sessionId: string; sessionKey?: string; operation?: ReplyOperation },
     assertCurrent?: () => void,
   ) => Promise<string | undefined>;
+  runRecoveredWorkspaceTurn?: <T>(
+    turn: RecoveredSessionPlacementTurn,
+    work: (signal: AbortSignal) => Promise<T>,
+  ) => Promise<T>;
   executeLocalTurn: <T>(
     claim: LocalTurnPlacementClaim,
     runLocal: () => Promise<T>,
@@ -489,6 +511,7 @@ export async function prepareSessionPlacementSandbox(
     assertCurrent();
     return {
       sandbox: prepared?.sandbox ?? null,
+      workerAssigned: prepared?.workerAssigned ?? false,
       assertCurrent,
       [Symbol.dispose]() {
         released = true;
@@ -501,7 +524,30 @@ export async function prepareSessionPlacementSandbox(
   }
 }
 
-/** The current placement owner alone can settle a proven terminal worker turn. */
+/** Re-admit a Gateway-owned continuation on its original remote workspace. */
+export async function runRecoveredSessionPlacementTurn<T>(
+  turn: RecoveredSessionPlacementTurn,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const provider = state.provider;
+  if (!provider?.runRecoveredWorkspaceTurn) {
+    throw new Error("The original worker placement owner is unavailable.");
+  }
+  return await provider.runRecoveredWorkspaceTurn(
+    {
+      ...turn,
+      assertCurrent() {
+        turn.assertCurrent();
+        if (state.provider !== provider) {
+          throw new Error("Worker placement owner changed during recovered work.");
+        }
+      },
+    },
+    work,
+  );
+}
+
+/** Recover the terminal result already owned by an active placement turn. */
 export async function recoverTerminalSessionPlacementTurn(
   session: { sessionId: string; sessionKey?: string; operation?: ReplyOperation },
   assertCurrent?: () => void,

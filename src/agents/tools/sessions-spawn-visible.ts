@@ -1,6 +1,5 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
-import { Value } from "typebox/value";
 import { readMissingScopeErrorDetails } from "../../../packages/gateway-protocol/src/gateway-error-details.js";
 import type { SessionsDispatchResult } from "../../../packages/gateway-protocol/src/schema/session-placement.js";
 import { readChildSessionPublication } from "../../channels/message-access/child-session-publication.js";
@@ -75,7 +74,7 @@ import {
 import { resolveVisibleSessionOwner } from "./sessions-spawn-visible-owner.js";
 import {
   correctedVisibleSpawnCall,
-  SessionsSpawnPlacementSchema,
+  readVisibleSpawnPlacement,
   validateVisibleSpawnOptions,
 } from "./sessions-spawn-visible.schema.js";
 
@@ -86,20 +85,16 @@ export async function maybeSpawnVisibleSession(
   // sessions_create shares this owner's admission and containment, not its supervision.
   const independent = params.options?.independent === true;
   const worktree = params.raw.worktree === true;
-  const requestedPlacement = params.raw.placement;
+  const placement = readVisibleSpawnPlacement(params.raw);
+  const agentRuntime = readToolStringParam(params.raw, "agentRuntime");
   if (
-    requestedPlacement !== undefined &&
-    !Value.Check(SessionsSpawnPlacementSchema, requestedPlacement)
+    params.raw.agentRuntime !== undefined &&
+    (!agentRuntime || params.raw.visible !== true || placement)
   ) {
     throw new ToolInputError(
-      'Omit placement for local execution or use {kind: "local"} with no cloud selectors. ' +
-        'For a configured cloud profile, use {kind: "profile", profileId, os?, machineClass?} with non-empty selectors; for a paired device, use {kind: "device", deviceId}. Both need visible=true and worktree=true.',
+      "agentRuntime requires a local visible child and an enabled agent harness ID.",
     );
   }
-  const placement =
-    requestedPlacement?.kind === "profile" || requestedPlacement?.kind === "device"
-      ? requestedPlacement
-      : undefined;
   if (placement && (params.raw.visible !== true || !worktree)) {
     throw new ToolInputError(
       `Cloud and device placement require visible=true and worktree=true. Corrected call: ${correctedVisibleSpawnCall(params.raw)}`,
@@ -457,6 +452,7 @@ export async function maybeSpawnVisibleSession(
         // sessions.create persists the group under the legacy wire field `category`.
         ...(group ? { category: group } : {}),
         model: resolvedModelRef,
+        ...(agentRuntime ? { agentRuntime } : {}),
         ...(cyberAccessProgram !== undefined ? { cyberAccessProgram } : {}),
         ...(placement ? { titleSource } : taskMessage ? { task: taskMessage } : {}),
         timeoutMs:

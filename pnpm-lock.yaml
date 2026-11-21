@@ -2195,6 +2195,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/plugin-sdk
 
+  extensions/pi-durable:
+    devDependencies:
+      openclaw:
+        specifier: workspace:*
+        version: link:../..
+
   extensions/pixverse:
     devDependencies:
       '@openclaw/plugin-sdk':

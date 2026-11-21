@@ -1,4 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import type { AgentHarnessHostCapabilities } from "../agents/harness/host-capability-types.js";
+import { prepareHarnessSessionWorkSource } from "../agents/harness/host-session-work-source.js";
 import { readPluginSessionWorkAuthority } from "../gateway/plugin-session-work-authority.js";
 import type { GatewayRequestContext } from "../gateway/server-methods/types.js";
 import { SessionAccessPreparationPendingError } from "../gateway/session-access-authority.js";
@@ -48,23 +50,30 @@ vi.mock("../gateway/operator-invocation-authority.js", () => ({
   }),
 }));
 // mock-isolation: keep durable storage and original operator fixtures local to this host-boundary test.
-vi.mock("../gateway/operator-run-recovery.js", () => ({
-  restoreGatewayOperatorSource: async (params: { prepareCurrent: () => Promise<void> }) => {
-    if (state.restoreError) {
-      throw state.restoreError;
-    }
-    await params.prepareCurrent();
-    return {
-      authority: {
-        assertCurrent: state.assertCurrent,
-        scopes: ["operator.write"],
-        profileId: "alice",
-      },
-      authenticatedUserProfile: { profileId: "alice" },
-      release: state.release,
-    };
-  },
-}));
+vi.mock("../gateway/operator-run-recovery.js", async () => {
+  const { createAdmittedRunOperatorAuthority } = await import("../agents/admitted-run-context.js");
+  return {
+    restoreGatewayOperatorSource: async (params: { prepareCurrent: () => Promise<void> }) => {
+      if (state.restoreError) {
+        throw state.restoreError;
+      }
+      await params.prepareCurrent();
+      return {
+        authority: createAdmittedRunOperatorAuthority({
+          assertCurrent: state.assertCurrent,
+          scopes: ["operator.write"],
+          profileId: "alice",
+          modelPolicy: {
+            models: [{ provider: "fixture", model: "allowed" }],
+            allows: ({ provider, model }) => provider === "fixture" && model === "allowed",
+          },
+        }),
+        authenticatedUserProfile: { profileId: "alice" },
+        release: state.release,
+      };
+    },
+  };
+});
 // mock-isolation: keep durable storage and original operator fixtures local to this host-boundary test.
 vi.mock("../gateway/server-plugin-in-process-authority.js", () => ({
   resolveInProcessGatewayDispatch: () => ({ operatorSourceClient: {} }),
@@ -239,6 +248,27 @@ it("admits and reauthorizes an exact operation with its original tool ceiling", 
   expect(() => escaped?.assertCurrent()).toThrow("borrow closed");
   expect(state.release).toHaveBeenCalled();
 });
+it("uses the restored operator's model policy and closes the borrow after execution", async () => {
+  const { service } = fixture();
+  await service.admit(input);
+  const denied = vi.fn();
+  let assertModelCurrent: (() => void) | undefined;
+  await service.run("job", async (borrow) => {
+    await expect(
+      borrow.withModelExecution({ provider: "fixture", model: "denied" }, denied),
+    ).rejects.toThrow("operator role cannot use this model");
+    await borrow.withModelExecution(
+      { provider: "fixture", model: "allowed" },
+      async (execution) => {
+        execution.assertCurrent();
+        assertModelCurrent = execution.assertCurrent;
+      },
+    );
+  });
+  expect(denied).not.toHaveBeenCalled();
+  expect(assertModelCurrent).toBeDefined();
+  expect(() => assertModelCurrent?.()).toThrow("borrow closed");
+});
 it("rejects reused IDs whose requested effects differ", async () => {
   const { service } = fixture();
   await service.admit(input);
@@ -259,6 +289,38 @@ it("does not enter work without a recoverable original source", async () => {
   const work = vi.fn();
   await expect(service.run("job", work)).resolves.toMatchObject({ status: "unavailable" });
   expect(work).not.toHaveBeenCalled();
+});
+it("keeps an admitted foreground turn usable without an operator recovery source", async () => {
+  const { service } = fixture();
+  state.recoverable = false;
+  const source: AgentHarnessHostCapabilities = {
+    kind: "agent-harness-host-capability",
+    version: 1,
+    assertActive: state.assertCurrent,
+    bindToolSurface: vi.fn<AgentHarnessHostCapabilities["bindToolSurface"]>(),
+    runBeforeToolCall: vi.fn<AgentHarnessHostCapabilities["runBeforeToolCall"]>(),
+    requestApproval: vi.fn<AgentHarnessHostCapabilities["requestApproval"]>(),
+    waitForApproval: vi.fn<AgentHarnessHostCapabilities["waitForApproval"]>(),
+  };
+  prepareHarnessSessionWorkSource({ pluginId: "research", attempt: state.target }, {}, (work) =>
+    work(),
+  ).bind(source);
+  await expect(
+    service.admitTurn({ id: "foreground", source, toolNames: [] }),
+  ).resolves.toMatchObject({
+    recoverable: false,
+    target: {
+      agentId: state.target.agentId,
+      sessionKey: state.target.sessionKey,
+      sessionId: state.target.sessionId,
+    },
+  });
+  expect(state.prepare).not.toHaveBeenCalled();
+  const recover = vi.fn();
+  await expect(service.run("foreground", recover)).resolves.toMatchObject({
+    status: "unavailable",
+  });
+  expect(recover).not.toHaveBeenCalled();
 });
 it("refuses a replaced conversation without entering work", async () => {
   const { service } = fixture();

@@ -38,7 +38,7 @@ import {
   resolveAgentHarnessPreparedAuthSupport,
   resolveAgentHarnessPreparedRouteSupport,
 } from "./harness/support.js";
-import type { AgentHarness } from "./harness/types.js";
+import type { AgentHarness, AgentHarnessSideQuestionParamsV2 } from "./harness/types.js";
 import { resolveImageSanitizationLimits } from "./image-sanitization.js";
 import { applySecretRefHeaderSentinels, requireApiKey } from "./model-auth.js";
 import {
@@ -367,10 +367,41 @@ export async function runBtwSideQuestion(
           nativeModelPolicySupport: selectedHarness.nativeModelPolicySupport,
           toolCalls,
         });
+        const hostAuth = "auth" in resolvedAttempt ? resolvedAttempt.auth : undefined;
+        const completeWithHostModel: AgentHarnessSideQuestionParamsV2["completeWithHostModel"] =
+          hostAuth &&
+          (async ({ systemPrompt, messages }, { maxTokens, signal }) => {
+            host.capabilities.assertActive();
+            const binding = host.capabilities.bindModelExecution?.({
+              provider: runtimeModel.provider,
+              model: runtimeModel.id,
+            });
+            try {
+              const { completeWithPreparedSimpleCompletionModel } =
+                await import("./simple-completion-execution.js");
+              const signals = [signal, binding?.signal, params.opts?.abortSignal].filter(
+                (candidate): candidate is AbortSignal => candidate !== undefined,
+              );
+              return await completeWithPreparedSimpleCompletionModel({
+                model: runtimeModel,
+                auth: hostAuth,
+                context: { systemPrompt, messages },
+                cfg: params.cfg,
+                options: { maxTokens, cacheRetention: "none", signal: AbortSignal.any(signals) },
+                assertCurrent: () => {
+                  host.capabilities.assertActive();
+                  binding?.assertCurrent();
+                },
+              });
+            } finally {
+              binding?.release();
+            }
+          });
         const sideParams = {
           ...hostAttempt,
           ...(toolCalls ? { toolCalls } : {}),
           hostCapabilities: host.capabilities,
+          completeWithHostModel,
           sandbox,
           provider: runtimeModel.provider,
           model: runtimeModel.id,

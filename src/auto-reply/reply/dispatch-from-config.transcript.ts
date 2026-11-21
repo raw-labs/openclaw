@@ -164,6 +164,9 @@ export function sendReplyWithTranscriptMirror(params: {
   kind?: "block" | "final";
   send: (payload: ReplyPayload) => LedgerQueuedSend;
 }): LedgerQueuedSend {
+  if (params.dispatcher.ownsCommandTranscript && params.metadata?.commandId) {
+    return params.send(params.payload);
+  }
   const captureToken = params.metadata ? {} : undefined;
   const delivered = captureDeliveredTranscriptMirror({ ...params, captureToken });
   if (captureToken) {

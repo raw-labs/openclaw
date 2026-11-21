@@ -22,6 +22,8 @@ import {
   mergeMcpConnectCatalog,
 } from "./agent-bundle-mcp-requester-connect.js";
 import { loadSessionMcpConfig } from "./agent-bundle-mcp-runtime-config.js";
+import type { McpAppRequesterIdentity } from "./agent-bundle-mcp-types.js";
+import { wrapToolWithBeforeToolCallHook } from "./agent-tools.before-tool-call.wrapper.js";
 import type { CodexMcpServersConfig } from "./codex-mcp-config.types.js";
 import {
   prepareConversationCapabilityProfile,
@@ -30,6 +32,8 @@ import {
 } from "./conversation-capability-profile.js";
 import { applyFinalEffectiveToolPolicy } from "./embedded-agent-runner/effective-tool-policy.js";
 import { applyEmbeddedAttemptToolsAllow } from "./embedded-agent-runner/run/attempt-tool-construction-plan.js";
+import type { EmbeddedRunAttemptInternalParams } from "./embedded-agent-runner/run/internal-params.js";
+import type { AgentHarnessHostCapabilities } from "./harness/host-capability-types.js";
 import {
   formatMcpCodexApprovalRemedy,
   requiresMcpCodexToolApproval,
@@ -243,6 +247,140 @@ function applyHarnessToolPolicy(
     warn: params.warn ?? (() => undefined),
     onFilter: params.onFilter,
   });
+}
+
+/** Use the ordinary MCP manager and bind its callable tool and App inventory to the same policy. */
+export async function prepareHostMcpToolsForAttempt(options: {
+  attempt: Partial<EmbeddedRunAttemptInternalParams> &
+    Pick<EmbeddedRunAttemptInternalParams, "runId">;
+  reservedToolNames: readonly string[];
+  requesterProfileId?: string;
+  assertCurrent: () => void;
+  bindTools: AgentHarnessHostCapabilities["bindToolSurface"];
+  operatorAuthority?: ConversationCapabilityProfileParams["operatorAuthority"];
+}) {
+  const {
+    attempt,
+    reservedToolNames,
+    requesterProfileId,
+    assertCurrent,
+    bindTools,
+    operatorAuthority,
+  } = options;
+  assertCurrent();
+  const { workspaceDir, sessionId, agentId, agentDir, config, sessionKey, runId } = attempt;
+  if (
+    attempt.disableTools ||
+    attempt.modelRun ||
+    attempt.trigger === "memory" ||
+    !workspaceDir ||
+    !sessionId
+  ) {
+    return undefined;
+  }
+  const metadata = attempt.preparedModelRuntime?.metadataSnapshot;
+  const manifestRegistry =
+    metadata?.pluginIds === undefined ? metadata?.manifestRegistry : undefined;
+  const { loaded } = loadSessionMcpConfig({
+    cfg: config,
+    workspaceDir,
+    manifestRegistry,
+    toolOverrides: attempt.toolOverrides,
+    logDiagnostics: false,
+  });
+  if (Object.keys(loaded.mcpServers).length === 0) {
+    return undefined;
+  }
+  return await prepareHostMcpToolsForHarness({
+    cfg: config,
+    workspaceDir,
+    agentDir,
+    agentId,
+    sessionId,
+    sessionKey,
+    manifestRegistry,
+    metadata,
+    runId,
+    assertCurrent,
+    bindTools,
+    reservedToolNames,
+    toolsAllow: attempt.toolsAllow,
+    toolOverrides: attempt.toolOverrides,
+    requesterSenderId: attempt.senderId,
+    agentAccountId: attempt.agentAccountId,
+    messageChannel: attempt.messageChannel ?? attempt.messageProvider,
+    appRequester: requesterProfileId
+      ? { kind: "gateway-profile", profileId: requesterProfileId }
+      : undefined,
+    isTurnTainted: attempt.isTurnTainted,
+    policyContext: {
+      ...attempt,
+      operatorAuthority,
+      modelProvider: attempt.provider,
+      sandboxToolPolicy: attempt.sandbox?.tools,
+      pluginMetadataSnapshot: metadata,
+    },
+  });
+}
+
+async function prepareHostMcpToolsForHarness(
+  params: MaterializeRequesterScopedMcpToolsForHarnessRunParams & {
+    appRequester?: McpAppRequesterIdentity;
+    assertCurrent: () => void;
+    runId: string;
+    bindTools: AgentHarnessHostCapabilities["bindToolSurface"];
+  },
+) {
+  const conversationCapabilityProfile = await resolveHarnessCapabilityProfile(params);
+  params.assertCurrent();
+  const acquisition = await acquireSessionMcpRuntime({
+    ...params,
+    toolDenylist: conversationCapabilityProfile?.policy.explicitToolDenylist,
+  });
+  const runtime = await materializeBundleMcpToolsForRun({
+    ...acquisition,
+    agentId: params.agentId,
+    appRequester: params.appRequester,
+    reservedToolNames: params.reservedToolNames,
+    operatorConnect: params.cfg
+      ? {
+          cfg: params.cfg,
+          metadata: params.metadata,
+          senderIsOwner: params.policyContext?.senderIsOwner,
+          chatType: params.policyContext?.chatType,
+          isTurnTainted: params.isTurnTainted,
+          toolOverrides: params.toolOverrides,
+          toolDenylist: conversationCapabilityProfile?.policy.explicitToolDenylist,
+        }
+      : undefined,
+  });
+  try {
+    params.assertCurrent();
+    const policy = { ...params, conversationCapabilityProfile };
+    const available = applyHarnessToolPolicy(runtime.tools, policy);
+    const appTools = applyHarnessToolPolicy(runtime.appTools ?? runtime.tools, policy);
+    const hookContext = {
+      agentId: params.agentId,
+      sessionKey: params.sessionKey,
+      sessionId: params.sessionId,
+      runId: params.runId,
+    };
+    return {
+      tools: params.bindTools(
+        available.map((tool) => wrapToolWithBeforeToolCallHook(tool, hookContext)),
+      ),
+      restrictAppTools(allow?: readonly string[]) {
+        const names = allow ? new Set(allow) : undefined;
+        runtime.restrictAppTools?.(
+          names ? appTools.filter(({ name }) => names.has(name)) : appTools,
+        );
+      },
+      [Symbol.asyncDispose]: runtime.dispose,
+    };
+  } catch (error) {
+    await runtime.dispose();
+    throw error;
+  }
 }
 
 /**

@@ -317,6 +317,11 @@ export type AgentHarnessSideQuestionParams = {
 /** Current side-question contract for hosts that always provide closure-bound authority. */
 export type AgentHarnessSideQuestionParamsV2 = AgentHarnessSideQuestionParams & {
   hostCapabilities: AgentHarnessHostCapabilities;
+  /** Tool-free completion on the exact host-resolved route, when the host owns its credential. */
+  completeWithHostModel?: (
+    context: Pick<import("../../llm/types.js").Context, "systemPrompt" | "messages">,
+    options: { maxTokens: number; signal?: AbortSignal },
+  ) => Promise<import("../../llm/types.js").AssistantMessage>;
   /** Non-authorizing native ownership captured before model and auth preparation. */
   expectedSessionRuntimeOwnership?: InternalEmbeddedRunAttemptParams["expectedSessionRuntimeOwnership"];
   /** Core-prepared search policy, bound to the side question's model and requester facts. */
@@ -713,6 +718,9 @@ type AgentHarnessContract<
 
   /** Lists the MCP tools owned by this session's native runtime, if it is already bound. */
   loadMcpToolCatalog?(params: AgentHarnessMcpCatalogParams): Promise<McpToolCatalog | undefined>;
+
+  /** Apps and their model tools share the Gateway's managed session MCP server connections. */
+  mcpAppRuntimeOwner?: "host";
 
   /** Borrows the existing thread-owned MCP connection for explicit user App interactions. */
   acquireMcpAppRuntime?(

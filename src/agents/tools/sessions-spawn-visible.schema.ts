@@ -1,5 +1,6 @@
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import { Type } from "typebox";
+import { Value } from "typebox/value";
 import {
   SessionMoveDeviceTargetSchema,
   SessionMoveProfileTargetSchema,
@@ -13,7 +14,23 @@ export const SessionsSpawnPlacementSchema = Type.Union([
   SessionMoveDeviceTargetSchema,
 ]);
 
+export function readVisibleSpawnPlacement(raw: Record<string, unknown>) {
+  const placement = raw.placement;
+  if (placement !== undefined && !Value.Check(SessionsSpawnPlacementSchema, placement)) {
+    throw new ToolInputError(
+      'Omit placement for local execution or use {kind: "local"} with no cloud selectors. ' +
+        'For a configured cloud profile, use {kind: "profile", profileId, os?, machineClass?} with non-empty selectors; for a paired device, use {kind: "device", deviceId}. Both need visible=true and worktree=true.',
+    );
+  }
+  return placement?.kind === "profile" || placement?.kind === "device" ? placement : undefined;
+}
+
 export const SESSIONS_SPAWN_SESSION_SCHEMA = {
+  agentRuntime: Type.Optional(
+    Type.String({
+      description: "An enabled agent harness ID for a local child with visible=true.",
+    }),
+  ),
   placement: Type.Optional({
     ...SessionsSpawnPlacementSchema,
     description:
@@ -117,6 +134,7 @@ export function correctedVisibleSpawnCall(raw: Record<string, unknown>): string 
       "label",
       "agentId",
       "model",
+      "agentRuntime",
       "runTimeoutSeconds",
       "cwd",
       "expectsCompletionMessage",

@@ -1,0 +1,3 @@
+# Covers separate process-crash proofs for hosted chat and paired workers, plus
+# authenticated OpenAI tests for notice publication and Docker/SSH continuation.
+1918

@@ -28,7 +28,9 @@ describe("OpenAI custom-tool runtime capability", () => {
       throw new Error("Expected a concrete OpenAI route");
     }
     expect(result.routes[0]?.runtimePolicy?.compatibleIds).toEqual(
-      supportsCustomTools ? ["openclaw", "codex", "agentsapi"] : ["openclaw", "agentsapi"],
+      supportsCustomTools
+        ? ["openclaw", "codex", "agentsapi", "pi-durable"]
+        : ["openclaw", "agentsapi", "pi-durable"],
     );
   });
 

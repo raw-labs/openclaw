@@ -31,14 +31,19 @@ export async function prepareWorkerTurnSandbox(
   using cleanup = new DisposableStack();
   const prepared = await options.placements.prepareRuntimeRefresh(params.sessionId);
   cleanup.defer(prepared.release);
+  const placement = prepared.placement;
   const retain = (
     sandbox: SandboxContext | null,
     assertCurrent = prepared.assertCurrent,
   ): PreparedSessionPlacementSandbox => {
     const lifetime = cleanup.move();
-    return { sandbox, assertCurrent, [Symbol.dispose]: () => lifetime.dispose() };
+    return {
+      sandbox,
+      workerAssigned: placement !== undefined && placement.state !== "local",
+      assertCurrent,
+      [Symbol.dispose]: () => lifetime.dispose(),
+    };
   };
-  const placement = prepared.placement;
   if (!isActiveRemoteExecPlacementForSession(placement, params)) {
     return retain(null);
   }

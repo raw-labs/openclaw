@@ -40,6 +40,7 @@ import { createResourceLoader } from "../sessions/agent-session-loop-resource-lo
 import { SessionManager } from "../sessions/session-manager.js";
 import { SettingsManager } from "../sessions/settings-manager.js";
 import {
+  expectCall,
   expectRecordFields,
   findMockCall,
   mockCallArg,
@@ -206,10 +207,6 @@ async function nativeCompactionArgs(
     agentHarnessId: overrides.agentHarnessId,
   });
   return params;
-}
-
-function expectCall(mock: Mock, fields: Record<string, unknown>, ...rest: unknown[]) {
-  expect(mock).toHaveBeenCalledWith(expect.objectContaining(fields), ...rest);
 }
 
 const abortedCompaction = { ok: false, compacted: false, reason: "compaction aborted" };
@@ -2482,7 +2479,9 @@ describe("compactEmbeddedAgentSession hooks (ownsCompaction engine)", () => {
       modelProviders: expect.arrayContaining([
         expect.objectContaining({
           preparedAuth: expect.objectContaining({ source: "harness" }),
-          runtimePolicy: expect.objectContaining({ compatibleIds: ["openclaw", "codex"] }),
+          runtimePolicy: expect.objectContaining({
+            compatibleIds: ["openclaw", "codex", "pi-durable"],
+          }),
         }),
       ]),
     });

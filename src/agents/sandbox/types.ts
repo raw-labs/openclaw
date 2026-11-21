@@ -134,6 +134,12 @@ export type SandboxContext = {
   /** Creators release retained authority after last use; supplied contexts remain caller-owned. */
   [Symbol.dispose]?: () => void;
   enabled: boolean;
+  /** Present when a session-wide worker placement owns this sandbox. */
+  placementExecutionMode?: "remote-exec";
+  placementNodeId?: string;
+  placementEnvironmentId?: string;
+  placementSessionId?: string;
+  placementOwnerEpoch?: number;
   /** Immutable creator policy: this session may never escape to a host execution target. */
   required?: true;
   /** Core-prepared execution projection; ordinary rw sandboxes retain the requested workspace. */

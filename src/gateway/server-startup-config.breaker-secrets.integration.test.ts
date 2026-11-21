@@ -111,7 +111,7 @@ it.each(["provider-ref", "gateway-ref"] as const)(
       routes: [
         {
           requestTransportOverrides: "none",
-          runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi"] },
+          runtimePolicy: { compatibleIds: ["openclaw", "codex", "agentsapi", "pi-durable"] },
         },
       ],
     });

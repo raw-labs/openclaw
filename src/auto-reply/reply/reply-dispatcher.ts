@@ -606,6 +606,7 @@ export function createReplyDispatcher(
       });
     },
     supportsSettledReceipt: true,
+    ...(options.ownsCommandTranscript ? { ownsCommandTranscript: true } : {}),
     waitForIdle: async () => {
       await waitForIdle();
       const receipt: ReplyDispatchReceipt = {

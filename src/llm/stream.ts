@@ -17,6 +17,7 @@ import "./ai-transport-host.js";
 import type {
   Api,
   AssistantMessage,
+  AssistantMessageEvent,
   AssistantMessageEventStreamContract,
   Context,
   Model,
@@ -144,6 +145,7 @@ export async function completeSimple<TApi extends Api>(
   context: Context,
   options?: SimpleStreamOptions,
   assertCurrent?: () => void,
+  onEvent?: (event: AssistantMessageEvent) => void | Promise<void>,
 ): Promise<AssistantMessage> {
   await ensureTransportRuntimeHost();
   const admission = createProviderRateLimitRequest(model, options ?? {});
@@ -153,7 +155,17 @@ export async function completeSimple<TApi extends Api>(
   assertCurrent?.();
   assertProviderAuthAuthority(model);
   options?.signal?.throwIfAborted();
-  const result = await resolveRuntime(model).completeSimple(model, context, admission.options);
+  const runtime = resolveRuntime(model);
+  const result = await (async () => {
+    if (!onEvent) {
+      return await runtime.completeSimple(model, context, admission.options);
+    }
+    const events = runtime.streamSimple(model, context, admission.options);
+    for await (const event of events) {
+      await onEvent(event);
+    }
+    return await events.result();
+  })();
   admission.observe?.(result);
   return result;
 }

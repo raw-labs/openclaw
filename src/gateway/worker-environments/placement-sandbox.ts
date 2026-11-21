@@ -53,6 +53,15 @@ function requireRemoteWorkspaceDir(value: string, nodeCarrier: boolean): string 
   return value;
 }
 
+export function remoteExecSandboxRuntimeId(placement: ActiveRemoteExecPlacement): string {
+  return [
+    "remote-exec",
+    placement.environmentId,
+    placement.activeOwnerEpoch,
+    placement.generation,
+  ].join(":");
+}
+
 /** Builds the node or SSH sandbox owned by one exact active placement generation. */
 export async function createRemoteExecPlacementSandbox(params: {
   config?: OpenClawConfig;
@@ -95,12 +104,7 @@ export async function createRemoteExecPlacementSandbox(params: {
     placement.remoteWorkspaceDir,
     Boolean(environment.nodeDeviceId),
   );
-  const runtimeId = [
-    "remote-exec",
-    environment.environmentId,
-    environment.ownerEpoch,
-    placement.generation,
-  ].join(":");
+  const runtimeId = remoteExecSandboxRuntimeId(placement);
   const base = resolveSandboxConfigForAgent(params.config, placement.agentId);
   const { binds: _ignoredBinds, ...docker } = base.docker;
   const common = {

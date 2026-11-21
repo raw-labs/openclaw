@@ -365,14 +365,16 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
       signal: params.signal,
     });
     const result = await this.runtime.runRemoteShellScript({
-      script: 'set -eu\nLC_ALL=C stat -c "%F|%s|%y" -- "$1"',
+      script:
+        'LC_ALL=C stat -c "%F|%s|%y" -- "$1" 2>/dev/null || LC_ALL=C stat -f "%HT|%z|%m" -- "$1"',
       args: [canonicalPath],
       signal: params.signal,
     });
     const output = result.stdout.toString("utf8").trim();
     const [kindRaw = "", sizeRaw = "0", mtimeRaw = "0"] = output.split("|");
+    const kind = kindRaw.toLowerCase();
     return {
-      type: kindRaw === "directory" ? "directory" : kindRaw === "regular file" ? "file" : "other",
+      type: kind === "directory" ? "directory" : kind === "regular file" ? "file" : "other",
       size: parseSandboxStatSize(sizeRaw),
       mtimeMs: parseSandboxStatMtimeMs(mtimeRaw),
     };
@@ -585,19 +587,17 @@ class RemoteShellSandboxFsBridge implements SandboxFsBridge {
     const result = await this.runtime.runRemoteShellScript({
       script: [
         'if [ ! -e "$1" ] && [ ! -L "$1" ]; then exit 0; fi',
-        'stats=$(LC_ALL=C stat -c "%F|%h" -- "$1")',
-        'printf "%s\\n" "$stats"',
+        'LC_ALL=C stat -c "%F|%h" -- "$1" 2>/dev/null || LC_ALL=C stat -f "%HT|%l" -- "$1"',
       ].join("\n"),
       args: [params.containerPath],
       signal: params.signal,
-      allowFailure: true,
     });
     const output = result.stdout.toString("utf8").trim();
     if (!output) {
       return;
     }
     const [kind = "", linksRaw = "1"] = output.split("|");
-    if (kind === "regular file" && hasMultipleHardlinks(linksRaw)) {
+    if (kind.toLowerCase() === "regular file" && hasMultipleHardlinks(linksRaw)) {
       throw new Error(
         `Hardlinked path is not allowed under sandbox mount root: ${params.containerPath}`,
       );

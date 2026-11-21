@@ -41,3 +41,9 @@ export {
   wrapNativeSessionDeletionMutation,
   isNativeSessionDeletionUnresolved,
 } from "../agents/harness/native-session/deletion-participant.js";
+
+export {
+  MessageInjectionTargetUnavailableError,
+  MessageInjectionWithdrawnError,
+  withMessageInjectionAdmission,
+} from "../auto-reply/reply/message-injection-authority.js";

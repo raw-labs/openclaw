@@ -244,6 +244,61 @@ export async function handleApproveCommandFromContext(
   };
 
   const resolvedBy = `${params.command.channel}:${params.command.senderId ?? "unknown"}`;
+  // Durable approvals belong to the plugin that owns the wait. Route only an
+  // explicit namespaced ID and carry the original authenticated Gateway client.
+  const durable = /^durable:([a-z0-9][a-z0-9-]*):([a-zA-Z0-9_-]+)$/.exec(parsed.id);
+  if (durable) {
+    if (!authorizations.plugin.authorized || !params.command.isAuthorizedSender) {
+      return commandReply("❌ You are not authorized to approve this request.");
+    }
+    const behavior = commandBehaviors.get("plugin");
+    if (behavior?.kind === "reply") {
+      return commandReply(behavior.text);
+    }
+    if (behavior?.kind === "ignore") {
+      return { shouldContinue: false };
+    }
+    if (parsed.decision === "allow-always") {
+      return commandReply("Use allow-once or deny for this approval.");
+    }
+    const [{ getPluginRuntimeGatewayRequestScope }, { dispatchGatewayMethodInProcess }] =
+      await Promise.all([
+        import("../../plugins/runtime/gateway-request-scope.js"),
+        import("../../gateway/server-plugin-in-process-dispatch.js"),
+      ]);
+    const scope = getPluginRuntimeGatewayRequestScope();
+    const [, pluginId, id] = durable;
+    const method = `${pluginId}.approval.resolve`;
+    // Chat dispatch can carry the live Gateway resolver instead of a request context.
+    const gateway = scope?.resolveGatewayContext ? scope.resolveGatewayContext() : scope?.context;
+    const descriptor = gateway?.getGatewayMethodRegistry?.().getDescriptor(method);
+    if (
+      !Array.isArray(params.ctx.GatewayClientScopes) ||
+      !params.ctx.SessionKey ||
+      !scope?.client ||
+      scope.client.internal?.syntheticClient ||
+      descriptor?.owner.kind !== "plugin" ||
+      descriptor.owner.pluginId !== pluginId ||
+      descriptor.sessionAccess?.mode !== "write"
+    ) {
+      return commandReply("This approval is unavailable in the current chat.");
+    }
+    try {
+      params.command.assertAuthorizedCurrent?.();
+      await dispatchGatewayMethodInProcess(
+        method,
+        { id, decision: parsed.decision, sessionKey: params.ctx.SessionKey },
+        { disableSyntheticClient: true },
+      );
+    } catch (error) {
+      log.warn(`Durable approval submission failed: ${formatErrorMessage(error)}`);
+      return commandReply(
+        "That approval is unavailable in the current chat or has already closed.",
+      );
+    }
+    return commandReply(`✅ Approval ${parsed.decision} submitted for ${parsed.id}.`);
+  }
+
   const callApprovalMethod = async (approvalKind: ChannelApprovalKind): Promise<void> => {
     // Channel senders deciding an OpenClaw change carry their identity so the
     // Gateway's final decision guard rechecks live custody (channel approvers,

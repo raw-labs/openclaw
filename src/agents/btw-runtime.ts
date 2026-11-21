@@ -435,6 +435,7 @@ export async function resolveRuntimeModel(params: {
 export type RunBtwSideQuestionParams = Omit<
   AgentHarnessSideQuestionParamsV2,
   | "hostCapabilities"
+  | "completeWithHostModel"
   | "sandbox"
   | "preparedModelRuntime"
   | "runtimeModel"

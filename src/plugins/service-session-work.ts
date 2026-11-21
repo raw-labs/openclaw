@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { bindOperatorModelExecution } from "../agents/admitted-run-context.js";
+import {
+  readHarnessSessionWorkSource,
+  type HarnessSessionWorkWorkspace,
+} from "../agents/harness/host-session-work-source.js";
 import {
   captureGatewayToolCallerAssertion,
   getGatewayToolCallerIdentity,
@@ -23,16 +28,19 @@ import { createCorePluginStateKeyedStoreV2 } from "../plugin-state/plugin-state-
 import type { PluginRuntimeCapabilityLease } from "./capability-lease.js";
 import type { PluginRegistry } from "./registry-types.js";
 import { getPluginRuntimeGatewayRequestScope } from "./runtime/gateway-request-scope.js";
+import { openSessionWorkAssistantPreview } from "./service-session-work-preview.js";
 import type {
+  PluginServiceRecoveredSessionWorkContextV1,
   PluginServiceSessionWorkContextV1,
   PluginServiceSessionWorkV1,
 } from "./service-session-work.types.js";
 
 type AcceptedWork = {
   target: PluginServiceSessionWorkContextV1["target"];
-  toolName: string;
+  toolName?: string;
   tools: string[];
   snapshot?: OperatorRunRecoverySnapshot;
+  workspace?: HarnessSessionWorkWorkspace;
 };
 class SessionWorkAuthorizationError extends Error {}
 
@@ -47,7 +55,7 @@ export function createPluginServiceSessionWork(params: {
   signal: AbortSignal;
   isStopping: () => boolean;
   resolveGatewayContext?: GatewayContextResolver;
-}): PluginServiceSessionWorkV1 {
+}): PluginServiceSessionWorkV1 & Required<Pick<PluginServiceSessionWorkV1, "admitTurn">> {
   const assertService = () => {
     params.lease.assertActive("session work");
     params.signal.throwIfAborted();
@@ -82,20 +90,30 @@ export function createPluginServiceSessionWork(params: {
     }
   };
   async function withInvocation<T>(
-    input: Omit<Parameters<PluginServiceSessionWorkV1["admit"]>[0], "id">,
+    input: {
+      agentId: string;
+      sessionKey: string;
+      toolName?: string;
+      delegatedTools?: readonly string[];
+    },
     work: (current: PluginServiceSessionWorkContextV1, record: AcceptedWork) => Promise<T>,
+    harness?: { sessionId: string; workspace?: HarnessSessionWorkWorkspace },
   ): Promise<T> {
     const owner = context();
     const scope = getPluginRuntimeGatewayRequestScope();
-    if (
-      scope?.pluginId !== params.pluginId ||
-      !params.registry.tools.some(
-        (entry) =>
-          entry.pluginId === params.pluginId &&
-          (entry.declaredNames?.has(input.toolName) ?? entry.names.includes(input.toolName)),
-      )
-    ) {
-      throw new Error("Session work requires its registered tool owner");
+    if (!harness) {
+      const toolName = input.toolName;
+      if (
+        !toolName ||
+        scope?.pluginId !== params.pluginId ||
+        !params.registry.tools.some(
+          (entry) =>
+            entry.pluginId === params.pluginId &&
+            (entry.declaredNames?.has(toolName) ?? entry.names.includes(toolName)),
+        )
+      ) {
+        throw new Error("Session work requires its registered tool owner");
+      }
     }
     const caller = getGatewayToolCallerIdentity();
     const assertCaller = captureGatewayToolCallerAssertion();
@@ -128,28 +146,49 @@ export function createPluginServiceSessionWork(params: {
         assertSession?.();
       };
       assertCurrent();
+      const tools = [...new Set(input.delegatedTools ?? [])];
+      if (input.toolName && !tools.includes(input.toolName)) {
+        tools.unshift(input.toolName);
+      }
+      if (tools.length > 256 || tools.some((name) => !name || name.length > 256)) {
+        throw new Error("Session work tool request exceeds its bound");
+      }
+      if (harness && !captured.authority?.recoverySnapshot) {
+        // The foreground harness attempt is already admitted. A channel turn
+        // without a recoverable operator source has no background work to authorize.
+        const target = Object.freeze({
+          agentId: input.agentId,
+          sessionKey: input.sessionKey,
+          sessionId: harness.sessionId,
+        });
+        const value = await work(Object.freeze({ target, signal, assertCurrent }), {
+          target,
+          tools,
+        });
+        assertCurrent();
+        return value;
+      }
       const resolved = resolveInProcessGatewayDispatch("tools.invoke", input, {
-        // Preserve a real operator request; an admitted agent still resolves to
-        // its synthetic client with the original executable-tool ceiling.
+        // A spawned opening can still carry the parent's transport caller.
+        // Bind admitted work to the current run and retain the original operator's scopes.
+        ...(caller?.operationalRunInstance
+          ? { forceSyntheticClient: true, syntheticScopeMode: "exact" }
+          : {}),
         pluginRuntimeOwnerId: params.pluginId,
         resolveGatewayContext: params.resolveGatewayContext,
       });
-      const tools = [...new Set([input.toolName, ...(input.delegatedTools ?? [])])];
-      if (tools.length > 32 || tools.some((name) => !name || name.length > 256)) {
-        throw new Error("Session work tool request exceeds its bound");
-      }
       let target: AcceptedWork["target"] | undefined;
-      // Capture only requested effects that the *original live source* allows.
-      // Reauthorization intersects this restriction with current policy on every wake.
-      for (const name of tools) {
-        if (caller?.operationalRunInstance && !caller.assertToolAllowed) {
-          throw new Error("Session work requires the original executable tool policy");
+      // Admit the conversation and the current executable ceiling together.
+      const names = input.toolName ? tools : [undefined];
+      for (const name of names) {
+        if (name) {
+          if (caller?.operationalRunInstance && !caller.assertToolAllowed) {
+            throw new Error("Session work requires the original executable tool policy");
+          }
+          caller?.assertToolAllowed?.(name);
         }
-        // A standalone operator tool has routing context, not an admitted agent
-        // run. Its authenticated request still passes the session gate below.
-        caller?.assertToolAllowed?.(name);
         const prepared = await prepareGatewaySessionAccessAuthority({
-          policy: { mode: "write", requiredTool: name },
+          policy: { mode: "write", ...(name ? { requiredTool: name } : {}) },
           methodOwner: { kind: "plugin", pluginId: params.pluginId },
           pluginRegistry: params.registry,
           requestParams: input,
@@ -171,14 +210,15 @@ export function createPluginServiceSessionWork(params: {
           prepared.authority.release();
         }
       }
-      if (!target) {
+      if (!target || (harness && harness.sessionId !== target.sessionId)) {
         throw new Error("Session work target was not admitted");
       }
       assertCurrent();
       const record: AcceptedWork = {
         target: Object.freeze({ ...target }),
-        toolName: input.toolName,
+        ...(input.toolName ? { toolName: input.toolName } : {}),
         tools,
+        ...(harness?.workspace ? { workspace: harness.workspace } : {}),
         ...(captured.authority?.recoverySnapshot
           ? { snapshot: captured.authority.recoverySnapshot }
           : {}),
@@ -195,29 +235,47 @@ export function createPluginServiceSessionWork(params: {
       captured.release?.();
     }
   }
+  async function recordAdmission(id: string, assertCurrent: () => void, record: AcceptedWork) {
+    const durable = store(assertCurrent);
+    if (!(await durable.registerIfAbsent(id, record, { ttlMs: retentionMs }))) {
+      const existing = await durable.lookup(id);
+      assertCurrent();
+      if (!isDeepStrictEqual(existing, record)) {
+        throw new Error("Session work ID belongs to a different accepted operation");
+      }
+    }
+    return { target: record.target, recoverable: record.snapshot !== undefined };
+  }
   return {
     version: 1,
     withCurrent: (input, work) => withInvocation(input, (current) => work(current)),
     async admit(input) {
       validateId(input.id);
-      return withInvocation(input, async ({ assertCurrent }, record) => {
-        const durable = store(assertCurrent);
-        if (!(await durable.registerIfAbsent(input.id, record, { ttlMs: retentionMs }))) {
-          const existing = await durable.lookup(input.id);
-          assertCurrent();
-          if (
-            !existing ||
-            !isDeepStrictEqual(existing.target, record.target) ||
-            existing.toolName !== record.toolName ||
-            !isDeepStrictEqual(existing.tools, record.tools) ||
-            !isDeepStrictEqual(existing.snapshot, record.snapshot)
-          ) {
-            throw new Error("Session work ID belongs to a different accepted operation");
-          }
-          return { target: record.target, recoverable: existing.snapshot !== undefined };
-        }
-        return { target: record.target, recoverable: record.snapshot !== undefined };
-      });
+      return withInvocation(input, async ({ assertCurrent }, record) =>
+        recordAdmission(input.id, assertCurrent, record),
+      );
+    },
+    async admitTurn(input) {
+      validateId(input.id);
+      const source = readHarnessSessionWorkSource(input.source);
+      if (source?.pluginId !== params.pluginId) {
+        throw new Error("Session work requires this service's admitted harness turn.");
+      }
+      const toolNames = [...input.toolNames];
+      return source.run(toolNames, async () =>
+        withInvocation(
+          {
+            agentId: source.agentId,
+            sessionKey: source.sessionKey,
+            delegatedTools: toolNames,
+          },
+          async ({ assertCurrent }, record) =>
+            record.snapshot
+              ? recordAdmission(input.id, assertCurrent, record)
+              : { target: record.target, recoverable: false },
+          source,
+        ),
+      );
     },
     async run(id, work) {
       validateId(id);
@@ -238,7 +296,7 @@ export function createPluginServiceSessionWork(params: {
         };
       }
       const projection = requireSessionRowProjection(owner);
-      const assertTarget = () => {
+      const readTarget = () => {
         assertOwner();
         if (requireSessionRowProjection(owner) !== projection) {
           throw new Error("Session work projection changed");
@@ -260,6 +318,10 @@ export function createPluginServiceSessionWork(params: {
             "Session work conversation is unavailable or changed",
           );
         }
+        return current;
+      };
+      const assertTarget = () => {
+        readTarget();
       };
       let restored: Awaited<ReturnType<typeof restoreGatewayOperatorSource>> | undefined;
       let session: Awaited<ReturnType<typeof prepareGatewaySessionAccessAuthority>> | undefined;
@@ -305,10 +367,56 @@ export function createPluginServiceSessionWork(params: {
             throw error;
           }
         };
-        const current: PluginServiceSessionWorkContextV1 = Object.freeze({
+        const current = Object.freeze<PluginServiceRecoveredSessionWorkContextV1>({
           target: Object.freeze({ ...accepted.target }),
           signal,
           assertCurrent,
+          openAssistantPreview: () =>
+            openSessionWorkAssistantPreview(accepted.target, assertCurrent),
+          async withWorkspaceExecution(request, execute) {
+            assertCurrent();
+            const { runSessionWorkInWorkspace } =
+              await import("./service-session-work-workspace.js");
+            assertCurrent();
+            const target = readTarget();
+            return await runSessionWorkInWorkspace(
+              {
+                workspace: accepted.workspace,
+                target: accepted.target,
+                route: request.model,
+                prepareNodeWorkspace: request.prepareNodeWorkspace,
+                runId: request.runId,
+                resolveGatewayContext: owner.resolveGatewayContext,
+                storePath: target.storePath,
+                pluginId: params.pluginId,
+                authority,
+                tools: accepted.tools,
+                config: owner.getRuntimeConfig(),
+                entry: target.entry,
+                signal: AbortSignal.any([signal, request.signal]),
+                assertCurrent,
+              },
+              execute,
+            );
+          },
+          async withModelExecution(model, execute) {
+            assertCurrent();
+            const binding = bindOperatorModelExecution(authority, model);
+            if (!binding) {
+              throw new Error("Recovered session work requires operator model authority.");
+            }
+            try {
+              return await execute({
+                signal: AbortSignal.any([signal, binding.signal]),
+                assertCurrent: () => {
+                  assertCurrent();
+                  binding.assertCurrent();
+                },
+              });
+            } finally {
+              binding.release();
+            }
+          },
         });
         const execution = {
           ...current,
@@ -331,7 +439,10 @@ export function createPluginServiceSessionWork(params: {
         };
         session = await runWithPluginSessionWorkAuthority(execution, () =>
           prepareGatewaySessionAccessAuthority({
-            policy: { mode: "write", requiredTool: accepted.toolName },
+            policy: {
+              mode: "write",
+              ...(accepted.toolName ? { requiredTool: accepted.toolName } : {}),
+            },
             methodOwner: { kind: "plugin", pluginId: params.pluginId },
             pluginRegistry: params.registry,
             requestParams: accepted.target,

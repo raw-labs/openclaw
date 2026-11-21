@@ -296,19 +296,20 @@ describe("sessions_spawn tool", () => {
       callGateway,
       registerRun,
     });
-    const worktree = {
+    const spawnOptions = {
       cwd: dir,
       worktree: true,
       worktreeName: "issue-review",
       worktreeBaseRef: "main",
+      model: "anthropic/claude-sonnet-4-6",
+      agentRuntime: "example-harness",
     };
     const { result, work } = await captureSessionDecisionWork(() =>
       tool.execute("visible", {
-        ...worktree,
+        ...spawnOptions,
         task: "inspect issue",
         label: "Issue review",
         group: "Beta feedback",
-        model: "anthropic/claude-sonnet-4-6",
         context: "fork",
         visible: true,
         cleanup: "delete",
@@ -321,11 +322,10 @@ describe("sessions_spawn tool", () => {
       cleanup: "keep",
     });
     expect(callGateway).toHaveBeenCalledWith("sessions.create", {
-      ...worktree,
+      ...spawnOptions,
       agentId: "main",
       label: "Issue review",
       category: "Beta feedback",
-      model: "anthropic/claude-sonnet-4-6",
       task: expect.stringContaining("inspect issue"),
       timeoutMs: 120000,
       parentSessionKey: "agent:main:main",
