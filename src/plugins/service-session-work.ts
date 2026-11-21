@@ -146,6 +146,28 @@ export function createPluginServiceSessionWork(params: {
         assertSession?.();
       };
       assertCurrent();
+      const tools = [...new Set(input.delegatedTools ?? [])];
+      if (input.toolName && !tools.includes(input.toolName)) {
+        tools.unshift(input.toolName);
+      }
+      if (tools.length > 256 || tools.some((name) => !name || name.length > 256)) {
+        throw new Error("Session work tool request exceeds its bound");
+      }
+      if (harness && !captured.authority?.recoverySnapshot) {
+        // The foreground harness attempt is already admitted. A channel turn
+        // without a recoverable operator source has no background work to authorize.
+        const target = Object.freeze({
+          agentId: input.agentId,
+          sessionKey: input.sessionKey,
+          sessionId: harness.sessionId,
+        });
+        const value = await work(Object.freeze({ target, signal, assertCurrent }), {
+          target,
+          tools,
+        });
+        assertCurrent();
+        return value;
+      }
       const resolved = resolveInProcessGatewayDispatch("tools.invoke", input, {
         // A spawned opening can still carry the parent's transport caller.
         // Bind admitted work to the current run and retain the original operator's scopes.
@@ -155,13 +177,6 @@ export function createPluginServiceSessionWork(params: {
         pluginRuntimeOwnerId: params.pluginId,
         resolveGatewayContext: params.resolveGatewayContext,
       });
-      const tools = [...new Set(input.delegatedTools ?? [])];
-      if (input.toolName && !tools.includes(input.toolName)) {
-        tools.unshift(input.toolName);
-      }
-      if (tools.length > 256 || tools.some((name) => !name || name.length > 256)) {
-        throw new Error("Session work tool request exceeds its bound");
-      }
       let target: AcceptedWork["target"] | undefined;
       // Admit the conversation and the current executable ceiling together.
       const names = input.toolName ? tools : [undefined];

@@ -75,7 +75,9 @@ export type PluginServiceSessionWorkV1 = {
     toolName: string;
     delegatedTools?: readonly string[];
   }) => Promise<{ recoverable: boolean; target: PluginServiceSessionWorkContextV1["target"] }>;
-  /** Accept a recoverable turn from the service's exact admitted harness attempt. */
+  /** Accept restart recovery for the service's exact admitted harness attempt.
+   * A source without restart authority keeps its foreground admission and writes no work record.
+   */
   admitTurn?: (input: {
     id: string;
     source: AgentHarnessHostCapabilities;

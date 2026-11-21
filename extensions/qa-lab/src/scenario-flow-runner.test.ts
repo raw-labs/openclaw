@@ -664,10 +664,17 @@ async function checkCacheEvidence(marker: string) {
 }
 
 describe("large read cache evidence", () => {
-  it("accepts a native truncation marker without a shell warning prefix", async () => {
-    await expect(checkCacheEvidence("…12345 chars truncated…")).resolves.toMatchObject({
+  it.each([
+    "…12345 chars truncated…",
+    "[Read output capped at 32KB for this call. Use offset=352 to continue.]",
+  ])("accepts the bounded read marker %s", async (marker) => {
+    await expect(checkCacheEvidence(marker)).resolves.toMatchObject({
       status: "pass",
     });
+  });
+
+  it("requires evidence of a bounded read even when the file line is present", async () => {
+    await expect(checkCacheEvidence("")).rejects.toThrow("large capped read cache evidence");
   });
 });
 

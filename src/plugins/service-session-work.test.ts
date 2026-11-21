@@ -1,4 +1,6 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import type { AgentHarnessHostCapabilities } from "../agents/harness/host-capability-types.js";
+import { prepareHarnessSessionWorkSource } from "../agents/harness/host-session-work-source.js";
 import { readPluginSessionWorkAuthority } from "../gateway/plugin-session-work-authority.js";
 import type { GatewayRequestContext } from "../gateway/server-methods/types.js";
 import { SessionAccessPreparationPendingError } from "../gateway/session-access-authority.js";
@@ -287,6 +289,38 @@ it("does not enter work without a recoverable original source", async () => {
   const work = vi.fn();
   await expect(service.run("job", work)).resolves.toMatchObject({ status: "unavailable" });
   expect(work).not.toHaveBeenCalled();
+});
+it("keeps an admitted foreground turn usable without an operator recovery source", async () => {
+  const { service } = fixture();
+  state.recoverable = false;
+  const source: AgentHarnessHostCapabilities = {
+    kind: "agent-harness-host-capability",
+    version: 1,
+    assertActive: state.assertCurrent,
+    bindToolSurface: vi.fn<AgentHarnessHostCapabilities["bindToolSurface"]>(),
+    runBeforeToolCall: vi.fn<AgentHarnessHostCapabilities["runBeforeToolCall"]>(),
+    requestApproval: vi.fn<AgentHarnessHostCapabilities["requestApproval"]>(),
+    waitForApproval: vi.fn<AgentHarnessHostCapabilities["waitForApproval"]>(),
+  };
+  prepareHarnessSessionWorkSource({ pluginId: "research", attempt: state.target }, {}, (work) =>
+    work(),
+  ).bind(source);
+  await expect(
+    service.admitTurn({ id: "foreground", source, toolNames: [] }),
+  ).resolves.toMatchObject({
+    recoverable: false,
+    target: {
+      agentId: state.target.agentId,
+      sessionKey: state.target.sessionKey,
+      sessionId: state.target.sessionId,
+    },
+  });
+  expect(state.prepare).not.toHaveBeenCalled();
+  const recover = vi.fn();
+  await expect(service.run("foreground", recover)).resolves.toMatchObject({
+    status: "unavailable",
+  });
+  expect(recover).not.toHaveBeenCalled();
 });
 it("refuses a replaced conversation without entering work", async () => {
   const { service } = fixture();

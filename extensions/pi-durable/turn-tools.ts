@@ -286,20 +286,20 @@ export function createPiTurnToolRunner(
           error: message,
           startArgs: executedArguments,
         });
-        if (boundary.executionStarted) {
-          await recordToolExchange(
-            assistant,
-            {
-              role: "toolResult",
-              toolCallId,
-              toolName,
-              isError: true,
-              timestamp: Date.now(),
-              content: [{ type: "text", text: message }],
-            },
-            executedArguments,
-          );
-        }
+        const output = [{ type: "text" as const, text: message }];
+        // A rejected model call still has a result even when no tool effects began.
+        await recordToolExchange(
+          assistant,
+          {
+            role: "toolResult",
+            toolCallId,
+            toolName,
+            isError: true,
+            timestamp: Date.now(),
+            content: output,
+          },
+          executedArguments,
+        );
         await emit({
           toolCallId,
           name: toolName,
@@ -307,7 +307,7 @@ export function createPiTurnToolRunner(
           args: executedArguments,
           status: "failed",
         });
-        return { output: [{ type: "text" as const, text: message }], isError: true };
+        return { output, isError: true };
       },
     });
   };
